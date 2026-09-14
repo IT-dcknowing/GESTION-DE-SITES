@@ -30,6 +30,9 @@ class HierarchieAcces
         'gerant' => 0,
         'responsable_ville' => 1,
         'responsable_site' => 2,
+        // Même rang que le responsable de site : il encadre des vendeurs, pas des
+        // lieux, mais ni l'un ni l'autre ne gère d'accès et aucun ne commande l'autre.
+        'responsable_commercial' => 2,
         // Le superviseur recouvrement relève directement de la direction : sa filière est
         // parallèle à celle des villes, et non subordonnée à elle. Il est placé au même
         // rang qu'un superviseur de ville, ce qui a une conséquence voulue — aucun des

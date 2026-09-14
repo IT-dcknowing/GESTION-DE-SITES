@@ -24,6 +24,7 @@ class LibellesRoles
         'gerant' => 'Gérant',
         'responsable_ville' => 'Superviseur de ville',
         'responsable_site' => 'Responsable de site',
+        'responsable_commercial' => 'Responsable commercial',
         'caissier' => 'Comptabilité',
         'commercial' => 'Commercial',
         'superviseur_recouvrement' => 'Superviseur recouvrement',

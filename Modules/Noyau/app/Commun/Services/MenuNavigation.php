@@ -56,6 +56,35 @@ class MenuNavigation
             ]);
         }
 
+        /*
+         * Le responsable commercial. Il anime les vendeurs d'une ville — et vend lui-même,
+         * d'où « Mes prospections » à côté de l'équipe.
+         *
+         * Son bandeau s'arrête à la chaîne de vente. Ni Charges, ni Trésorerie, ni Caisse,
+         * ni Fournisseurs : ces écrans lui répondraient par un refus, et un onglet qui mène
+         * à un 403 vaut moins qu'un onglet absent. Ni Recouvrement ni Import non plus —
+         * encadrer des vendeurs n'a aucun rapport avec la poursuite d'une créance.
+         */
+        if ($utilisateur->hasRole('responsable_commercial')) {
+            return self::construire([
+                ['label' => 'Saisie du jour', 'route' => 'saisie-du-jour'],
+                ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
+                ['label' => 'Mon équipe', 'groupe' => [
+                    ['label' => 'Commerciaux', 'route' => 'commerciaux'],
+                    ['label' => 'Prospects', 'route' => 'prospects'],
+                    ['label' => 'Devis', 'route' => 'devis'],
+                    ['label' => "Chiffre d'affaires", 'route' => 'chiffre-affaires'],
+                ]],
+                ['label' => 'Paramètres', 'groupe' => [
+                    ['label' => 'Ma performance individuelle', 'route' => 'ma-performance'],
+                    ['label' => 'Mes notes', 'route' => 'mes-notes'],
+                    ['label' => 'Messages', 'route' => 'messages'],
+                    ['label' => 'Notifications', 'route' => 'mes-notifications'],
+                    ['label' => 'Mon espace', 'route' => 'mon-espace'],
+                ]],
+            ]);
+        }
+
         if ($utilisateur->hasRole('caissier')) {
             return self::construire([
                 ['label' => 'Tableau de bord', 'route' => 'caissier.tableau-de-bord'],

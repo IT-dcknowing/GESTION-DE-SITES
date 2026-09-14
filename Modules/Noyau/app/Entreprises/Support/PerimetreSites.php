@@ -37,7 +37,7 @@ class PerimetreSites
      */
     public static function villesVisibles(User $utilisateur): Collection
     {
-        if ($utilisateur->hasRole('gerant')) {
+        if ($utilisateur->voitToutesLesVilles()) {
             return Ville::where('entreprise_id', $utilisateur->entreprise_id)->where('est_actif', true)->orderBy('nom')->get();
         }
 
@@ -113,7 +113,7 @@ class PerimetreSites
      */
     public static function optionsVilles(User $utilisateur): ?Collection
     {
-        if (! $utilisateur->hasRole('gerant')) {
+        if (! $utilisateur->voitToutesLesVilles()) {
             return null;
         }
 
@@ -143,7 +143,7 @@ class PerimetreSites
     /** La ville de l'utilisateur quand elle est connue d'avance (tous les rôles hors Gérant), affichée en lecture seule. */
     public static function villeUnique(User $utilisateur): ?Ville
     {
-        if ($utilisateur->hasRole('gerant')) {
+        if ($utilisateur->voitToutesLesVilles()) {
             return null;
         }
 
@@ -171,7 +171,7 @@ class PerimetreSites
         $morceaux[] = $activiteFiltre ?: 'consolidé';
 
         if ($morceaux === ['consolidé']) {
-            return $utilisateur->hasRole('gerant') ? 'toutes villes' : 'consolidé';
+            return $utilisateur->voitToutesLesVilles() ? 'toutes villes' : 'consolidé';
         }
 
         return implode(' — ', $morceaux);

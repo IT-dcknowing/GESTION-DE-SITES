@@ -73,6 +73,21 @@ class Site extends Model
                 ->orderBy('nom')->get();
         }
 
+        /*
+         * Le responsable commercial n'est rattaché à aucun lieu : il anime des vendeurs,
+         * et un vendeur appartient à une ville entière. Son périmètre est donc celui de sa
+         * ville — ou de toutes, quand un seul animateur couvre le groupe.
+         */
+        if ($user->hasRole('responsable_commercial')) {
+            $sites = static::where('entreprise_id', $user->entreprise_id);
+
+            if (! $user->couvre_toutes_les_villes) {
+                $sites->where('ville_id', $user->ville_id);
+            }
+
+            return $sites->orderBy('nom')->get();
+        }
+
         if ($user->hasRole('caissier')) {
             if ($user->site_id) {
                 return static::where('id', $user->site_id)->get();

@@ -20,6 +20,10 @@ class ProvisionneurEntreprise
         // l'agent relance et encaisse. Ni l'un ni l'autre ne crée la créance qu'il
         // poursuit — c'est la séparation des fonctions qui rend le journal crédible.
         'superviseur_recouvrement', 'agent_recouvrement',
+        // Le responsable commercial anime les vendeurs d'une ville — et vend lui-même.
+        // Il ne touche ni au recouvrement ni aux imports : encadrer des vendeurs n'a
+        // aucun rapport avec la poursuite d'une créance.
+        'responsable_commercial',
     ];
 
     public static function creerRoles(Entreprise $entreprise): void

@@ -4,6 +4,8 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Entreprises\Actions\CreerAcces;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
+use Modules\Noyau\Entreprises\Support\ChoixDeLieu;
+use Modules\Noyau\Entreprises\Support\ChoixDeVille;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Entreprises\Support\LibellesRoles;
@@ -69,8 +71,10 @@ mount(function (?int $utilisateur = null) {
     $this->email = $compte->email;
     $this->telephone = $compte->telephone ?? '';
     $this->ouverture = $compte->est_actif ? 'actif' : 'inactif';
-    $this->villeChoix = $compte->ville_id ?? '';
-    $this->siteChoix = $compte->site_id ?? '';
+    $this->villeChoix = ChoixDeVille::choixActuel($compte);
+    // On relit les désignations plutôt que `site_id`, nul dès que la personne répond de
+    // plusieurs ateliers : le champ reviendrait vide à chaque reprise d'accès.
+    $this->siteChoix = ChoixDeLieu::choixActuel($compte);
 
     app(PermissionRegistrar::class)->setPermissionsTeamId($compte->entreprise_id);
     $this->roleActif = $compte->getRoleNames()->first() ?? 'commercial';
@@ -164,14 +168,30 @@ $rolesAtteignables = computed(function () {
 
 $entreprises = computed(fn () => Entreprise::where('est_active', true)->orderBy('nom')->get());
 
-/** Villes de l'entreprise choisie : périmètre du responsable de ville, du commercial et de la comptabilité. */
+/**
+ * Villes de l'entreprise choisie : périmètre du responsable de ville, du commercial et de
+ * la comptabilité.
+ *
+ * « Toutes les villes » ne s'y ajoute que pour le responsable commercial : certains
+ * groupes n'ont qu'un animateur pour l'ensemble de leurs villes, et la seule façon de le
+ * dire jusqu'ici était de le nommer gérant — un excès de droits pour combler un manque de
+ * vocabulaire.
+ */
 $optionsVille = computed(fn () => $this->entrepriseId
-    ? Ville::where('entreprise_id', $this->entrepriseId)->where('est_actif', true)->orderBy('nom')->pluck('nom', 'id')->all()
+    ? ChoixDeVille::options(
+        (int) $this->entrepriseId,
+        ChoixDeVille::peutCouvrirToutesLesVilles($this->roleActif),
+    )
     : []);
 
-/** Lieux de l'entreprise choisie : périmètre du seul responsable de site. */
+/**
+ * Lieux de l'entreprise choisie : périmètre du seul responsable de site.
+ *
+ * La liste porte aussi « Abidjan — tous les sites » quand une ville compte plusieurs
+ * ateliers : la même personne en dirige parfois deux, et la base l'a toujours permis.
+ */
 $optionsSite = computed(fn () => $this->entrepriseId
-    ? Site::where('entreprise_id', $this->entrepriseId)->where('est_actif', true)->orderBy('nom')->pluck('nom', 'id')->all()
+    ? ChoixDeLieu::options((int) $this->entrepriseId)
     : []);
 
 /*
@@ -184,7 +204,7 @@ $rolesDisponibles = computed(fn () => collect(ProvisionneurEntreprise::ROLES)
     ->all());
 
 /** Rôles dont le titulaire prospecte : il reçoit une fiche commercial et des objectifs. */
-$roleAvecObjectifs = computed(fn () => in_array($this->roleActif, ['responsable_ville', 'responsable_site', 'commercial'], true));
+$roleAvecObjectifs = computed(fn () => in_array($this->roleActif, ['responsable_ville', 'responsable_site', 'responsable_commercial', 'commercial'], true));
 
 /** Répartition Mécanique/Sinistre de l'objectif global : tout lieu accueille les deux activités. */
 $objectifMecanique = computed(fn () => (int) round((int) $this->objectifGlobal * ((int) $this->pourcentageMecanique) / 100));

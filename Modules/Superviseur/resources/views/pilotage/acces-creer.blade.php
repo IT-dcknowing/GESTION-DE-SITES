@@ -6,6 +6,8 @@ use Modules\Noyau\Entreprises\Actions\CreerAcces;
 use Modules\Noyau\Entreprises\Actions\RenvoyerLAcces;
 use Modules\Noyau\Entreprises\Actions\SupprimerAcces;
 use Modules\Noyau\Entreprises\Modeles\Site;
+use Modules\Noyau\Entreprises\Support\ChoixDeLieu;
+use Modules\Noyau\Entreprises\Support\ChoixDeVille;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\Annuaire;
 use Modules\Noyau\Entreprises\Support\HierarchieAcces;
@@ -50,12 +52,12 @@ mount(function () {
 $rolesDisponibles = computed(function () {
     $noms = match (true) {
         auth()->user()->hasRole('gerant') => [
-            'responsable_ville', 'responsable_site', 'commercial', 'caissier',
+            'responsable_ville', 'responsable_site', 'responsable_commercial', 'commercial', 'caissier',
             // Le recouvrement relève de la direction : c'est le gérant qui nomme le
             // superviseur, et le superviseur qui nommera ses agents.
             'superviseur_recouvrement', 'agent_recouvrement',
         ],
-        auth()->user()->hasRole('responsable_ville') => ['responsable_site', 'commercial', 'caissier'],
+        auth()->user()->hasRole('responsable_ville') => ['responsable_site', 'responsable_commercial', 'commercial', 'caissier'],
         auth()->user()->hasRole('superviseur_recouvrement') => ['agent_recouvrement'],
         default => ['commercial', 'caissier'],
     };
@@ -64,7 +66,7 @@ $rolesDisponibles = computed(function () {
 });
 
 /** Rôles dont le titulaire prospecte : il reçoit une fiche commercial et des objectifs. */
-$roleAvecObjectifs = computed(fn () => in_array($this->roleActif, ['responsable_ville', 'responsable_site', 'commercial'], true));
+$roleAvecObjectifs = computed(fn () => in_array($this->roleActif, ['responsable_ville', 'responsable_site', 'responsable_commercial', 'commercial'], true));
 
 /**
  * Villes proposées. Un commercial, un responsable de ville et la comptabilité sont
@@ -75,13 +77,30 @@ $villesPourCommercial = computed(fn () => auth()->user()->hasRole('gerant')
     ? Ville::where('entreprise_id', auth()->user()->entreprise_id)->where('est_actif', true)->orderBy('nom')->get()
     : Ville::whereIn('id', Site::visiblesPour(auth()->user())->pluck('ville_id')->unique())->orderBy('nom')->get());
 
-$optionsVilleCommercial = computed(fn () => $this->villesPourCommercial->pluck('nom', 'id')->all());
+$optionsVilleCommercial = computed(function () {
+    $options = $this->villesPourCommercial->pluck('nom', 'id')
+        ->mapWithKeys(fn ($nom, $id) => [(string) $id => $nom])->all();
 
-/** Lieux proposés à un responsable de site : ceux du périmètre de celui qui le nomme. */
-$optionsSite = computed(fn () => (auth()->user()->hasRole('gerant')
+    // « Toutes les villes » n'est offert qu'au responsable commercial, et seulement si
+    // celui qui nomme en couvre lui-même plusieurs : on ne délègue pas plus large que soi.
+    if (ChoixDeVille::peutCouvrirToutesLesVilles($this->roleActif) && count($options) > 1) {
+        $options[ChoixDeVille::TOUTES] = 'Toutes les villes';
+    }
+
+    return $options;
+});
+
+/**
+ * Lieux proposés à un responsable de site : ceux du périmètre de celui qui le nomme.
+ *
+ * S'y ajoute « Abidjan — tous les sites » lorsque ce périmètre contient plusieurs
+ * ateliers d'une même ville, pour nommer quelqu'un sur les deux à la fois.
+ */
+$optionsSite = computed(fn () => ChoixDeLieu::depuis(
+    auth()->user()->hasRole('gerant')
         ? Site::where('entreprise_id', auth()->user()->entreprise_id)->where('est_actif', true)->orderBy('nom')->get()
-        : Site::visiblesPour(auth()->user()))
-    ->pluck('nom', 'id')->all());
+        : Site::visiblesPour(auth()->user())
+));
 
 /** Répartition Mécanique/Sinistre de l'objectif global, au pourcentage saisi. */
 $objectifMecanique = computed(fn () => (int) round((int) $this->objectifGlobal * ((int) $this->pourcentageMecanique) / 100));

@@ -6,8 +6,11 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Commun\Services\CodeAuteur;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Support\ChoixDeLieu;
+use Modules\Noyau\Entreprises\Support\ChoixDeVille;
 use Modules\Noyau\Entreprises\Support\HierarchieAcces;
 use Modules\Noyau\Entreprises\Support\LibellesRoles;
 use Modules\Noyau\Imports\Services\CodeDeLAtelier;
@@ -37,7 +40,9 @@ use Spatie\Permission\PermissionRegistrar;
 class CreerAcces
 {
     /** Rôles dont le titulaire prospecte aussi : il doit donc exister comme commercial. */
-    private const ROLES_COMMERCIAUX = ['responsable_ville', 'responsable_site', 'commercial'];
+    // Le responsable commercial vend lui aussi : il lui faut sa fiche et ses objectifs,
+    // sans quoi ni ses prospections ni son chiffre ne seraient rattachables à personne.
+    private const ROLES_COMMERCIAUX = ['responsable_ville', 'responsable_site', 'responsable_commercial', 'commercial'];
 
     /**
      * Pourquoi le code employé n'a pas pu être rattaché, le cas échéant.
@@ -203,11 +208,7 @@ class CreerAcces
     /** « Abidjan — Site 2 » pour un responsable de lieu, « Abidjan » pour les autres. */
     private function libellePerimetre(User $utilisateur): ?string
     {
-        if ($utilisateur->site_id) {
-            return Site::find($utilisateur->site_id)?->nom;
-        }
-
-        return $utilisateur->ville_id ? Ville::find($utilisateur->ville_id)?->nom : null;
+        return ChoixDeLieu::libelle($utilisateur);
     }
 
     /**
@@ -220,27 +221,47 @@ class CreerAcces
     private function affecterPerimetre(Entreprise $entreprise, User $utilisateur, string $role, array $donnees): ?Ville
     {
         if ($role === 'responsable_site') {
-            $site = Site::where('id', $donnees['site_id'] ?? null)->where('entreprise_id', $entreprise->id)->firstOrFail();
-            $site->update(['responsable_id' => $utilisateur->id]);
-            $utilisateur->update(['ville_id' => $site->ville_id, 'site_id' => $site->id]);
+            // Le choix vaut un lieu précis, ou « ville:7 » pour tous les ateliers d'une
+            // ville — Abidjan en compte deux, et la même personne en dirige parfois les
+            // deux. Voir ChoixDeLieu, qui porte la règle pour les trois écrans d'accès.
+            $ville = ChoixDeLieu::poser($entreprise->id, $utilisateur, $donnees['site_id'] ?? null);
 
-            return $site->ville;
+            if (! $ville) {
+                throw (new ModelNotFoundException)->setModel(Site::class);
+            }
+
+            return $ville;
         }
 
-        if (! in_array($role, ['responsable_ville', 'commercial', 'caissier'], true)) {
+        if (! in_array($role, ['responsable_ville', 'responsable_commercial', 'commercial', 'caissier'], true)) {
             return null;
         }
 
-        $ville = Ville::where('id', $donnees['ville_id'] ?? null)->where('entreprise_id', $entreprise->id)->firstOrFail();
+        /*
+         * « toutes » n'est offert qu'au responsable commercial. Le vérifier ici et pas
+         * seulement à l'écran : la même méthode est atteignable depuis le navigateur avec
+         * la valeur que l'on veut, et un formulaire n'est pas une autorisation.
+         */
+        $choixVille = $donnees['ville_id'] ?? null;
+
+        if (ChoixDeVille::estToutes($choixVille) && ! ChoixDeVille::peutCouvrirToutesLesVilles($role)) {
+            $choixVille = null;
+        }
+
+        /*
+         * Le rattachement est porté par le compte lui-même, pas seulement par la fiche
+         * commercial ou la colonne responsable_id : c'est ce qui permet de le retrouver
+         * même après une purge des données, et de ne jamais réaffecter quelqu'un par défaut.
+         */
+        $ville = ChoixDeVille::poser($entreprise->id, $utilisateur, $choixVille);
+
+        if (! $ville) {
+            throw (new ModelNotFoundException)->setModel(Ville::class);
+        }
 
         if ($role === 'responsable_ville') {
             $ville->update(['responsable_id' => $utilisateur->id]);
         }
-
-        // Le rattachement est porté par le compte lui-même, pas seulement par la fiche
-        // commercial ou la colonne responsable_id : c'est ce qui permet de le retrouver
-        // même après une purge des données, et de ne jamais réaffecter quelqu'un par défaut.
-        $utilisateur->update(['ville_id' => $ville->id, 'site_id' => null]);
 
         return $ville;
     }

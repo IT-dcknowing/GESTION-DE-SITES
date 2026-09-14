@@ -18,7 +18,7 @@ use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'email', 'password', 'entreprise_id', 'ville_id', 'site_id', 'telephone', 'est_actif', 'doit_changer_mot_de_passe', 'email_verified_at', 'photo_chemin', 'cree_par_id', 'est_fondateur', 'habilitations'])]
+#[Fillable(['name', 'email', 'password', 'entreprise_id', 'ville_id', 'site_id', 'couvre_toutes_les_villes', 'telephone', 'est_actif', 'doit_changer_mot_de_passe', 'email_verified_at', 'photo_chemin', 'cree_par_id', 'est_fondateur', 'habilitations'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -37,6 +37,7 @@ class User extends Authenticatable
             'est_actif' => 'boolean',
             'doit_changer_mot_de_passe' => 'boolean',
             'est_fondateur' => 'boolean',
+            'couvre_toutes_les_villes' => 'boolean',
             'habilitations' => 'array',
         ];
     }
@@ -143,6 +144,18 @@ class User extends Authenticatable
     }
 
     /** Un utilisateur sans entreprise est un membre de l'équipe plateforme (Super Admin). */
+    /**
+     * Ce compte voit-il toutes les villes de son entreprise ?
+     *
+     * Le gérant, par construction. Et le responsable commercial d'un groupe qui n'a qu'un
+     * animateur pour l'ensemble de ses villes — cas assez fréquent pour mériter sa colonne,
+     * plutôt qu'un `ville_id` laissé à nul, qui veut déjà dire « pas encore rattaché ».
+     */
+    public function voitToutesLesVilles(): bool
+    {
+        return $this->hasRole('gerant') || (bool) $this->couvre_toutes_les_villes;
+    }
+
     public function estSuperAdmin(): bool
     {
         return $this->hasRole('super_admin');

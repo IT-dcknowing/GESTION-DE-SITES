@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Hash;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Support\ChoixDeLieu;
+use Modules\Noyau\Entreprises\Support\ChoixDeVille;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
@@ -29,7 +31,7 @@ use Spatie\Permission\PermissionRegistrar;
 class ModifierAcces
 {
     /** Rôles dont le titulaire prospecte : il doit exister comme commercial. */
-    private const ROLES_COMMERCIAUX = ['responsable_ville', 'responsable_site', 'commercial'];
+    private const ROLES_COMMERCIAUX = ['responsable_ville', 'responsable_site', 'responsable_commercial', 'commercial'];
 
     /**
      * @param  array<string, mixed>  $donnees  nom, email, telephone, mot_de_passe, entreprise_id, ville_id, site_id, objectifs
@@ -164,26 +166,34 @@ class ModifierAcces
         }
 
         if ($role === 'responsable_site') {
-            $site = Site::withoutGlobalScopes()
-                ->where('id', $donnees['site_id'] ?? null)
-                ->where('entreprise_id', $compte->entreprise_id)
-                ->first();
+            /*
+             * Un lieu précis, ou tous ceux d'une ville. Les désignations que ce compte
+             * portait ont été effacées juste avant par l'appelant : c'est ce qui permet de
+             * ramener quelqu'un de « tous les sites » à un seul sans qu'il reste inscrit
+             * sur l'autre.
+             */
+            $ville = ChoixDeLieu::poser(
+                (int) $compte->entreprise_id, $compte, $donnees['site_id'] ?? null
+            );
 
-            if (! $site) {
+            if (! $ville) {
                 return null;
             }
 
-            $site->forceFill(['responsable_id' => $compte->id])->save();
-            $compte->forceFill(['ville_id' => $site->ville_id, 'site_id' => $site->id])->save();
-            $changements['périmètre'] = $site->nom;
+            $changements['périmètre'] = ChoixDeLieu::libelle($compte->refresh()) ?: $ville->nom;
 
-            return Ville::withoutGlobalScopes()->find($site->ville_id);
+            return $ville;
         }
 
-        $ville = Ville::withoutGlobalScopes()
-            ->where('id', $donnees['ville_id'] ?? null)
-            ->where('entreprise_id', $compte->entreprise_id)
-            ->first();
+        // « toutes » n'appartient qu'au responsable commercial : le formulaire ne le
+        // propose pas aux autres, et la requête ne suffit pas à l'obtenir.
+        $choixVille = $donnees['ville_id'] ?? null;
+
+        if (ChoixDeVille::estToutes($choixVille) && ! ChoixDeVille::peutCouvrirToutesLesVilles($role)) {
+            $choixVille = null;
+        }
+
+        $ville = ChoixDeVille::poser((int) $compte->entreprise_id, $compte, $choixVille);
 
         if (! $ville) {
             return null;
@@ -193,8 +203,7 @@ class ModifierAcces
             $ville->forceFill(['responsable_id' => $compte->id])->save();
         }
 
-        $compte->forceFill(['ville_id' => $ville->id, 'site_id' => null])->save();
-        $changements['périmètre'] = $ville->nom;
+        $changements['périmètre'] = ChoixDeVille::libelle($compte->refresh()) ?: $ville->nom;
 
         return $ville;
     }

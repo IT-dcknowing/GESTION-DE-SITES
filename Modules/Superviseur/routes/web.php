@@ -19,13 +19,26 @@ use Modules\Superviseur\Http\Controllers\AccesController;
 | trois rôles admis.
 */
 
-Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->group(function () {
+/*
+ * La chaîne commerciale — prospects, devis, chiffre d'affaires, commerciaux. Le
+ * responsable commercial y entre : c'est exactement son métier, et c'est la seule façon
+ * pour lui de voir le travail des vendeurs qu'il encadre.
+ */
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|responsable_commercial'])->group(function () {
     Volt::route('/prospects', 'pilotage.prospects')->name('prospects');
     Volt::route('/devis', 'pilotage.devis')->name('devis');
     Volt::route('/chiffre-affaires', 'pilotage.chiffre-affaires')->name('chiffre-affaires');
+    Volt::route('/commerciaux', 'pilotage.commerciaux')->name('commerciaux');
+});
+
+/*
+ * Les charges et la trésorerie restent fermées au responsable commercial. Animer une
+ * équipe de vente ne donne aucun titre à lire ce que l'entreprise dépense — et l'ouvrir
+ * « parce qu'il est responsable » confondrait le rang avec la branche.
+ */
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->group(function () {
     Volt::route('/charges', 'pilotage.charges')->name('charges');
     Volt::route('/tresorerie', 'pilotage.tresorerie')->name('tresorerie');
-    Volt::route('/commerciaux', 'pilotage.commerciaux')->name('commerciaux');
     // Les deux écrans qui manquaient à ce qui était déjà importé : mille cent cinquante-cinq
     // mouvements de caisse et mille huit cent quarante-huit factures fournisseurs dormaient
     // en base sans qu'aucune page ne les affiche. Une donnée qu'on ne peut pas voir n'a pas
