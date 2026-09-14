@@ -17,6 +17,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Accès à un environnement de test
+    |--------------------------------------------------------------------------
+    | Le serveur de développement travaille sur une copie de la production : mêmes
+    | clients, mêmes montants. Ces deux valeurs posent un mot de passe devant lui
+    | lorsqu'on l'atteint depuis Internet. Elles n'ont aucun effet en production.
+    |
+    | Voir App\Http\Middleware\ProtegerLEnvironnementDeTest.
+    */
+
+    'acces_test' => [
+        'utilisateur' => env('ACCES_TEST_UTILISATEUR'),
+        'mot_de_passe' => env('ACCES_TEST_MOT_DE_PASSE'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

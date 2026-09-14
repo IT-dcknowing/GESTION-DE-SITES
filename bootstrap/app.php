@@ -3,6 +3,7 @@
 use App\Http\Middleware\DefinirEquipePermissions;
 use App\Http\Middleware\EnregistreLaVisite;
 use App\Http\Middleware\ForcerChangementMotDePasse;
+use App\Http\Middleware\ProtegerLEnvironnementDeTest;
 use App\Http\Middleware\VerifieHabilitation;
 use App\Http\Middleware\VerifierCompteActif;
 use Illuminate\Auth\AuthenticationException;
@@ -48,6 +49,16 @@ return Application::configure(basePath: dirname(__DIR__))
                 | Request::HEADER_X_FORWARDED_PROTO
                 | Request::HEADER_X_FORWARDED_PREFIX,
         );
+
+        /*
+         * En tête de file, avant même la session : un environnement de test ouvert sur
+         * Internet porte de vraies données clients, et rien de l'application ne doit
+         * s'exécuter pour un visiteur qui n'a pas donné le mot de passe. Sans effet en
+         * production et depuis le réseau local.
+         */
+        $middleware->prependToGroup('web', [
+            ProtegerLEnvironnementDeTest::class,
+        ]);
 
         $middleware->appendToGroup('web', [
             DefinirEquipePermissions::class,
