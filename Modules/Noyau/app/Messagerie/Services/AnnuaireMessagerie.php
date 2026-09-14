@@ -54,12 +54,16 @@ class AnnuaireMessagerie
             return collect();
         }
 
-        $encadrement = ['responsable_ville', 'responsable_site'];
+        // Le responsable commercial est un encadrant : il figure donc dans cette liste,
+        // ce qui le rend joignable par tous ceux qui joignent déjà l'encadrement — et
+        // d'abord par les vendeurs qu'il anime.
+        $encadrement = ['responsable_ville', 'responsable_site', 'responsable_commercial'];
 
         $rolesVises = match (true) {
             $expediteur->hasRole('gerant') => [...$encadrement, 'commercial'],
             $expediteur->hasRole('responsable_ville') => ['gerant', ...$encadrement, 'commercial'],
             $expediteur->hasRole('responsable_site') => ['gerant', ...$encadrement, 'commercial'],
+            $expediteur->hasRole('responsable_commercial') => ['gerant', ...$encadrement, 'commercial'],
             $expediteur->hasRole('commercial') => [...$encadrement, 'commercial'],
             default => [],
         };

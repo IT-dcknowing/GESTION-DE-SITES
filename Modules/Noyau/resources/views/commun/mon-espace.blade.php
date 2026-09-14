@@ -3,6 +3,8 @@
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Commun\Services\EnregistreurPhoto;
 use Modules\Noyau\Entreprises\Modeles\Site;
+use Modules\Noyau\Entreprises\Support\HierarchieAcces;
+use Modules\Noyau\Entreprises\Support\LibellesRoles;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Illuminate\Validation\Rule;
 use function Livewire\Volt\{state, computed, mount, usesFileUploads};
@@ -34,21 +36,14 @@ $utilisateur = computed(fn () => auth()->user());
 
 $entreprise = computed(fn () => auth()->user()->entreprise);
 
-$monRole = computed(function () {
-    if (auth()->user()->hasRole('responsable_ville')) {
-        return 'Superviseur de ville';
-    }
-
-    if (auth()->user()->hasRole('responsable_site')) {
-        return 'Responsable de site';
-    }
-
-    if (auth()->user()->hasRole('caissier')) {
-        return 'Comptabilité';
-    }
-
-    return 'Commercial';
-});
+/*
+ * L'intitulé vient de LibellesRoles, pas d'une cascade de « if ».
+ *
+ * Celle qui vivait ici oubliait tout rôle ajouté depuis — un responsable commercial s'y
+ * lisait « Commercial », faute de branche. Et le repli final était le piège : il rendait
+ * l'oubli invisible, en donnant toujours une réponse plausible.
+ */
+$monRole = computed(fn () => LibellesRoles::de(HierarchieAcces::roleDe(auth()->user())));
 
 /** Lieux couverts par l'utilisateur : ceux de sa ville pour un commercial, ceux de son périmètre pour les autres rôles. */
 $mesSites = computed(function () {

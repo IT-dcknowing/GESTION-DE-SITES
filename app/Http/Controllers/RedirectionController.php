@@ -16,7 +16,11 @@ class RedirectionController extends Controller
         $destination = match (true) {
             $utilisateur->hasRole('super_admin') => route('super-admin.dashboard'),
             $utilisateur->hasRole('gerant') => route('tableau-de-bord'),
-            $utilisateur->hasRole('responsable_ville') || $utilisateur->hasRole('responsable_site') => route('saisie-du-jour'),
+            // Le responsable commercial atterrit là aussi : c'est le premier onglet de
+            // son bandeau, et un atterrissage doit tomber sur l'écran qu'on lui montre.
+            $utilisateur->hasRole('responsable_ville'),
+            $utilisateur->hasRole('responsable_site'),
+            $utilisateur->hasRole('responsable_commercial') => route('saisie-du-jour'),
             $utilisateur->hasRole('commercial') => route('ma-performance'),
             $utilisateur->hasRole('caissier') => route('caissier.tableau-de-bord'),
             // Les deux rôles du recouvrement atterrissent sur la première page qui leur
