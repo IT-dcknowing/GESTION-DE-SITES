@@ -5,6 +5,7 @@ namespace Modules\Noyau\Tracabilite\Services;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use Modules\Noyau\Tracabilite\Modeles\SessionUtilisateur;
 use Modules\Noyau\Tracabilite\Modeles\VisiteEcran;
@@ -33,10 +34,29 @@ class JournalDeNavigation
     public const CLEF_SESSION = 'tracabilite_session';
 
     /**
+     * Clef posée pendant qu'un administrateur assiste quelqu'un sous son identité.
+     *
+     * **Tant qu'elle est là, ce journal n'écrit rien.** C'est la seule façon honnête de
+     * tenir un registre de présence : l'administrateur qui prend la place de quelqu'un pour
+     * l'aider n'est pas cette personne, et le compte assisté n'a pas ouvert l'application.
+     * Sans cette garde, une assistance de dix minutes apparaissait comme une connexion de
+     * l'intéressé, avec ses écrans et sa durée — et l'écran de traçabilité mentait sur la
+     * seule question qu'on lui pose.
+     *
+     * Le passage lui-même n'est pas perdu pour autant : il est consigné dans le journal
+     * d'audit, au nom de l'administrateur, qui est bien celui qui agit.
+     */
+    public const CLEF_ASSISTANCE = 'switch.origine';
+
+    /**
      * Ouvre une ligne de journal pour une connexion qui vient d'aboutir.
      */
     public function ouvrirSession(User $utilisateur, Request $requete): ?SessionUtilisateur
     {
+        if ($this->enAssistance($requete)) {
+            return null;
+        }
+
         try {
             $agent = (string) $requete->userAgent();
 
@@ -101,6 +121,10 @@ class JournalDeNavigation
      */
     public function enregistrerVisite(User $utilisateur, Request $requete): void
     {
+        if ($this->enAssistance($requete)) {
+            return;
+        }
+
         try {
             $session = $this->sessionCourante($utilisateur, $requete);
 
@@ -219,9 +243,28 @@ class JournalDeNavigation
      * journal. Sans cela, ces personnes resteraient invisibles jusqu'à leur prochaine
      * connexion — et l'écran de traçabilité mentirait par omission.
      */
+    /**
+     * Vrai pendant qu'un administrateur assiste quelqu'un sous son identité.
+     *
+     * La question est posée deux fois, à la requête puis au magasin de session global, et
+     * ce n'est pas de la ceinture et des bretelles : l'événement de connexion ne porte pas
+     * la requête, et selon d'où il est déclenché, celle qu'on retrouve peut n'avoir aucune
+     * session attachée. Un garde qui laisse passer quand il ne sait pas est un garde qui
+     * n'en est pas un — et ce qu'il laisserait passer ici, c'est une fausse connexion
+     * inscrite au compte de quelqu'un.
+     */
+    private function enAssistance(Request $requete): bool
+    {
+        if ($requete->hasSession() && $requete->session()->has(self::CLEF_ASSISTANCE)) {
+            return true;
+        }
+
+        return Session::isStarted() && Session::has(self::CLEF_ASSISTANCE);
+    }
+
     private function sessionCourante(User $utilisateur, Request $requete): ?SessionUtilisateur
     {
-        if (! $requete->hasSession()) {
+        if (! $requete->hasSession() || $this->enAssistance($requete)) {
             return null;
         }
 

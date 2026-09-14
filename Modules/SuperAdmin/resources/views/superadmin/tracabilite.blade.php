@@ -6,7 +6,7 @@ use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Support\LibellesRoles;
 use Modules\Noyau\Tracabilite\Modeles\SessionUtilisateur;
 use Modules\Noyau\Tracabilite\Modeles\VisiteEcran;
-use function Livewire\Volt\{computed, state};
+use function Livewire\Volt\{computed, mount, state};
 
 /*
 |--------------------------------------------------------------------------
@@ -33,7 +33,25 @@ state([
     'detailId' => null,
     'pageComptes' => 1,
     'pageSessions' => 1,
+    'pageJamais' => 1,
+    // Quel tableau on regarde : « temps » (ceux qui viennent) ou « jamais » (ceux qui
+    // ne sont jamais venus). Deux populations disjointes, et la seconde manquait.
+    'vue' => 'temps',
 ]);
+
+mount(function () {
+    // La bascule passe par l'adresse : un lien ordinaire l'ouvre, et l'adresse se partage.
+    // Elle emporte aussi les filtres courants, sans quoi basculer les remettrait à zéro.
+    $this->vue = request()->query('vue') === 'jamais' ? 'jamais' : 'temps';
+
+    foreach (['periode', 'entrepriseId', 'recherche'] as $champ) {
+        $valeur = request()->query($champ);
+
+        if ($valeur !== null) {
+            $this->{$champ} = (string) $valeur;
+        }
+    }
+});
 
 /** Bornes de la période lue. Le jour courant est toujours inclus, en entier. */
 $debut = computed(fn () => (int) $this->periode === 0
@@ -131,6 +149,60 @@ $comptes = computed(function () {
     ]);
 });
 
+/**
+ * Les comptes qui ne se sont jamais connectés.
+ *
+ * **Deux témoins, et non un seul.** Un compte est tenu pour jamais venu s'il n'a ni date de
+ * dernière connexion ni la moindre ligne de présence. Les deux se posent au même moment —
+ * à l'authentification — mais ils ne viennent pas du même endroit, et se fier à un seul
+ * laisserait passer les comptes antérieurs à la mise en place du journal de présence.
+ *
+ * **Rien d'autre n'inscrit une connexion.** Ni la création d'un accès, ni l'envoi du
+ * courriel, ni son renvoi, ni la remise d'un mot de passe. Un compte qui apparaît ici n'est
+ * jamais entré, et c'est une information sûre.
+ *
+ * La période ne s'applique pas : « jamais » ne se borne pas dans le temps.
+ */
+$jamaisVenus = computed(function () {
+    $recherche = trim($this->recherche);
+
+    $lignes = User::query()
+        ->when($this->entrepriseId !== '', fn ($q) => $q->where('entreprise_id', (int) $this->entrepriseId))
+        ->when($recherche !== '', fn ($q) => $q->where(fn ($r) => $r
+            ->where('name', 'like', "%$recherche%")
+            ->orWhere('email', 'like', "%$recherche%")))
+        ->whereNull('derniere_connexion_le')
+        ->whereNotExists(fn ($q) => $q->select(DB::raw(1))
+            ->from('sessions_utilisateur')
+            ->whereColumn('sessions_utilisateur.user_id', 'users.id'))
+        ->orderBy('created_at')
+        ->get(['id', 'name', 'email', 'entreprise_id', 'est_actif', 'created_at']);
+
+    $entreprises = $this->entreprises;
+    $roles = User::nomsRolesParUtilisateur($lignes->pluck('id'));
+
+    return $lignes->map(fn ($u) => [
+        'id' => (int) $u->id,
+        'nom' => $u->name,
+        'email' => $u->email,
+        'entreprise' => $entreprises[$u->entreprise_id] ?? '— Plateforme —',
+        'role' => LibellesRoles::liste($roles[$u->id] ?? null),
+        'actif' => (bool) $u->est_actif,
+        'cree_le' => $u->created_at,
+        'jours' => $u->created_at ? (int) $u->created_at->diffInDays(now()) : null,
+    ]);
+});
+
+/** L'adresse de cet écran avec les filtres courants — pour que la bascule ne les perde pas. */
+$lien = function (string $vue): string {
+    return route('super-admin.tracabilite', array_filter([
+        'vue' => $vue === 'temps' ? null : $vue,
+        'periode' => $this->periode,
+        'entrepriseId' => $this->entrepriseId ?: null,
+        'recherche' => trim($this->recherche) ?: null,
+    ], fn ($v) => $v !== null && $v !== ''));
+};
+
 /** Écrans les plus ouverts sur la période : où passe réellement le temps. */
 $ecrans = computed(function () {
     $lignes = DB::table('visites_ecran')
@@ -202,21 +274,21 @@ $updatedEntrepriseId = function () {
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:18px;">
         <select wire:model.live="periode"
             style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px; background:#fff;">
-            <option value="0">Aujourd'hui</option>
-            <option value="7">7 derniers jours</option>
-            <option value="30">30 derniers jours</option>
-            <option value="90">90 derniers jours</option>
+            <option value="0" @selected((string) $periode === '0')>Aujourd'hui</option>
+            <option value="7" @selected((string) $periode === '7')>7 derniers jours</option>
+            <option value="30" @selected((string) $periode === '30')>30 derniers jours</option>
+            <option value="90" @selected((string) $periode === '90')>90 derniers jours</option>
         </select>
 
         <select wire:model.live="entrepriseId"
             style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px; background:#fff; max-width:260px;">
-            <option value="">Toutes les entreprises</option>
+            <option value="" @selected($entrepriseId === '')>Toutes les entreprises</option>
             @foreach ($this->entreprises as $id => $nom)
-                <option value="{{ $id }}">{{ $nom }}</option>
+                <option value="{{ $id }}" @selected((string) $entrepriseId === (string) $id)>{{ $nom }}</option>
             @endforeach
         </select>
 
-        <input type="search" wire:model.live.debounce.400ms="recherche" class="champ"
+        <input type="search" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}" class="champ"
             placeholder="Rechercher un nom ou un e-mail…" style="max-width:280px;">
 
         <a href="{{ route('super-admin.journal.index') }}" wire:navigate
@@ -289,8 +361,89 @@ $updatedEntrepriseId = function () {
         </div>
     @endif
 
-    {{-- Temps par personne sur la période. --}}
-    <h3 class="titre-section">Temps passé par personne</h3>
+    {{-- Deux populations disjointes, et un seul emplacement : ceux qui viennent, et ceux
+         qui ne sont jamais venus. Les seconds n'apparaissaient nulle part — ils sont
+         absents par définition d'un tableau qui ne parle que de présence — alors que ce
+         sont eux qu'il faut relancer. --}}
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:6px;">
+        <h3 class="titre-section" style="margin:0;">
+            {{ $vue === 'jamais' ? 'Comptes jamais connectés' : 'Temps passé par personne' }}
+        </h3>
+
+        <div style="display:flex; gap:0; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; overflow:hidden;">
+            <a href="{{ $this->lien('temps') }}"
+               style="padding:6px 13px; font-size:13px; font-weight:700; text-decoration:none;
+                      background:{{ $vue === 'temps' ? '#191B20' : '#fff' }};
+                      color:{{ $vue === 'temps' ? '#fff' : '#4B4E55' }};">
+                Ceux qui viennent
+            </a>
+            <a href="{{ $this->lien('jamais') }}"
+               style="padding:6px 13px; font-size:13px; font-weight:700; text-decoration:none;
+                      border-left:1px solid var(--th-ligne,#E2E0D8);
+                      background:{{ $vue === 'jamais' ? '#C8102E' : '#fff' }};
+                      color:{{ $vue === 'jamais' ? '#fff' : '#4B4E55' }};">
+                Jamais connectés ({{ $this->jamaisVenus->count() }})
+            </a>
+        </div>
+    </div>
+
+    @if ($vue === 'jamais')
+        <p style="color:#6B6E76; font-size:13.5px; margin:8px 0 14px; line-height:1.6; max-width:82ch;">
+            Ces comptes n'ont <strong>jamais</strong> ouvert l'application : ni date de connexion, ni
+            ligne de présence. Créer un accès, envoyer le courriel, le renvoyer ou remettre un mot de
+            passe n'inscrit aucune connexion — le système ne compte que les entrées réelles. La période
+            choisie plus haut ne s'applique pas ici : « jamais » ne se borne pas dans le temps.
+        </p>
+
+        <div class="tableau-conteneur">
+            <table class="tableau">
+                <thead>
+                    <tr>
+                        <th>Personne</th>
+                        <th>Entreprise</th>
+                        <th>Rôle</th>
+                        <th>Accès</th>
+                        <th style="text-align:right;">Ouvert depuis</th>
+                        <th>Créé le</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($this->jamaisVenus->forPage($pageJamais, 15) as $ligne)
+                        <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                            <td>
+                                <div style="font-weight:600;">{{ $ligne['nom'] }}</div>
+                                <div style="color:#6B6E76; font-size:13px;">{{ $ligne['email'] }}</div>
+                            </td>
+                            <td>{{ $ligne['entreprise'] }}</td>
+                            <td>{{ $ligne['role'] }}</td>
+                            <td>
+                                @if ($ligne['actif'])
+                                    <span style="color:#0E9F6E; font-weight:600;">Ouvert</span>
+                                @else
+                                    <span style="color:#6B6E76; font-weight:600;">Préparé, non ouvert</span>
+                                @endif
+                            </td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums;
+                                       {{ ($ligne['jours'] ?? 0) > 30 ? 'color:#C8102E; font-weight:700;' : '' }}">
+                                {{ $ligne['jours'] !== null ? $ligne['jours'].' j' : '—' }}
+                            </td>
+                            <td style="color:#6B6E76;">{{ $ligne['cree_le']?->format('d/m/Y') ?? '—' }}</td>
+                        </tr>
+                    @empty
+                        <x-table-vide :colspan="6" texte="Tout le monde est entré au moins une fois." />
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <x-pagination :page="$pageJamais" :total="$this->jamaisVenus->count()" prop="pageJamais" />
+
+        <p style="color:#6B6E76; font-size:13px; margin:12px 0 0; line-height:1.6; max-width:82ch;">
+            Pour relancer&nbsp;: <a href="{{ route('super-admin.acces.index') }}"
+            style="color:#C8102E; font-weight:700;">Gestion des accès</a> — le bouton
+            <em>Renvoyer</em> repart avec un lien de mot de passe, et un accès encore fermé s'ouvre
+            au passage. Sur un compte déjà en service, le mot de passe reste le sien.
+        </p>
+    @else
 
     <div class="tableau-conteneur">
         <table class="tableau">
@@ -336,6 +489,7 @@ $updatedEntrepriseId = function () {
         </table>
     </div>
     <x-pagination :page="$pageComptes" :total="$this->comptes->count()" prop="pageComptes" />
+    @endif
 
     {{-- Détail d'un compte : ses connexions, puis son parcours écran par écran. --}}
     @if ($this->detail)

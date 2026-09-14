@@ -14,7 +14,7 @@ mount(function (Prospection $prospection) {
     $this->prospectionId = $prospection->id;
 });
 
-$prospection = computed(fn () => Prospection::with(['commercial', 'site'])->findOrFail($this->prospectionId));
+$prospection = computed(fn () => Prospection::with(['commercial', 'site.ville'])->findOrFail($this->prospectionId));
 
 $historique = computed(fn () => $this->prospection->activities()->with('causer')->latest('id')->get());
 
@@ -23,7 +23,8 @@ $libellesChamps = computed(fn () => [
     'activite' => 'Activité', 'commercial_id' => 'Commercial',
     'passage' => 'Passage', 'date_passage' => 'Date de passage',
     'devis_apres_passage' => 'Devis après passage', 'date_devis' => 'Date du devis',
-    'observations' => 'Observations', 'statut_validation' => 'Statut', 'motif_refus' => 'Motif de refus',
+    'observations' => 'Observations', 'commentaire' => 'Commentaire au responsable',
+    'statut_validation' => 'Statut', 'motif_refus' => 'Motif de refus',
 ]);
 
 $formaterValeur = computed(fn () => fn ($v) => match (true) {
@@ -42,6 +43,9 @@ $formaterValeur = computed(fn () => fn ($v) => match (true) {
         <a href="{{ route('saisie-du-jour') }}" wire:navigate class="bouton bouton-secondaire">← Retour à la saisie du jour</a>
     </div>
 
+    {{-- Qui a tranché, quand, d'où : le même bloc que sur la fiche du commercial. --}}
+    <x-tracabilite-decision :prospection="$this->prospection" style="margin-bottom:14px;" />
+
     <x-carte-section titre="Détail">
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px 20px;">
             <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">N°</span><b>{{ $this->prospection->numero }}</b></div>
@@ -59,6 +63,37 @@ $formaterValeur = computed(fn () => fn ($v) => match (true) {
                 <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">Motif de refus</span><b style="color:var(--th-accent,#C8102E);">{{ $this->prospection->motif_refus }}</b></div>
             @endif
             <div style="grid-column:1/-1;"><span style="font-size:11.5px; color:#9A9DA5; display:block;">Observations</span><b>{{ $this->prospection->observations ?? '—' }}</b></div>
+
+            {{-- Le commentaire du commercial. Il était saisi à l'autre bout et n'arrivait
+                 nulle part : la colonne n'existait pas. C'est pourtant lui qui explique la
+                 ligne — « affluence en baisse, pluies » n'appelle pas le même arbitrage
+                 qu'un client qui n'a pas répondu. --}}
+            @if ($this->prospection->commentaire)
+                <div style="grid-column:1/-1; background:#FFFBEA; border:1px dashed #E2E0D8; border-radius:8px; padding:10px 12px;">
+                    <span style="font-size:11.5px; color:#9A9DA5; display:block;">
+                        Commentaire du commercial à votre attention
+                    </span>
+                    <b style="white-space:pre-line;">{{ $this->prospection->commentaire }}</b>
+                </div>
+            @endif
+
+            {{-- Les informations libres ajoutées sur la ligne, y compris après transmission :
+                 c'est du renseignement qui arrive, et il doit arriver jusqu'ici. --}}
+            @php $libres = $this->prospection->donneesLibres; @endphp
+            @if ($libres->isNotEmpty())
+                <div style="grid-column:1/-1;">
+                    <span style="font-size:11.5px; color:#9A9DA5; display:block; margin-bottom:4px;">
+                        Informations libres
+                    </span>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        @foreach ($libres as $donnee)
+                            <span class="pastille pastille-bleu" style="font-weight:600;">
+                                {{ $donnee->intitule }} : {{ $donnee->valeur ?? '—' }}
+                            </span>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         </div>
     </x-carte-section>
 

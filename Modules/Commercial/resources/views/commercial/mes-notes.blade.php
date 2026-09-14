@@ -147,7 +147,7 @@ $supprimerNote = function (int $id) {
             Mes notes
         </h1>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <input type="search" wire:model.live.debounce.400ms="recherche" class="champ"
+            <input type="search" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}" class="champ"
                 placeholder="Rechercher…" style="width:220px;">
             <button type="button" wire:click="nouvelleNote" class="bouton">+ Nouvelle note</button>
         </div>
@@ -186,7 +186,7 @@ $supprimerNote = function (int $id) {
 
             <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--th-ligne,#E2E0D8);">
                 <label class="champ-libelle">Nouveau dossier</label>
-                <input type="text" wire:model="nouveauDossier" class="champ" placeholder="Ex : Relances clients">
+                <input type="text" wire:model="nouveauDossier" value="{{ $nouveauDossier }}" class="champ" placeholder="Ex : Relances clients">
                 @error('nouveauDossier') <span class="champ-erreur">{{ $message }}</span> @enderror
                 <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
                     <input type="color" wire:model="couleurDossier" style="width:44px; height:34px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:7px; background:#fff; cursor:pointer;">
@@ -201,21 +201,21 @@ $supprimerNote = function (int $id) {
                 <div class="bloc-saisie">
                     <div style="flex:2; min-width:220px;">
                         <label class="champ-libelle">Titre <span style="color:var(--th-accent,#C8102E);">*</span></label>
-                        <input type="text" wire:model="titre" class="champ" placeholder="Ex : Rappeler M. Koffi">
+                        <input type="text" wire:model="titre" value="{{ $titre }}" class="champ" placeholder="Ex : Rappeler M. Koffi">
                         @error('titre') <span class="champ-erreur">{{ $message }}</span> @enderror
                     </div>
                     <div style="min-width:180px;">
                         <label class="champ-libelle">Dossier</label>
                         <select wire:model="dossierNote" class="champ">
-                            <option value="">Sans dossier</option>
+                            <option value="" @selected($dossierNote === '')>Sans dossier</option>
                             @foreach ($this->dossiers as $d)
-                                <option value="{{ $d->id }}">{{ $d->nom }}</option>
+                                <option value="{{ $d->id }}" @selected((string) $dossierNote === (string) $d->id)>{{ $d->nom }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div style="min-width:150px;">
                         <label class="champ-libelle">Rappel</label>
-                        <input type="date" wire:model="rappel" class="champ" style="width:158px;">
+                        <input type="date" wire:model="rappel" value="{{ $rappel }}" class="champ" style="width:158px;">
                         @error('rappel') <span class="champ-erreur">{{ $message }}</span> @enderror
                     </div>
                 </div>

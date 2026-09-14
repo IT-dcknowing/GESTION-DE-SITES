@@ -32,6 +32,18 @@ class DocumentPdf
 
     private const BAS_DE_PAGE = 56.0;
 
+    /** Largeur et hauteur réelles de la page, orientation appliquée. */
+    private float $largeur;
+
+    private float $hauteur;
+
+    /**
+     * Les images à embarquer, dans l'ordre où elles ont été posées.
+     *
+     * @var array<int, array{donnees: string, largeur: int, hauteur: int}>
+     */
+    private array $images = [];
+
     /** @var array<int, string> flux de contenu déjà clos, un par page */
     private array $pages = [];
 
@@ -42,9 +54,26 @@ class DocumentPdf
     /** Rappelé en haut de chaque nouvelle page : sans lui, un tableau qui déborde perd son titre. */
     private ?\Closure $enTeteDePage = null;
 
-    public function __construct(private string $titre = 'Document')
+    /**
+     * @param  bool  $paysage  A4 couché — pour les tableaux larges
+     *
+     * **Pourquoi l'orientation est un choix et non un réglage de confort.** Un tableau de
+     * dix colonnes sur une page debout laisse moins de cinquante points par colonne :
+     * « 697 027 » n'y tient pas, il sort tronqué avec des points de suspension, et c'est
+     * exactement ce qu'on ne peut pas accepter d'un montant. Couché, la même page offre
+     * huit cents points utiles. L'orientation suit donc le tableau, pas l'habitude.
+     */
+    public function __construct(private string $titre = 'Document', private bool $paysage = false)
     {
-        $this->y = self::HAUTEUR - self::MARGE;
+        $this->largeur = $paysage ? self::HAUTEUR : self::LARGEUR;
+        $this->hauteur = $paysage ? self::LARGEUR : self::HAUTEUR;
+        $this->y = $this->hauteur - self::MARGE;
+    }
+
+    /** La largeur utile d'une page, pour qui doit répartir des colonnes dessus. */
+    public function largeurDisponible(): float
+    {
+        return $this->largeur - 2 * self::MARGE;
     }
 
     /* ------------------------------------------------------------------ Texte */
@@ -96,6 +125,156 @@ class DocumentPdf
         return $this;
     }
 
+    /* ------------------------------------------------------- En-tete du document */
+
+    /**
+     * Le bandeau d'en-tête : logo, maison, titre, message.
+     *
+     * **Ce qui manquait.** Les documents sortaient avec un titre et deux lignes grises.
+     * Reçus par un assureur, ils ne disaient pas d'où ils venaient — ni la maison qui les
+     * émet, ni sa marque. Un état de créance sans en-tête se classe mal et se conteste
+     * facilement&nbsp;: on ne sait pas qui réclame.
+     *
+     * Le bloc est **encadré** et posé sur un aplat clair, avec un filet rouge à gauche :
+     * c'est la même grammaire que les cartes de l'application, et cela sépare d'un regard
+     * l'identification du contenu.
+     *
+     * @param  array{maison?: string, titre?: string, message?: string, mention?: string, logo?: ?string}  $infos
+     */
+    public function enTete(array $infos): self
+    {
+        $hauteur = 72.0;
+        $gauche = self::MARGE;
+        $haut = $this->y;
+        $bas = $haut - $hauteur + 14;
+
+        // Le fond, puis le cadre, puis le filet rouge : dans cet ordre, sans quoi l'aplat
+        // recouvrirait le trait qu'on vient de poser.
+        $this->contenu .= sprintf(
+            "%s\n%.2f %.2f %.2f %.2f re f\n",
+            $this->opCouleur('#F7F5EF', 'rg'), $gauche, $bas, $this->largeurUtile(), $hauteur,
+        );
+        $this->contenu .= sprintf(
+            "%s\n0.7 w %.2f %.2f %.2f %.2f re S\n",
+            $this->opCouleur('#D9D5CA', 'RG'), $gauche, $bas, $this->largeurUtile(), $hauteur,
+        );
+        $this->contenu .= sprintf(
+            "%s\n%.2f %.2f %.2f %.2f re f\n",
+            $this->opCouleur('#C8102E', 'rg'), $gauche, $bas, 3.5, $hauteur,
+        );
+
+        // Le logo, à gauche, dans une hauteur bornée : une marque doit être visible, pas
+        // envahissante, et surtout elle ne doit jamais être déformée.
+        $x = $gauche + 14;
+
+        if (! empty($infos['logo'])) {
+            $pose = $this->image($infos['logo'], $x, $bas + 16, 48.0);
+
+            if ($pose > 0.0) {
+                $x += $pose + 16;
+            }
+        }
+
+        $this->y = $haut + $hauteur - 76;
+
+        if (! empty($infos['maison'])) {
+            $this->texte($infos['maison'], $x, 10, true, '#C8102E');
+            $this->y -= 17;
+        }
+
+        $this->texte((string) ($infos['titre'] ?? $this->titre), $x, 17, true, '#191B20');
+        $this->y -= 15;
+
+        if (! empty($infos['message'])) {
+            foreach (array_slice($this->couper((string) $infos['message'], 9, false,
+                $this->largeurUtile() - ($x - $gauche) - 20), 0, 2) as $bout) {
+                $this->texte($bout, $x, 9, false, '#5A6472');
+                $this->y -= 11;
+            }
+        }
+
+        if (! empty($infos['mention'])) {
+            $this->texte((string) $infos['mention'], $x, 9, true, '#25272D');
+        }
+
+        // On repart sous le cadre, quel que soit ce qu'on a écrit dedans.
+        $this->y = $bas - 18;
+
+        return $this;
+    }
+
+    /**
+     * Embarque une image et la dessine. Rend la largeur occupée, en points.
+     *
+     * **Comment elle est embarquée.** Le fichier est relu par GD, aplati sur du blanc —
+     * un logo transparent posé sans fond ressortirait sur du noir chez certains lecteurs —
+     * puis écrit en pixels bruts comprimés. C'est le procédé le plus simple qui marche
+     * partout : pas de décodeur PNG à réécrire, pas de perte de qualité, et aucune
+     * bibliothèque de plus.
+     *
+     * Une image illisible ne fait pas échouer le document : elle est simplement absente.
+     * Un état de créance qu'on ne peut pas éditer parce qu'un logo a été supprimé serait
+     * une panne inventée.
+     */
+    private function image(string $chemin, float $x, float $y, float $hauteurVoulue): float
+    {
+        if (! is_file($chemin) || ! function_exists('imagecreatefromstring')) {
+            return 0.0;
+        }
+
+        $source = @imagecreatefromstring((string) file_get_contents($chemin));
+
+        if ($source === false) {
+            return 0.0;
+        }
+
+        $l = imagesx($source);
+        $h = imagesy($source);
+
+        if ($l < 1 || $h < 1) {
+            imagedestroy($source);
+
+            return 0.0;
+        }
+
+        // Aplati sur blanc : la transparence n'existe pas dans le flux qu'on écrit, et
+        // sans ce fond les parties transparentes sortiraient en noir.
+        $plat = imagecreatetruecolor($l, $h);
+        imagefill($plat, 0, 0, imagecolorallocate($plat, 255, 255, 255));
+        imagealphablending($plat, true);
+        imagecopy($plat, $source, 0, 0, 0, 0, $l, $h);
+        imagedestroy($source);
+
+        $pixels = '';
+
+        for ($ligne = 0; $ligne < $h; $ligne++) {
+            for ($colonne = 0; $colonne < $l; $colonne++) {
+                $couleur = imagecolorat($plat, $colonne, $ligne);
+                $pixels .= chr(($couleur >> 16) & 0xFF).chr(($couleur >> 8) & 0xFF).chr($couleur & 0xFF);
+            }
+        }
+
+        imagedestroy($plat);
+
+        $this->images[] = [
+            'donnees' => (string) gzcompress($pixels, 6),
+            'largeur' => $l,
+            'hauteur' => $h,
+        ];
+
+        $rang = count($this->images);
+        $largeurVoulue = $hauteurVoulue * $l / $h;
+
+        // `cm` pose la matrice de placement : largeur, hauteur, position. Encadré par
+        // q/Q pour que le reste de la page n'en hérite pas.
+        $this->contenu .= sprintf(
+            "q %.2f 0 0 %.2f %.2f %.2f cm /Im%d Do Q\n",
+            $largeurVoulue, $hauteurVoulue, $x, $y, $rang,
+        );
+
+        return $largeurVoulue;
+    }
+
     /* --------------------------------------------------------------- Tableaux */
 
     /**
@@ -105,12 +284,21 @@ class DocumentPdf
      * @param  array<int, float>   $largeurs  en points, additionnées à la largeur utile
      * @param  array<int, array<int, string>>  $lignes
      */
-    public function tableau(array $colonnes, array $largeurs, array $lignes): self
+    public function tableau(array $colonnes, array $largeurs, array $lignes, array $options = []): self
     {
-        $enTete = function () use ($colonnes, $largeurs) {
-            $this->ligneDeTableau($colonnes, $largeurs, true, '#191B20');
-            $this->trait($this->y + 4, '#C9C7BF', 0.6);
-            $this->y -= 4;
+        // Les colonnes de montants s'alignent par la droite. Sans cela, les unités et les
+        // milliers ne tombent pas sur la même verticale, et une colonne de nombres cesse
+        // d'être comparable d'un coup d'œil — ce qui est pourtant sa seule raison d'être.
+        $alignements = $options['alignements'] ?? [];
+        $etiquettes = $options['etiquettes'] ?? [];
+        $total = $options['total'] ?? null;
+
+        $enTete = function () use ($colonnes, $largeurs, $alignements) {
+            // L'en-tête est posé sur un bandeau noir, comme à l'écran : c'est ce qui
+            // sépare les intitulés des données sans avoir à les lire.
+            $this->bandeau('#191B20', 15);
+            $this->ligneDeTableau($colonnes, $largeurs, true, '#FFFFFF', $alignements);
+            $this->y -= 3;
         };
 
         // Mémorisé pour être redessiné en haut de chaque page suivante : une page de
@@ -121,7 +309,16 @@ class DocumentPdf
 
         foreach ($lignes as $ligne) {
             $this->reserver(16);
-            $this->ligneDeTableau($ligne, $largeurs, false, '#25272D');
+            $this->ligneDeTableau($ligne, $largeurs, false, '#25272D', $alignements, $etiquettes);
+            $this->trait($this->y + 11, '#EBE9E2', 0.4);
+        }
+
+        if ($total !== null) {
+            // Le total ne se sépare pas de son tableau : on lui réserve la place d'une
+            // ligne entière, faute de quoi il pourrait ouvrir seul la page suivante.
+            $this->reserver(26);
+            $this->bandeau('#191B20', 16);
+            $this->ligneDeTableau($total, $largeurs, true, '#FFFFFF', $alignements);
         }
 
         $this->enTeteDePage = null;
@@ -130,27 +327,79 @@ class DocumentPdf
         return $this;
     }
 
+    /** Un aplat de couleur derrière la ligne qu'on s'apprête à écrire. */
+    private function bandeau(string $couleur, float $hauteur): void
+    {
+        $this->contenu .= sprintf(
+            "%s\n%.2f %.2f %.2f %.2f re f\n",
+            $this->opCouleur($couleur, 'rg'),
+            self::MARGE - 3,
+            $this->y - 4,
+            $this->largeurUtile() + 6,
+            $hauteur,
+        );
+    }
+
     /**
      * @param  array<int, string>  $cellules
      * @param  array<int, float>   $largeurs
      */
-    private function ligneDeTableau(array $cellules, array $largeurs, bool $gras, string $couleur): void
-    {
+    /**
+     * @param  array<int, string>  $cellules
+     * @param  array<int, float>   $largeurs
+     * @param  array<int, string>  $alignements  'droite' pour les colonnes de montants
+     * @param  array<int, array<string, array{fond: string, texte: string}>>  $etiquettes
+     */
+    private function ligneDeTableau(
+        array $cellules,
+        array $largeurs,
+        bool $gras,
+        string $couleur,
+        array $alignements = [],
+        array $etiquettes = [],
+    ): void {
         $x = self::MARGE;
         $taille = $gras ? 9 : 9.5;
 
         foreach ($cellules as $i => $cellule) {
             $largeur = $largeurs[$i] ?? 100;
-            $this->texte(
-                // La troncature vaut mieux qu'un débordement : deux colonnes qui se
-                // chevauchent rendent les deux illisibles, une seule tronquée reste lue.
-                $this->tronquer((string) $cellule, $taille, $gras, $largeur - 6),
-                $x, $taille, $gras, $couleur
-            );
+            // La troncature vaut mieux qu'un débordement : deux colonnes qui se
+            // chevauchent rendent les deux illisibles, une seule tronquée reste lue.
+            $texte = $this->tronquer((string) $cellule, $taille, $gras, $largeur - 6);
+
+            $teinte = $etiquettes[$i][$texte] ?? null;
+
+            if ($teinte !== null) {
+                // Une pastille : le fond dit le niveau avant qu'on ait lu le mot, comme
+                // la pastille rouge « N5 · Contentieux » de l'écran.
+                $this->pastille($texte, $x, $taille, $teinte['fond'], $teinte['texte']);
+                $x += $largeur;
+
+                continue;
+            }
+
+            $depart = ($alignements[$i] ?? 'gauche') === 'droite'
+                ? $x + $largeur - 6 - $this->largeurDe($texte, $taille, $gras)
+                : $x;
+
+            $this->texte($texte, $depart, $taille, $gras, $couleur);
             $x += $largeur;
         }
 
         $this->y -= 15;
+    }
+
+    /** Un libellé sur fond plein, arrondi par le seul effet de la marge. */
+    private function pastille(string $texte, float $x, float $taille, string $fond, string $encre): void
+    {
+        $largeur = $this->largeurDe($texte, $taille, true) + 8;
+
+        $this->contenu .= sprintf(
+            "%s\n%.2f %.2f %.2f %.2f re f\n",
+            $this->opCouleur($fond, 'rg'), $x - 2, $this->y - 3, $largeur, 13.0,
+        );
+
+        $this->texte($texte, $x + 2, $taille, true, $encre);
     }
 
     /* ----------------------------------------------------------------- Rendu */
@@ -176,16 +425,35 @@ class DocumentPdf
         $objets[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
         $objets[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
 
+        // Les images viennent après les pages : elles sont déclarées dans les ressources
+        // de chaque page, et le renvoi doit donc être connu avant de les écrire.
+        $premiereImage = $premierePage + count($this->pages) * 2;
+        $ressourceImages = '';
+
+        foreach (array_keys($this->images) as $rang) {
+            $ressourceImages .= '/Im'.($rang + 1).' '.($premiereImage + $rang).' 0 R ';
+        }
+
+        $xobjets = $ressourceImages === '' ? '' : '/XObject << '.$ressourceImages.'>> ';
+
         foreach ($this->pages as $i => $flux) {
             $numeroPage = $premierePage + $i * 2;
             $numeroFlux = $numeroPage + 1;
 
             $objets[$numeroPage] = '<< /Type /Page /Parent 2 0 R '
-                .'/MediaBox [0 0 '.round(self::LARGEUR, 2).' '.round(self::HAUTEUR, 2).'] '
-                .'/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> '
+                .'/MediaBox [0 0 '.round($this->largeur, 2).' '.round($this->hauteur, 2).'] '
+                .'/Resources << /Font << /F1 3 0 R /F2 4 0 R >> '.$xobjets.'>> '
                 .'/Contents '.$numeroFlux.' 0 R >>';
 
             $objets[$numeroFlux] = '<< /Length '.strlen($flux).' >>'."\nstream\n".$flux."\nendstream";
+        }
+
+        foreach ($this->images as $rang => $image) {
+            $objets[$premiereImage + $rang] = '<< /Type /XObject /Subtype /Image '
+                .'/Width '.$image['largeur'].' /Height '.$image['hauteur'].' '
+                .'/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode '
+                .'/Length '.strlen($image['donnees']).' >>'
+                ."\nstream\n".$image['donnees']."\nendstream";
         }
 
         $numeroInfo = max(array_keys($objets)) + 1;
@@ -243,8 +511,8 @@ class DocumentPdf
             $largeur = $this->largeurDe($mention, 8.5, false);
 
             $this->pages[$i] = $flux
-                .$this->opTrait(self::MARGE, 46, self::LARGEUR - self::MARGE, 46, '#E2E0D8', 0.6)
-                .$this->opTexte($mention, self::LARGEUR - self::MARGE - $largeur, 32, 8.5, false, '#9A9DA5')
+                .$this->opTrait(self::MARGE, 46, $this->largeur - self::MARGE, 46, '#E2E0D8', 0.6)
+                .$this->opTexte($mention, $this->largeur - self::MARGE - $largeur, 32, 8.5, false, '#9A9DA5')
                 .$this->opTexte($this->titre, self::MARGE, 32, 8.5, false, '#9A9DA5');
         }
     }
@@ -257,7 +525,7 @@ class DocumentPdf
         }
 
         $this->finirLaPage();
-        $this->y = self::HAUTEUR - self::MARGE;
+        $this->y = $this->hauteur - self::MARGE;
 
         if ($this->enTeteDePage) {
             ($this->enTeteDePage)();
@@ -277,7 +545,7 @@ class DocumentPdf
 
     private function trait(float $y, string $couleur, float $epaisseur): void
     {
-        $this->contenu .= $this->opTrait(self::MARGE, $y, self::LARGEUR - self::MARGE, $y, $couleur, $epaisseur);
+        $this->contenu .= $this->opTrait(self::MARGE, $y, $this->largeur - self::MARGE, $y, $couleur, $epaisseur);
     }
 
     private function opTexte(string $texte, float $x, float $y, float $taille, bool $gras, string $couleur): string
@@ -326,7 +594,7 @@ class DocumentPdf
 
     private function largeurUtile(): float
     {
-        return self::LARGEUR - 2 * self::MARGE;
+        return $this->largeur - 2 * self::MARGE;
     }
 
     private function tronquer(string $texte, float $taille, bool $gras, float $largeurMax): string

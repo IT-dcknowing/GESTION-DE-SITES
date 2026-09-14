@@ -5,13 +5,12 @@ namespace Modules\Noyau\Commun\Services;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Modules\Noyau\Exploitation\Modeles\CompteurAuteur;
 
 /**
- * Le code qui dit qui a saisi quoi, et à quel rang dans son propre travail.
+ * Le code qui désigne la personne ayant saisi une ligne.
  *
  *      A-C-KY-0007
- *      │ │ │   └── la 7ᵉ prospection de cette personne
+ *      │ │ │   └── le 7ᵉ accès ouvert dans cette entreprise
  *      │ │ └────── Koffi Yao
  *      │ └──────── Commercial
  *      └────────── Abidjan
@@ -19,6 +18,15 @@ use Modules\Noyau\Exploitation\Modeles\CompteurAuteur;
  * Il complète le numéro du document sans le remplacer : « P-0565 » dit le rang de la
  * prospection dans toute l'entreprise, « A-C-KY-0007 » dit de qui elle vient. Les deux
  * sont nécessaires — le premier pour classer, le second pour rendre des comptes.
+ *
+ * **Le dernier bloc comptait les saisies ; il compte désormais les personnes.** Auparavant
+ * « 0007 » voulait dire « la septième prospection de Koffi Yao » : le même agent portait
+ * donc un numéro différent sur chaque ligne, et deux numéros différents le même jour sur
+ * deux écrans. Ce n'était pas un identifiant mais un compteur — or un identifiant qui
+ * change n'identifie plus rien, ne se retient pas, ne se dicte pas au téléphone. Le rang
+ * est maintenant attribué une fois à l'ouverture de l'accès, unique dans l'entreprise, et
+ * ne bouge plus jamais. Le rang du document, lui, n'est pas perdu : c'est le numéro de la
+ * pièce qui l'a toujours porté.
  *
  * Le code est figé au moment de la saisie et n'est jamais recalculé : une personne qui
  * change de ville ou de rôle plus tard ne doit pas réécrire l'histoire de ce qu'elle a
@@ -41,18 +49,17 @@ final class CodeAuteur
         'responsable_site' => 'R',
         'commercial' => 'C',
         'caissier' => 'K',           // Comptabilité
+        'superviseur_recouvrement' => 'V',  // superViseur recouvrement — S et R sont pris
+        'agent_recouvrement' => 'A',        // Agent de recouvrement
     ];
 
     /** Marque un auteur dont le rôle n'est pas reconnu — visible plutôt que silencieux. */
     private const ROLE_INCONNU = 'X';
 
     /**
-     * Le prochain code de cette personne pour ce type de saisie, en le consommant.
-     *
-     * Le compteur est verrouillé le temps de l'incrément : deux saisies simultanées du
-     * même agent, depuis deux onglets, ne peuvent pas repartir avec le même rang.
+     * Le code de cette personne. Le même à chaque appel, pour toute sa vie dans la maison.
      */
-    public static function attribuer(?User $auteur, string $type): ?string
+    public static function pour(?User $auteur): ?string
     {
         // Import, seeder, tâche planifiée : personne derrière l'écran, donc personne à
         // désigner. Mieux vaut une colonne vide qu'un code attribué à tort.
@@ -60,24 +67,65 @@ final class CodeAuteur
             return null;
         }
 
-        $rang = DB::transaction(function () use ($auteur, $type) {
-            $compteur = CompteurAuteur::query()
-                ->where('user_id', $auteur->id)
-                ->where('type', $type)
+        return self::composer($auteur, self::rangDe($auteur));
+    }
+
+    /**
+     * Le rang de la personne dans son entreprise, attribué à la première demande.
+     *
+     * Normalement il est posé à l'ouverture de l'accès. Ce repli couvre les comptes créés
+     * autrement — une commande, une reprise de base — et il compte plutôt que de laisser
+     * quelqu'un sans identifiant.
+     *
+     * Le calcul est verrouillé : deux comptes créés dans la même seconde ne peuvent pas
+     * repartir avec le même rang, ce qui mettrait deux personnes sous un seul identifiant.
+     */
+    public static function rangDe(User $auteur): int
+    {
+        if ($auteur->rang_auteur) {
+            return (int) $auteur->rang_auteur;
+        }
+
+        $rang = DB::transaction(function () use ($auteur) {
+            $dernier = (int) User::withoutGlobalScopes()
+                ->where('entreprise_id', $auteur->entreprise_id)
                 ->lockForUpdate()
-                ->first()
-                ?? CompteurAuteur::create([
-                    'user_id' => $auteur->id,
-                    'type' => $type,
-                    'dernier_numero' => 0,
-                ]);
+                ->max('rang_auteur');
 
-            $compteur->increment('dernier_numero');
+            $rang = $dernier + 1;
 
-            return $compteur->dernier_numero;
+            User::withoutGlobalScopes()->where('id', $auteur->id)->update(['rang_auteur' => $rang]);
+
+            return $rang;
         });
 
-        return self::composer($auteur, $rang);
+        $auteur->rang_auteur = $rang;
+
+        return $rang;
+    }
+
+    /**
+     * Le début du code, tel qu'il s'écrira, avant que le compte n'existe.
+     *
+     * Sert à l'écran de création : on montre à quoi ressemblera le code de la personne
+     * qu'on est en train de créer, sans rien consommer ni rien enregistrer. Le rang est
+     * remplacé par des points parce qu'il n'est attribué qu'à l'enregistrement : le montrer
+     * d'avance reviendrait à le promettre, et deux accès ouverts en même temps depuis deux
+     * postes verraient le même.
+     *
+     * **Ce code n'a rien à voir avec le code de deux lettres du logiciel d'atelier.** Celui-ci
+     * est produit par la plateforme et identifie qui saisit ici ; l'autre vient du logiciel
+     * d'atelier et sert à rattacher les lignes importées. On les affiche côte à côte
+     * précisément pour qu'on cesse de les confondre.
+     */
+    public static function apercuDuPrefixe(?string $ville, ?string $role, ?string $nom): string
+    {
+        return implode('-', [
+            self::premiereLettre((string) $ville) ?: '·',
+            self::LETTRES_ROLE[$role] ?? self::ROLE_INCONNU,
+            self::initiales((string) $nom) ?: '··',
+            '····',
+        ]);
     }
 
     /** Le code tel qu'il s'écrit, sans toucher au compteur. */

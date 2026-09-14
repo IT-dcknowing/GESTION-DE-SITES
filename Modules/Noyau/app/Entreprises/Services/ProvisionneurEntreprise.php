@@ -14,7 +14,13 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class ProvisionneurEntreprise
 {
-    public const ROLES = ['gerant', 'responsable_ville', 'responsable_site', 'commercial', 'caissier'];
+    public const ROLES = [
+        'gerant', 'responsable_ville', 'responsable_site', 'commercial', 'caissier',
+        // Recouvrement : le superviseur pilote et arbitre jusqu'à la mise en demeure,
+        // l'agent relance et encaisse. Ni l'un ni l'autre ne crée la créance qu'il
+        // poursuit — c'est la séparation des fonctions qui rend le journal crédible.
+        'superviseur_recouvrement', 'agent_recouvrement',
+    ];
 
     public static function creerRoles(Entreprise $entreprise): void
     {

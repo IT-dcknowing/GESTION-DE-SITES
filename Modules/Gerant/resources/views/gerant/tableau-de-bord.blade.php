@@ -298,6 +298,9 @@ $commentaires = computed(function () {
 ?>
 
 <div>
+    <x-titre-ecran titre="Tableau de bord"
+        sous-titre="La marche de l'entreprise, toutes villes confondues." />
+
     <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"

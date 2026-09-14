@@ -14,15 +14,13 @@
         <label for="password" class="champ-libelle">Nouveau mot de passe</label>
         <div class="champ-mot-de-passe" style="margin-bottom:14px;">
             <input id="password" name="password" type="password" required autocomplete="new-password" class="champ">
-            <button type="button" tabindex="-1" aria-label="Afficher ou masquer le mot de passe"
-                onclick="const i=this.previousElementSibling; const v=i.type==='password'; i.type=v?'text':'password'; this.firstElementChild.textContent=v?'🙈':'👁';"><span>👁</span></button>
+            <x-oeil-mot-de-passe />
         </div>
 
         <label for="password_confirmation" class="champ-libelle">Confirmer le mot de passe</label>
         <div class="champ-mot-de-passe">
             <input id="password_confirmation" name="password_confirmation" type="password" required autocomplete="new-password" class="champ">
-            <button type="button" tabindex="-1" aria-label="Afficher ou masquer le mot de passe"
-                onclick="const i=this.previousElementSibling; const v=i.type==='password'; i.type=v?'text':'password'; this.firstElementChild.textContent=v?'🙈':'👁';"><span>👁</span></button>
+            <x-oeil-mot-de-passe />
         </div>
 
         <button type="submit" class="bouton bouton-sombre" style="width:100%; justify-content:center; padding:12px; margin-top:18px;">

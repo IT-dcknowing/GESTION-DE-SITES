@@ -83,10 +83,7 @@
                 <div class="champ-mot-de-passe">
                     <input id="password" name="password" type="password" required
                            autocomplete="current-password" placeholder="••••••••" class="champ">
-                    <button type="button" tabindex="-1" aria-label="Afficher ou masquer le mot de passe"
-                            onclick="const i=this.previousElementSibling; const v=i.type==='password'; i.type=v?'text':'password'; this.firstElementChild.textContent=v?'🙈':'👁';">
-                        <span>👁</span>
-                    </button>
+                    <x-oeil-mot-de-passe />
                 </div>
 
                 <div style="display:flex; align-items:center; justify-content:space-between; margin:16px 0 20px; font-size:13.5px; gap:10px; flex-wrap:wrap;">

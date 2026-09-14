@@ -1,0 +1,337 @@
+===============================================================================
+  L'ARTISAN AUTOMOBILE — L'APPLICATION, RÔLE PAR RÔLE
+  Document de présentation — 13 septembre 2026
+===============================================================================
+
+À lire avant de présenter. Chaque partie répond à une question simple :
+« moi, qu'est-ce que je fais avec cet outil ? »
+
+
+-------------------------------------------------------------------------------
+  L'APPLICATION EN TROIS PHRASES
+-------------------------------------------------------------------------------
+
+  1. Le logiciel de l'atelier enregistre le travail. On dépose ses fichiers
+     dans l'application : elle les lit, et tous les écrans se remplissent.
+
+  2. Ce que le logiciel ne connaît pas — la prospection commerciale, les
+     relances, les commentaires du jour — se saisit directement ici.
+
+  3. Chacun voit ce qui le concerne. Ni plus, ni moins.
+
+
+-------------------------------------------------------------------------------
+  CE QU'IL Y A DANS LA BASE AUJOURD'HUI
+-------------------------------------------------------------------------------
+
+  Fiches de réception de véhicules ....  3 178
+  Devis et proformas ..................  2 672
+  Factures ............................ 11 331
+  Règlements encaissés ................  7 712
+  Prospections ........................    571
+  Mouvements de caisse ................  1 155
+  Factures fournisseurs ...............  1 848
+  Entrées / sorties de véhicules ......    147
+
+  Trois villes : Abidjan (deux ateliers), Bouaké, San Pédro.
+
+
+===============================================================================
+  LE CHEMIN D'UNE AFFAIRE — À RETENIR ABSOLUMENT
+===============================================================================
+
+  Une affaire passe par quatre étapes. Elles ne se valent pas.
+
+      PROSPECTION  ->  DEVIS  ->  FACTURE  ->  ENCAISSEMENT
+        (contact)    (chiffré)  (LE CHIFFRE)   (l'argent)
+
+  ÉTAPE 1 — LA PROSPECTION
+     Un client potentiel est entré en contact. C'est une ACTIVITÉ, pas un
+     chiffre. Elle se compte, elle ne se facture pas.
+
+  ÉTAPE 2 — LE DEVIS
+     Le travail a été chiffré. Toujours pas de chiffre d'affaires : un devis
+     peut être refusé. Ce qui se mesure ici, c'est le TAUX DE TRANSFORMATION,
+     combien de devis deviennent des factures.
+
+  ÉTAPE 3 — LA FACTURE                      << C'EST ICI QUE LE CHIFFRE SE FAIT >>
+     À la seconde où la facture est émise, le commercial a fait du chiffre.
+     C'est ce montant qui est comparé à son objectif mensuel, et c'est lui qui
+     mesure sa contribution au chiffre d'affaires de sa ville.
+     Il n'attend pas que le client paie.
+
+  ÉTAPE 4 — L'ENCAISSEMENT
+     L'argent est rentré. Cela ne change pas le chiffre du commercial : cela
+     change son TAUX DE RECOUVREMENT, qui est un indicateur à part.
+
+  POURQUOI CETTE SÉPARATION EST LA BONNE
+     Le commercial est responsable de ce qu'il vend, pas de la trésorerie du
+     client. Compter son chiffre à l'encaissement le rendrait comptable d'un
+     retard qu'il ne maîtrise pas. Inversement, le compter au devis
+     récompenserait des promesses. La facture est le seul moment où
+     l'entreprise s'est réellement engagée et a réellement livré.
+
+
+===============================================================================
+  LES HUIT RÔLES
+===============================================================================
+
+  Vous en avez cité cinq. Il y en a huit. Les trois qui manquaient à votre
+  liste sont marqués d'une étoile.
+
+     1. Gérant
+     2. Superviseur de ville
+     3. Responsable de site
+     4. Commercial
+     5. Superviseur recouvrement
+     6. Agent de recouvrement
+   * 7. Comptabilité (caissier)
+   * 8. Super administrateur (nous, pas le client)
+
+
+===============================================================================
+  1. LE GÉRANT
+===============================================================================
+
+  IL VOIT TOUT. C'est le seul.
+
+  SON ÉCRAN D'ARRIVÉE : Tableau de bord
+     La marche de l'entreprise, toutes villes confondues : chiffre d'affaires,
+     charges, résultat net, encaissé, trésorerie, taux de transformation.
+     Chaque indicateur est ventilé Mécanique / Sinistre / Autres.
+
+  SES ONGLETS
+     Tableau de bord ..... la vue d'ensemble
+     Recouvrement ........ le tableau de bord des créances, puis le module
+     Import .............. dépôt et suivi des fichiers
+     Indicateurs ......... Prospects, Devis, Parc véhicules, Entrées/sorties,
+                           Clients, Chiffre d'affaires, Charges, Trésorerie,
+                           Caisse, Fournisseurs, Commerciaux
+     Général ............. Ajouter un accès, Messages, Notifications,
+                           Paramètres de l'entreprise
+
+  CE QU'IL EST SEUL À FAIRE
+     - fixer les objectifs (commerciaux et encaissement)
+     - ouvrir et fermer les accès de tout le monde
+     - gérer villes, ateliers, personnel, exercices, référentiels
+     - lire la piste d'audit du recouvrement
+
+  SA JOURNÉE TYPE
+     Ouvrir le tableau de bord. Regarder le résultat et la trésorerie.
+     Passer sur le recouvrement pour voir si la créance ancienne recule.
+     Ouvrir Fournisseurs une fois par semaine pour ce qu'on doit.
+
+
+===============================================================================
+  2. LE SUPERVISEUR DE VILLE
+===============================================================================
+
+  Il a la main sur UNE VILLE, avec tous ses ateliers.
+
+  SON ÉCRAN D'ARRIVÉE : Saisie du jour
+
+  SES ONGLETS
+     Saisie du jour ...... le travail quotidien de ses ateliers
+     Import .............. dépôt et suivi des fichiers de sa ville
+     Indicateurs ......... les onze pages, filtrées sur sa ville
+     Général ............. Ajouter un accès, Messages, Notifications,
+                           Paramètres
+
+  CE QU'IL FAIT
+     - enregistre prospections, devis, factures, encaissements, charges
+     - valide ou refuse les prospections que ses commerciaux remontent
+     - dépose les fichiers du logiciel pour sa ville
+     - tient le carnet de bord du jour : véhicules sans facture, commentaires
+       sur les prospects, les devis, le chiffre, la trésorerie, les charges
+     - ouvre des accès pour son périmètre
+
+  CE QU'IL NE FAIT PAS
+     - voir les autres villes
+     - toucher au module Recouvrement
+     - fixer les objectifs
+
+
+===============================================================================
+  3. LE RESPONSABLE DE SITE
+===============================================================================
+
+  Même métier que le superviseur de ville, mais sur UN SEUL ATELIER.
+
+  SON ÉCRAN D'ARRIVÉE : Saisie du jour
+
+  SES ONGLETS : les mêmes que le superviseur de ville, réduits à son atelier.
+
+  SA JOURNÉE TYPE
+     Ouvrir la saisie du jour le matin.
+     Saisir au fil de l'eau : les passages, les devis, les factures, les
+     règlements, les dépenses.
+     Écrire le carnet du soir : combien de véhicules repartis sans facture, et
+     pourquoi.
+
+  POINT D'ATTENTION POUR LA PRÉSENTATION
+     Le carnet du jour n'a pas de bouton « enregistrer » : chaque champ se
+     sauve tout seul dès qu'on le quitte. C'est volontaire — on y revient dix
+     fois dans la journée.
+
+
+===============================================================================
+  4. LE COMMERCIAL
+===============================================================================
+
+  Le rôle le plus léger, et c'est voulu : il travaille dehors.
+
+  SES DEUX ÉCRANS
+     Ma performance individuelle
+     Mes prospections
+
+  MA PERFORMANCE — CE QU'IL Y LIT
+     Objectif du mois ........... fixé par le gérant, ramené à la période
+     Réalisation ................ le total de SES factures  << SON CHIFFRE >>
+     Écart ...................... réalisation moins objectif
+     Taux d'atteinte ............ en pourcentage
+     Contribution ............... sa part dans le chiffre de sa ville
+     Montant encaissé ........... ce qui est réellement rentré sur ses factures
+     Taux de recouvrement ....... encaissé divisé par facturé
+     Le tout ventilé Mécanique / Sinistre.
+     En dessous : le détail de chacune de ses factures.
+
+  MES PROSPECTIONS — CE QU'IL Y FAIT
+     Il enregistre chaque contact : le client, où, par quel moyen, pour quelle
+     activité, et si le véhicule est passé à l'atelier.
+     Il complète ensuite une ligne avec une observation ou une saisie libre.
+     Il voit QUI a validé sa prospection, QUAND, DEPUIS QUEL POSTE et QUELLE
+     ADRESSE, avec un bouton Détail.
+
+  SON MENU PARAMÈTRES
+     Mes notes, Messages, Notifications, Mon espace.
+
+  CE QU'IL NE VOIT PAS
+     Ni le chiffre des autres, ni les charges, ni la trésorerie, ni le
+     recouvrement.
+
+
+===============================================================================
+  5. LE SUPERVISEUR RECOUVREMENT
+===============================================================================
+
+  SON ÉCRAN D'ARRIVÉE : Tableau de bord du recouvrement
+
+  CE QU'IL VOIT
+     Tout le portefeuille de créances, celui de tous les agents.
+     Les quatre indicateurs, les graphiques, la courbe mensuelle, le tableau
+     d'activité par agent, et le portefeuille ligne par ligne.
+     Plus la page Synthèse & pilotage, que l'agent n'a pas.
+
+  CE QU'IL FAIT
+     - encaisse et relance, du N1 au N5
+     - CRÉE les factures et les tiers (l'agent ne peut pas)
+     - commente les écarts entre l'objectif d'encaissement et le réalisé
+     - répartit le travail : le portefeuille dit qui s'occupe de quoi et ce
+       qui n'est pris par personne
+     - ouvre des accès
+
+  CE QU'IL NE FAIT PAS
+     - lire la piste d'audit, réservée au gérant
+     - fixer l'objectif d'encaissement
+
+
+===============================================================================
+  6. L'AGENT DE RECOUVREMENT
+===============================================================================
+
+  SON ÉCRAN D'ARRIVÉE : Tableau de bord du recouvrement, LIMITÉ À SES DOSSIERS
+
+  CE QU'IL VOIT
+     Ses propres créances, son propre travail, ses propres chiffres.
+     La balance âgée, les courtiers, les clients, les extraits de compte, le
+     journal des relances et celui des encaissements.
+
+  CE QU'IL FAIT
+     - appelle, écrit, relance : du N1 au N5, tous niveaux ouverts
+     - enregistre les règlements qu'il obtient
+     - édite et envoie les extraits de compte
+
+  CE QU'IL NE FAIT PAS
+     - créer une facture ou un tiers   << LA RÈGLE LA PLUS IMPORTANTE >>
+     - voir la synthèse, la piste d'audit, ou le travail des autres
+
+  POURQUOI IL NE CRÉE PAS DE FACTURE
+     Celui qui réclame l'argent ne doit pas pouvoir fabriquer la dette qu'il
+     réclame. C'est cette séparation qui rend tous les journaux crédibles.
+
+
+===============================================================================
+  7. LA COMPTABILITÉ  (rôle « caissier »)
+===============================================================================
+
+  Ce rôle manquait à votre liste.
+
+  SES ÉCRANS
+     Tableau de bord ..... ce qui reste à encaisser et ce qui est sorti
+     Encaissements ....... les factures en attente de règlement
+     Décaissements ....... les sorties de caisse de son atelier
+     Messages, Notifications, Paramètres
+
+  CE QU'IL FAIT
+     Il encaisse et il décaisse, sur son atelier. Il consulte les imports sans
+     pouvoir en déposer.
+
+  CE QU'IL NE FAIT PAS
+     Ni prospection, ni devis, ni facture, ni recouvrement, ni indicateurs.
+
+
+===============================================================================
+  8. LE SUPER ADMINISTRATEUR
+===============================================================================
+
+  Ce rôle manquait aussi. Il n'appartient PAS au client : c'est le nôtre.
+
+  Il gère la plateforme, pas l'entreprise : créer une entreprise, ouvrir le
+  premier accès d'un gérant, surveiller les connexions, la traçabilité, le
+  journal d'activité et la maintenance.
+
+  Il ne voit aucun chiffre d'exploitation.
+
+
+===============================================================================
+  TROIS RÈGLES QUI TRAVERSENT TOUTE L'APPLICATION
+===============================================================================
+
+  1. CHACUN SIGNE CE QU'IL FAIT
+     Chaque écriture porte son auteur, sa date, et pour les décisions
+     sensibles le poste et l'adresse depuis lesquels elle a été prise.
+     Rien ne s'efface : une correction se pose PAR-DESSUS et se raconte.
+
+  2. UN FICHIER REÇU NE SE RÉÉCRIT JAMAIS
+     Les lignes refusées d'un import sont mises de côté avec leurs valeurs
+     d'origine. On les corrige à côté, et on relit. Le fichier déposé reste
+     tel qu'il est arrivé, et son empreinte le prouve.
+
+  3. LE TRAVAIL PASSE MÊME SANS JAVASCRIPT
+     Les gestes qui comptent — déposer un fichier, changer un mot de passe,
+     tourner une page — sont de vrais formulaires et de vrais liens. Si le
+     navigateur est lent ou le script bloqué, on perd le confort, jamais la
+     fonction.
+
+
+===============================================================================
+  CE QUI N'EST PAS ENCORE FAIT — À DIRE PLUTÔT QU'À CACHER
+===============================================================================
+
+  - LA MARGE n'existe pas. Le fichier fournisseurs ne porte ni le montant
+    refacturé ni le numéro de facture client. Sans ces deux colonnes, aucune
+    marge ne peut être calculée.
+
+  - LE LIEN PROSPECTION -> DEVIS -> FACTURE n'est pas automatique quand le
+    devis et la facture viennent du logiciel de l'atelier. Le commercial
+    prospecte ici, l'atelier facture là-bas, et les deux ne partagent aucune
+    référence commune aujourd'hui.
+
+  - LE MODULE RECOUVREMENT vient d'ouvrir. Les relances visibles à l'écran
+    sont un jeu de démonstration posé pour la présentation, pas du travail
+    réel.
+
+
+===============================================================================
+  FIN DU DOCUMENT
+===============================================================================

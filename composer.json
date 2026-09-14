@@ -39,6 +39,8 @@
             "Modules\\ResponsableSite\\": "Modules/ResponsableSite/app/",
             "Modules\\Comptabilite\\": "Modules/Comptabilite/app/",
             "Modules\\Commercial\\": "Modules/Commercial/app/",
+            "Modules\\Recouvrement\\": "Modules/Recouvrement/app/",
+            "Modules\\Import\\": "Modules/Import/app/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         },

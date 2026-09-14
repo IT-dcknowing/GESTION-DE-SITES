@@ -2,6 +2,7 @@
 
 namespace Modules\Noyau\Entreprises\Support;
 
+use Modules\Noyau\Entreprises\Modeles\Reaffectation;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use App\Models\User;
@@ -21,16 +22,53 @@ use Illuminate\Database\Eloquent\Collection;
  */
 class PerimetreSites
 {
-    /** Villes visibles par l'utilisateur : toutes celles de l'entreprise pour le Gérant, la sienne pour les autres rôles. */
+    /**
+     * Villes visibles par l'utilisateur : toutes celles de l'entreprise pour le Gérant, la
+     * sienne pour les autres rôles — **et celles qu'il a quittées**.
+     *
+     * Une personne mutée de San Pédro à Abidjan garde huit mois de travail derrière elle.
+     * Ce travail reste à San Pédro, c'est là qu'il a eu lieu ; mais le lui rendre invisible
+     * du jour au lendemain reviendrait à effacer son propre passé de son écran, sans que
+     * rien ne l'explique. Elle continue donc de **consulter** son ancien lieu.
+     *
+     * Elle n'y saisit pas : le périmètre d'écriture reste `Site::visiblesPour()`, qui ne
+     * connaît que le poste actuel. C'est toute la distinction — lire son passé, écrire dans
+     * son présent — et elle tient parce que ces deux méthodes ne se rejoignent jamais.
+     */
     public static function villesVisibles(User $utilisateur): Collection
     {
         if ($utilisateur->hasRole('gerant')) {
             return Ville::where('entreprise_id', $utilisateur->entreprise_id)->where('est_actif', true)->orderBy('nom')->get();
         }
 
-        $villeIds = Site::visiblesPour($utilisateur)->pluck('ville_id')->unique();
+        $villeIds = Site::visiblesPour($utilisateur)->pluck('ville_id')
+            ->merge(Reaffectation::villesPassesDe($utilisateur->id))
+            ->unique();
 
         return Ville::whereIn('id', $villeIds)->orderBy('nom')->get();
+    }
+
+    /**
+     * Les ateliers qu'on peut **lire** : le poste actuel, plus ceux qu'on a occupés.
+     *
+     * Cette méthode ne sert qu'aux écrans d'indicateurs. Aucun écran de saisie ne doit
+     * l'appeler, et c'est pour cela qu'elle porte un nom différent : le jour où quelqu'un
+     * la branchera par mégarde sur une écriture, le nom aura au moins prévenu.
+     */
+    public static function sitesConsultables(User $utilisateur): Collection
+    {
+        $actuels = Site::visiblesPour($utilisateur);
+        $passes = Reaffectation::sitesPassesDe($utilisateur->id);
+
+        if ($passes === []) {
+            return $actuels;
+        }
+
+        $anciens = Site::whereIn('id', $passes)
+            ->whereNotIn('id', $actuels->pluck('id'))
+            ->get();
+
+        return $actuels->merge($anciens)->sortBy('nom')->values();
     }
 
     /**
@@ -39,7 +77,7 @@ class PerimetreSites
      */
     public static function idsRetenus(User $utilisateur, ?string $villeFiltre, ?string $siteFiltre = null): array
     {
-        $sites = Site::visiblesPour($utilisateur);
+        $sites = self::sitesConsultables($utilisateur);
 
         if ($villeFiltre) {
             $sites = $sites->where('ville_id', (int) $villeFiltre);
@@ -97,7 +135,7 @@ class PerimetreSites
             return null;
         }
 
-        $sites = Site::visiblesPour($utilisateur)->where('ville_id', $villeId)->values();
+        $sites = self::sitesConsultables($utilisateur)->where('ville_id', $villeId)->values();
 
         return $sites->count() > 1 ? $sites : null;
     }

@@ -352,7 +352,8 @@ class ChaineProspectionDevisFactureTest extends TestCase
 
         // Le numéro se lit avant d'enregistrer — pour l'annoncer au client — mais le
         // compteur n'est pas touché tant que la facturation n'est pas validée.
-        $ecran->assertSee('NF-0001');
+        // Le numéro porte le jour et le mois de la journée saisie : NF-1409-0001.
+        $ecran->assertSee('NF-'.now()->parse($this->jour)->format('dm').'-0001');
         $this->assertSame(
             0,
             (int) CompteurDocument::where('entreprise_id', $this->entreprise->id)->where('type', 'nfa')->value('dernier_numero'),
@@ -361,7 +362,11 @@ class ChaineProspectionDevisFactureTest extends TestCase
 
         $ecran->call('validerFactures');
 
-        $this->assertSame('NF-0001', Facture::firstOrFail()->n_facture, "L'aperçu annonçait bien le numéro définitif.");
+        $this->assertSame(
+            'NF-'.now()->parse($this->jour)->format('dm').'-0001',
+            Facture::firstOrFail()->n_facture,
+            "L'aperçu annonçait bien le numéro définitif."
+        );
     }
 
     private function prospectionTransmise(array $attributs = []): Prospection

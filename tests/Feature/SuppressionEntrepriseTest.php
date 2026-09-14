@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\User;
 use Database\Seeders\SuperAdminSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
@@ -13,6 +15,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
+use Modules\Noyau\Imports\Modeles\LotImport;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -121,6 +124,63 @@ class SuppressionEntrepriseTest extends TestCase
         $this->assertSame(0, Prospection::withoutGlobalScopes()->count());
         $this->assertSame(0, Commercial::withoutGlobalScopes()->count());
         $this->assertDatabaseMissing('roles', ['entreprise_id' => $this->entreprise->id]);
+    }
+
+    public function test_l_ecran_annonce_les_volumes_importes_et_transmet_l_option_des_reglages(): void
+    {
+        Storage::fake(LotImport::DISQUE);
+
+        LotImport::create([
+            'entreprise_id' => $this->entreprise->id, 'ville_id' => $this->ville->id,
+            'deposant' => 'Gérante', 'format' => 'impayes', 'nom_fichier' => 'Impayes.xlsx',
+            'empreinte' => str_repeat('c', 64), 'taille' => 2048, 'etat' => 'termine',
+        ]);
+
+        DB::table('codes_agents')->insert([
+            'entreprise_id' => $this->entreprise->id, 'ville_id' => $this->ville->id,
+            'code' => 'KZ', 'libelle' => 'K. Désirée', 'occurrences' => 412, 'est_actif' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $ecran = $this->ecran()->set('entrepriseId', $this->entreprise->id);
+
+        // Ce que la purge va emporter doit être annoncé avant, pas découvert après.
+        $ecran->assertSee('Dépôts de fichiers')->assertSee('Fiches de réception')->assertSee('Relances');
+
+        $ecran->set('purgerReglagesImport', true)
+            ->set('confirmation', 'Alpha')
+            ->call('purger');
+
+        // L'option cochée sur l'écran doit vraiment arriver jusqu'à l'action.
+        $this->assertSame(0, DB::table('codes_agents')->count());
+        $this->assertSame(0, LotImport::withoutGlobalScopes()->count());
+
+        // Et l'entreprise, elle, est toujours debout : c'est une purge, pas une suppression.
+        $this->assertNotNull($this->entreprise->fresh());
+    }
+
+    public function test_la_suppression_emporte_les_fichiers_deposes_sur_le_disque(): void
+    {
+        Storage::fake(LotImport::DISQUE);
+
+        $lot = LotImport::create([
+            'entreprise_id' => $this->entreprise->id, 'ville_id' => $this->ville->id,
+            'deposant' => 'Gérante', 'format' => 'impayes', 'nom_fichier' => 'Impayes.xlsx',
+            'empreinte' => str_repeat('b', 64), 'taille' => 2048, 'etat' => 'termine',
+        ]);
+
+        Storage::disk(LotImport::DISQUE)->put($lot->cheminRelatif(), 'contenu du classeur');
+
+        $this->ecran()
+            ->set('suppressionId', $this->entreprise->id)
+            ->set('confirmationSuppression', 'Alpha')
+            ->call('supprimer');
+
+        // Un état des impayés porte les noms, les immatriculations et les montants dus de
+        // milliers d'affaires. Le garder après avoir effacé l'entreprise, ce serait
+        // conserver les données de quelqu'un qui n'est plus là.
+        Storage::disk(LotImport::DISQUE)->assertMissing($lot->cheminRelatif());
+        $this->assertSame(0, LotImport::withoutGlobalScopes()->count());
     }
 
     public function test_une_autre_entreprise_n_est_pas_effleuree(): void

@@ -42,6 +42,9 @@ class FortifyServiceProvider extends ServiceProvider
 
         // Sans ces deux déclarations, Fortify ne sait pas résoudre les vues de
         // réinitialisation et lève une BindingResolutionException sur /mot-de-passe-oublie.
+        // Fortify publie `/user/confirm-password` dès que les vues sont activées. Sans
+        // celle-ci, l'adresse rendait une erreur 500 pour tous les rôles.
+        Fortify::confirmPasswordView(fn () => view('auth.confirmer-mot-de-passe'));
         Fortify::requestPasswordResetLinkView(fn () => view('auth.mot-de-passe-oublie'));
         Fortify::resetPasswordView(fn (Request $request) => view('auth.reinitialiser-mot-de-passe', ['request' => $request]));
 

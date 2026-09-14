@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L2A · Recouvrement — Maquette applicative</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --noir:#191B20; --noir2:#22252C; --rouge:#C8102E; --rouge-d:#9C0C24;
+  --ivoire:#F4F2EC; --carte:#FFFFFF; --acier:#5A6472; --ligne:#E3E0D8;
+  --vert:#1E7B34; --ambre:#B87A00; --encre:#22252C;
+  --t1:#8A94A3; --t2:#5A6472; --t3:#B87A00; --t4:#D9541E; --t5:#C8102E;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--ivoire);color:var(--encre);font-size:14px}
+h1,h2,h3,.kpi-val{font-family:'Archivo',sans-serif}
+.mono{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+/* ---------- Sidebar ---------- */
+.side{background:var(--noir);color:#EDEBE4;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.logo{padding:20px 18px 14px;border-bottom:1px solid #2E323B}
+.logo b{font-family:'Archivo';font-weight:800;font-size:17px;letter-spacing:.3px;display:block}
+.logo b span{color:var(--rouge)}
+.logo small{color:#9AA0AB;font-size:11px;letter-spacing:.8px;text-transform:uppercase}
+.badge{margin:14px;border:1px solid #343945;border-radius:10px;padding:12px;background:linear-gradient(160deg,#22252C,#191B20)}
+.badge .b-role{font-family:'Archivo';font-weight:700;font-size:15px}
+.badge .b-tag{display:inline-block;margin-top:6px;font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:20px;background:var(--rouge);color:#fff;font-weight:600}
+.badge .b-name{color:#9AA0AB;font-size:11px;margin-top:6px}
+.badge select{width:100%;margin-top:10px;background:#111318;color:#EDEBE4;border:1px solid #343945;border-radius:6px;padding:7px 8px;font-family:'IBM Plex Sans';font-size:12px}
+nav{flex:1;padding:6px 10px;overflow:auto}
+nav button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:0;color:#C9CDD5;padding:10px 12px;border-radius:8px;cursor:pointer;font-family:'IBM Plex Sans';font-size:13px;margin:2px 0}
+nav button:hover{background:#23262E}
+nav button.on{background:var(--rouge);color:#fff;font-weight:600}
+nav button.lock{opacity:.38;cursor:not-allowed}
+nav button .ic{width:16px;text-align:center}
+.side-foot{padding:12px 16px;font-size:10.5px;color:#7C828D;border-top:1px solid #2E323B;line-height:1.5}
+/* ---------- Main ---------- */
+main{padding:26px 30px 60px;max-width:1240px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.top h1{font-size:22px;font-weight:800;letter-spacing:.2px}
+.top .sub{color:var(--acier);font-size:12.5px;margin-top:3px}
+.datebox{background:var(--carte);border:1px solid var(--ligne);border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:center}
+.datebox label{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--acier);font-weight:600}
+.datebox input{border:1px solid var(--ligne);border-radius:6px;padding:6px 8px;font-family:'IBM Plex Mono';font-size:13px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:980px){.app{grid-template-columns:1fr}.side{position:static;height:auto}.g2,.g3{grid-template-columns:1fr}}
+.card{background:var(--carte);border:1px solid var(--ligne);border-radius:12px;padding:18px}
+.card h2{font-size:14px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--noir);border-bottom:2px solid var(--noir);padding-bottom:9px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.card h2 .chip{font-family:'IBM Plex Sans';font-weight:600;font-size:10px;letter-spacing:.8px;background:var(--ivoire);border:1px solid var(--ligne);border-radius:20px;padding:3px 9px;color:var(--acier);text-transform:uppercase}
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:var(--carte);border:1px solid var(--ligne);border-left:4px solid var(--noir);border-radius:10px;padding:13px 15px}
+.kpi.red{border-left-color:var(--rouge)}
+.kpi .k-lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--acier);font-weight:600}
+.kpi-val{font-size:21px;font-weight:800;margin-top:4px}
+.kpi .k-sub{font-size:11px;color:var(--acier);margin-top:2px}
+/* Formulaires */
+.frm{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px}
+.fld label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--acier);font-weight:600;margin-bottom:4px}
+.fld input,.fld select,.fld textarea{width:100%;border:1px solid var(--ligne);border-radius:7px;padding:8px 9px;font-family:'IBM Plex Sans';font-size:13px;background:#FDFCF9}
+.fld input:focus,.fld select:focus{outline:2px solid var(--rouge);outline-offset:1px;border-color:var(--rouge)}
+.fld .mono{font-family:'IBM Plex Mono'}
+.hint{font-size:11.5px;margin-top:9px;padding:8px 10px;border-radius:7px;background:var(--ivoire);border:1px dashed var(--ligne);color:var(--acier)}
+.hint.ok{color:var(--vert);border-color:var(--vert);background:#F0F7F1}
+.hint.warn{color:var(--rouge);border-color:var(--rouge);background:#FCF0F2;font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:8px;padding:10px 16px;font-family:'Archivo';font-weight:700;font-size:13px;letter-spacing:.3px;cursor:pointer;transition:transform .05s}
+.btn:active{transform:translateY(1px)}
+.btn-r{background:var(--rouge);color:#fff}.btn-r:hover{background:var(--rouge-d)}
+.btn-n{background:var(--noir);color:#fff}
+.btn-o{background:none;border:1.5px solid var(--noir);color:var(--noir)}
+.btn[disabled]{opacity:.4;cursor:not-allowed}
+.actions{margin-top:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+/* Tables */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:#fff;background:var(--noir);padding:8px 9px;text-align:left;position:sticky;top:0}
+th.num,td.num{text-align:right}
+td{padding:7px 9px;border-bottom:1px solid var(--ligne);vertical-align:top}
+tr:hover td{background:#FAF8F2}
+tr.tot td{background:var(--noir);color:#fff;font-weight:700;border:0}
+.tbl-wrap{max-height:430px;overflow:auto;border:1px solid var(--ligne);border-radius:9px}
+.pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:600;letter-spacing:.3px;white-space:nowrap}
+.pN0{background:#EEF0F3;color:var(--acier)}.pN1{background:#E8ECF5;color:#3A5A8C}
+.pN2{background:#FFF4DE;color:var(--ambre)}.pN3{background:#FFE9D6;color:#C05A12}
+.pN4{background:#FBD9DE;color:var(--rouge)}.pN5{background:var(--rouge);color:#fff}
+.pOK{background:#E5F2E8;color:var(--vert)}
+/* Balance âgée : nuancier */
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.bar{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--ligne)}
+.bar div{height:100%}
+.leg{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--acier)}
+/* Écarts */
+.neg{color:var(--rouge);font-weight:700}.pos{color:var(--vert);font-weight:700}
+.cmt{width:100%;border:1px dashed var(--ligne);background:#FFFDF5;border-radius:7px;padding:7px;font-size:12px;font-family:'IBM Plex Sans';min-height:34px}
+/* Toast + audit */
+#toast{position:fixed;bottom:22px;right:22px;background:var(--noir);color:#fff;padding:13px 18px;border-radius:10px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.28);opacity:0;transform:translateY(8px);transition:.25s;z-index:50;border-left:4px solid var(--rouge);max-width:380px}
+#toast.show{opacity:1;transform:none}
+.locknote{background:#FCF0F2;border:1px solid #F2C6CD;color:var(--rouge);border-radius:9px;padding:11px 13px;font-size:12.5px;font-weight:600;margin-bottom:14px}
+.view{display:none}.view.on{display:block}
+@media print{ .side,.top .datebox,.actions,nav,#toast,.no-print{display:none!important} .app{grid-template-columns:1fr} main{padding:0;max-width:none} .card{border:0} body{background:#fff} }
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+  <div class="logo"><b>L'ARTISAN <span>AUTOMOBILE</span></b><small>Console recouvrement · Maquette V1</small></div>
+  <div class="badge">
+    <div class="b-role" id="bRole">Agent de recouvrement</div>
+    <span class="b-tag" id="bTag">Habilitation N1–N3</span>
+    <div class="b-name" id="bName">Session : A. KOUADIO</div>
+    <select id="roleSel" onchange="setRole(this.value)" aria-label="Changer de rôle">
+      <option value="agent">Agent de recouvrement</option>
+      <option value="superviseur">Superviseur recouvrement</option>
+      <option value="gerant">Gérant</option>
+    </select>
+  </div>
+  <nav id="nav"></nav>
+  <div class="side-foot">Cabinet DC-KNOWING pour L2A<br>Données réelles — état des impayés au 13/08/2026<br>Maquette : les saisies restent en mémoire de session.</div>
+</aside>
+<main>
+  <div class="top">
+    <div><h1 id="vTitle">Saisie</h1><div class="sub" id="vSub"></div></div>
+    <div class="datebox"><label>Date de travail</label><input type="date" id="workDate" value="2026-08-13" onchange="renderAll()"></div>
+  </div>
+  <div id="views"></div>
+</main>
+</div>
+<div id="toast"></div>
+<script>
+const DATA = {"arrete": "2026-08-13", "kpi": {"totalTTC": 6268055102, "totalRegle": 5467904922, "rapGlobal": 806748593, "nbOuvertes": 1345, "nbTiers": 114}, "assureurs": ["GNA ASSURANCES", "NSIA ASSURANCES", "ALLIANZ", "CEI", "CGRAE", "SANLAM", "AMSA", "AXA ASSURANCES", "ACTIVA", "LOXEA", "LEADWAY", "SUNU ASSURANCES", "ATLANTIQUE", "COMAR ASSURANCES CI", "IDIS", "WAFA ASSURANCES", "LA LOYALE ASSURANCES", "ATLANTA", "MEDLOG LOGISTICS", "PAGDS", "GNA ASSURANCES/CIA", "CÔTE D'IVOIRE CÂBLES", "MR KASSI CARLOS", "SCCI", "SAPH", "MEFB / DAF", "AHOKO", "SOLIBRA", "ASCOMA", "RTI", "SCB", "GIZ", "SITAB", "AUTOCHECK", "LE CONSEIL DU COTON ET DE L'ANACARDE", "TALENTYS", "ACTJCI", "MEDLOG", "AGTS", "L'AFRICAINE DES ASSURANCES"], "factures": [{"id": 1, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-06-30", "num": "1629", "veh": "SINO TRUCK HOWO", "immat": "37549WWCI01", "ttc": 16089047, "regle": 0}, {"id": 2, "tiers": "IDIS", "site": "ABIDJAN", "date": "2026-05-22", "num": "1300", "veh": "GREAT WALL WINGLE", "immat": "0", "ttc": 11044800, "regle": 0}, {"id": 3, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-03-10", "num": "627", "veh": "TOYOTA URBAN CRUISER", "immat": "AA489XJ01", "ttc": 9246862, "regle": 0}, {"id": 4, "tiers": "LEADWAY", "site": "ABIDJAN", "date": null, "num": "1765", "veh": "SINO TRUCK HOWO ", "immat": "AA376CL", "ttc": 8219498, "regle": 0}, {"id": 5, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-05-18", "num": "1227", "veh": "SUZUKI GRAND VITARA", "immat": "D171062", "ttc": 7157585, "regle": 0}, {"id": 6, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1796", "veh": "MITSUBISHI L200", "immat": "2285KZ01", "ttc": 7076959, "regle": 0}, {"id": 7, "tiers": "LEADWAY", "site": "ABIDJAN", "date": null, "num": "1906", "veh": "SINO TRUCK HOWO 380 T7S", "immat": "AA634TP01", "ttc": 6748759, "regle": 0}, {"id": 8, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2025-10-08", "num": "2134", "veh": "TOYOTA HILUX", "immat": "2001LR01", "ttc": 5948097, "regle": 0}, {"id": 9, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-30", "num": "1622", "veh": "KIA SPORTAGE", "immat": "AA169FN", "ttc": 5931187, "regle": 0}, {"id": 10, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-02", "num": "848", "veh": "MITSUBISHI ASX", "immat": "AA583EJ01", "ttc": 5671285, "regle": 0}, {"id": 11, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-05", "num": "1382", "veh": "TOYOTA FORTUNER", "immat": "AA653AC", "ttc": 5311289, "regle": 0}, {"id": 12, "tiers": "SANLAM", "site": "ABIDJAN", "date": null, "num": "1747", "veh": "ISUZU DMAX", "immat": "AA419TN01", "ttc": 5299915, "regle": 0}, {"id": 13, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-01-12", "num": "53", "veh": "HYUNDAI SANTAFE", "immat": "7923JR01", "ttc": 5373980, "regle": 127884}, {"id": 14, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-03-12", "num": "693", "veh": "SINO TRUCK HOMAN", "immat": "25446WWCI01", "ttc": 4323833, "regle": 0}, {"id": 15, "tiers": "SANLAM", "site": "ABIDJAN", "date": null, "num": "1750", "veh": "MITSUBISHI OUTLANDER", "immat": "AA592VX01", "ttc": 4226847, "regle": 0}, {"id": 16, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-07-29", "num": "2004", "veh": "NISSAN QASHQAI", "immat": "AA047AB", "ttc": 3984308, "regle": 0}, {"id": 17, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-06-05", "num": "1358", "veh": "TOYOTA FORTUNER", "immat": "686LZ01", "ttc": 3941830, "regle": 0}, {"id": 18, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2025-05-06", "num": "466", "veh": "HYUNDAI CRETA", "immat": "632LF01", "ttc": 3883909, "regle": 0}, {"id": 19, "tiers": "LEADWAY", "site": "ABIDJAN", "date": null, "num": "1761", "veh": "SINO TRUCK HOWO", "immat": "AA841KY01", "ttc": 3636415, "regle": 0}, {"id": 20, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2024-05-07", "num": "1429", "veh": "SUZUKI ALTO", "immat": "28312WWCI01", "ttc": 3552617, "regle": 0}, {"id": 21, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1717", "veh": "TOYOTA LAND CRUISER", "immat": "AA074LZ01", "ttc": 3495999, "regle": 0}, {"id": 22, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-06-10", "num": "1439", "veh": "FORD TERRITORY", "immat": "AA890AA", "ttc": 3366080, "regle": 0}, {"id": 23, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2024-04-03", "num": "1198", "veh": "HYNDAI AUTO CAR BUS", "immat": "4099WWCI01", "ttc": 7208845, "regle": 3848651}, {"id": 24, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-05", "num": "1361", "veh": "MAZDA CX9", "immat": "400KG01", "ttc": 3351266, "regle": 0}, {"id": 25, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1888", "veh": "MAZDA CX-9", "immat": "400KG01", "ttc": 3351266, "regle": 0}, {"id": 26, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2024-10-04", "num": "48", "veh": "NISSAN SUNNY", "immat": "1486WWCI01", "ttc": 3211058, "regle": 0}, {"id": 27, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2026-03-05", "num": "274", "veh": "MITSUBISHI L200", "immat": "856KE01", "ttc": 3209366, "regle": 0}, {"id": 28, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-06-18", "num": "1487", "veh": "TOYOTA FORTUNER", "immat": "AA439FK", "ttc": 3201460, "regle": 0}, {"id": 29, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-06-10", "num": "1422", "veh": "TOYOTA RAV4", "immat": "AA726JS01", "ttc": 3195376, "regle": 0}, {"id": 30, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "256", "veh": "HYUNDAI VENUE", "immat": "AA833CY01", "ttc": 3185896, "regle": 0}, {"id": 31, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1798", "veh": "HYUNDAI SANTAFE 4X4", "immat": "AA681BB", "ttc": 3171519, "regle": 0}, {"id": 32, "tiers": "CEI", "site": "ABIDJAN", "date": "2025-05-22", "num": "687", "veh": "KIA CERATO", "immat": "D13824", "ttc": 3102398, "regle": 0}, {"id": 33, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-19", "num": "1524", "veh": "TOYOTA HILUX", "immat": "AA580VP01", "ttc": 3097521, "regle": 0}, {"id": 34, "tiers": "CEI", "site": "ABIDJAN", "date": "2025-05-22", "num": "686", "veh": "CHANGAN ALSVIN", "immat": "D13813", "ttc": 3042163, "regle": 0}, {"id": 35, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2024-08-30", "num": "269", "veh": "GREAT WALL", "immat": "2554LF01", "ttc": 2909958, "regle": 0}, {"id": 36, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2025-04-16", "num": "274", "veh": "GREAT WALL NEW POER", "immat": "2554LF01", "ttc": 2908958, "regle": 0}, {"id": 37, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-07-31", "num": "2059", "veh": "MITSUBISHI L200", "immat": "AA616TV01", "ttc": 2883866, "regle": 0}, {"id": 38, "tiers": "CEI", "site": "ABIDJAN", "date": "2026-02-20", "num": "399", "veh": "CHANGAN ALSVIN", "immat": "D13813", "ttc": 2843478, "regle": 0}, {"id": 39, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-07-30", "num": "2039", "veh": "SUZUKI DZIRE", "immat": "AA239SV01", "ttc": 2836433, "regle": 0}, {"id": 40, "tiers": "IDIS", "site": "ABIDJAN", "date": "2025-11-25", "num": "2596", "veh": "PICK UP", "immat": "", "ttc": 2832000, "regle": 0}, {"id": 41, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-29", "num": "1079", "veh": "SUZUKI DZIRE", "immat": "AA163JJ01", "ttc": 2829005, "regle": 0}, {"id": 42, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-28", "num": "1959", "veh": "TOYOTA HILUX", "immat": "AB224BF01", "ttc": 2675366, "regle": 0}, {"id": 43, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": null, "num": "1749", "veh": "NISSAN QASHQAI", "immat": "1902JN01", "ttc": 2672734, "regle": 0}, {"id": 44, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": null, "num": "1843", "veh": "TOYOTA RUMION ", "immat": "3545LF01", "ttc": 2659109, "regle": 0}, {"id": 45, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-19", "num": "1526", "veh": "SUZUKI DZIRE", "immat": "AA041NR", "ttc": 2658462, "regle": 0}, {"id": 46, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-03-23", "num": "749", "veh": "SUZUKI DZIRE", "immat": "AA524RS", "ttc": 2652741, "regle": 0}, {"id": 47, "tiers": "AMSA", "site": "ABIDJAN", "date": "2024-03-11", "num": "1128", "veh": "SUZUKI", "immat": "3289KS01", "ttc": 2570998, "regle": 0}, {"id": 48, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-03-02", "num": "441", "veh": "TOYOTA HILUX", "immat": "2957KF01", "ttc": 2429867, "regle": 0}, {"id": 49, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2024-08-30", "num": "268", "veh": "HAVAL", "immat": "AA702AV", "ttc": 2404472, "regle": 0}, {"id": 50, "tiers": "CEI", "site": "ABIDJAN", "date": "2023-10-16", "num": "583", "veh": "KIA SPORTAGE", "immat": "D13857", "ttc": 2387140, "regle": 0}, {"id": 51, "tiers": "LEADWAY", "site": "ABIDJAN", "date": "2026-08-04", "num": "2096", "veh": "SHACMAN CMMTE", "immat": "AA258QV", "ttc": 2379986, "regle": 0}, {"id": 52, "tiers": "CEI", "site": "ABIDJAN", "date": "2024-07-08", "num": "1836", "veh": "TOYOTA COROLLA", "immat": "D13814", "ttc": 2374772, "regle": 0}, {"id": 53, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-03-25", "num": "775", "veh": "HYUNDAI H-1 MINIBUS", "immat": "3109JY01", "ttc": 2363581, "regle": 0}, {"id": 54, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2025-07-21", "num": "1290", "veh": "SUZUKI VITARA ", "immat": "2148LT01", "ttc": 2354592, "regle": 0}, {"id": 55, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-26", "num": "1619", "veh": "TOYOTA VITZ", "immat": "AA140SX01", "ttc": 2353558, "regle": 0}, {"id": 56, "tiers": "CEI", "site": "ABIDJAN", "date": "2026-02-20", "num": "400", "veh": "TOYOTA PRADO", "immat": "D13963", "ttc": 2305667, "regle": 0}, {"id": 57, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-04-29", "num": "1069", "veh": "FORD CX743MCA 1,8LBVA", "immat": "AA942RV01", "ttc": 2294263, "regle": 0}, {"id": 58, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1912", "veh": "SUZUKI VITARA", "immat": "3519LR01", "ttc": 2244631, "regle": 0}, {"id": 59, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-07-27", "num": "1984", "veh": "TOYOTA HILUX", "immat": "2368LC01", "ttc": 2229702, "regle": 0}, {"id": 60, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-26", "num": "1643", "veh": "HAVAL H6", "immat": "2108LT01", "ttc": 2215389, "regle": 0}, {"id": 61, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-07", "num": "889", "veh": "TOYOTA URBAN CRUISER", "immat": "AA044AE", "ttc": 2213806, "regle": 0}, {"id": 62, "tiers": "CEI", "site": "ABIDJAN", "date": "2026-02-20", "num": "398", "veh": "PEUGEOT 301", "immat": "D13854", "ttc": 2208219, "regle": 0}, {"id": 63, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-07-29", "num": "2005", "veh": "HAVAL NEW H9", "immat": "AA259EN01", "ttc": 2196338, "regle": 0}, {"id": 64, "tiers": "CEI", "site": "ABIDJAN", "date": "2026-02-20", "num": "401", "veh": "MAZDA CX5", "immat": "D13978", "ttc": 2188010, "regle": 0}, {"id": 65, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2023-11-16", "num": "709", "veh": "MG T60", "immat": "209LS01", "ttc": 2150023, "regle": 0}, {"id": 66, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-06-12", "num": "1483", "veh": "ISUZU MUX", "immat": "AA289TK01", "ttc": 2130566, "regle": 0}, {"id": 67, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-29", "num": "1108", "veh": "SUZUKI", "immat": "AA089PF01", "ttc": 2123809, "regle": 0}, {"id": 68, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-04-08", "num": "923", "veh": "TOYOTA HILUX", "immat": "944LZ01", "ttc": 2110103, "regle": 0}, {"id": 69, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2025-12-22", "num": "303", "veh": "TOYOTA RAV4", "immat": "1147LH01", "ttc": 2092524, "regle": 0}, {"id": 70, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2022-10-24", "num": "1330", "veh": "SUZUKI ERTIGA", "immat": "3867JS01", "ttc": 2044728, "regle": 0}, {"id": 71, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-07-29", "num": "2022", "veh": "HAVAL JOLION", "immat": "AA232XG", "ttc": 2029432, "regle": 0}, {"id": 72, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2024-06-12", "num": "1425", "veh": "HAVAL JOLION", "immat": "3178KU09", "ttc": 2023635, "regle": 0}, {"id": 73, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-07-07", "num": "1700", "veh": "MITSUBISHI MONTERO SPORT", "immat": "AB041BN01", "ttc": 2022596, "regle": 0}, {"id": 74, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-07-03", "num": "1658", "veh": "SUZUKI DZIRE", "immat": "AA209RP01", "ttc": 2016873, "regle": 0}, {"id": 75, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-04-30", "num": "1132", "veh": "HAVAL", "immat": "2199LX01", "ttc": 1995679, "regle": 0}, {"id": 76, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-12", "num": "1477", "veh": "TOYOTA RAV4", "immat": "AA994AA", "ttc": 1989510, "regle": 0}, {"id": 77, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2025-06-10", "num": "798", "veh": "VOLKSWAGEN TERAMONT", "immat": "3990KJ01", "ttc": 1977249, "regle": 0}, {"id": 78, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-03-24", "num": "754", "veh": "CITROEN C4 CACTUS", "immat": "CH555853 / AA119JP", "ttc": 2414300, "regle": 442804}, {"id": 79, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-04-21", "num": "1038", "veh": "SUZUKI CELERIO", "immat": "AA095VQ01", "ttc": 1956216, "regle": 0}, {"id": 80, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-05", "num": "1364", "veh": "PEUGEOT 301", "immat": "1778LG01", "ttc": 1931833, "regle": 0}, {"id": 81, "tiers": "CEI", "site": "ABIDJAN", "date": "2024-03-20", "num": "1160", "veh": "TOYOTA HILUX", "immat": "D13835", "ttc": 1902160, "regle": 0}, {"id": 82, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-29", "num": "1070", "veh": "HAVAL JOLION", "immat": "AA810LR01", "ttc": 1898506, "regle": 0}, {"id": 83, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-10", "num": "1438", "veh": "PEUGEOT CMTTE", "immat": "16608WWCI01", "ttc": 1884518, "regle": 0}, {"id": 84, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2025-12-01", "num": "2584", "veh": "CHANGAN CS55", "immat": "2062LR01", "ttc": 1872525, "regle": 0}, {"id": 85, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-02-27", "num": "492", "veh": "MITSUBISHI ECLIPSE", "immat": "AA226AY01", "ttc": 1866800, "regle": 0}, {"id": 86, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-08-03", "num": "2073", "veh": "RENAULT DUSTER", "immat": "3058KU01", "ttc": 1860242, "regle": 0}, {"id": 87, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2025-11-12", "num": "2197588Q25000000038", "veh": "TOYOTA RUSH", "immat": "2153LT01", "ttc": 1848285, "regle": 0}, {"id": 88, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-07-03", "num": "1657", "veh": "SUZUKI FRONX 1,5 4X2", "immat": "AA611SY01", "ttc": 1846501, "regle": 0}, {"id": 89, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "292", "veh": "SUZUKI DZIRE", "immat": "AA163JJ01", "ttc": 1838775, "regle": 0}, {"id": 90, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1848", "veh": "SHACMAN H3000", "immat": "AA255QV", "ttc": 1823041, "regle": 0}, {"id": 91, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2022-08-18", "num": "423", "veh": "NISSAN ", "immat": "824JY01", "ttc": 10322830, "regle": 8540751}, {"id": 92, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-05-28", "num": "1295", "veh": "KIA SPORTAGE", "immat": "AA158QY01", "ttc": 1779172, "regle": 0}, {"id": 93, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-08-04", "num": "2097", "veh": "SHACMAN CMMTE", "immat": "AA480RT01", "ttc": 1773010, "regle": 0}, {"id": 94, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-06-26", "num": "1598", "veh": "KIA CARENS", "immat": "AA360ET01", "ttc": 1767611, "regle": 0}, {"id": 95, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-17", "num": "987", "veh": "TOYOTA FORTUNER", "immat": "D545500", "ttc": 1765170, "regle": 0}, {"id": 96, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-08", "num": "920", "veh": "SUZUKI S-PRESSO", "immat": "AA857KZ01", "ttc": 1751174, "regle": 0}, {"id": 97, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-04-07", "num": "876", "veh": "MITSUBISHI L200", "immat": "AA138TX01", "ttc": 1744198, "regle": 0}, {"id": 98, "tiers": "CEI", "site": "ABIDJAN", "date": "2022-11-17", "num": "791", "veh": "FORTUNER", "immat": "D13819", "ttc": 1719373, "regle": 0}, {"id": 99, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": null, "num": "1950", "veh": "SUZUKI VITARA", "immat": "2253KK01", "ttc": 1716892, "regle": 0}, {"id": 100, "tiers": "CEI", "site": "ABIDJAN", "date": "2024-03-20", "num": "1161", "veh": "PEUGEOT 301", "immat": "D13854", "ttc": 1701427, "regle": 0}, {"id": 101, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-01-16", "num": "97", "veh": "TOYOTA RAV4", "immat": "4120KK01", "ttc": 1697661, "regle": 0}, {"id": 102, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1723", "veh": "TOYOTA STARLET CROSS", "immat": "AA844PK01", "ttc": 1668350, "regle": 0}, {"id": 103, "tiers": "LEADWAY", "site": "ABIDJAN", "date": "2026-03-04", "num": "567", "veh": "SUZUKI FRONX", "immat": "AA250JT01", "ttc": 1651803, "regle": 0}, {"id": 104, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2023-11-22", "num": "733", "veh": "TOYOTA FORTUNER", "immat": "5393JG01", "ttc": 1636358, "regle": 0}, {"id": 105, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-05-28", "num": "1303", "veh": "SUZUKI DZIRE", "immat": "AA574XJ01", "ttc": 1635114, "regle": 0}, {"id": 106, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-06-12", "num": "1482", "veh": "SUZUKI BALENO", "immat": "AA868BP", "ttc": 1632446, "regle": 0}, {"id": 107, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2026-04-20", "num": "997", "veh": "SUZUKI ERTIGA", "immat": "732LB01", "ttc": 1584321, "regle": 0}, {"id": 108, "tiers": "CEI", "site": "ABIDJAN", "date": "2024-03-20", "num": "1164", "veh": "TOYOTA HILUX", "immat": "D13852", "ttc": 1580610, "regle": 0}, {"id": 109, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2025-05-21", "num": "662", "veh": "TOYOTA LAND CRUISIER", "immat": "4046WWCI01", "ttc": 1561385, "regle": 0}, {"id": 110, "tiers": "LEADWAY", "site": "ABIDJAN", "date": "2026-04-08", "num": "907", "veh": "BMW X4 30I", "immat": "AA424ZB01", "ttc": 1540999, "regle": 0}, {"id": 111, "tiers": "CEI", "site": "ABIDJAN", "date": "2025-06-27", "num": "1065", "veh": "HYUNDAI HD170", "immat": "D13829", "ttc": 1508801, "regle": 0}, {"id": 112, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-06-30", "num": "1638", "veh": "MITSUBISHI ECLIPSE CROSS", "immat": "880LE01", "ttc": 1505668, "regle": 0}, {"id": 113, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-05-28", "num": "1306", "veh": "MITSUBISHI ECLIPSE CROSS-ES", "immat": "AA994KH01", "ttc": 1489444, "regle": 0}, {"id": 114, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-02-26", "num": "446", "veh": "MITSUBISHI L200", "immat": "AA138TX01", "ttc": 1473505, "regle": 0}, {"id": 115, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": null, "num": "1893", "veh": "PEUGEOT 2008", "immat": "1007KU01", "ttc": 1463604, "regle": 0}, {"id": 116, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2025-10-08", "num": "2187", "veh": "PEUGEOT LANDTRECK", "immat": "226LK01", "ttc": 1447154, "regle": 0}, {"id": 117, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2024-09-13", "num": "352", "veh": "", "immat": "958JJ01", "ttc": 1425676, "regle": 0}, {"id": 118, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2026-07-28", "num": "1958", "veh": "KIA NEW SORENTO ", "immat": "2423LR01", "ttc": 1420974, "regle": 0}, {"id": 119, "tiers": "AMSA", "site": "ABIDJAN", "date": "2024-12-06", "num": "1170", "veh": "MAZDA CX-5", "immat": "8298WWCI01", "ttc": 1397817, "regle": 0}, {"id": 120, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-04-17", "num": "1004", "veh": "SUZUKI DZIRE", "immat": "AA814VB", "ttc": 1396023, "regle": 0}, {"id": 121, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2022-06-24", "num": "247", "veh": "Vehicule", "immat": "2673KL01", "ttc": 1389555, "regle": 0}, {"id": 122, "tiers": "CEI", "site": "ABIDJAN", "date": "2024-05-13", "num": "1478", "veh": "TOYOTA HILUX", "immat": "D13831", "ttc": 1388683, "regle": 0}, {"id": 123, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2023-09-18", "num": "401", "veh": "SUZUKI BALENO", "immat": "23700WWCI01", "ttc": 1387921, "regle": 0}, {"id": 124, "tiers": "CEI", "site": "ABIDJAN", "date": "2024-03-20", "num": "1162", "veh": "TOYOTA HILUX", "immat": "D13836", "ttc": 1376012, "regle": 0}, {"id": 125, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-05-28", "num": "1338", "veh": "TOYOTA STARLET", "immat": "AB582AG", "ttc": 1353714, "regle": 0}, {"id": 126, "tiers": "SANLAM", "site": "ABIDJAN", "date": null, "num": "1805", "veh": "PEUGEOT  5008", "immat": "1955LT01", "ttc": 1344748, "regle": 0}, {"id": 127, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-07-29", "num": "2017", "veh": "NISSAN NAVARA", "immat": "AA150BQ01", "ttc": 1343670, "regle": 0}, {"id": 128, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-05-28", "num": "1297", "veh": "TOYOTA HILUX", "immat": "AA246ZS01", "ttc": 1341564, "regle": 0}, {"id": 129, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2025-11-17", "num": "45", "veh": "MITSUBISHI PAJERO", "immat": "AA750NR01", "ttc": 1339950, "regle": 0}, {"id": 130, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2023-06-28", "num": "73", "veh": "GREAT WALL DOUBLE CABINE", "immat": "3835KU01", "ttc": 1337509, "regle": 0}, {"id": 131, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-07-07", "num": "1685", "veh": "HAVAL JOLION 2021 BVA", "immat": "1985LS01", "ttc": 1331944, "regle": 0}, {"id": 132, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-08-03", "num": "2092", "veh": "NISSAN SENTRA", "immat": "AA672JB01", "ttc": 1327429, "regle": 0}, {"id": 133, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2023-11-09", "num": "86", "veh": "MITSUBISHI L200", "immat": "276LS01", "ttc": 1322122, "regle": 0}, {"id": 134, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2024-07-18", "num": "1942", "veh": "", "immat": "AA180BN", "ttc": 1315509, "regle": 0}, {"id": 135, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1890", "veh": "SUZIKI DZIRE", "immat": "AA027HX01", "ttc": 1286860, "regle": 0}, {"id": 136, "tiers": "CEI", "site": "ABIDJAN", "date": "2023-10-16", "num": "584", "veh": "FORD ESCAPE", "immat": "D13890", "ttc": 1285158, "regle": 0}, {"id": 137, "tiers": "ACTIVA", "site": "ABIDJAN", "date": null, "num": "1807", "veh": "MITSUBISHI L200", "immat": "4029KR01", "ttc": 1283216, "regle": 0}, {"id": 138, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-10", "num": "1434", "veh": "PEUGEOT 3008", "immat": "1690LT01", "ttc": 1274945, "regle": 0}, {"id": 139, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": null, "num": "1837", "veh": "NISSAN NAVARA", "immat": "AA131YK", "ttc": 1250913, "regle": 0}, {"id": 140, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2025-04-09", "num": "22", "veh": "VOLKSWAGEN TERAMONT", "immat": "3990KJ01", "ttc": 1241832, "regle": 0}, {"id": 141, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1947", "veh": "NISSAN KICKS", "immat": "2074LR01", "ttc": 1236861, "regle": 0}, {"id": 142, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-12", "num": "1476", "veh": "KIA NEW SPORTAGE", "immat": "AA313AM", "ttc": 1231442, "regle": 0}, {"id": 143, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-08-04", "num": "2095", "veh": "SUZUKI S-PRESSO", "immat": "13098WWCI01", "ttc": 1216680, "regle": 0}, {"id": 144, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-07-03", "num": "1672", "veh": "ISUZU CAMION", "immat": "5698WWCI01", "ttc": 1215623, "regle": 0}, {"id": 145, "tiers": "GNA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-05", "num": "1373", "veh": "SUZUKI DZIRE", "immat": "AA269FN01", "ttc": 1205127, "regle": 0}, {"id": 146, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1865", "veh": "KIA NEW SORENTO ", "immat": "2423LR01", "ttc": 1176877, "regle": 0}, {"id": 147, "tiers": "CEI", "site": "ABIDJAN", "date": "2025-10-22", "num": "2330", "veh": "TOYOTA COROLLA", "immat": "D13981", "ttc": 1174021, "regle": 0}, {"id": 148, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2024-07-17", "num": "1923", "veh": "HYNDAI ELANTRA", "immat": "2080LF01", "ttc": 1173104, "regle": 0}, {"id": 149, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-08-05", "num": "2109", "veh": "GEELY COOLRAY", "immat": "10057WWCI01", "ttc": 1170156, "regle": 0}, {"id": 150, "tiers": "CEI", "site": "ABIDJAN", "date": "2026-04-17", "num": "992", "veh": "MAZDA CX5", "immat": "D13979", "ttc": 1167198, "regle": 0}, {"id": 151, "tiers": "CEI", "site": "ABIDJAN", "date": "2025-08-25", "num": "1714", "veh": "TOYOTA COROLLA", "immat": "D13983", "ttc": 1164739, "regle": 0}, {"id": 152, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-29", "num": "1056", "veh": "SUZUKI FRONX", "immat": "AB819AA", "ttc": 1164110, "regle": 0}, {"id": 153, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-07-29", "num": "2000", "veh": "311", "immat": "AA438JX01", "ttc": 1150419, "regle": 0}, {"id": 154, "tiers": "LEADWAY", "site": "ABIDJAN", "date": null, "num": "1981", "veh": "SINO TRUCK CMMTE", "immat": "AA988HP", "ttc": 1148808, "regle": 0}, {"id": 155, "tiers": "CEI", "site": "ABIDJAN", "date": "2023-10-16", "num": "582", "veh": "TOYOTA HILUX", "immat": "D13831", "ttc": 1127667, "regle": 0}, {"id": 156, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-03-12", "num": "512", "veh": "GEELY COOLRAY", "immat": "AA628KT01", "ttc": 1127538, "regle": 0}, {"id": 157, "tiers": "NSIA ASSURANCES", "site": "ABIDJAN", "date": "2026-05-07", "num": "1148", "veh": "SUZUKI SPRESSO", "immat": "55949WWCI01", "ttc": 1125770, "regle": 0}, {"id": 158, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-26", "num": "1606", "veh": "KIA PEGAS", "immat": "AA565AG", "ttc": 1104519, "regle": 0}, {"id": 159, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-03-04", "num": "550", "veh": "RENAULT DUSTER", "immat": "AA675VT01", "ttc": 1090399, "regle": 0}, {"id": 160, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2023-10-27", "num": "589", "veh": "TOYOTA STARLET", "immat": "391LA01", "ttc": 1078047, "regle": 0}, {"id": 161, "tiers": "CEI", "site": "ABIDJAN", "date": "2024-07-08", "num": "1830", "veh": "CHANGAN", "immat": "D13813", "ttc": 1060032, "regle": 0}, {"id": 162, "tiers": "CEI", "site": "ABIDJAN", "date": "2023-10-16", "num": "585", "veh": "TOYOTA HILUX", "immat": "D13835", "ttc": 1057153, "regle": 0}, {"id": 163, "tiers": "AMSA", "site": "ABIDJAN", "date": "2023-06-26", "num": "168", "veh": "SUZUKI SWIFT", "immat": "2826LJ01", "ttc": 1047230, "regle": 0}, {"id": 164, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-04-17", "num": "1003", "veh": "SUZUKI DZIRE", "immat": "AA420ST01", "ttc": 1025138, "regle": 0}, {"id": 165, "tiers": "AMSA", "site": "ABIDJAN", "date": null, "num": "1854", "veh": "HYUNDAI SANTAFE ", "immat": "AA269TA01", "ttc": 1023276, "regle": 0}, {"id": 166, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2024-11-04", "num": "818", "veh": "MAZDA CX3", "immat": "8936JK01", "ttc": 2993534, "regle": 1971098}, {"id": 167, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2023-10-10", "num": "522", "veh": "SUZUKI BALENO", "immat": "4168KE01", "ttc": 4562828, "regle": 3562828}, {"id": 168, "tiers": "CEI", "site": "ABIDJAN", "date": "2022-12-08", "num": "864", "veh": "", "immat": "D13886", "ttc": 995960, "regle": 0}, {"id": 169, "tiers": "CEI", "site": "ABIDJAN", "date": "2022-11-17", "num": "793", "veh": "", "immat": "D13964", "ttc": 1339064, "regle": 350610}, {"id": 170, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": null, "num": "1711", "veh": "KARRY CMTTE", "immat": "59303WWCI01", "ttc": 971557, "regle": 0}, {"id": 171, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-08-05", "num": "2115", "veh": "SUZUKI DZIRE", "immat": "AA172TH01", "ttc": 961455, "regle": 0}, {"id": 172, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2024-10-23", "num": "724", "veh": "HYUNDAI SANTAFE", "immat": "AA416HJ01", "ttc": 951381, "regle": 0}, {"id": 173, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2023-09-18", "num": "403", "veh": "SUZUKI VITARA", "immat": "7318JP01", "ttc": 951307, "regle": 0}, {"id": 174, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2024-02-22", "num": "752", "veh": "SUZUKI DZIRE", "immat": "3009KV01", "ttc": 944166, "regle": 0}, {"id": 175, "tiers": "CEI", "site": "ABIDJAN", "date": "2023-08-09", "num": "29", "veh": "HYNDAI HD170", "immat": "D13863", "ttc": 932271, "regle": 0}, {"id": 176, "tiers": "AMSA", "site": "ABIDJAN", "date": "2024-04-08", "num": "1238", "veh": "TOYOTA HILUX", "immat": "2325LJ01", "ttc": 927676, "regle": 0}, {"id": 177, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-02-26", "num": "477", "veh": "GREAT WALL WINGLE 5 DC4X4", "immat": "AA406CJ", "ttc": 912415, "regle": 0}, {"id": 178, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-04-08", "num": "921", "veh": "TOYOTA HILUX", "immat": "AA894AV", "ttc": 910847, "regle": 0}, {"id": 179, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": null, "num": "1960", "veh": "GEELY STARRY", "immat": "AB853AV", "ttc": 904075, "regle": 0}, {"id": 180, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2024-04-04", "num": "1247", "veh": "HYUNDAI", "immat": "2240JZ01", "ttc": 901168, "regle": 0}, {"id": 181, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2024-01-04", "num": "891", "veh": "SUZUKI GRAND VITARA", "immat": "23634WWCI01", "ttc": 887687, "regle": 0}, {"id": 182, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2024-09-02", "num": "177", "veh": "TOYOTA LAND CRUISER", "immat": "3936KC01", "ttc": 883401, "regle": 0}, {"id": 183, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": null, "num": "1863", "veh": "TOYOTA RUSH", "immat": "D30359", "ttc": 832079, "regle": 0}, {"id": 184, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2024-01-10", "num": "92", "veh": "KIA PEGAS", "immat": "2871KS01", "ttc": 830316, "regle": 0}, {"id": 185, "tiers": "AMSA", "site": "ABIDJAN", "date": "2025-06-10", "num": "815", "veh": "TOYOTA HILUX", "immat": "44401WWCI01", "ttc": 11353276, "regle": 10527351}, {"id": 186, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2024-07-17", "num": "1872", "veh": "HYNDAI TUCSON", "immat": "595KN01", "ttc": 818288, "regle": 0}, {"id": 187, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-07-30", "num": "2048", "veh": "SUZUKI SUPPER CARRY", "immat": "AA546TE01", "ttc": 793582, "regle": 0}, {"id": 188, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-06-26", "num": "1600", "veh": "KIA SPORTAGE", "immat": "24887WWCI01", "ttc": 767545, "regle": 0}, {"id": 189, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-06-23", "num": "1600", "veh": "KIA SPORTAGE", "immat": "24887WWCI01", "ttc": 767545, "regle": 0}, {"id": 190, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2022-05-13", "num": "88", "veh": "NISSAN KICKS", "immat": "1008HU01", "ttc": 751068, "regle": 0}, {"id": 191, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2022-05-13", "num": "87", "veh": "NISSAN KICKS", "immat": "1008HU01", "ttc": 750675, "regle": 0}, {"id": 192, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2024-08-21", "num": "149", "veh": "MITSUBISHI L200", "immat": "1608KZ01", "ttc": 750186, "regle": 0}, {"id": 193, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2022-12-07", "num": "821", "veh": "", "immat": "655JH01", "ttc": 748178, "regle": 0}, {"id": 194, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2024-11-13", "num": "892", "veh": "HYUNDAI TUCSON", "immat": "1971LY01", "ttc": 747322, "regle": 0}, {"id": 195, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-07-28", "num": "1989", "veh": "NISSAN NAVARA", "immat": "AA144BQ", "ttc": 743765, "regle": 0}, {"id": 196, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2022-05-13", "num": "89", "veh": "NISSAN KICKS", "immat": "1008HU01", "ttc": 743559, "regle": 0}, {"id": 197, "tiers": "ALLIANZ", "site": "ABIDJAN", "date": "2026-07-30", "num": "2043", "veh": "CITROEN C4 CACTUS", "immat": "1786LT01", "ttc": 738790, "regle": 0}, {"id": 198, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-07-29", "num": "2026", "veh": "NISSAN NAVARA", "immat": "AA207LV01", "ttc": 733396, "regle": 0}, {"id": 199, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-04-02", "num": "856", "veh": "SUZUKI GRAND VITARA", "immat": "AA574QA01", "ttc": 731040, "regle": 0}, {"id": 200, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2023-03-15", "num": "1127", "veh": "PEUGEOT 2008", "immat": "2255KY01", "ttc": 727741, "regle": 0}, {"id": 201, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2024-05-02", "num": "1411", "veh": "MAZDA CX-9", "immat": "4378LE01", "ttc": 725156, "regle": 0}, {"id": 202, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2024-09-02", "num": "28", "veh": "FORD EXPLORER", "immat": "AA026AD", "ttc": 708168, "regle": 0}, {"id": 203, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-05-28", "num": "1310", "veh": "TOYOTA HILUX", "immat": "2032LF01", "ttc": 678875, "regle": 0}, {"id": 204, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2025-09-15", "num": "1975", "veh": "MITSUBISHI OUTLANDER", "immat": "AA166QC01", "ttc": 676675, "regle": 0}, {"id": 205, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-02-17", "num": "314", "veh": "NISSAN NAVARA", "immat": "AA412JK01", "ttc": 674204, "regle": 0}, {"id": 206, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-05-29", "num": "1323", "veh": "TOYOTA HILUX", "immat": "2903LX01", "ttc": 670830, "regle": 0}, {"id": 207, "tiers": "AMSA", "site": "ABIDJAN", "date": "2025-10-10", "num": "2146", "veh": "HAVAL NEW H6", "immat": "1846KZ01", "ttc": 663725, "regle": 0}, {"id": 208, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2023-03-16", "num": "1128", "veh": "PEUGEOT 2008", "immat": "2255KY01", "ttc": 659736, "regle": 0}, {"id": 209, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-06-05", "num": "1362", "veh": "MITSUBISHI L200", "immat": "AA994TP01", "ttc": 655580, "regle": 0}, {"id": 210, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-04-02", "num": "840", "veh": "SUZUKI SPRESSO", "immat": "AA675VZ01", "ttc": 652764, "regle": 0}, {"id": 211, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-04-02", "num": "866", "veh": "HYUNDAI SANTAFE", "immat": "1292LB01", "ttc": 647192, "regle": 0}, {"id": 212, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-08-05", "num": "2111", "veh": "TOYOTA VITZ ", "immat": "AB254FA", "ttc": 645139, "regle": 0}, {"id": 213, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2023-09-12", "num": "419", "veh": "SUZUKI DZIRE", "immat": "370LJ01", "ttc": 616838, "regle": 0}, {"id": 214, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-05-11", "num": "1166", "veh": "SUZUKI DZIRE", "immat": "AA995JG", "ttc": 614276, "regle": 0}, {"id": 215, "tiers": "ACTIVA", "site": "ABIDJAN", "date": null, "num": "1908", "veh": "NISSAN NAVARA", "immat": "AA031KE01", "ttc": 609370, "regle": 0}, {"id": 216, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2024-02-22", "num": "753", "veh": "SUZUKI DZIRE", "immat": "3009KV01", "ttc": 600848, "regle": 0}, {"id": 217, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-06-05", "num": "1346", "veh": "ISUZU NEW D-MAX PICK-UP", "immat": "AA938LE01", "ttc": 600251, "regle": 0}, {"id": 218, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2026-02-19", "num": "378", "veh": "HAVAL H6", "immat": "135KN01", "ttc": 597554, "regle": 0}, {"id": 219, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-06-23", "num": "1556", "veh": "SUZUKI DZIRE", "immat": "AB457AH", "ttc": 596081, "regle": 0}, {"id": 220, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-05-28", "num": "1283", "veh": "MAZDA CX60 BVA", "immat": "AA213TZ01", "ttc": 590448, "regle": 0}, {"id": 221, "tiers": "ACTIVA", "site": "ABIDJAN", "date": null, "num": "1894", "veh": "SUZIKI VP", "immat": "21242WWCI01", "ttc": 589567, "regle": 0}, {"id": 222, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-07-29", "num": "2025", "veh": "SUZUKI S-PRESSO", "immat": "58669WWCI01/AB094EN", "ttc": 585000, "regle": 0}, {"id": 223, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2022-08-24", "num": "424", "veh": "Vehicule", "immat": "1240KH01", "ttc": 571463, "regle": 0}, {"id": 224, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": null, "num": "1986", "veh": "SUZUKI GRAND VITARA", "immat": "AA378SX01", "ttc": 566863, "regle": 0}, {"id": 225, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-04-21", "num": "1037", "veh": "SUZUKI CELERIO", "immat": "AA095VQ01", "ttc": 566051, "regle": 0}, {"id": 226, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-06-10", "num": "1435", "veh": "HAVAL NEW H6", "immat": "3056KK01", "ttc": 564924, "regle": 0}, {"id": 227, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-08-05", "num": "2121", "veh": "SUZUKI DZIRE", "immat": "18633WWCI0/AA921VK01", "ttc": 553327, "regle": 0}, {"id": 228, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-07-07", "num": "1694", "veh": "MITSUBISHI L200", "immat": "AA250KS01", "ttc": 546073, "regle": 0}, {"id": 229, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-07-01", "num": "1624", "veh": "SUZUKI DZIRE", "immat": "AA069RR", "ttc": 539054, "regle": 0}, {"id": 230, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2025-03-10", "num": "1869", "veh": "HYUNDAI PALISSADE", "immat": "AA035KB01", "ttc": 531000, "regle": 0}, {"id": 231, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-07", "num": "887", "veh": "TOYOTA RAV4", "immat": "1854LB01", "ttc": 519050, "regle": 0}, {"id": 232, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2025-11-13", "num": "2534", "veh": "SUZUKI VITARA", "immat": "18145WWCI01", "ttc": 505035, "regle": 0}, {"id": 233, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-07-29", "num": "2013", "veh": "TOYOTA FORTUNER", "immat": "AA111AP01", "ttc": 499966, "regle": 0}, {"id": 234, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-07-29", "num": "2015", "veh": "TOYOTA FORTUNER", "immat": "4484KK01", "ttc": 499907, "regle": 0}, {"id": 235, "tiers": "CGRAE", "site": "ABIDJAN", "date": null, "num": "1808", "veh": "TOYOTA HILUX", "immat": "AA846VX", "ttc": 499835, "regle": 0}, {"id": 236, "tiers": "CGRAE", "site": "ABIDJAN", "date": null, "num": "1818", "veh": "TOYOTA LAND CRUISER 300", "immat": "AA874HV01", "ttc": 499730, "regle": 0}, {"id": 237, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-07-29", "num": "2016", "veh": "TOYOTA RAV4", "immat": "AA726JJ01", "ttc": 499426, "regle": 0}, {"id": 238, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-03-04", "num": "571", "veh": "HAVAL H6", "immat": "2665LF01", "ttc": 499244, "regle": 0}, {"id": 239, "tiers": "CGRAE", "site": "ABIDJAN", "date": null, "num": "1814", "veh": "TOYOTA HILUX", "immat": "CH182846", "ttc": 498983, "regle": 0}, {"id": 240, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-04-07", "num": "880", "veh": "FORD CX743MCA 1,8LBVA", "immat": "AA890EY01", "ttc": 497044, "regle": 0}, {"id": 241, "tiers": "CGRAE", "site": "ABIDJAN", "date": null, "num": "1813", "veh": "TOYOTA URBAN CRUISER", "immat": "AA699CR01", "ttc": 496867, "regle": 0}, {"id": 242, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-05-29", "num": "1325", "veh": "PEUGEOT 301", "immat": "3398LY01", "ttc": 496661, "regle": 0}, {"id": 243, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-08-03", "num": "2085", "veh": "TOYOTA HILUX", "immat": "AA509CK01", "ttc": 495836, "regle": 0}, {"id": 244, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-04-07", "num": "881", "veh": "FORD CX743MCA 1,8LBVA", "immat": "AA890EY01", "ttc": 495600, "regle": 0}, {"id": 245, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-03-04", "num": "572", "veh": "TOYOTA RAV4", "immat": "2440KX01", "ttc": 495600, "regle": 0}, {"id": 246, "tiers": "CGRAE", "site": "ABIDJAN", "date": null, "num": "1821", "veh": "HYUNDAI TUCSON", "immat": "1172KF01", "ttc": 495600, "regle": 0}, {"id": 247, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-07-07", "num": "1686", "veh": "HAVAL JOLION 2021 BVA", "immat": "1985LS01", "ttc": 494550, "regle": 0}, {"id": 248, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-03-23", "num": "723", "veh": "TOYOTA LAND CRUISER 300", "immat": "AA874HV01", "ttc": 493489, "regle": 0}, {"id": 249, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2025-06-02", "num": "786", "veh": "TOYOTA RAV4", "immat": "680KA01", "ttc": 492403, "regle": 0}, {"id": 250, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-03-04", "num": "570", "veh": "HAVAL H6", "immat": "2665LF01", "ttc": 492125, "regle": 0}, {"id": 251, "tiers": "CGRAE", "site": "ABIDJAN", "date": "2026-02-24", "num": "426", "veh": "HYUNDAI PALISADE", "immat": "14296WWCI01", "ttc": 490880, "regle": 0}, {"id": 252, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-04-07", "num": "871", "veh": "SUZUKI DZIRE", "immat": "AA313SL01", "ttc": 484837, "regle": 0}, {"id": 253, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-04-02", "num": "843", "veh": "SUZUKI NEW GRAND VITARA", "immat": "AA577AJ01", "ttc": 484522, "regle": 0}, {"id": 254, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-05-29", "num": "1322", "veh": "TOYOTA HILUX", "immat": "AA456LH01", "ttc": 482620, "regle": 0}, {"id": 255, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-06-19", "num": "1527", "veh": "KIA SPORTAGE", "immat": "5651KS01", "ttc": 480809, "regle": 0}, {"id": 256, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": null, "num": "513", "veh": "KIA NEW SORENTO", "immat": "1440LR01", "ttc": 476830, "regle": 0}, {"id": 257, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2026-03-02", "num": "513", "veh": "KIA NEW SORENTO", "immat": "1440LR01", "ttc": 476830, "regle": 0}, {"id": 258, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-06-17", "num": "1497", "veh": "MITSUBISHI L200", "immat": "AA752NJ01", "ttc": 471548, "regle": 0}, {"id": 259, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2025-09-09", "num": "1830", "veh": "MITSUBISHI L200", "immat": "1967LZ01", "ttc": 464784, "regle": 0}, {"id": 260, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-28", "num": "1917", "veh": "TOYOTA HILUX ", "immat": "AA376LH01", "ttc": 461970, "regle": 0}, {"id": 261, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-06-19", "num": "1540", "veh": "TOYOTA HILUX", "immat": "734LE01", "ttc": 461965, "regle": 0}, {"id": 262, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-06-24", "num": "1558", "veh": "TOYOTA FORTUNER", "immat": "2391LC01", "ttc": 460705, "regle": 0}, {"id": 263, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2024-05-27", "num": "1565", "veh": "PEUGEOT 5008", "immat": "2849JU01", "ttc": 455615, "regle": 0}, {"id": 264, "tiers": "ACTIVA", "site": "ABIDJAN", "date": null, "num": "1966", "veh": "HAVAL H6 GT 2023", "immat": "AA987HL01", "ttc": 452530, "regle": 0}, {"id": 265, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2025-08-18", "num": "1681", "veh": "MG T60", "immat": "2661LT01", "ttc": 450533, "regle": 0}, {"id": 266, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": null, "num": "1739", "veh": "BYD VP", "immat": "2813WWCI01", "ttc": 448523, "regle": 0}, {"id": 267, "tiers": "ACTIVA", "site": "ABIDJAN", "date": "2026-06-23", "num": "1570", "veh": "SUZUKI SPRESSO", "immat": "12448WWCI01", "ttc": 435086, "regle": 0}, {"id": 268, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-07-31", "num": "2011", "veh": "TOYOTA HILUX", "immat": "AA919HN01", "ttc": 434598, "regle": 0}, {"id": 269, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-02-12", "num": "269", "veh": "TOYOTA PRADO", "immat": "4961KC01", "ttc": 418288, "regle": 0}, {"id": 270, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-05-29", "num": "1335", "veh": "PEUGEOT 5008", "immat": "1955LT01", "ttc": 416788, "regle": 0}, {"id": 271, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-05-29", "num": "1335", "veh": "PEUGEOT 5008", "immat": "1955LT01", "ttc": 416788, "regle": 0}, {"id": 272, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": null, "num": "1759", "veh": "SUZUKI FRONX", "immat": "AA812LN01", "ttc": 415908, "regle": 0}, {"id": 273, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2026-07-03", "num": "1667", "veh": "SUZUKI GRAND VITARA", "immat": "AA689VN01", "ttc": 415132, "regle": 0}, {"id": 274, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-21", "num": "1779", "veh": "MITSUBISHI L200", "immat": "AA014NK01", "ttc": 413476, "regle": 0}, {"id": 275, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-06-23", "num": "1398", "veh": "HAVAL JOLION 2021", "immat": "660KZ09", "ttc": 405330, "regle": 0}, {"id": 276, "tiers": "AXA ASSURANCES", "site": "ABIDJAN", "date": "2025-09-08", "num": "1862", "veh": "SUZUKI DZIRE", "immat": "AA233AS", "ttc": 404754, "regle": 0}, {"id": 277, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-06-30", "num": "1634", "veh": "RENAULT DUSTER", "immat": "3151KS01", "ttc": 403758, "regle": 0}, {"id": 278, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2024-05-21", "num": "1545", "veh": "HAVAL JOLION", "immat": "681KZ01", "ttc": 402500, "regle": 0}, {"id": 279, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-08-05", "num": "2119", "veh": "MITSUBISHI L200", "immat": "AA795BC", "ttc": 399698, "regle": 0}, {"id": 280, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-04-07", "num": "891", "veh": "SUZUKI DZIRE", "immat": "AA824AM", "ttc": 396060, "regle": 0}, {"id": 281, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2024-03-13", "num": "1131", "veh": "GREATWALL", "immat": "3694LR01", "ttc": 389341, "regle": 0}, {"id": 282, "tiers": "ACTIVA", "site": "ABIDJAN", "date": null, "num": "1961", "veh": "SUZIKI SWIFT", "immat": "AA955VP01", "ttc": 388182, "regle": 0}, {"id": 283, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2025-10-30", "num": "1801", "veh": "NISSAN NAVARA DC 4X4", "immat": "AA031HY01", "ttc": 515901, "regle": 128727}, {"id": 284, "tiers": "AMSA", "site": "ABIDJAN", "date": "2025-12-24", "num": "347", "veh": "CHANGAN HUNTER", "immat": "AA875SY01", "ttc": 386452, "regle": 0}, {"id": 285, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2023-02-20", "num": "1009", "veh": "", "immat": "3665KF01", "ttc": 380473, "regle": 0}, {"id": 286, "tiers": "ACTIVA", "site": "ABIDJAN", "date": null, "num": "1853", "veh": "NISSAN NAVARA DC 4X4", "immat": "AA677JS01", "ttc": 380430, "regle": 0}, {"id": 287, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-28", "num": "1844", "veh": "PEUGEOT 301", "immat": "3398 LY 01", "ttc": 379310, "regle": 0}, {"id": 288, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2024-05-15", "num": "1527", "veh": "SUZUKI", "immat": "AA185BN", "ttc": 377618, "regle": 0}, {"id": 289, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-03-04", "num": "551", "veh": "RENAULT DUSTER", "immat": "AA675VT01", "ttc": 377272, "regle": 0}, {"id": 290, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2024-02-22", "num": "754", "veh": "SUZUKI DZIRE", "immat": "3009KV01", "ttc": 368533, "regle": 0}, {"id": 291, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2026-05-28", "num": "1296", "veh": "VOLKSWAGEN T-CROSS", "immat": "2212WWCI01", "ttc": 352570, "regle": 0}, {"id": 292, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2024-09-25", "num": "454", "veh": "TOYOTA HILUX", "immat": "81185WWCI01", "ttc": 349818, "regle": 0}, {"id": 293, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-07-28", "num": "1988", "veh": "HAVAL JOLION", "immat": "13551WWCI01", "ttc": 329058, "regle": 0}, {"id": 294, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2026-02-17", "num": "312", "veh": "SUZUKI GRAND VITARA", "immat": "AA687EC", "ttc": 325410, "regle": 0}, {"id": 295, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": null, "num": "1876", "veh": "TOYOTA FORTUNER", "immat": "1385LR01", "ttc": 325036, "regle": 0}, {"id": 296, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-05-11", "num": "1165", "veh": "SUZUKI GRAND VITARA", "immat": "17247WWCI01", "ttc": 315963, "regle": 0}, {"id": 297, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-28", "num": "1649", "veh": "TOYOTA HIACE VAN", "immat": "1699LF01", "ttc": 313758, "regle": 0}, {"id": 298, "tiers": "SANLAM", "site": "ABIDJAN", "date": "2024-04-12", "num": "1253", "veh": "FIAT FULLBACK DC 4X4", "immat": "2887LC01", "ttc": 310198, "regle": 0}, {"id": 299, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-05-29", "num": "1321", "veh": "MITSUBISHI PAJERO SPORT", "immat": "AA086XJ01", "ttc": 306886, "regle": 0}, {"id": 300, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-01-12", "num": "58", "veh": "TOYOTA FORTUNER", "immat": "2391LC01", "ttc": 300542, "regle": 0}, {"id": 301, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-28", "num": "1626", "veh": "MITSUBISHI L200", "immat": "1119LE01", "ttc": 292498, "regle": 0}, {"id": 302, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-06-19", "num": "1528", "veh": "KIA SPORTAGE", "immat": "5651KS01", "ttc": 291431, "regle": 0}, {"id": 303, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-05-29", "num": "1279", "veh": "TOYOTA FORTUNER", "immat": "AA506AQ", "ttc": 273811, "regle": 0}, {"id": 304, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-05-11", "num": "1177", "veh": "SUZUKI FRONX 1,5L4X2", "immat": "AA449SY01", "ttc": 269402, "regle": 0}, {"id": 305, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-21", "num": "1786", "veh": "MITSUBISHI L200", "immat": "2171LY01", "ttc": 262716, "regle": 0}, {"id": 306, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-08-03", "num": "2075", "veh": "TOYOTA VITZ", "immat": "AA364NT01", "ttc": 254196, "regle": 0}, {"id": 307, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2026-02-17", "num": "313", "veh": "SUZUKI GRAND VITARA", "immat": "AA687EC", "ttc": 248535, "regle": 0}, {"id": 308, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-05-29", "num": "1281", "veh": "MITSUBISHI L200", "immat": "2160LH01", "ttc": 240453, "regle": 0}, {"id": 309, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2024-10-14", "num": "377", "veh": "", "immat": "3977LU09", "ttc": 234437, "regle": 0}, {"id": 310, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-05-29", "num": "1318", "veh": "TOYOTA HILUX", "immat": "3370LE01", "ttc": 231738, "regle": 0}, {"id": 311, "tiers": "AMSA", "site": "ABIDJAN", "date": null, "num": "1955", "veh": "KIA MOTORS", "immat": "52451WWCI01", "ttc": 223433, "regle": 0}, {"id": 312, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-28", "num": "1778", "veh": "MITSUBISHI L200", "immat": "2160LH01", "ttc": 222784, "regle": 0}, {"id": 313, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-07-07", "num": "1683", "veh": "ISUZU DMAX", "immat": "AA093SQ", "ttc": 221373, "regle": 0}, {"id": 314, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-24", "num": "1969", "veh": "TOYOTA HILUX", "immat": "AA267LK01", "ttc": 220979, "regle": 0}, {"id": 315, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-24", "num": "1974", "veh": "TOYOTA HILUX", "immat": "AA166SV01", "ttc": 220038, "regle": 0}, {"id": 316, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-24", "num": "1970", "veh": "MITSUBISHI L200", "immat": "AA581KN01", "ttc": 219244, "regle": 0}, {"id": 317, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2024-10-10", "num": "375", "veh": "", "immat": "AA894CB", "ttc": 218928, "regle": 0}, {"id": 318, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2024-07-16", "num": "1860", "veh": "", "immat": "955LE09", "ttc": 215912, "regle": 0}, {"id": 319, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2024-09-19", "num": "422", "veh": "SUZUKI", "immat": "AA781CY09", "ttc": 213556, "regle": 0}, {"id": 320, "tiers": "LOXEA", "site": "ABIDJAN", "date": "2026-07-23", "num": "1868", "veh": "MITSUBISHI PAJERO SPORT", "immat": "AA086XJ01", "ttc": 213195, "regle": 0}, {"id": 321, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2024-07-01", "num": "1786", "veh": "HAVAL JOLION", "immat": "2199LX01", "ttc": 211549, "regle": 0}, {"id": 322, "tiers": "AMSA", "site": "ABIDJAN", "date": "2026-02-09", "num": "241", "veh": "SUZUKI FRONX", "immat": "AA411TK01", "ttc": 207899, "regle": 0}, {"id": 323, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": null, "num": "250", "veh": "SUZUKI SPRESSO", "immat": "23614WWCI01", "ttc": 198108, "regle": 0}, {"id": 324, "tiers": "COMAR ASSURANCES CI", "site": "ABIDJAN", "date": "2026-04-07", "num": "890", "veh": "SUZUKI DZIRE", "immat": "AA824AM", "ttc": 191298, "regle": 0}, {"id": 325, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2024-09-19", "num": "405", "veh": "", "immat": "AA781CY09", "ttc": 177000, "regle": 0}, {"id": 326, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": null, "num": "484", "veh": "TOYOTA HILUX", "immat": "5547HZ01", "ttc": 127518, "regle": 0}, {"id": 327, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2026-03-02", "num": "484", "veh": "TOYOTA HILUX", "immat": "5547HZ01", "ttc": 127518, "regle": 0}, {"id": 328, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": null, "num": "189", "veh": "SUZUKI ALTO", "immat": "AA180CF", "ttc": 117570, "regle": 0}, {"id": 329, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": null, "num": "190", "veh": "SUZUKI ALTO", "immat": "AA180CF", "ttc": 114915, "regle": 0}, {"id": 330, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": "2026-03-17", "num": "703", "veh": "MAZDA CX30 4X4 BVA", "immat": "AA350BQ", "ttc": 111700, "regle": 0}, {"id": 331, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2023-09-18", "num": "402", "veh": "SUZUKI BALENO", "immat": "23700WWCI01", "ttc": 82418, "regle": 0}, {"id": 332, "tiers": "ATLANTIQUE", "site": "ABIDJAN", "date": null, "num": "1741", "veh": "SUZUKI CELERIO", "immat": "AA614CK01", "ttc": 77563, "regle": 0}, {"id": 333, "tiers": "SUNU ASSURANCES", "site": "ABIDJAN", "date": "2024-07-25", "num": "1696", "veh": "RENAULT DUSTER", "immat": "3341LP01", "ttc": 35400, "regle": 0}]};
+
+/* ================= État ================= */
+const fmt = n => new Intl.NumberFormat('fr-FR').format(Math.round(n));
+const F = n => fmt(n) + ' F';
+let factures = DATA.factures.map(f => ({...f, encPost: 0}));
+let nextId = factures.length + 1;
+let encaissements = [];   // {date,tiers,factId,mode,montant,ref,par,role}
+let relances = [];        // {date,tiers,factures,niveau,canal,interloc,resultat,engagement,promis,resp,statut}
+let clients = [...DATA.assureurs];
+let audit = [];
+let commentaires = {jour:'', semaine:'', mois:''};
+const OBJ_HEBDO = 15000000, JOURS_OUVRES = 6;
+const MODES = ["VIREMENT — BGFI","VIREMENT — BDA","CHÈQUE","ESPÈCE","MOBILE MONEY — ORANGE MONEY","MOBILE MONEY — WAVE"];
+const CANAUX = ["E-mail","Téléphone","WhatsApp","Visite physique","Courrier","LRAR","Huissier"];
+const STATUTS = ["En cours","Promesse de règlement","Règlement partiel","Soldé","Litige / contestation","Transmis au contentieux"];
+const SITES = ["ABIDJAN","SAN PEDRO","BOUAKE"];
+
+/* ================= Rôles & habilitations ================= */
+const ROLES = {
+  agent: {label:"Agent de recouvrement", tag:"Habilitation N1–N3", nom:"Session : A. KOUADIO",
+    perms:{encaisser:true, relancer:true, nivMax:3, facture:false, client:false, synthese:false, commenter:false, audit:false, params:false},
+    views:["saisie","balance","extrait","relances","encaissements"]},
+  superviseur: {label:"Superviseur recouvrement", tag:"Habilitation N1–N4 · Validation", nom:"Session : M. AVOAKA",
+    perms:{encaisser:true, relancer:true, nivMax:4, facture:true, client:true, synthese:true, commenter:true, audit:false, params:false},
+    views:["saisie","synthese","balance","extrait","relances","encaissements"]},
+  gerant: {label:"Gérant", tag:"Habilitation complète · N5 Contentieux", nom:"Session : Y. MINLIN",
+    perms:{encaisser:true, relancer:true, nivMax:5, facture:true, client:true, synthese:true, commenter:true, audit:true, params:true},
+    views:["saisie","synthese","balance","extrait","relances","encaissements","audit"]},
+};
+let role = 'agent';
+const VIEWS = [
+  {id:'saisie', ic:'✎', lbl:'Saisie'},
+  {id:'synthese', ic:'▦', lbl:'Synthèse & pilotage'},
+  {id:'balance', ic:'≣', lbl:'Balance âgée'},
+  {id:'extrait', ic:'⎙', lbl:'Extrait de compte'},
+  {id:'relances', ic:'⚑', lbl:'Journal des relances'},
+  {id:'encaissements', ic:'₣', lbl:'Journal des encaissements'},
+  {id:'audit', ic:'◉', lbl:"Piste d'audit"},
+];
+let curView = 'saisie';
+
+function setRole(r){
+  role = r; const R = ROLES[r];
+  document.getElementById('bRole').textContent = R.label;
+  document.getElementById('bTag').textContent = R.tag;
+  document.getElementById('bName').textContent = R.nom;
+  if(!R.views.includes(curView)) curView = 'saisie';
+  log('Changement de session', R.label);
+  renderAll();
+}
+function can(p){ return ROLES[role].perms[p]; }
+function log(action, detail){ audit.unshift({ts:new Date().toLocaleString('fr-FR'), role:ROLES[role].label, action, detail}); }
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),3400); }
+
+/* ================= Calculs métier ================= */
+function workDate(){ return new Date(document.getElementById('workDate').value + 'T00:00:00'); }
+function rap(f){ return f.ttc - f.regle - f.encPost; }
+function anc(f){ if(!f.date) return null; return Math.max(0, Math.round((workDate() - new Date(f.date+'T00:00:00'))/86400000)); }
+function niveau(f){
+  if(rap(f) <= 0.5) return {n:0, lbl:'Soldée', cls:'pOK'};
+  const a = anc(f);
+  if(a === null) return {n:0, lbl:'À dater', cls:'pN0'};
+  if(a >= 90) return {n:5, lbl:'N5 · Contentieux', cls:'pN5'};
+  if(a >= 60) return {n:4, lbl:'N4 · Mise en demeure', cls:'pN4'};
+  if(a >= 30) return {n:3, lbl:'N3 · Lettre de relance', cls:'pN3'};
+  if(a >= 15) return {n:2, lbl:'N2 · Téléphone', cls:'pN2'};
+  if(a >= 7)  return {n:1, lbl:'N1 · E-mail', cls:'pN1'};
+  return {n:0, lbl:'Courante', cls:'pN0'};
+}
+const TRANCHES = [
+  {lbl:'0-30 j', c:'var(--t1)', test:a=>a<=30},{lbl:'31-60 j', c:'var(--t2)', test:a=>a<=60},
+  {lbl:'61-90 j', c:'var(--t3)', test:a=>a<=90},{lbl:'91-180 j', c:'var(--t4)', test:a=>a<=180},
+  {lbl:'+180 j', c:'var(--t5)', test:a=>true}];
+function tranche(f){ const a=anc(f); if(a===null) return -1; for(let i=0;i<TRANCHES.length;i++) if(TRANCHES[i].test(a)) return i; }
+function ouvertes(){ return factures.filter(f=>rap(f)>0.5); }
+function sumEnc(from,to){ return encaissements.filter(e=>{const d=new Date(e.date+'T00:00:00');return d>=from&&d<=to;}).reduce((s,e)=>s+e.montant,0); }
+function periodes(){
+  const d = workDate();
+  const lundi = new Date(d); lundi.setDate(d.getDate()-((d.getDay()+6)%7));
+  const m1 = new Date(d.getFullYear(), d.getMonth(), 1);
+  const dm = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  return [
+    {k:'jour', lbl:'Jour — '+d.toLocaleDateString('fr-FR'), real:sumEnc(d,d), obj:OBJ_HEBDO/JOURS_OUVRES},
+    {k:'semaine', lbl:'Semaine en cours (du '+lundi.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+')', real:sumEnc(lundi,d), obj:OBJ_HEBDO},
+    {k:'mois', lbl:'Mois en cours ('+d.toLocaleDateString('fr-FR',{month:'2-digit',year:'numeric'})+')', real:sumEnc(m1,d), obj:Math.round(OBJ_HEBDO*52/12)},
+  ];
+}
+
+/* ================= Actions (boutons) ================= */
+function selFactOptions(tiers, selId){
+  const list = factures.filter(f=>f.tiers===tiers && rap(f)>0.5).sort((a,b)=>rap(b)-rap(a));
+  const sel = document.getElementById(selId);
+  sel.innerHTML = '<option value="">— Sélectionner la facture —</option>' + list.map(f=>
+    `<option value="${f.id}">N° ${f.num} · ${f.immat||f.veh||'—'} · reste ${F(rap(f))}</option>`).join('');
+}
+function onEncTiers(){ selFactOptions(document.getElementById('encTiers').value,'encFact'); onEncCheck(); }
+function onEncCheck(){
+  const h = document.getElementById('encHint');
+  const fid = +document.getElementById('encFact').value, m = +document.getElementById('encMont').value;
+  if(!fid){ h.className='hint'; h.textContent='Choisir un tiers puis la facture : la liste affiche le reste à payer de chacune.'; return; }
+  const f = factures.find(x=>x.id===fid), r = rap(f);
+  if(m > r + 0.5){ h.className='hint warn'; h.textContent='⚠ Montant supérieur au reste à payer de la facture ('+F(r)+'). Corriger avant enregistrement.'; }
+  else { h.className='hint ok'; h.textContent='✓ Facture N° '+f.num+' — reste à payer : '+F(r)+(m?(' · après encaissement : '+F(r-(m||0))):''); }
+}
+function saveEnc(){
+  const tiers=document.getElementById('encTiers').value, fid=+document.getElementById('encFact').value;
+  const mode=document.getElementById('encMode').value, m=+document.getElementById('encMont').value;
+  const date=document.getElementById('encDate').value, ref=document.getElementById('encRef').value.trim();
+  if(!tiers||!fid||!mode||!m||!date){ toast('Encaissement : renseigner date, tiers, facture, mode et montant.'); return; }
+  const f=factures.find(x=>x.id===fid);
+  if(m > rap(f)+0.5){ toast('Refusé : montant supérieur au reste à payer ('+F(rap(f))+').'); return; }
+  f.encPost += m;
+  encaissements.unshift({date, tiers, factId:fid, num:f.num, mode, montant:m, ref, par:ROLES[role].nom.replace('Session : ','')});
+  log('Encaissement enregistré', tiers+' · fact. '+f.num+' · '+F(m)+' · '+mode);
+  toast('Encaissement de '+F(m)+' affecté à la facture N° '+f.num+' — toutes les vues sont à jour.');
+  renderAll();
+}
+function onRelTiers(){
+  const t=document.getElementById('relTiers').value;
+  const list = factures.filter(f=>f.tiers===t && rap(f)>0.5);
+  const maxN = list.length? Math.max(...list.map(f=>niveau(f).n)) : 0;
+  const solde = list.reduce((s,f)=>s+rap(f),0);
+  const h=document.getElementById('relHint');
+  if(!t){h.className='hint';h.textContent='Le niveau proposé découle de l’ancienneté la plus élevée des factures ouvertes du tiers.';return;}
+  const sug = Math.min(maxN||1, can('nivMax'));
+  document.getElementById('relNiv').value = 'N'+Math.max(1,sug);
+  h.className = maxN>can('nivMax') ? 'hint warn' : 'hint ok';
+  h.textContent = (maxN>can('nivMax')
+    ? '⚠ Ce dossier appelle un niveau N'+maxN+' — au-delà de votre habilitation (N'+can('nivMax')+' max). Escalader au '+(maxN>=5?'Gérant':'Superviseur')+'.'
+    : '✓ Solde du tiers : '+F(solde)+' · niveau suggéré : N'+Math.max(1,sug)+'.');
+  selRelFacts(t);
+}
+function selRelFacts(t){
+  const list = factures.filter(f=>f.tiers===t && rap(f)>0.5).sort((a,b)=>rap(b)-rap(a));
+  document.getElementById('relFact').innerHTML = '<option value="">Situation globale</option>'+
+    list.map(f=>`<option>N° ${f.num} · reste ${F(rap(f))}</option>`).join('');
+}
+function saveRel(){
+  const t=document.getElementById('relTiers').value, niv=document.getElementById('relNiv').value;
+  const canal=document.getElementById('relCanal').value, res=document.getElementById('relRes').value.trim();
+  const date=document.getElementById('relDate').value, statut=document.getElementById('relStatut').value;
+  if(!t||!niv||!canal||!date){ toast('Relance : renseigner date, tiers, niveau et canal.'); return; }
+  const nN = +niv.replace('N','');
+  if(nN > can('nivMax')){ toast('Refusé : le niveau '+niv+' dépasse votre habilitation (N'+can('nivMax')+' max).'); return; }
+  relances.unshift({date, tiers:t, factures:document.getElementById('relFact').value||'Situation globale',
+    niveau:niv, canal, interloc:document.getElementById('relInter').value.trim(), resultat:res,
+    promis:+document.getElementById('relPromis').value||0, resp:ROLES[role].nom.replace('Session : ',''), statut});
+  log('Relance '+niv+' tracée', t+' · '+canal);
+  toast('Relance '+niv+' enregistrée pour '+t+'.');
+  renderAll();
+}
+function saveFact(){
+  if(!can('facture')){ toast('Habilitation insuffisante : la création de facture relève du Superviseur ou du Gérant.'); return; }
+  const t=document.getElementById('fTiers').value, num=document.getElementById('fNum').value.trim();
+  const ttc=+document.getElementById('fTTC').value, date=document.getElementById('fDate').value;
+  if(!t||!num||!ttc||!date){ toast('Facture : renseigner tiers, date, n° et montant TTC.'); return; }
+  if(factures.some(f=>f.tiers===t && f.num===num)){ toast('Refusé : le n° '+num+' existe déjà pour '+t+' (doublon).'); return; }
+  factures.push({id:nextId++, tiers:t, site:document.getElementById('fSite').value, date, num,
+    veh:document.getElementById('fVeh').value.trim(), immat:document.getElementById('fImmat').value.trim(),
+    ttc, regle:0, encPost:0});
+  log('Facture créée', t+' · N° '+num+' · '+F(ttc));
+  toast('Facture N° '+num+' créée pour '+t+' — intégrée à la balance âgée et à l’extrait.');
+  renderAll();
+}
+function saveClient(){
+  if(!can('client')){ toast('Habilitation insuffisante.'); return; }
+  const n=document.getElementById('cNom').value.trim().toUpperCase();
+  if(!n){ toast('Saisir le nom du tiers.'); return; }
+  if(clients.includes(n)){ toast('Refusé : « '+n+' » existe déjà — ne pas créer de doublon.'); return; }
+  clients.push(n); clients.sort();
+  log('Tiers créé', n);
+  toast('Tiers « '+n+' » créé : disponible dans toutes les listes déroulantes.');
+  renderAll();
+}
+function saveCmt(k, v){ commentaires[k]=v; log('Commentaire d’écart ('+k+')', v.slice(0,60)); }
+
+/* ================= Rendu ================= */
+function nav(){
+  const R=ROLES[role];
+  document.getElementById('nav').innerHTML = VIEWS.map(v=>{
+    const allowed = R.views.includes(v.id);
+    return `<button class="${curView===v.id?'on':''} ${allowed?'':'lock'}" onclick="${allowed?`go('${v.id}')`:`toast('Vue réservée : habilitation ${v.id==='audit'?'Gérant':'Superviseur / Gérant'}.')`}">
+      <span class="ic">${allowed?v.ic:'🔒'}</span>${v.lbl}</button>`;
+  }).join('');
+}
+function go(v){ curView=v; renderAll(); }
+function opts(arr, ph){ return '<option value="">'+ph+'</option>'+arr.map(a=>'<option>'+a+'</option>').join(''); }
+
+function vSaisie(){
+  const R=ROLES[role];
+  return `
+  ${kpiRow()}
+  <div class="grid g2">
+    <div class="card"><h2>Enregistrer un encaissement <span class="chip">Tous rôles</span></h2>
+      <div class="frm">
+        <div class="fld"><label>Date</label><input type="date" id="encDate" value="${document.getElementById('workDate')?.value||'2026-08-13'}"></div>
+        <div class="fld"><label>Tiers / Assurance</label><select id="encTiers" onchange="onEncTiers()">${opts(clients,'— Assurances & tiers —')}</select></div>
+        <div class="fld"><label>Facture du tiers</label><select id="encFact" onchange="onEncCheck()"><option value="">— Sélectionner le tiers d'abord —</option></select></div>
+        <div class="fld"><label>Mode d'encaissement</label><select id="encMode">${opts(MODES,'— Banque / Espèce / Mobile money —')}</select></div>
+        <div class="fld"><label>Montant (F CFA)</label><input type="number" id="encMont" class="mono" min="0" oninput="onEncCheck()"></div>
+        <div class="fld"><label>Référence (chèque, transaction…)</label><input id="encRef" class="mono"></div>
+      </div>
+      <div class="hint" id="encHint">Choisir un tiers puis la facture : la liste affiche le reste à payer de chacune.</div>
+      <div class="actions"><button class="btn btn-r" onclick="saveEnc()">Enregistrer l'encaissement</button></div>
+    </div>
+    <div class="card"><h2>Tracer une relance <span class="chip">N1–N${R.perms.nivMax}</span></h2>
+      <div class="frm">
+        <div class="fld"><label>Date</label><input type="date" id="relDate" value="${document.getElementById('workDate')?.value||'2026-08-13'}"></div>
+        <div class="fld"><label>Tiers / Assurance</label><select id="relTiers" onchange="onRelTiers()">${opts(clients,'— Assurances & tiers —')}</select></div>
+        <div class="fld"><label>Facture(s) visée(s)</label><select id="relFact"><option>Situation globale</option></select></div>
+        <div class="fld"><label>Niveau</label><select id="relNiv">${[1,2,3,4,5].map(n=>`<option ${n>R.perms.nivMax?'disabled':''}>N${n}</option>`).join('')}</select></div>
+        <div class="fld"><label>Canal</label><select id="relCanal">${opts(CANAUX,'— Canal —')}</select></div>
+        <div class="fld"><label>Interlocuteur</label><input id="relInter"></div>
+        <div class="fld"><label>Résultat / engagement</label><input id="relRes"></div>
+        <div class="fld"><label>Montant promis (F)</label><input type="number" id="relPromis" class="mono" min="0"></div>
+        <div class="fld"><label>Statut du dossier</label><select id="relStatut">${STATUTS.map(s=>'<option>'+s+'</option>').join('')}</select></div>
+      </div>
+      <div class="hint" id="relHint">Le niveau proposé découle de l'ancienneté la plus élevée des factures ouvertes du tiers.</div>
+      <div class="actions"><button class="btn btn-r" onclick="saveRel()">Enregistrer la relance</button></div>
+    </div>
+    <div class="card"><h2>Créer une facture <span class="chip">Superviseur · Gérant</span></h2>
+      ${can('facture')?`<div class="frm">
+        <div class="fld"><label>Tiers / Assurance</label><select id="fTiers">${opts(clients,'— Assurances & tiers —')}</select></div>
+        <div class="fld"><label>Site</label><select id="fSite">${SITES.map(s=>'<option>'+s+'</option>').join('')}</select></div>
+        <div class="fld"><label>Date facture</label><input type="date" id="fDate"></div>
+        <div class="fld"><label>N° facture</label><input id="fNum" class="mono"></div>
+        <div class="fld"><label>Véhicule</label><input id="fVeh"></div>
+        <div class="fld"><label>Immatriculation</label><input id="fImmat" class="mono"></div>
+        <div class="fld"><label>Montant TTC (F)</label><input type="number" id="fTTC" class="mono" min="0"></div>
+      </div>
+      <div class="actions"><button class="btn btn-n" onclick="saveFact()">Créer la facture</button></div>`
+      :`<div class="locknote">🔒 La création de facture est réservée au Superviseur et au Gérant — séparation des fonctions : l'agent qui relance et encaisse ne crée pas la créance.</div>`}
+    </div>
+    <div class="card"><h2>Créer un client / tiers <span class="chip">Superviseur · Gérant</span></h2>
+      ${can('client')?`<div class="frm">
+        <div class="fld" style="grid-column:span 2"><label>Nom du tiers (majuscules)</label><input id="cNom" style="text-transform:uppercase"></div>
+      </div>
+      <div class="actions"><button class="btn btn-n" onclick="saveClient()">Créer le tiers</button></div>
+      <div class="hint">Contrôle anti-doublon automatique. Le tiers créé est immédiatement proposé dans toutes les listes déroulantes.</div>`
+      :`<div class="locknote">🔒 La création d'un tiers est réservée au Superviseur et au Gérant, pour garder un référentiel client unique (pas de doublons d'orthographe).</div>`}
+    </div>
+  </div>`;
+}
+function kpiRow(){
+  const o = ouvertes(); const totR = o.reduce((s,f)=>s+rap(f),0);
+  const encTot = encaissements.reduce((s,e)=>s+e.montant,0);
+  const n5 = o.filter(f=>niveau(f).n===5).reduce((s,f)=>s+rap(f),0);
+  return `<div class="kpis">
+    <div class="kpi red"><div class="k-lab">Reste à payer (périmètre maquette)</div><div class="kpi-val mono">${fmt(totR)}</div><div class="k-sub">F CFA · ${o.length} factures ouvertes</div></div>
+    <div class="kpi"><div class="k-lab">Encaissé (session)</div><div class="kpi-val mono">${fmt(encTot)}</div><div class="k-sub">${encaissements.length} opération(s)</div></div>
+    <div class="kpi"><div class="k-lab">Zone contentieuse N5</div><div class="kpi-val mono">${fmt(n5)}</div><div class="k-sub">+90 jours · AUPSRVE</div></div>
+    <div class="kpi"><div class="k-lab">Relances tracées</div><div class="kpi-val mono">${relances.length}</div><div class="k-sub">journal de session</div></div>
+  </div>`;
+}
+function vSynthese(){
+  const o=ouvertes(); const tot=o.reduce((s,f)=>s+rap(f),0);
+  const tr=[0,0,0,0,0]; o.forEach(f=>{const t=tranche(f); if(t>=0) tr[t]+=rap(f);});
+  const per=periodes();
+  return `${kpiRow()}
+  <div class="grid g2">
+  <div class="card"><h2>Balance âgée globale</h2>
+    <div class="bar">${tr.map((v,i)=>`<div style="width:${tot?Math.max(1,v/tot*100):0}%;background:${TRANCHES[i].c}" title="${TRANCHES[i].lbl} : ${F(v)}"></div>`).join('')}</div>
+    <div class="leg">${tr.map((v,i)=>`<span><span class="sw" style="background:${TRANCHES[i].c}"></span>${TRANCHES[i].lbl} · <b class="mono">${fmt(v)}</b></span>`).join('')}</div>
+    <div class="hint" style="margin-top:12px">${Math.round((tr[3]+tr[4])/Math.max(1,tot)*100)} % de l'encours a plus de 90 jours : la stratégie de la période doit privilégier mises en demeure (N4) et préparation contentieuse (N5).</div>
+  </div>
+  <div class="card"><h2>Objectif vs réalisé — écarts à commenter <span class="chip">${can('commenter')?'Commentaires : Superviseur · Gérant':'Lecture'}</span></h2>
+    <table><thead><tr><th>Période</th><th class="num">Réalisé</th><th class="num">Objectif</th><th class="num">Écart</th><th class="num">%</th></tr></thead><tbody>
+    ${per.map(p=>{const e=p.real-p.obj;return `<tr><td>${p.lbl}</td><td class="num mono">${fmt(p.real)}</td><td class="num mono">${fmt(p.obj)}</td><td class="num mono ${e<0?'neg':'pos'}">${e<0?'−':'+'}${fmt(Math.abs(e))}</td><td class="num mono">${Math.round(p.real/p.obj*100)} %</td></tr>
+    <tr><td colspan="5">${can('commenter')?`<textarea class="cmt" placeholder="Commentaire de l'écart (${p.k}) — revue hebdomadaire…" onchange="saveCmt('${p.k}',this.value)">${commentaires[p.k]||''}</textarea>`:`<div class="hint">${commentaires[p.k]||'Commentaire réservé au Superviseur / Gérant.'}</div>`}</td></tr>`;}).join('')}
+    </tbody></table>
+    <div class="hint">Objectifs : ${F(OBJ_HEBDO)}/semaine (Direction) · jour = hebdo ÷ ${JOURS_OUVRES} j ouvrés · mois = hebdo × 52/12. En cours de période, l'écart se lit comme un reste à réaliser.</div>
+  </div>
+  <div class="card" style="grid-column:1/-1"><h2>Top débiteurs (reste à payer)</h2>
+    <div class="tbl-wrap"><table><thead><tr><th>Tiers</th><th class="num">Reste à payer</th><th class="num">Factures</th><th>Niveau max requis</th><th class="no-print"></th></tr></thead><tbody>
+    ${topTiers().slice(0,12).map(t=>`<tr><td><b>${t.tiers}</b></td><td class="num mono">${fmt(t.rap)}</td><td class="num">${t.nb}</td><td><span class="pill ${t.niv.cls}">${t.niv.lbl}</span></td><td class="no-print"><button class="btn btn-o" style="padding:4px 10px;font-size:11px" onclick="openExtrait('${t.tiers}')">Extrait</button></td></tr>`).join('')}
+    </tbody></table></div>
+  </div></div>`;
+}
+function topTiers(){
+  const m={}; ouvertes().forEach(f=>{ (m[f.tiers]=m[f.tiers]||{tiers:f.tiers,rap:0,nb:0,maxN:{n:-1}}); m[f.tiers].rap+=rap(f); m[f.tiers].nb++; const nv=niveau(f); if(nv.n>m[f.tiers].maxN.n)m[f.tiers].maxN=nv; });
+  return Object.values(m).map(t=>({...t,niv:t.maxN})).sort((a,b)=>b.rap-a.rap);
+}
+function vBalance(){
+  return `<div class="card"><h2>Balance âgée par tiers <span class="chip">Actualisée en temps réel</span></h2>
+  <div class="tbl-wrap"><table><thead><tr><th>Tiers</th>${TRANCHES.map(t=>'<th class="num">'+t.lbl+'</th>').join('')}<th class="num">Total</th><th>Niveau max</th><th class="no-print"></th></tr></thead><tbody>
+  ${topTiers().map(t=>{
+    const cols=[0,0,0,0,0]; ouvertes().filter(f=>f.tiers===t.tiers).forEach(f=>{const i=tranche(f); if(i>=0)cols[i]+=rap(f);});
+    return `<tr><td><b>${t.tiers}</b></td>${cols.map(v=>'<td class="num mono">'+(v?fmt(v):'·')+'</td>').join('')}<td class="num mono"><b>${fmt(t.rap)}</b></td><td><span class="pill ${t.niv.cls}">${t.niv.lbl}</span></td><td class="no-print"><button class="btn btn-o" style="padding:4px 10px;font-size:11px" onclick="openExtrait('${t.tiers}')">Extrait</button></td></tr>`;
+  }).join('')}
+  <tr class="tot"><td>TOTAL</td>${[0,1,2,3,4].map(i=>'<td class="num mono">'+fmt(ouvertes().filter(f=>tranche(f)===i).reduce((s,f)=>s+rap(f),0))+'</td>').join('')}<td class="num mono">${fmt(ouvertes().reduce((s,f)=>s+rap(f),0))}</td><td></td><td class="no-print"></td></tr>
+  </tbody></table></div></div>`;
+}
+let extraitTiers = null;
+function openExtrait(t){ extraitTiers=t; go('extrait'); }
+function vExtrait(){
+  const t = extraitTiers || '';
+  const list = factures.filter(f=>f.tiers===t).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const open = list.filter(f=>rap(f)>0.5);
+  const sTTC=list.reduce((s,f)=>s+f.ttc,0), sReg=list.reduce((s,f)=>s+f.regle+f.encPost,0), sRap=list.reduce((s,f)=>s+rap(f),0);
+  return `<div class="card">
+  <h2>Extrait de compte client <span class="chip no-print">Impression = document client</span></h2>
+  <div class="frm no-print" style="grid-template-columns:2fr 1fr 1fr;margin-bottom:14px">
+    <div class="fld"><label>Tiers / Assurance</label><select onchange="extraitTiers=this.value;renderAll()">${'<option value="">— Sélectionner —</option>'+clients.map(c=>`<option ${c===t?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="fld"><label>&nbsp;</label><button class="btn btn-n" style="width:100%" onclick="window.print()" ${t?'':'disabled'}>Imprimer l'extrait</button></div>
+    <div class="fld"><label>&nbsp;</label><div class="hint" style="margin:0">${t?open.length+' facture(s) ouverte(s)':'—'}</div></div>
+  </div>
+  ${t?`
+  <div style="display:flex;justify-content:space-between;border-bottom:3px solid var(--noir);padding-bottom:10px;margin-bottom:12px">
+    <div><div style="font-family:Archivo;font-weight:800;font-size:18px">L'ARTISAN AUTOMOBILE</div>
+    <div class="mono" style="font-size:12px">NCC : 2197588 Q · 10 BP 259 ABIDJAN 10</div></div>
+    <div style="text-align:right"><div style="font-family:Archivo;font-weight:800;color:var(--rouge)">EXTRAIT DE COMPTE</div>
+    <div style="font-size:12px"><b>${t}</b> · arrêté au ${workDate().toLocaleDateString('fr-FR')}</div></div>
+  </div>
+  <div class="tbl-wrap" style="max-height:520px"><table><thead><tr><th>Date</th><th>N° facture</th><th>Véhicule</th><th>Immat.</th><th class="num">Montant TTC</th><th class="num">Réglé</th><th class="num">Reste à payer</th><th>Ancienneté</th></tr></thead><tbody>
+  ${list.map(f=>{const nv=niveau(f);return `<tr><td class="mono">${f.date?new Date(f.date).toLocaleDateString('fr-FR'):'—'}</td><td class="mono">${f.num}</td><td>${f.veh||''}</td><td class="mono">${f.immat||''}</td><td class="num mono">${fmt(f.ttc)}</td><td class="num mono">${fmt(f.regle+f.encPost)}</td><td class="num mono"><b>${fmt(rap(f))}</b></td><td><span class="pill ${nv.cls}">${nv.n?nv.lbl:(rap(f)<=0.5?'Soldée':nv.lbl)}</span></td></tr>`;}).join('')}
+  <tr class="tot"><td colspan="4">TOTAUX</td><td class="num mono">${fmt(sTTC)}</td><td class="num mono">${fmt(sReg)}</td><td class="num mono">${fmt(sRap)}</td><td></td></tr>
+  </tbody></table></div>
+  <div class="hint" style="margin-top:10px">Extrait établi sur les écritures enregistrées ; tout règlement postérieur à la date de travail n'y figure pas. Document généré par la console recouvrement — Cabinet DC-KNOWING pour L2A.</div>`
+  :'<div class="hint">Sélectionner un tiers : son extrait complet (factures, règlements, restes à payer, anciennetés) se génère instantanément.</div>'}
+  </div>`;
+}
+function vRelances(){
+  return `<div class="card"><h2>Journal des relances <span class="chip">${relances.length} action(s)</span></h2>
+  <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Tiers</th><th>Factures</th><th>Niveau</th><th>Canal</th><th>Interlocuteur</th><th>Résultat / engagement</th><th class="num">Promis</th><th>Resp.</th><th>Statut</th></tr></thead><tbody>
+  ${relances.length?relances.map(r=>{const n=+r.niveau.replace('N','');return `<tr><td class="mono">${new Date(r.date).toLocaleDateString('fr-FR')}</td><td><b>${r.tiers}</b></td><td>${r.factures}</td><td><span class="pill pN${n}">${r.niveau}</span></td><td>${r.canal}</td><td>${r.interloc||''}</td><td>${r.resultat||''}</td><td class="num mono">${r.promis?fmt(r.promis):'·'}</td><td>${r.resp}</td><td>${r.statut}</td></tr>`;}).join('')
+  :'<tr><td colspan="10" style="text-align:center;color:var(--acier);padding:26px">Aucune relance tracée dans cette session — utiliser le formulaire de la vue Saisie.</td></tr>'}
+  </tbody></table></div>
+  <div class="hint">Protocole : N1 e-mail J+7 → N2 téléphone J+15 → N3 lettre J+30 → N4 mise en demeure J+60 (Direction) → N5 contentieux J+90 (injonction de payer, AUPSRVE).</div></div>`;
+}
+function vEnc(){
+  const parMode = MODES.map(m=>({m, v:encaissements.filter(e=>e.mode===m).reduce((s,e)=>s+e.montant,0), n:encaissements.filter(e=>e.mode===m).length}));
+  return `<div class="grid g2"><div class="card"><h2>Journal des encaissements <span class="chip">${encaissements.length} opération(s)</span></h2>
+  <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Tiers</th><th>Facture</th><th>Mode</th><th class="num">Montant</th><th>Référence</th><th>Par</th></tr></thead><tbody>
+  ${encaissements.length?encaissements.map(e=>`<tr><td class="mono">${new Date(e.date).toLocaleDateString('fr-FR')}</td><td><b>${e.tiers}</b></td><td class="mono">N° ${e.num}</td><td>${e.mode}</td><td class="num mono"><b>${fmt(e.montant)}</b></td><td class="mono">${e.ref||''}</td><td>${e.par}</td></tr>`).join('')
+  :'<tr><td colspan="7" style="text-align:center;color:var(--acier);padding:26px">Aucun encaissement dans cette session — utiliser le formulaire de la vue Saisie.</td></tr>'}
+  </tbody></table></div></div>
+  <div class="card"><h2>Synthèse par mode</h2>
+  <table><thead><tr><th>Mode</th><th class="num">Montant</th><th class="num">Nb</th></tr></thead><tbody>
+  ${parMode.map(x=>`<tr><td>${x.m}</td><td class="num mono">${x.v?fmt(x.v):'·'}</td><td class="num">${x.n||'·'}</td></tr>`).join('')}
+  <tr class="tot"><td>TOTAL</td><td class="num mono">${fmt(encaissements.reduce((s,e)=>s+e.montant,0))}</td><td class="num">${encaissements.length}</td></tr>
+  </tbody></table>
+  <div class="hint">Cette synthèse alimente le rapprochement bancaire (BGFI, BDA), le contrôle de caisse (espèces) et la réconciliation des relevés Orange Money / Wave.</div>
+  </div></div>`;
+}
+function vAudit(){
+  return `<div class="card"><h2>Piste d'audit <span class="chip">Gérant uniquement</span></h2>
+  <div class="tbl-wrap"><table><thead><tr><th>Horodatage</th><th>Session</th><th>Action</th><th>Détail</th></tr></thead><tbody>
+  ${audit.length?audit.map(a=>`<tr><td class="mono">${a.ts}</td><td>${a.role}</td><td><b>${a.action}</b></td><td>${a.detail}</td></tr>`).join('')
+  :'<tr><td colspan="4" style="text-align:center;color:var(--acier);padding:26px">Aucune action enregistrée.</td></tr>'}
+  </tbody></table></div>
+  <div class="hint">Chaque création, encaissement, relance et changement de session est horodaté et attribué — réponse directe à la faille de traçabilité relevée par l'audit (dévalidation de dossiers sans journal).</div></div>`;
+}
+const SUBS = {saisie:"Formulaires à boutons : chaque enregistrement met à jour toutes les vues instantanément.",
+  synthese:"Pilotage du recouvrement : objectif vs réalisé (jour / semaine / mois), balance âgée, top débiteurs.",
+  balance:"Encours par tiers et par tranche d'ancienneté — recalculé après chaque saisie.",
+  extrait:"Extrait de compte par client, imprimable, avec anciennetés et niveaux de relance.",
+  relances:"Historique des actions de relance N1 → N5.", encaissements:"Historique des règlements par mode : banque, espèce, mobile money.",
+  audit:"Journal horodaté de toutes les actions, par session."};
+function renderAll(){
+  nav();
+  const T={saisie:'Saisie',synthese:'Synthèse & pilotage',balance:'Balance âgée',extrait:'Extrait de compte',relances:'Journal des relances',encaissements:'Journal des encaissements',audit:"Piste d'audit"};
+  document.getElementById('vTitle').textContent = T[curView];
+  document.getElementById('vSub').textContent = SUBS[curView];
+  const V={saisie:vSaisie,synthese:vSynthese,balance:vBalance,extrait:vExtrait,relances:vRelances,encaissements:vEnc,audit:vAudit};
+  document.getElementById('views').innerHTML = V[curView]();
+}
+log('Ouverture de session','Agent de recouvrement');
+renderAll();
+</script>
+</body>
+</html>

@@ -31,3 +31,9 @@ Thumbs.db
 
 # Notes et captures de travail, hors dépôt (noms de fichiers trop longs pour Git).
 PLAN/
+
+# Les classeurs de travail restent hors du dépôt : ce sont des exports de données
+# réelles — situation du parc, états d'impayés, extractions de caisse. Un dépôt git
+# se pousse sur un serveur distant ; des écritures clients n'y ont pas leur place.
+*.xls
+*.xlsx

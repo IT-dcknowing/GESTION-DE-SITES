@@ -29,11 +29,26 @@ trait EstUneSaisieTracee
             // Le « ?? » protège les écrans qui posent déjà leur numéro eux-mêmes : on
             // ne le remplace jamais, sous peine de consommer deux numéros pour une ligne.
             if ($entrepriseId && static::$typeDeSaisie && ! $ligne->numero) {
-                $ligne->numero = GenerateurNumero::suivant($entrepriseId, static::$typeDeSaisie);
+                /*
+                 * La date de l'opération entre dans le numéro, et c'est bien la sienne —
+                 * pas celle de la frappe. Une facture du 12 enregistrée le 14 porte 1209 :
+                 * la référence date ce qui s'est passé, pas le moment où on l'a tapé.
+                 *
+                 * Les devis portent leur date sous un autre nom ; les deux sont essayés
+                 * plutôt que d'imposer une colonne à des modèles qui n'ont pas les mêmes.
+                 */
+                $ligne->numero = GenerateurNumero::suivant(
+                    $entrepriseId,
+                    static::$typeDeSaisie,
+                    $ligne->date ?? $ligne->date_emission ?? null,
+                );
             }
 
+            // Le code auteur ne dépend plus du type de saisie : il désigne la personne,
+            // pas le rang de la ligne dans son travail. Le rang de la ligne, lui, est déjà
+            // au-dessus — c'est le numéro de la pièce.
             if (! $ligne->code_auteur) {
-                $ligne->code_auteur = CodeAuteur::attribuer(auth()->user(), static::$typeDeSaisie);
+                $ligne->code_auteur = CodeAuteur::pour(auth()->user());
             }
         });
     }

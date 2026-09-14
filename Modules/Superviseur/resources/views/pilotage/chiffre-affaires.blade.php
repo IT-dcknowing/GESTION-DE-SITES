@@ -48,8 +48,22 @@ $requeteBase = computed(function () {
         ->when($this->activiteFiltre, fn ($r) => $r->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 
+    /*
+     * La recherche porte aussi sur la référence, et c'est ce qui la rend utile.
+     *
+     * Le numéro porte désormais le jour et le mois de l'opération : taper « 1409 »
+     * ramène la journée entière, « F-1409-0104 » la pièce exacte. Sans la référence dans la
+     * recherche, il fallait connaître le nom du client pour retrouver un document dont
+     * on n'avait que le numéro sur un papier.
+     */
     if ($this->recherche) {
-        $q->where('client', 'like', '%'.$this->recherche.'%');
+        $terme = '%'.trim($this->recherche).'%';
+
+        $q->where(function ($sous) use ($terme) {
+            $sous->where('client', 'like', $terme);
+            $sous->orWhere('numero', 'like', $terme);
+            $sous->orWhere('n_facture', 'like', $terme);
+        });
     }
 
     if ($this->commercialFiltre) {
@@ -132,6 +146,9 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
 ?>
 
 <div>
+    <x-titre-ecran titre="Chiffre d'affaires"
+        sous-titre="Ce qui a été facturé sur la période, par activité et par lieu." />
+
     <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
@@ -160,12 +177,13 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
     <div class="carte">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Détail des factures ({{ $this->detail->count() }})</h3>
         <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-            <input type="text" wire:model.live.debounce.400ms="recherche" placeholder="Client / tiers…"
+            <input type="text" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}"
+                placeholder="Client, ou référence — 1409 pour la journée…"
                 style="flex:1; min-width:200px; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
             <select wire:model.live="commercialFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
-                <option value="">Commercial : tous</option>
+                <option value="" @selected($commercialFiltre === '')>Commercial : tous</option>
                 @foreach ($this->commerciaux as $commercial)
-                    <option value="{{ $commercial->id }}">{{ $commercial->nom }}</option>
+                    <option value="{{ $commercial->id }}" @selected((string) $commercialFiltre === (string) $commercial->id)>{{ $commercial->nom }}</option>
                 @endforeach
             </select>
         </div>
@@ -192,7 +210,7 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td><x-numero-ligne :ligne="$ligne" /></td>
                             <td>{{ $ligne->date->format('d/m/Y') }}</td>
-                            <td>{{ $ligne->commercial->nom }}</td>
+                            <td>{{ $ligne->commercial?->nom ?? '—' }}</td>
                             <td>{{ $ligne->client }}</td>
                             <td>{{ $ligne->type }}</td>
                             <td>{{ $ligne->n_facture }}</td>

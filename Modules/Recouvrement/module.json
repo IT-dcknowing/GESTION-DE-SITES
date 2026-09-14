@@ -1,0 +1,11 @@
+{
+    "name": "Recouvrement",
+    "alias": "recouvrement",
+    "description": "Recouvrement des creances : saisie, balance agee, relances N1-N5, encaissements, piste d'audit.",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Recouvrement\\Providers\\RecouvrementServiceProvider"
+    ],
+    "files": []
+}

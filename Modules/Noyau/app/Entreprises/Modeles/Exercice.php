@@ -79,9 +79,25 @@ class Exercice extends Model
      */
     public static function actuel(int $entrepriseId): ?self
     {
-        return static::where('entreprise_id', $entrepriseId)->where('est_defaut', true)->first()
+        $exercice = static::where('entreprise_id', $entrepriseId)->where('est_defaut', true)->first()
             ?? static::where('entreprise_id', $entrepriseId)->where('annee', now()->year)->first()
             ?? static::where('entreprise_id', $entrepriseId)->orderByDesc('annee')->first();
+
+        // Le 1er janvier, l'année suivante s'ouvre d'elle-même.
+        //
+        // C'est ici que la bascule se déclenche, et l'endroit est choisi : cette méthode est
+        // le passage obligé de tous les écrans qui ont besoin de savoir en quelle année on
+        // travaille. Pas de tâche planifiée à surveiller, pas de clic à ne pas oublier — la
+        // première personne qui se connecte ouvre l'année pour toute l'équipe.
+        //
+        // L'année précédente **n'est pas close** : elle reste ouverte, consultable et
+        // corrigeable. Une facture de décembre qui arrive le 8 janvier se saisit à sa date.
+        if ($exercice !== null && (int) $exercice->annee !== (int) now()->year) {
+            $exercice = (new \Modules\Noyau\Entreprises\Services\BasculeDExercice)
+                ->assurer($entrepriseId)['exercice'];
+        }
+
+        return $exercice;
     }
 
     /** Marque cet exercice comme celui par défaut de l'entreprise, et retire ce statut à tout autre. */

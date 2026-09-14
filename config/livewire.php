@@ -131,7 +131,12 @@ return [
 
     'temporary_file_upload' => [
         'disk' => env('LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK'), // Example: 'local', 's3'             | Default: 'default'
-        'rules' => null,                                      // Example: ['file', 'mimes:png,jpg'] | Default: ['required', 'file', 'max:12288'] (12MB)
+        // La règle par défaut de Livewire plafonne à 12 Mo — et ce refus a lieu **avant**
+        // que le composant ne voie le fichier : ni notre validation ni notre message
+        // d'erreur n'ont voix au chapitre. L'écran de dépôt annonce 40 Mo ; les deux
+        // valeurs doivent dire la même chose, sans quoi un classeur de vingt mégaoctets
+        // est rejeté par une limite que personne n'a écrite nulle part.
+        'rules' => ['required', 'file', 'max:40960'],
         'directory' => null,                                  // Example: 'tmp'                     | Default: 'livewire-tmp'
         'middleware' => null,                                 // Example: 'throttle:5,1'            | Default: 'throttle:60,1'
         'preview_mimes' => [                                  // Supported file types for temporary pre-signed file URLs...

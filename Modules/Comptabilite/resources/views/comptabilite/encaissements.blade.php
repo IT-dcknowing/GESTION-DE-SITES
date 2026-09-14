@@ -31,7 +31,7 @@ $optionsMoyenPaiement = computed(fn () => Referentiel::options(Referentiel::MOYE
  * le caissier lui-même plus tôt, en disparaît aussitôt — impossible de la saisir deux fois.
  */
 $facturesEnAttente = computed(function () {
-    $q = Facture::whereIn('site_id', $this->idsSites)->avecResteAEncaisser()
+    $q = Facture::whereIn('site_id', $this->idsSites)->saisieManuelle()->avecResteAEncaisser()
         ->withSum('encaissements', 'montant')->with('site')->latest('date')->latest('id');
 
     if ($this->recherche) {
@@ -138,7 +138,7 @@ $encaisser = function () {
             <h1 style="font-size:18px; font-weight:800; margin:0 0 4px;">Factures en attente d'encaissement</h1>
             <p style="color:#6B6E76; font-size:14px; margin:0 0 14px;">Une facture disparaît de cette liste dès qu'elle est intégralement réglée — par vous ou par le responsable du site.</p>
 
-            <input type="text" wire:model.live.debounce.400ms="recherche" placeholder="Rechercher un client…"
+            <input type="text" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}" placeholder="Rechercher un client…"
                 style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px; margin-bottom:14px;">
 
             <div class="tableau-conteneur">
@@ -198,14 +198,14 @@ $encaisser = function () {
                 </div>
 
                 <label class="champ-libelle">Montant encaissé (FCFA)</label>
-                <input type="number" wire:model="montant" class="champ" style="margin-bottom:4px;">
+                <input type="number" wire:model="montant" value="{{ $montant }}" class="champ" style="margin-bottom:4px;">
                 @error('montant') <div style="color:#C8102E; font-size:13.5px; margin-bottom:8px;">{{ $message }}</div> @enderror
                 <p style="font-size:12px; color:#9A9DA5; margin:0 0 12px;">Un encaissement partiel est autorisé : indiquez uniquement ce qui a été réellement reçu.</p>
 
                 <label class="champ-libelle">Moyen de paiement</label>
                 <select wire:model="moyen" class="champ" style="margin-bottom:14px;">
                     @foreach ($this->optionsMoyenPaiement as $valeur => $libelle)
-                        <option value="{{ $valeur }}">{{ $libelle }}</option>
+                        <option value="{{ $valeur }}" @selected((string) $moyen === (string) $valeur)>{{ $libelle }}</option>
                     @endforeach
                 </select>
 

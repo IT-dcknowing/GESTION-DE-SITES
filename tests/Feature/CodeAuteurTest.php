@@ -18,12 +18,17 @@ use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
- * Qui a saisi quoi, et à quel rang dans son propre travail.
+ * Qui a saisi quoi.
  *
  * Cinq interfaces alimentent les mêmes tableaux. Sans marque d'auteur, une ligne
  * fausse ne se rattache à personne et la correction se fait au jugé. Le code répond
  * à la question par ville, par rôle et par personne — et se pose tout seul, sinon
  * une seule interface oubliée suffirait à trouer la piste.
+ *
+ * **Le dernier bloc désigne la personne, plus le rang de la ligne.** Il comptait les
+ * saisies : le même agent portait un numéro différent sur chaque ligne, et deux numéros
+ * différents le même jour sur deux écrans. Un identifiant qui change n'identifie plus
+ * rien. Ces tests tiennent surtout cela — le code d'une personne ne bouge pas.
  */
 class CodeAuteurTest extends TestCase
 {
@@ -53,12 +58,15 @@ class CodeAuteurTest extends TestCase
         ]);
     }
 
-    public function test_le_code_dit_la_ville_le_role_la_personne_et_son_rang(): void
+    public function test_le_code_dit_la_ville_le_role_et_la_personne(): void
     {
         $commercial = $this->agent('Koffi Yao', 'commercial');
 
-        $this->assertSame('A-C-KY-0001', CodeAuteur::attribuer($commercial, 'pro'));
-        $this->assertSame('A-C-KY-0002', CodeAuteur::attribuer($commercial, 'pro'));
+        $this->assertSame('A-C-KY-0001', CodeAuteur::pour($commercial));
+
+        // Le même, appelé dix fois. C'est toute la différence avec un compteur.
+        $this->assertSame('A-C-KY-0001', CodeAuteur::pour($commercial));
+        $this->assertSame('A-C-KY-0001', CodeAuteur::pour($commercial->fresh()));
     }
 
     public function test_chaque_role_a_sa_propre_lettre(): void
@@ -66,19 +74,21 @@ class CodeAuteurTest extends TestCase
         // La première lettre du rôle ne suffisait pas : Commercial et Caissier donnent
         // tous deux « C », les deux Responsables tous deux « R ». Le code aurait cessé
         // de dire qui avait saisi, ce qui est précisément son objet.
+        // Les rangs se suivent parce que les comptes sont ouverts l'un après l'autre :
+        // c'est le rang de la personne dans l'entreprise, pas celui de sa saisie.
         $attendus = [
             'commercial' => 'A-C-AA-0001',
-            'caissier' => 'A-K-AA-0001',
-            'responsable_site' => 'A-R-AA-0001',
-            'responsable_ville' => 'A-S-AA-0001',
-            'gerant' => 'A-G-AA-0001',
+            'caissier' => 'A-K-AA-0002',
+            'responsable_site' => 'A-R-AA-0003',
+            'responsable_ville' => 'A-S-AA-0004',
+            'gerant' => 'A-G-AA-0005',
         ];
 
         $lettres = [];
 
         foreach ($attendus as $role => $attendu) {
             $agent = $this->agent('Ama Ackah', $role, "$role@exemple.test");
-            $code = CodeAuteur::attribuer($agent, 'pro');
+            $code = CodeAuteur::pour($agent);
 
             $this->assertSame($attendu, $code, "Le rôle $role doit porter sa propre lettre.");
             $lettres[] = explode('-', $code)[1];
@@ -87,17 +97,48 @@ class CodeAuteurTest extends TestCase
         $this->assertCount(count($attendus), array_unique($lettres), 'Deux rôles ne peuvent pas partager une lettre.');
     }
 
-    public function test_chaque_type_de_saisie_a_son_propre_rang(): void
+    public function test_le_code_est_le_meme_sur_toutes_les_series_de_saisie(): void
+    {
+        $agent = $this->agent('Fatou Diabaté', 'caissier');
+        $this->actingAs($agent);
+
+        $encaissement = Encaissement::create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->site->id,
+            'date' => now()->toDateString(), 'type' => 'Client', 'moyen' => 'Espèces', 'montant' => 50_000,
+        ]);
+
+        $charge = Charge::create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->site->id,
+            'date' => now()->toDateString(), 'type_operation' => 'Charges',
+            'libelle' => 'Achats pièces', 'moyen' => 'Espèces', 'montant' => 30_000,
+        ]);
+
+        // Un encaissement et un décaissement saisis par la même personne portent le même
+        // code. Ce qui distingue les deux lignes, c'est leur numéro — ENC et DEC.
+        $this->assertSame('A-K-FD-0001', $encaissement->code_auteur);
+        $this->assertSame('A-K-FD-0001', $charge->code_auteur);
+        $this->assertNotSame($encaissement->numero, $charge->numero);
+    }
+
+    public function test_deux_lignes_du_meme_agent_portent_le_meme_code(): void
     {
         $agent = $this->agent('Koffi Yao', 'commercial');
+        $this->actingAs($agent);
 
-        CodeAuteur::attribuer($agent, 'pro');
-        CodeAuteur::attribuer($agent, 'pro');
+        $commercial = Commercial::create([
+            'entreprise_id' => $this->entreprise->id, 'ville_id' => $this->ville->id,
+            'numero' => 'C-0001', 'nom' => 'Koffi Yao', 'statut' => 'Actif', 'est_spontane' => false,
+        ]);
 
-        // Le rang doit se lire « sa 1ʳᵉ facture », pas « sa 3ᵉ saisie tous types
-        // confondus » : les séries ne se mélangent pas.
-        $this->assertSame('A-C-KY-0001', CodeAuteur::attribuer($agent, 'fac'));
-        $this->assertSame('A-C-KY-0003', CodeAuteur::attribuer($agent, 'pro'));
+        $codes = collect(['SIFCA', 'MEDLOG', 'BOLLORÉ'])->map(fn (string $client, int $rang) => Prospection::create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->site->id,
+            'commercial_id' => $commercial->id, 'numero' => 'P-000'.($rang + 1),
+            'date' => now()->toDateString(), 'client' => $client,
+            'moyen' => 'RDV', 'activite' => 'Mécanique', 'statut_validation' => 'Brouillon',
+        ])->code_auteur);
+
+        // C'est le défaut qu'on corrige : ces trois lignes portaient 0001, 0002, 0003.
+        $this->assertSame(['A-C-KY-0001'], $codes->unique()->values()->all());
     }
 
     public function test_deux_agents_ne_partagent_jamais_un_rang(): void
@@ -105,8 +146,9 @@ class CodeAuteurTest extends TestCase
         $premier = $this->agent('Koffi Yao', 'commercial', 'un@exemple.test');
         $second = $this->agent('Sylvain Kouassi', 'commercial', 'deux@exemple.test');
 
-        $this->assertSame('A-C-KY-0001', CodeAuteur::attribuer($premier, 'pro'));
-        $this->assertSame('A-C-SK-0001', CodeAuteur::attribuer($second, 'pro'));
+        // Deux personnes, deux rangs : c'est la seule chose que le rang doit garantir.
+        $this->assertSame('A-C-KY-0001', CodeAuteur::pour($premier));
+        $this->assertSame('A-C-SK-0002', CodeAuteur::pour($second));
     }
 
     public function test_le_code_se_pose_tout_seul_a_la_saisie(): void
@@ -150,10 +192,15 @@ class CodeAuteurTest extends TestCase
             'libelle' => 'Achats pièces', 'moyen' => 'Espèces', 'montant' => 30_000,
         ]);
 
-        $this->assertSame('ENC-0001', $encaissement->numero);
-        $this->assertSame('DEC-0001', $charge->numero);
+        // Le jour et le mois de l'opération entrent dans le numéro : ENC-1409-0001. On
+        // les recompose ici plutôt que de les écrire en dur, sinon le test ne passerait
+        // que le jour où il a été écrit.
+        $jour = now()->format('dm');
+
+        $this->assertSame("ENC-$jour-0001", $encaissement->numero);
+        $this->assertSame("DEC-$jour-0001", $charge->numero);
         $this->assertSame('A-K-FD-0001', $encaissement->code_auteur);
-        $this->assertSame('A-K-FD-0001', $charge->code_auteur, 'Chaque série compte pour elle-même.');
+        $this->assertSame('A-K-FD-0001', $charge->code_auteur);
     }
 
     public function test_un_numero_deja_pose_n_est_jamais_remplace(): void
@@ -182,7 +229,11 @@ class CodeAuteurTest extends TestCase
         ]);
 
         $this->assertNull($encaissement->code_auteur);
-        $this->assertSame('ENC-0001', $encaissement->numero, 'Le numéro, lui, reste dû : la série ne doit pas trouer.');
+        $this->assertSame(
+            'ENC-'.now()->format('dm').'-0001',
+            $encaissement->numero,
+            'Le numéro, lui, reste dû : la série ne doit pas trouer.'
+        );
     }
 
     public function test_le_code_ne_se_reecrit_pas_quand_l_agent_change_de_ville(): void

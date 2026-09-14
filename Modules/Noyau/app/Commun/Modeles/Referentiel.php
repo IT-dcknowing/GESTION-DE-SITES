@@ -27,6 +27,18 @@ class Referentiel extends Model
 
     public const TYPE_ENCAISSEMENT = 'type_encaissement';
 
+    /** Tiers du recouvrement : assureurs et clients porteurs de créances. */
+    public const TIERS_RECOUVREMENT = 'tiers_recouvrement';
+
+    /**
+     * Modes d'encaissement du recouvrement.
+     *
+     * Liste distincte de celle de la caisse, et volontairement plus fine : le
+     * rapprochement bancaire se fait banque par banque, et « Virement » sans la banque
+     * n'aide personne à pointer un relevé BGFI contre un relevé BDA.
+     */
+    public const MODE_RECOUVREMENT = 'mode_recouvrement';
+
     /** Valeurs livrées avec l'application, toujours disponibles. */
     public const DEFAUTS = [
         self::ACTIVITE => ['Mécanique', 'Sinistre'],
@@ -34,6 +46,11 @@ class Referentiel extends Model
         self::MOYEN_PAIEMENT => ['Espèces', 'Mobile Money', 'Chèque', 'Virement', 'Autres'],
         self::LIBELLE_CHARGE => ['Achats pièces', 'Salaires & personnel', 'Fonctionnement', 'Autres décaissements'],
         self::TYPE_ENCAISSEMENT => ['Client', 'Appro', 'Autres'],
+        self::TIERS_RECOUVREMENT => [],
+        self::MODE_RECOUVREMENT => [
+            'VIREMENT — BGFI', 'VIREMENT — BDA', 'CHÈQUE', 'ESPÈCE',
+            'MOBILE MONEY — ORANGE MONEY', 'MOBILE MONEY — WAVE',
+        ],
     ];
 
     public const LIBELLES = [
@@ -42,6 +59,8 @@ class Referentiel extends Model
         self::MOYEN_PAIEMENT => 'Moyens de paiement',
         self::LIBELLE_CHARGE => "Libellés d'opération",
         self::TYPE_ENCAISSEMENT => "Types d'encaissement",
+        self::TIERS_RECOUVREMENT => 'Tiers du recouvrement',
+        self::MODE_RECOUVREMENT => "Modes d'encaissement (recouvrement)",
     ];
 
     protected function casts(): array

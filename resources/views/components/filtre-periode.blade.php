@@ -26,7 +26,10 @@
     $afficherCommercial = $villeEnContexte && $commerciaux !== null;
 
     $mois = PeriodeCalculateur::moisDeLAnnee();
-    $anneeEnCours = Carbon::today()->year;
+    // L'année de référence des mois, semaines et jours est **celle qu'on regarde**,
+    // pas celle du calendrier : sinon, choisir « Mars » en consultant 2025 afficherait
+    // les semaines de mars 2026.
+    $anneeEnCours = \Modules\Noyau\Entreprises\Services\ExerciceDeTravail::annee() ?? Carbon::today()->year;
 
     $semainesDuMois = $moisFiltre
         ? PeriodeCalculateur::semainesDuMois(Carbon::create($anneeEnCours, (int) $moisFiltre, 1))
@@ -58,40 +61,40 @@
         </span>
     @elseif ($villes !== null)
         <select wire:model.live="villeFiltre" class="champ" style="width:auto; font-weight:600; background:#fff;">
-            <option value="">Toutes les villes (consolidé)</option>
+            <option value="" @selected($villeFiltre === '')>Toutes les villes (consolidé)</option>
             @foreach ($villes as $ville)
-                <option value="{{ $ville->id }}">{{ $ville->nom }}</option>
+                <option value="{{ $ville->id }}" @selected((string) $villeFiltre === (string) $ville->id)>{{ $ville->nom }}</option>
             @endforeach
         </select>
     @endif
 
     @if ($afficherSite)
         <select wire:model.live="siteFiltre" class="champ" style="width:auto; font-weight:600; background:#fff;">
-            <option value="">Tous les sites de la ville</option>
+            <option value="" @selected($siteFiltre === '')>Tous les sites de la ville</option>
             @foreach ($sites as $site)
-                <option value="{{ $site->id }}">{{ $site->nom }}</option>
+                <option value="{{ $site->id }}" @selected((string) $siteFiltre === (string) $site->id)>{{ $site->nom }}</option>
             @endforeach
         </select>
     @endif
 
     @if ($afficherPrecision)
         <select wire:model.live="activiteFiltre" class="champ" style="width:auto; font-weight:600; background:#fff;">
-            <option value="">Consolidé (les deux activités)</option>
-            <option value="Mécanique">Mécanique</option>
-            <option value="Sinistre">Sinistre</option>
+            <option value="" @selected($activiteFiltre === '')>Consolidé (les deux activités)</option>
+            <option value="Mécanique" @selected((string) $activiteFiltre === 'Mécanique')>Mécanique</option>
+            <option value="Sinistre" @selected((string) $activiteFiltre === 'Sinistre')>Sinistre</option>
         </select>
     @endif
 
     @if ($afficherCommercial)
         <select wire:model.live="commercialFiltre" class="champ" style="width:auto; font-weight:600; background:#fff;">
-            <option value="">Tous les commerciaux</option>
+            <option value="" @selected($commercialFiltre === '')>Tous les commerciaux</option>
             @foreach ($commerciaux->where('est_spontane', false) as $commercial)
-                <option value="{{ $commercial->id }}">{{ $commercial->nom }}</option>
+                <option value="{{ $commercial->id }}" @selected((string) $commercialFiltre === (string) $commercial->id)>{{ $commercial->nom }}</option>
             @endforeach
             {{-- Le « Client spontané » n'est pas un commercial nommé : une seule entrée à
                  l'écran, qui filtre sur ceux de toutes les villes retenues à la fois. --}}
             @if ($commerciaux->contains('est_spontane', true))
-                <option value="spontane">Client spontané</option>
+                <option value="spontane" @selected((string) $commercialFiltre === 'spontane')>Client spontané</option>
             @endif
         </select>
     @endif
@@ -102,33 +105,33 @@
         <span style="color:var(--th-gris,#6B6E76); font-weight:600;">Exercice {{ $anneeEnCours }}</span>
 
         <select wire:model.live="moisFiltre" class="champ" style="width:auto;">
-            <option value="">Tous les mois</option>
+            <option value="" @selected($moisFiltre === '')>Tous les mois</option>
             @foreach ($mois as $numero => $libelle)
-                <option value="{{ $numero }}">{{ $libelle }}</option>
+                <option value="{{ $numero }}" @selected((string) $moisFiltre === (string) $numero)>{{ $libelle }}</option>
             @endforeach
         </select>
 
         <select wire:model.live="semaineFiltre" class="champ" style="width:auto;" @if (! $moisFiltre) disabled @endif>
-            <option value="">Toutes les semaines</option>
+            <option value="" @selected($semaineFiltre === '')>Toutes les semaines</option>
             @foreach ($semainesDuMois as $semaine)
-                <option value="{{ $semaine['numero'] }}">
+                <option value="{{ $semaine['numero'] }}" @selected((string) $semaineFiltre === (string) $semaine['numero'])>
                     Semaine {{ $semaine['numero'] }} ({{ $semaine['debut']->format('d/m') }} – {{ $semaine['fin']->format('d/m') }})
                 </option>
             @endforeach
         </select>
 
         <select wire:model.live="jourFiltre" class="champ" style="width:auto;" @if (! $moisFiltre) disabled @endif>
-            <option value="">Tous les jours</option>
+            <option value="" @selected($jourFiltre === '')>Tous les jours</option>
             @foreach ($joursOptions as $j)
-                <option value="{{ $j }}">Jour {{ $j }}</option>
+                <option value="{{ $j }}" @selected((string) $jourFiltre === (string) $j)>Jour {{ $j }}</option>
             @endforeach
         </select>
     </div>
 @else
     <div style="display:flex; gap:12px; align-items:center; margin:-4px 0 20px; font-size:14px;">
         <label style="color:var(--th-gris,#6B6E76); font-weight:600;">Du</label>
-        <input type="month" wire:model.live="dateDebut" min="{{ $anneeEnCours }}-01" max="{{ $anneeEnCours }}-12" class="champ" style="width:auto;">
+        <input type="month" wire:model.live="dateDebut" value="{{ $dateDebut }}" min="{{ $anneeEnCours }}-01" max="{{ $anneeEnCours }}-12" class="champ" style="width:auto;">
         <label style="color:var(--th-gris,#6B6E76); font-weight:600;">Au</label>
-        <input type="month" wire:model.live="dateFin" min="{{ $anneeEnCours }}-01" max="{{ $anneeEnCours }}-12" class="champ" style="width:auto;">
+        <input type="month" wire:model.live="dateFin" value="{{ $dateFin }}" min="{{ $anneeEnCours }}-01" max="{{ $anneeEnCours }}-12" class="champ" style="width:auto;">
     </div>
 @endif

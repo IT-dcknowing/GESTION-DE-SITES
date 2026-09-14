@@ -113,6 +113,9 @@ $detail = computed(fn () => (clone $this->requeteBase)->with('site')->latest('da
 ?>
 
 <div>
+    <x-titre-ecran titre="Charges & décaissements"
+        sous-titre="Ce que l'exploitation a coûté sur la période." />
+
     <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />

@@ -143,7 +143,7 @@ $basculerActive = function (int $id) {
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);" wire:key="ent-{{ $entreprise->id }}">
                             <td style="font-weight:700;">
                                 @if ($renommeId === $entreprise->id)
-                                    <input type="text" wire:model="renommeNom" class="champ" style="min-width:220px;">
+                                    <input type="text" wire:model="renommeNom" value="{{ $renommeNom }}" class="champ" style="min-width:220px;">
                                     @error('renommeNom')
                                         <div style="font-size:11.5px; color:var(--th-accent,#C8102E); margin-top:4px;">{{ $message }}</div>
                                     @enderror

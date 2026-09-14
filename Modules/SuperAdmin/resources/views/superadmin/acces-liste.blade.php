@@ -409,6 +409,18 @@ $journaliser = function (User $utilisateur, string $action) {
 
 <x-a-venir titre="Gestion des accès"
         description="Créer, révoquer et redéfinir le mot de passe de toute personne, toutes entreprises confondues.">
+
+    @if (session('refus-switch'))
+        <x-boite-message titre="Mode switch refusé" ton="alerte">{{ session('refus-switch') }}</x-boite-message>
+    @endif
+
+    @if (session('annonce-switch'))
+        <div style="background:#EAF9F3; border:1px solid #0E9F6E55; color:#0E9F6E; border-radius:8px;
+                    padding:10px 12px; font-size:14.5px; margin-bottom:14px;">
+            {{ session('annonce-switch') }}
+        </div>
+    @endif
+
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
             <a href="{{ route('super-admin.acces.creer') }}" wire:navigate
                style="display:inline-block; background:#C8102E; color:#fff; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14.5px; text-decoration:none;">
@@ -425,9 +437,9 @@ $journaliser = function (User $utilisateur, string $action) {
 
             <select wire:model.live="entrepriseFiltre"
                 style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px; background:#fff; max-width:250px;">
-                <option value="">Toutes les entreprises</option>
+                <option value="" @selected($entrepriseFiltre === '')>Toutes les entreprises</option>
                 @foreach ($this->entreprises as $id => $nom)
-                    <option value="{{ $id }}">{{ $nom }}</option>
+                    <option value="{{ $id }}" @selected((string) $entrepriseFiltre === (string) $id)>{{ $nom }}</option>
                 @endforeach
             </select>
         </div>
@@ -440,7 +452,7 @@ $journaliser = function (User $utilisateur, string $action) {
         </p>
 
         <div style="margin-bottom:16px; max-width:340px;">
-            <input type="search" wire:model.live.debounce.300ms="recherche" class="champ"
+            <input type="search" wire:model.live.debounce.300ms="recherche" value="{{ $recherche }}" class="champ"
                 placeholder="Rechercher un nom ou un e-mail…">
         </div>
 
@@ -600,6 +612,34 @@ $journaliser = function (User $utilisateur, string $action) {
                                         style="display:inline-block; text-decoration:none; background:transparent; border:1px solid var(--th-ligne,#E2E0D8); color:#4B4E55; border-radius:6px; padding:5px 10px; font-size:12.5px; font-weight:600; margin-right:6px;">
                                         Modifier
                                     </a>
+
+                                    {{-- Entrer dans le compte pour assister quelqu'un.
+
+                                         Une personne au téléphone décrit un écran qu'on ne voit
+                                         pas : habilitations, périmètre, ville de travail, rôle —
+                                         tout cela change ce qui s'affiche, et aucune capture
+                                         d'écran ne remplace le fait d'y être.
+
+                                         Le passage n'inscrit **aucune connexion** au compte
+                                         assisté : le journal de présence s'en abstient, et c'est
+                                         le journal d'audit qui garde la trace, au nom de
+                                         l'administrateur. Un accès révoqué reste fermé, y compris
+                                         pour l'assistance. --}}
+                                    @if ($utilisateur->est_actif)
+                                        <form method="POST" action="{{ route('super-admin.switch.entrer', $utilisateur->id) }}"
+                                              style="display:inline;">
+                                            @csrf
+                                            {{-- Sans question : le geste n'écrit rien, et le
+                                                 bandeau rouge qui suit dit en permanence où
+                                                 l'on se trouve. Une confirmation ici coûtait
+                                                 un clic et ne protégeait rien. --}}
+                                            <button type="submit"
+                                                title="Voir l'application comme cette personne — aucune connexion ne sera inscrite à son compte"
+                                                style="background:#191B20; border:0; color:#fff; border-radius:6px; padding:5px 10px; font-size:12.5px; font-weight:600; cursor:pointer; margin-right:6px; font-family:inherit;">
+                                                ⇥ Accéder
+                                            </button>
+                                        </form>
+                                    @endif
                                     <button type="button" wire:click="basculerActif({{ $utilisateur->id }})"
                                         wire:confirm="{{ $utilisateur->est_actif ? 'Révoquer l\'accès de '.$utilisateur->name.' ?' : 'Réactiver l\'accès de '.$utilisateur->name.' ?' }}"
                                         style="background:transparent; border:1px solid {{ $utilisateur->est_actif ? '#C8102E55' : '#0E9F6E55' }}; color:{{ $utilisateur->est_actif ? '#C8102E' : '#0E9F6E' }}; border-radius:6px; padding:5px 10px; font-size:12.5px; font-weight:600; cursor:pointer; margin-right:6px;">

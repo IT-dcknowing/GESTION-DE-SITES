@@ -16,5 +16,14 @@ use Livewire\Volt\Volt;
 
 Route::middleware(['auth', 'role:responsable_ville|responsable_site'])->group(function () {
     Volt::route('/saisie-du-jour', 'saisie.saisie-du-jour')->name('saisie-du-jour');
+});
+
+/*
+ * La fiche d'une prospection est ouverte au gérant en plus des deux responsables : le
+ * tableau des prospects, qu'il consulte, mène désormais ici par son bouton « Détail », et
+ * un bouton qui conduit à un refus vaut moins qu'un bouton absent. L'écran vérifie de son
+ * côté que le site fait bien partie du périmètre de celui qui regarde.
+ */
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->group(function () {
     Volt::route('/saisie-du-jour/prospections/{prospection}', 'saisie.prospection-voir')->name('prospection.voir');
 });

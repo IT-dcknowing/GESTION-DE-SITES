@@ -1,0 +1,388 @@
+===============================================================================
+  L'ARTISAN AUTOMOBILE — LES DEUX MODULES DU MOMENT
+  Recouvrement et Import
+  Document de présentation — 13 septembre 2026
+===============================================================================
+
+Ce document ne parle que des deux modules sur lesquels le travail a porté.
+Pour l'application entière, voir le second document.
+
+
+-------------------------------------------------------------------------------
+  EN UNE PHRASE
+-------------------------------------------------------------------------------
+
+  IMPORT       fait entrer dans l'application ce que le logiciel de l'atelier
+               a déjà enregistré.
+
+  RECOUVREMENT réclame l'argent qui n'est pas encore rentré, et garde la trace
+               de chaque démarche.
+
+  L'un remplit, l'autre exploite. Sans l'Import, le Recouvrement n'a rien à
+  regarder.
+
+
+===============================================================================
+  PREMIÈRE PARTIE — LE MODULE IMPORT
+===============================================================================
+
+-------------------------------------------------------------------------------
+  1.1  À QUOI IL SERT
+-------------------------------------------------------------------------------
+
+  L'atelier travaille déjà avec un logiciel installé sur les postes. Il produit
+  huit fichiers Excel. On les dépose ici, l'application les lit, et tous les
+  écrans se remplissent.
+
+  On ne resaisit rien. On dépose un fichier, et c'est tout.
+
+
+-------------------------------------------------------------------------------
+  1.2  LES HUIT FICHIERS, ET CE QUE CHACUN REMPLIT
+-------------------------------------------------------------------------------
+
+  L'ordre ci-dessous est celui dans lequel il faut déposer. Il n'est pas
+  arbitraire : chaque fichier s'appuie sur le précédent.
+
+  1. SITUATION DU PARC
+     Les fiches de réception : un véhicule reçu à l'atelier, son propriétaire,
+     ses travaux, son état.
+     Remplit  : Parc de véhicules
+     Aujourd'hui : 3 178 fiches
+
+  2. DEVIS ET PROFORMAS
+     Ce qui a été chiffré au client, accepté ou non.
+     Remplit  : Devis, Prospects, taux de transformation
+     Aujourd'hui : 2 672 devis
+
+  3. CHIFFRE D'AFFAIRES TTC
+     Les factures émises.
+     Remplit  : Chiffre d'affaires, Commerciaux, Clients
+     Aujourd'hui : 2 377 factures
+
+  4. ÉTAT DES IMPAYÉS                        << LE PLUS IMPORTANT DES HUIT >>
+     Les créances clients, AVEC ce qui a déjà été réglé dessus.
+     Remplit  : TOUT le module Recouvrement
+     Aujourd'hui : 8 852 factures et 7 629 règlements
+
+     Pourquoi il compte plus que les autres : c'est le seul fichier qui
+     apporte les règlements. Le fichier du chiffre d'affaires donne les
+     factures sans les règlements ; si on comptait celles-là comme des
+     créances, on réclamerait de l'argent déjà encaissé. Mesuré : la dette
+     passerait de 802 millions à 1,38 milliard de francs, soit deux cent
+     cinquante fois trop, sans le moindre message d'erreur.
+
+  5. SUIVI FOURNISSEURS
+     Ce que l'entreprise doit à ses fournisseurs.
+     Remplit  : la nouvelle page Fournisseurs
+     Aujourd'hui : 1 848 factures reçues
+
+  6. ÉTATS DE CAISSE
+     Les entrées et les sorties d'espèces.
+     Remplit  : la nouvelle page Caisse
+     Aujourd'hui : 1 155 mouvements
+
+  7. ENTRÉES DE VÉHICULES
+  8. SORTIES DE VÉHICULES
+     Les allées et venues à l'atelier.
+     Remplit  : Entrées / sorties
+     Aujourd'hui : 147 mouvements
+
+
+-------------------------------------------------------------------------------
+  1.3  LES CINQ PAGES DU MODULE
+-------------------------------------------------------------------------------
+
+  DÉPÔT DE FICHIER
+     On choisit le type de fichier, la ville, on dépose. L'application vérifie
+     avant d'écrire quoi que ce soit et dit ce qu'elle va faire.
+     Un tableau montre, pour chacun des huit types : la date du dernier dépôt,
+     qui l'a fait, quelles villes sont faites, lesquelles manquent, et combien
+     de lignes sont en base.
+
+  TRAITEMENTS
+     Les fichiers déposés qui attendent d'être lus, et ceux qui viennent de
+     l'être. Un bouton permet de faire la lecture sans attendre.
+
+  JOURNAL DES IMPORTS
+     Tous les dépôts passés. Pour chacun : le fichier d'origine, les lignes
+     lues, créées, refusées, et qui l'a déposé.
+     On peut ouvrir un dépôt et voir ses lignes refusées, les corriger, et
+     relire le fichier. LE FICHIER D'ORIGINE N'EST JAMAIS MODIFIÉ : les
+     corrections se posent à côté de lui.
+     Aujourd'hui : 12 dépôts
+
+  EMPLOYÉS & CODES
+     Le logiciel de l'atelier désigne les gens par un code de deux lettres.
+     Cette page fait le lien entre le code et la personne, et dit à quelle
+     ville il appartient.
+
+  INFORMATIONS
+     Quel fichier alimente quelle page, et dans quel ordre les déposer.
+
+
+-------------------------------------------------------------------------------
+  1.4  QUI A ACCÈS À L'IMPORT
+-------------------------------------------------------------------------------
+
+  Déposer un fichier ENGAGE LA BASE. C'est donc réservé.
+
+  Gérant                 dépose, traite, consulte tout
+  Superviseur de ville   dépose, traite, consulte tout
+  Responsable de site    dépose, traite, consulte (pas les codes)
+  Comptabilité           consulte seulement
+
+  Les autres rôles n'entrent pas dans ce module.
+
+
+===============================================================================
+  DEUXIÈME PARTIE — LE MODULE RECOUVREMENT
+===============================================================================
+
+-------------------------------------------------------------------------------
+  2.1  À QUOI IL SERT
+-------------------------------------------------------------------------------
+
+  Une facture émise n'est pas de l'argent rentré. Ce module suit l'écart entre
+  les deux : qui doit, combien, depuis quand, qui s'en occupe, et ce qui a
+  déjà été tenté.
+
+
+-------------------------------------------------------------------------------
+  2.2  LA SITUATION AUJOURD'HUI
+-------------------------------------------------------------------------------
+
+  Factures dans le périmètre ................  8 954
+  Factures encore ouvertes ..................  1 340
+  RESTE À PAYER .............................  802 282 027 F
+  Nombre de tiers qui doivent ...............  128
+  Dont en zone contentieuse (plus de 90 j) ..  481 919 979 F   soit 60 %
+
+  Lecture : plus de la moitié de la créance est ancienne. Le téléphone ne
+  suffira pas ; il faut des mises en demeure et préparer le contentieux.
+
+
+-------------------------------------------------------------------------------
+  2.3  LE PROTOCOLE DE RELANCE — N1 À N5
+-------------------------------------------------------------------------------
+
+  Le niveau d'une créance découle de son ÂGE, pas d'une décision.
+
+     N1   7 jours     E-mail
+     N2   15 jours    Téléphone
+     N3   30 jours    Lettre de relance
+     N4   60 jours    Mise en demeure
+     N5   90 jours    Contentieux (procédure AUPSRVE)
+
+  LES CINQ NIVEAUX SONT OUVERTS À TOUS LES RÔLES DU MODULE, agent compris.
+  C'est une décision de la direction.
+
+  Ce qui remplace le verrou : chaque relance est datée, porte le nom de celui
+  qui l'a passée, et part au journal d'audit que le superviseur et le gérant
+  lisent. La question « qui a envoyé cette mise en demeure » a toujours une
+  réponse. Le contrôle se fait après, pas avant.
+
+  CE QUI RESTE FERMÉ À L'AGENT : créer une facture et créer un tiers. Celui qui
+  relance et encaisse ne doit pas pouvoir fabriquer la dette qu'il réclame.
+  C'est cette règle-là qui rend le journal digne de foi.
+
+
+-------------------------------------------------------------------------------
+  2.4  LE TABLEAU DE BORD  (page d'arrivée du module)
+-------------------------------------------------------------------------------
+
+  C'est la première page. Elle répond à la question qu'on se pose en
+  s'asseyant : par quoi commencer ce matin.
+
+  QUATRE INDICATEURS EN TÊTE
+     Reste à payer ............ ce qui est dû, et sur combien de factures
+     Encaissé sur le mois ..... ce qui est rentré, toutes causes confondues
+     Zone contentieuse N5 ..... ce qui a dépassé 90 jours
+     Relances tracées ......... le nombre de démarches enregistrées
+
+  DEUX GRAPHIQUES
+     Forme de la créance ...... répartition par ancienneté (0-30, 31-60,
+                                61-90, 91-180, plus de 180 jours)
+     Charge par niveau ........ combien de tiers et combien d'argent à
+                                chaque niveau N1 à N5
+
+  UNE COURBE
+     Encaissements et relances, mois par mois sur l'exercice.
+
+  UN TABLEAU PAR AGENT
+     Qui a fait quoi : relances passées, règlements saisis, dossiers suivis.
+
+  LE PORTEFEUILLE DE CRÉANCES
+     Le tableau complet, ligne par ligne, paginé. Pour chaque tiers : ce qu'il
+     doit, depuis quand, à quel niveau il en est, qui s'en occupe, la dernière
+     démarche et sa date. Un bouton Détail ouvre son dossier complet.
+
+  FILTRES : période, ville, portefeuille (par agent), niveau.
+  Le superviseur et le gérant voient tout le monde.
+  L'agent ne voit que ses propres dossiers.
+
+
+-------------------------------------------------------------------------------
+  2.5  LES NEUF ÉCRANS DE TRAVAIL
+-------------------------------------------------------------------------------
+
+  SAISIE
+     Trois gestes : enregistrer un encaissement, tracer une relance, créer une
+     facture ou un tiers (superviseur et gérant seulement).
+
+  SYNTHÈSE & PILOTAGE
+     L'objectif d'encaissement contre le réalisé, jour, semaine et mois.
+     L'encadrement écrit ici POURQUOI l'écart existe.
+     Réservé au superviseur et au gérant.
+
+  BALANCE ÂGÉE
+     Toutes les créances classées par tranche d'ancienneté. C'est le document
+     comptable de référence.
+
+  COURTIERS
+     Quand un courtier apporte un dossier, c'est LUI qui doit l'argent, pas la
+     compagnie derrière. Cette page montre ce que chacun porte.
+
+  CLIENTS & TIERS
+     Tous les payeurs connus et ce que chacun doit.
+
+  EXTRAIT DE COMPTE
+     La fiche d'un client : ses factures, ses règlements, ses restes,
+     imprimable, à lui envoyer.
+
+  JOURNAL DES RELANCES
+     Toutes les démarches passées : qui, quand, quel niveau, quel canal, quel
+     résultat.
+
+  JOURNAL DES ENCAISSEMENTS
+     Tous les règlements par mode : banque, espèce, mobile money. C'est ce qui
+     sert au rapprochement bancaire.
+
+  PISTE D'AUDIT                             (gérant seulement)
+     Chaque geste du module, horodaté et attribué. En lecture seule : rien ne
+     permet d'en retirer une ligne.
+
+
+-------------------------------------------------------------------------------
+  2.6  QUI FAIT QUOI DANS LE RECOUVREMENT
+-------------------------------------------------------------------------------
+
+  AGENT DE RECOUVREMENT
+     Voit    : son tableau de bord, ses dossiers, la balance, les courtiers,
+               les clients, les extraits, les deux journaux.
+     Fait    : encaisse, relance du N1 au N5, envoie les extraits de compte.
+     Ne fait pas : créer une facture, créer un tiers, voir la synthèse, voir
+               la piste d'audit, voir le travail des autres.
+
+  SUPERVISEUR RECOUVREMENT
+     Voit    : tout ce que voit l'agent, POUR TOUT LE MONDE, plus la synthèse
+               et la piste d'audit.
+     Fait    : tout ce que fait l'agent, plus créer des factures et des tiers,
+               commenter les écarts d'objectif, ouvrir des accès.
+     Ne fait pas : fixer l'objectif d'encaissement, supprimer une entreprise.
+
+  GÉRANT
+     Voit    : tout, y compris la piste d'audit.
+     Fait    : tout, plus fixer l'objectif d'encaissement.
+
+  COMPTABILITÉ et SUPERVISEUR DE VILLE  — en consultation
+     Voit    : le tableau de bord, la balance âgée, les courtiers, les clients,
+               les extraits de compte, les deux journaux.
+     Fait    : rien dans ce module. Ils lisent.
+     Ne fait pas : relancer, encaisser ici, créer une facture ou un tiers, voir
+               la synthèse, voir la piste d'audit.
+     Pourquoi : la comptabilité encaisse ce que le recouvrement poursuit, et elle
+               décrochait le téléphone sans pouvoir lire ce qu'un client devait ;
+               le superviseur de ville répond d'un chiffre d'affaires dont
+               l'encours est la moitié qu'on ne lui montrait pas.
+     Réserve : la vue n'est pas bornée à une ville, parce qu'elle ne peut pas
+               l'être. L'état des impayés ne porte pas l'atelier — 1 321 des
+               1 341 factures ouvertes n'ont aucun site. Filtrer par ville
+               montrerait 20 lignes sur 1 341.
+
+
+===============================================================================
+  TROISIÈME PARTIE — LES DEUX PAGES NOUVELLES
+===============================================================================
+
+  Deux fichiers étaient importés depuis des semaines et AUCUNE PAGE NE LES
+  AFFICHAIT. La donnée était en base, invisible. Elles sont maintenant dans le
+  menu Indicateurs.
+
+
+-------------------------------------------------------------------------------
+  3.1  CAISSE
+-------------------------------------------------------------------------------
+
+  D'où vient la donnée : fichier « États de caisse » — 1 155 mouvements.
+
+  QUATRE INDICATEURS
+     Entrées ........................ ce qui est rentré en espèces
+     Sorties ........................ ce qui est sorti
+     Solde de la période ............ entrées moins sorties
+     Solde annoncé par le fichier ... recopié tel quel, JAMAIS corrigé
+
+  Un écart entre les deux soldes n'est pas une erreur de calcul : c'est le
+  signe qu'une ligne a été retouchée à la main dans le classeur d'origine.
+  L'écran le dit quand cela arrive.
+
+  UN CLASSEMENT : où part l'argent, les huit premiers postes de dépense.
+
+  UN TABLEAU : tous les mouvements, avec recherche par libellé, bénéficiaire
+  ou immatriculation, et un filtre entrées / sorties.
+
+  Qui y a accès : gérant, superviseur de ville, responsable de site.
+
+
+-------------------------------------------------------------------------------
+  3.2  FOURNISSEURS
+-------------------------------------------------------------------------------
+
+  D'où vient la donnée : fichier « Suivi fournisseurs » — 1 848 factures.
+
+  Toute l'application regardait ce qu'on nous doit. Personne ne regardait ce
+  que nous devons. C'est maintenant fait.
+
+  QUATRE INDICATEURS
+     Reste à payer .................. 61 797 581 F sur 51 pièces ouvertes
+     Dû depuis plus de 90 jours ..... la part ancienne, et la date de la plus
+                                      vieille pièce non réglée
+     Total facturé .................. 644 385 302 F
+     Déjà réglé ..................... 582 900 458 F
+
+  UN CLASSEMENT : à qui nous devons le plus. C'est par là qu'une négociation
+  de délai commence.
+
+  UN TABLEAU : toutes les pièces, avec recherche et filtre (reste à payer,
+  dues depuis plus de 90 jours, soldées, toutes).
+
+  DEUX POINTS D'HONNÊTETÉ
+     - Le fichier ne porte AUCUNE date d'échéance : zéro ligne sur 1 848.
+       L'écran ne fait pas semblant de la connaître ; l'ancienneté se compte
+       depuis la date de facture.
+     - Six pièces portent un trop-payé de 312 737 F. Il est compté à part, et
+       non déduit de la dette : sinon le total afficherait moins que la somme
+       des factures réellement ouvertes.
+
+  Qui y a accès : gérant, superviseur de ville, responsable de site.
+
+
+-------------------------------------------------------------------------------
+  3.3  CE QUI N'EXISTE PAS ENCORE — LA MARGE
+-------------------------------------------------------------------------------
+
+  Il n'y a PAS de page « marge », et il ne peut pas y en avoir aujourd'hui.
+
+  La marge se calculerait en rapprochant, pièce par pièce, ce qu'on a acheté
+  et ce qu'on a refacturé au client. Deux colonnes seraient nécessaires dans
+  le fichier fournisseurs : MONTANT REFACTURÉ et N° FACTURE CLIENT.
+
+  Elles n'y sont pas. Mesuré : 0 ligne sur 1 848 pour les deux.
+
+  Le jour où le fichier les portera, la page se fera. Tant qu'elles manquent,
+  afficher une marge reviendrait à inventer un chiffre.
+
+
+===============================================================================
+  FIN DU DOCUMENT
+===============================================================================

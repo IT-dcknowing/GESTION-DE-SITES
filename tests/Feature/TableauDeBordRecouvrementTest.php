@@ -1,0 +1,248 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Volt\Volt;
+use Modules\Noyau\Entreprises\Modeles\Entreprise;
+use Modules\Noyau\Entreprises\Modeles\Site;
+use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
+use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\TestCase;
+
+/**
+ * Le tableau de bord du recouvrement — et surtout ce qu'il ne montre pas.
+ *
+ * L'écran répond à une question que le module ne traitait pas : non pas « combien nous
+ * doit-on », mais « par quel dossier commencer, et qui s'en occupe ». Deux choses
+ * s'y vérifient plus que les autres.
+ *
+ * **Le partage de la vue.** Le superviseur voit tout le portefeuille et peut l'examiner
+ * agent par agent ; l'agent ne voit que le sien. Une liste déroulante ne ferme rien : le
+ * test écrit l'identifiant d'un collègue dans l'adresse, comme on le ferait à la main.
+ *
+ * **Ce qui n'est confié à personne.** C'est la liste par laquelle un superviseur commence,
+ * et elle se déduit d'un fait — l'absence de relance — jamais d'une table d'affectation
+ * qui n'existe pas.
+ */
+class TableauDeBordRecouvrementTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private Entreprise $entreprise;
+
+    private Site $site;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->entreprise = Entreprise::create(['nom' => 'Alpha', 'slug' => 'alpha']);
+        ProvisionneurEntreprise::creerRoles($this->entreprise);
+
+        $ville = Ville::create([
+            'entreprise_id' => $this->entreprise->id, 'code' => 'ABJ', 'nom' => 'Abidjan', 'est_actif' => true,
+        ]);
+        $this->site = Site::create([
+            'entreprise_id' => $this->entreprise->id, 'ville_id' => $ville->id,
+            'code' => 'ABJ-1', 'nom' => 'Abidjan — Site 1', 'est_actif' => true,
+        ]);
+    }
+
+    public function test_le_tableau_de_bord_est_la_page_d_arrivee_des_trois_roles(): void
+    {
+        foreach (['gerant', 'superviseur_recouvrement', 'agent_recouvrement'] as $role) {
+            $this->actingAs($this->compte($role, $role.'@essai.test'))
+                ->get(route('recouvrement.tableau-de-bord'))
+                ->assertOk();
+        }
+    }
+
+    public function test_le_superviseur_voit_tout_le_portefeuille_et_l_agent_le_sien(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement', 'sup@essai.test');
+        $agent = $this->compte('agent_recouvrement', 'agent@essai.test');
+
+        $this->facture('NSIA ASSURANCES', 'F-001', 1_000_000, now()->subDays(70));
+        $this->facture('GNA ASSURANCES', 'F-002', 2_000_000, now()->subDays(40));
+        $this->facture('ALLIANZ', 'F-003', 3_000_000, now()->subDays(10));
+
+        // Chacun prend un dossier en le relançant : c'est ce geste, et lui seul, qui fait
+        // d'eux les responsables — il n'existe pas de table d'affectation.
+        $this->relance($agent, 'NSIA ASSURANCES', 2);
+        $this->relance($superviseur, 'GNA ASSURANCES', 2);
+
+        Volt::actingAs($superviseur)->test('recouvrement.tableau-de-bord')
+            ->assertSee('NSIA ASSURANCES')
+            ->assertSee('GNA ASSURANCES')
+            ->assertSee('ALLIANZ');
+
+        // L'agent n'a que le sien. Les deux autres ne lui sont pas cachés par pudeur :
+        // ils ne sont pas son travail.
+        Volt::actingAs($agent)->test('recouvrement.tableau-de-bord')
+            ->assertSee('NSIA ASSURANCES')
+            ->assertDontSee('GNA ASSURANCES');
+    }
+
+    public function test_un_agent_qui_force_l_adresse_retombe_sur_son_portefeuille(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement', 'sup@essai.test');
+        $agent = $this->compte('agent_recouvrement', 'agent@essai.test');
+
+        $this->facture('GNA ASSURANCES', 'F-002', 2_000_000, now()->subDays(40));
+        $this->relance($superviseur, 'GNA ASSURANCES', 2);
+
+        // L'identifiant d'un collègue écrit à la main dans l'adresse : une liste
+        // déroulante n'a jamais fermé une URL.
+        Volt::actingAs($agent)->test('recouvrement.tableau-de-bord', ['vue' => (string) $superviseur->id])
+            ->assertDontSee('GNA ASSURANCES');
+    }
+
+    public function test_la_reserve_des_dossiers_a_confier_est_ouverte_a_tous(): void
+    {
+        $agent = $this->compte('agent_recouvrement', 'agent@essai.test');
+
+        $this->facture('ALLIANZ', 'F-003', 3_000_000, now()->subDays(10));
+
+        // Personne ne l'a relancé : c'est un dossier à prendre, et c'est précisément la
+        // liste par laquelle on commence.
+        Volt::actingAs($agent)->test('recouvrement.tableau-de-bord', ['vue' => 'libres'])
+            ->assertSee('ALLIANZ')
+            ->assertSee('À confier');
+    }
+
+    public function test_le_dossier_d_un_tiers_rassemble_ses_factures_ses_relances_et_ses_reglements(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement', 'sup@essai.test');
+
+        $this->facture('NSIA ASSURANCES', 'F-777', 1_000_000, now()->subDays(70));
+        $this->relance($superviseur, 'NSIA ASSURANCES', 3);
+
+        $this->actingAs($superviseur)
+            ->get(route('recouvrement.dossier', ['tiers' => 'NSIA ASSURANCES']))
+            ->assertOk()
+            ->assertSee('F-777')
+            ->assertSee('Relances')
+            // Le responsable affiché vient de la relance, seul fait daté et signé.
+            ->assertSee($superviseur->name);
+    }
+
+    public function test_un_tiers_sans_dette_ne_produit_pas_une_page_en_erreur(): void
+    {
+        $gerant = $this->compte('gerant', 'gerant@essai.test');
+
+        // Un tiers qui ne doit rien est un cas ordinaire — c'est même le but. La page
+        // doit le dire, pas tomber.
+        $this->actingAs($gerant)
+            ->get(route('recouvrement.dossier', ['tiers' => 'TIERS INCONNU']))
+            ->assertOk()
+            ->assertSee('ne doit rien');
+    }
+
+    public function test_le_portefeuille_s_emporte_dans_les_trois_formats(): void
+    {
+        $gerant = $this->compte('gerant', 'gerant@essai.test');
+        $this->facture('NSIA ASSURANCES', 'F-001', 1_000_000, now()->subDays(70));
+
+        foreach (['pdf', 'excel', 'word'] as $format) {
+            $this->actingAs($gerant)
+                ->get(route('recouvrement.telecharger', ['document' => 'portefeuille', 'format' => $format]))
+                ->assertOk();
+        }
+    }
+
+    /**
+     * Le tableau de bord se lit en pleine page, et ne figure pas parmi les neuf écrans.
+     *
+     * Il n'est pas l'une des pages de travail du module, c'est celle d'où l'on part. Rangé
+     * à côté des autres dans la barre latérale, il passait pour une dixième page et lui
+     * volait deux cent trente-six points de large — ceux qui manquaient au tableau.
+     */
+    public function test_le_tableau_de_bord_n_a_pas_la_barre_laterale_du_module(): void
+    {
+        $gerant = $this->compte('gerant', 'gerant@essai.test');
+
+        $this->actingAs($gerant)->get(route('recouvrement.tableau-de-bord'))
+            ->assertOk()
+            ->assertDontSee('<aside class="rec-side">', escape: false)
+            ->assertSee('rec-pleine');
+
+        // Les écrans de travail, eux, la gardent : on y passe de l'un à l'autre.
+        $this->actingAs($gerant)->get(route('recouvrement.saisie'))
+            ->assertOk()
+            ->assertSee('<aside class="rec-side">', escape: false);
+    }
+
+    public function test_le_portefeuille_se_pagine_par_numeros_sans_recharger(): void
+    {
+        $gerant = $this->compte('gerant', 'gerant@essai.test');
+
+        // De quoi dépasser la page : PAR_PAGE tiers, plus un.
+        foreach (range(1, \Modules\Recouvrement\Support\PortefeuilleDeRecouvrement::PAR_PAGE + 3) as $rang) {
+            $this->facture('TIERS '.str_pad((string) $rang, 3, '0', STR_PAD_LEFT),
+                'F-'.$rang, 100_000 * $rang, now()->subDays(40));
+        }
+
+        $reponse = $this->actingAs($gerant)->get(route('recouvrement.tableau-de-bord'))->assertOk();
+
+        // Des numéros, et non deux flèches : atteindre la page douze ne doit pas demander
+        // onze clics, et l'on doit savoir où l'on est.
+        $reponse->assertSee('aria-current="page"', escape: false);
+
+        // `wire:navigate` échange le contenu sur place : la page ne se recharge plus.
+        $reponse->assertSee('wire:navigate', escape: false);
+    }
+
+    // ------------------------------------------------------------------ utilitaires
+
+    private function compte(string $role, string $email): User
+    {
+        $compte = User::create([
+            'entreprise_id' => $this->entreprise->id,
+            'name' => ucfirst(str_replace('_', ' ', $role)),
+            'email' => $email,
+            'password' => 'motdepasse',
+            'email_verified_at' => now(),
+            'est_actif' => true,
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->entreprise->id);
+        $compte->assignRole($role);
+
+        return $compte->fresh();
+    }
+
+    private function facture(string $tiers, string $numero, int $montant, $date): Facture
+    {
+        return Facture::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'site_id' => $this->site->id,
+            'client' => $tiers,
+            'assureur' => $tiers,
+            'n_facture' => $numero,
+            'date' => $date,
+            'montant' => $montant,
+            'activite' => 'Sinistre',
+            'type' => 'Facture',
+        ]);
+    }
+
+    private function relance(User $auteur, string $tiers, int $niveau): RelanceRecouvrement
+    {
+        return RelanceRecouvrement::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'user_id' => $auteur->id,
+            'responsable' => $auteur->name,
+            'date' => now(),
+            'tiers' => $tiers,
+            'factures_visees' => 'Situation globale',
+            'niveau' => $niveau,
+            'canal' => 'Téléphone',
+            'statut' => 'En cours',
+        ]);
+    }
+}

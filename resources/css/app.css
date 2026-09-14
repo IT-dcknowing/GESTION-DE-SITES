@@ -113,6 +113,23 @@ body { font-size: 16px; }
 
 .tableau-conteneur { overflow-x: auto; width: 100%; }
 
+
+/* ------------------------------------------------- Les nombres ne se coupent pas
+
+   « 9 004 » réparti sur deux lignes se lit « 9 ». L'espace des milliers est une espace
+   ordinaire, et le navigateur y voit un point de césure comme un autre : il suffit d'une
+   colonne un peu étroite. La règle vaut partout, et c'est le conteneur qui défile quand
+   la place manque — jamais le nombre qui se brise. */
+.num,
+td.num,
+th.num,
+.chiffre,
+.kpi-valeur,
+[data-nombre] {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
 /* ----------------------------------------------------------------- Cartes */
 
 .carte {

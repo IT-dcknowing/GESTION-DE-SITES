@@ -50,8 +50,21 @@ $requeteBase = computed(function () {
         ->when($this->activiteFiltre, fn ($r) => $r->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 
+    /*
+     * La recherche porte aussi sur la référence, et c'est ce qui la rend utile.
+     *
+     * Le numéro porte désormais le jour et le mois de l'opération : taper « 1409 »
+     * ramène la journée entière, « P-1409-0574 » la pièce exacte. Sans la référence dans la
+     * recherche, il fallait connaître le nom du client pour retrouver un document dont
+     * on n'avait que le numéro sur un papier.
+     */
     if ($this->recherche) {
-        $q->where('client', 'like', '%'.$this->recherche.'%');
+        $terme = '%'.trim($this->recherche).'%';
+
+        $q->where(function ($sous) use ($terme) {
+            $sous->where('client', 'like', $terme);
+            $sous->orWhere('numero', 'like', $terme);
+        });
     }
 
     if ($this->idsCommercialFiltre !== null) {
@@ -154,6 +167,9 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
 ?>
 
 <div>
+    <x-titre-ecran titre="Prospects"
+        sous-titre="Les passages et les rendez-vous, avant le devis." />
+
     <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
@@ -209,7 +225,8 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
     <div class="carte">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Détail des opérations ({{ $this->detail->count() }})</h3>
         <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-            <input type="text" wire:model.live.debounce.400ms="recherche" placeholder="Client / tiers…"
+            <input type="text" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}"
+                placeholder="Client, ou référence — 1409 pour la journée…"
                 style="flex:1; min-width:200px; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
         </div>
         <div class="tableau-conteneur">
@@ -228,7 +245,10 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
                         <th>Passage</th>
                         <th>Devis après passage</th>
                         <th>Suite donnée</th>
+                        <th>Validée par</th>
                         <th>Observations</th>
+                        <th>Commentaire</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -263,10 +283,36 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
                                 @endif
                             </td>
 
+                            {{-- Qui a tranché cette ligne, et quand. Valider une prospection qui
+                                 annonce un devis engage l'atelier à l'établir : c'est un acte, et
+                                 un acte se signe. Le détail dit en plus d'où et depuis quel poste. --}}
+                            <td style="white-space:normal; min-width:140px;">
+                                @if ($ligne->validateur)
+                                    <b>{{ $ligne->validateur }}</b>
+                                    <div style="font-size:11px; color:#6B6E76;">
+                                        {{ $ligne->valide_le?->format('d/m/Y à H\hi') }}
+                                    </div>
+                                @elseif (in_array($ligne->statut_validation, ['Validée', 'Refusée'], true))
+                                    <span style="color:#6B6E76; font-size:12px;">avant la traçabilité</span>
+                                @else
+                                    —
+                                @endif
+                            </td>
+
                             <td style="color:#6B6E76;">{{ $ligne->observations ?? '—' }}</td>
+                            {{-- Le mot du commercial. Il n'arrivait pas jusqu'ici : la colonne
+                                 n'existait pas en base, et le texte se perdait à la saisie. --}}
+                            <td style="color:#4B4E55; white-space:normal; max-width:260px;">
+                                {{ $ligne->commentaire ?? '—' }}
+                            </td>
+                            <td style="text-align:right; white-space:nowrap;">
+                                <a href="{{ route('prospection.voir', $ligne->id) }}"
+                                   class="bouton bouton-secondaire bouton-petit"
+                                   style="text-decoration:none;">Détail</a>
+                            </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 11 : 10" texte="Aucune prospection enregistrée sur cette période." />
+                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 14 : 13" texte="Aucune prospection enregistrée sur cette période." />
                     @endforelse
                 </tbody>
             </table>

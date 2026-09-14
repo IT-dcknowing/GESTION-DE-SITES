@@ -11,6 +11,9 @@ use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
+use Modules\Noyau\Imports\Modeles\LotImport;
+use Illuminate\Support\Facades\DB;
+
 use function Livewire\Volt\{computed, state};
 
 /*
@@ -32,6 +35,7 @@ state([
     'entrepriseId' => '',
     'purgerCommerciaux' => false,
     'purgerAcces' => false,
+    'purgerReglagesImport' => false,
     'confirmation' => '',
     'resultat' => null,
 
@@ -61,6 +65,13 @@ $volumes = computed(function () {
         'Factures' => Facture::withoutGlobalScopes()->where('entreprise_id', $id)->count(),
         'Encaissements' => Encaissement::withoutGlobalScopes()->where('entreprise_id', $id)->count(),
         'Charges' => Charge::withoutGlobalScopes()->where('entreprise_id', $id)->count(),
+        'Fiches de réception' => DB::table('dossiers_vehicules')->where('entreprise_id', $id)->count(),
+        'Mouvements de caisse' => DB::table('mouvements_caisse')->where('entreprise_id', $id)->count(),
+        'Factures fournisseurs' => DB::table('factures_fournisseurs')->where('entreprise_id', $id)->count(),
+        'Entrées et sorties' => DB::table('mouvements_vehicules')->where('entreprise_id', $id)->count(),
+        'Relances' => DB::table('relances_recouvrement')->where('entreprise_id', $id)->count(),
+        'Dépôts de fichiers' => DB::table('lots_import')->where('entreprise_id', $id)->count(),
+        'Fichiers sur le disque' => LotImport::nombreDeFichiersDe((int) $id),
     ];
 });
 
@@ -81,6 +92,15 @@ $portee = computed(function () {
             + Facture::withoutGlobalScopes()->where('entreprise_id', $id)->count()
             + Encaissement::withoutGlobalScopes()->where('entreprise_id', $id)->count()
             + Charge::withoutGlobalScopes()->where('entreprise_id', $id)->count(),
+
+        // Les lignes venues des imports sont comptées à part : on ne les mélange pas aux
+        // écritures, parce que ce ne sont pas les mêmes gestes qui les ont produites.
+        'Lignes importées' => DB::table('dossiers_vehicules')->where('entreprise_id', $id)->count()
+            + DB::table('mouvements_caisse')->where('entreprise_id', $id)->count()
+            + DB::table('mouvements_vehicules')->where('entreprise_id', $id)->count()
+            + DB::table('factures_fournisseurs')->where('entreprise_id', $id)->count(),
+
+        'Fichiers déposés' => LotImport::nombreDeFichiersDe((int) $id),
     ];
 });
 
@@ -96,7 +116,9 @@ $purger = function (PurgerDonneesEntreprise $action) {
         return;
     }
 
-    $this->resultat = $action->executer($this->cible, $this->purgerCommerciaux, $this->purgerAcces);
+    $this->resultat = $action->executer(
+        $this->cible, $this->purgerCommerciaux, $this->purgerAcces, $this->purgerReglagesImport,
+    );
 
     activity()
         ->causedBy(auth()->user())
@@ -104,7 +126,7 @@ $purger = function (PurgerDonneesEntreprise $action) {
         ->withProperties($this->resultat)
         ->log("Purge des données d'exploitation");
 
-    $this->reset(['confirmation', 'purgerCommerciaux', 'purgerAcces']);
+    $this->reset(['confirmation', 'purgerCommerciaux', 'purgerAcces', 'purgerReglagesImport']);
     unset($this->volumes);
 };
 
@@ -147,11 +169,23 @@ $supprimer = function (SupprimerEntreprise $action) {
 ?>
 
 <div>
+    <x-titre-ecran titre="Maintenance"
+        sous-titre="L'état technique de la plateforme et les gestes d'entretien." />
+
     <x-carte-section titre="Purger les données d'une entreprise">
         <div class="encart encart-alerte">
-            <b>Action irréversible.</b> Les écritures d'exploitation (prospections, devis, factures,
-            encaissements, charges, saisies journalières) de l'entreprise choisie seront définitivement
-            supprimées, et la numérotation repartira à zéro. Les lieux et la fiche entreprise sont conservés.
+            <b>Action irréversible.</b> Tout ce qui a été saisi ou importé pour l'entreprise choisie est
+            définitivement supprimé, et la numérotation repart à zéro.
+            <br><br>
+            <b>Ce qui part :</b> les écritures de l'application (prospections, devis, factures,
+            encaissements, charges, saisies journalières), tout ce que les imports ont rempli (fiches de
+            réception, mouvements de caisse, entrées et sorties de véhicules, factures fournisseurs), le
+            travail de recouvrement (relances et commentaires d'écart), et les dépôts d'import eux-mêmes —
+            <b>y compris les fichiers rangés sur le disque</b>, pour que le même fichier puisse être
+            redéposé sans être refusé comme doublon.
+            <br><br>
+            <b>Ce qui reste :</b> la fiche entreprise, les villes, les lieux, les exercices, les listes
+            déroulantes, les accès, et le journal d'activité.
         </div>
 
         <div class="bloc-saisie">
@@ -185,10 +219,24 @@ $supprimer = function (SupprimerEntreprise $action) {
                     n'est jamais touché.
                 </p>
 
+                {{-- Les codes agents et les correspondances ne sont pas des données importées :
+                     ce sont les réponses données à la main aux questions que les imports ont
+                     posées (« le code KZ, c'est quelle ville ? »). Les refaire après chaque
+                     purge n'aurait aucun sens, donc ils survivent — sauf demande expresse. --}}
+                <label style="display:flex; align-items:center; gap:8px; font-size:14px; margin-bottom:6px;">
+                    <input type="checkbox" wire:model="purgerReglagesImport">
+                    Supprimer également les <b>réglages de rattachement des imports</b>
+                </label>
+                <p style="font-size:11.5px; color:#9A9DA5; margin:0 0 14px 26px;">
+                    Codes agents et correspondances de libellés. Sans cette case, ils sont conservés :
+                    leurs compteurs d'occurrences repartent à zéro, et seules les correspondances encore
+                    en attente de réponse sont retirées — la question n'a plus d'objet sans son fichier.
+                </p>
+
                 <label class="champ-libelle">
                     Pour confirmer, saisissez le nom exact de l'entreprise : <b>{{ $this->cible?->nom }}</b>
                 </label>
-                <input type="text" wire:model="confirmation" class="champ" style="max-width:420px;">
+                <input type="text" wire:model="confirmation" value="{{ $confirmation }}" class="champ" style="max-width:420px;">
                 @error('confirmation') <span class="champ-erreur">{{ $message }}</span> @enderror
 
                 <div style="margin-top:16px;">
@@ -214,8 +262,9 @@ $supprimer = function (SupprimerEntreprise $action) {
         <div class="encart encart-alerte">
             <b>Rien ne survit à cette action.</b> Supprimer une entreprise efface l'intégralité de ses
             données : ses villes et ses lieux, toutes ses écritures, ses listes déroulantes, ses exercices,
-            ses conversations et ses notes — et <b>tous ses accès</b>, gérant compris. Les personnes
-            concernées ne pourront plus se connecter, et rien ne se récupère ensuite.
+            ses conversations et ses notes, ses imports et <b>les fichiers déposés sur le disque</b> —
+            et <b>tous ses accès</b>, gérant compris. Les personnes concernées ne pourront plus se
+            connecter, et rien ne se récupère ensuite.
             <br><br>
             Pour ne vider que les chiffres en gardant l'organisation et les comptes, utilisez la purge
             ci-dessus.
@@ -236,7 +285,7 @@ $supprimer = function (SupprimerEntreprise $action) {
             <label class="champ-libelle">
                 Pour confirmer, saisissez le nom exact de l'entreprise : <b>{{ $this->cibleSuppression?->nom }}</b>
             </label>
-            <input type="text" wire:model="confirmationSuppression" class="champ" style="max-width:420px;">
+            <input type="text" wire:model="confirmationSuppression" value="{{ $confirmationSuppression }}" class="champ" style="max-width:420px;">
             @error('confirmationSuppression') <span class="champ-erreur">{{ $message }}</span> @enderror
 
             <div style="margin-top:16px;">

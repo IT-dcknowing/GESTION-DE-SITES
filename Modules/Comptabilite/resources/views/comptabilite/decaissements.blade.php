@@ -125,7 +125,7 @@ $ajouterCharge = function () {
                     <label class="champ-libelle">Site</label>
                     <select wire:model.live="siteId" class="champ" style="width:220px;">
                         @foreach ($this->mesSites as $s)
-                            <option value="{{ $s->id }}">{{ $s->nom }}</option>
+                            <option value="{{ $s->id }}" @selected((string) $siteId === (string) $s->id)>{{ $s->nom }}</option>
                         @endforeach
                     </select>
                 </div>

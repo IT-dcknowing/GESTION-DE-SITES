@@ -19,6 +19,7 @@ use Illuminate\Support\Str;
     'adresse', 'telephone', 'email', 'rccm',
     'ncc', 'regime_imposition', 'centre_impots', 'compte_contribuable',
     'idu', 'commune', 'quartier', 'reference_cadastrale', 'proprietaire_local',
+    'objectif_recouvrement_hebdomadaire',
 ])]
 class Entreprise extends Model
 {

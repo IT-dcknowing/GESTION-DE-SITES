@@ -19,6 +19,12 @@ class RedirectionController extends Controller
             $utilisateur->hasRole('responsable_ville') || $utilisateur->hasRole('responsable_site') => route('saisie-du-jour'),
             $utilisateur->hasRole('commercial') => route('ma-performance'),
             $utilisateur->hasRole('caissier') => route('caissier.tableau-de-bord'),
+            // Les deux rôles du recouvrement atterrissent sur la première page qui leur
+            // est ouverte : l'agent sur la Saisie, comme le superviseur. Passer par
+            // AccesRecouvrement plutôt que d'écrire la route en dur évite qu'un
+            // changement d'habilitation demain fasse atterrir quelqu'un sur un 403.
+            $utilisateur->hasRole('superviseur_recouvrement'), $utilisateur->hasRole('agent_recouvrement')
+                => route('recouvrement.'.(\Modules\Recouvrement\Support\AccesRecouvrement::pagesDe($utilisateur)[0] ?? 'saisie')),
             default => null,
         };
 

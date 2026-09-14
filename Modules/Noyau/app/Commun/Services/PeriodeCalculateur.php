@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Commun\Services;
 
 use Carbon\Carbon;
+use Modules\Noyau\Entreprises\Services\ExerciceDeTravail;
 
 /**
  * Calcule la plage de dates [début, fin] pour les filtres partagés par le tableau de
@@ -30,13 +31,21 @@ class PeriodeCalculateur
     ): array {
         $aujourdhui = Carbon::today();
 
+        // L'année regardée gouverne aussi les valeurs par défaut du mode « période » :
+        // sans bornes saisies, on prend l'exercice consulté en entier plutôt que l'année
+        // civile, sans quoi passer sur 2025 laisserait des bornes restées en 2026.
+        $anneeRegardee = ExerciceDeTravail::annee() ?? $aujourdhui->year;
+        $courante = $anneeRegardee === $aujourdhui->year;
+
         if ($periode === 'periode') {
             $debut = $debutPersonnalise
                 ? Carbon::createFromFormat('Y-m', $debutPersonnalise)->startOfMonth()
-                : $aujourdhui->copy()->startOfYear();
+                : Carbon::create($anneeRegardee, 1, 1)->startOfMonth();
             $fin = $finPersonnalisee
                 ? Carbon::createFromFormat('Y-m', $finPersonnalisee)->endOfMonth()
-                : $aujourdhui->copy()->endOfMonth();
+                // Sur l'année en cours on s'arrête au mois courant ; sur une année passée,
+                // s'y arrêter amputerait l'exercice de ses derniers mois.
+                : ($courante ? $aujourdhui->copy()->endOfMonth() : Carbon::create($anneeRegardee, 12, 31));
 
             // Un intervalle de mois inversé (fin avant début) n'a pas de sens à interroger.
             if ($fin->lessThan($debut)) {
@@ -46,8 +55,14 @@ class PeriodeCalculateur
             return [$debut->startOfDay(), $fin->startOfDay()];
         }
 
-        // Mode « calendrier » : Mois → Semaine → Jour, en cascade, sur l'année en cours.
-        $annee = $aujourdhui->year;
+        // Mode « calendrier » : Mois → Semaine → Jour, en cascade, sur **l'année regardée**
+        // — pas nécessairement celle où l'on est.
+        //
+        // La version précédente lisait l'année du jour. Choisir « Mars » en consultant
+        // l'exercice 2025 ramenait donc mars 2026, c'est-à-dire un mois vide, sans que rien
+        // ne le signale : l'écran affichait zéro, et on en concluait qu'il ne s'était rien
+        // passé cette année-là.
+        $annee = ExerciceDeTravail::annee() ?? $aujourdhui->year;
 
         if (! $moisFiltre) {
             // « Tous les mois » : l'exercice complet (1er janvier au 31 décembre), pas

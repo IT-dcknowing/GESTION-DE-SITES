@@ -321,7 +321,7 @@ $terminer = function () {
                             Ce code unique permettra à votre personnel de s'inscrire seul et d'être rattaché automatiquement à votre entreprise.
                         </p>
                         <div style="display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
-                            <input type="text" wire:model="codeEntreprise" readonly class="champ"
+                            <input type="text" wire:model="codeEntreprise" value="{{ $codeEntreprise }}" readonly class="champ"
                                 style="flex:1; min-width:200px; font-family:'Barlow Condensed',sans-serif; font-size:22px; font-weight:700; letter-spacing:2px; text-align:center;">
                             <button type="button" wire:click="genererCode" class="bouton bouton-sombre">Générer le code</button>
                         </div>

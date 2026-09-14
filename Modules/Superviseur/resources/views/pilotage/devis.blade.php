@@ -50,8 +50,21 @@ $requeteBase = computed(function () {
         ->when($this->activiteFiltre, fn ($r) => $r->where('activite', $this->activiteFiltre))
         ->whereBetween('date_emission', [$debut, $fin]);
 
+    /*
+     * La recherche porte aussi sur la référence, et c'est ce qui la rend utile.
+     *
+     * Le numéro porte désormais le jour et le mois de l'opération : taper « 1409 »
+     * ramène la journée entière, « D-1409-0242 » la pièce exacte. Sans la référence dans la
+     * recherche, il fallait connaître le nom du client pour retrouver un document dont
+     * on n'avait que le numéro sur un papier.
+     */
     if ($this->recherche) {
-        $q->where('client', 'like', '%'.$this->recherche.'%');
+        $terme = '%'.trim($this->recherche).'%';
+
+        $q->where(function ($sous) use ($terme) {
+            $sous->where('client', 'like', $terme);
+            $sous->orWhere('numero', 'like', $terme);
+        });
     }
 
     if ($this->idsCommercialFiltre !== null) {
@@ -187,6 +200,9 @@ $detail = computed(function () {
 ?>
 
 <div>
+    <x-titre-ecran titre="Devis & proformas"
+        sous-titre="Ce qui a été chiffré, et ce qui est devenu une facture." />
+
     <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
@@ -252,17 +268,18 @@ $detail = computed(function () {
     <div class="carte">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Détail des opérations ({{ $this->detail->count() }})</h3>
         <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-            <input type="text" wire:model.live.debounce.400ms="recherche" placeholder="Client / tiers…"
+            <input type="text" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}"
+                placeholder="Client, ou référence — 1409 pour la journée…"
                 style="flex:1; min-width:200px; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
             <select wire:model.live="statutFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
-                <option value="">Statut : tous</option>
-                <option value="En attente">En attente</option>
-                <option value="Validé">Validé</option>
-                <option value="Refusé">Refusé</option>
+                <option value="" @selected($statutFiltre === '')>Statut : tous</option>
+                <option value="En attente" @selected((string) $statutFiltre === 'En attente')>En attente</option>
+                <option value="Validé" @selected((string) $statutFiltre === 'Validé')>Validé</option>
+                <option value="Refusé" @selected((string) $statutFiltre === 'Refusé')>Refusé</option>
             </select>
-            <input type="date" wire:model.live="dateFiltre"
+            <input type="date" wire:model.live="dateFiltre" value="{{ $dateFiltre }}"
                 style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
-            <input type="text" wire:model.live.debounce.400ms="nFactureFiltre" placeholder="N° de facture…"
+            <input type="text" wire:model.live.debounce.400ms="nFactureFiltre" value="{{ $nFactureFiltre }}" placeholder="N° de facture…"
                 style="width:160px; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
         </div>
         <div class="tableau-conteneur">
@@ -312,7 +329,7 @@ $detail = computed(function () {
                                     @endif
                                 @endif
                             </td>
-                            <td>{{ $ligne->commercial->nom }}</td>
+                            <td>{{ $ligne->commercial?->nom ?? '—' }}</td>
                             @if (count($this->idsSites) > 1)
                                 <td>{{ $ligne->site->nom }}</td>
                             @endif

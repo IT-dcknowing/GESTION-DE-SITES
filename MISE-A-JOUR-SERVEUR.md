@@ -1,9 +1,9 @@
 # Mise à jour du serveur — `gestionsites.dc-knowing.com`
 
 > **La base en ligne porte des données réelles.** Rien de ce qui suit ne modifie une
-> écriture métier : aucune purge, aucun seeder, aucun `migrate:fresh`. La migration
-> ajoutée ici **crée deux tables neuves et vides** et ne touche à aucune colonne
-> existante. La commande d'identifiants, elle, ne modifie **qu'une seule ligne** de la
+> écriture métier : aucune purge, aucun seeder, aucun `migrate:fresh`. Les migrations
+> ajoutées ici **créent des tables neuves et vides**, ajoutent des colonnes facultatives
+> et **relâchent** deux contraintes — jamais l'inverse. La commande d'identifiants, elle, ne modifie **qu'une seule ligne** de la
 > table `users`, et seulement les colonnes nommées.
 >
 > Avant de commencer, faire malgré tout une sauvegarde depuis cPanel → *Sauvegardes* →
@@ -34,12 +34,26 @@ routes, d'évènements et de gabarits. Le vidage des gabarits n'est pas facultat
 en cache la classe de chaque écran, et une classe restée en arrière donne une erreur 500 sur
 une propriété introuvable.
 
-Ce que la migration fait :
+Ce que les migrations font :
 
 | Objet | Contenu | Effet sur les données existantes |
 |---|---|---|
 | `sessions_utilisateur` *(table neuve)* | une ligne par connexion | aucun |
 | `visites_ecran` *(table neuve)* | une ligne par écran ouvert | aucun |
+| `relances_recouvrement` *(table neuve)* | une ligne par relance N1–N5 | aucun |
+| `commentaires_ecart_recouvrement` *(table neuve)* | l'explication d'un écart | aucun |
+| `factures.vehicule`, `factures.immatriculation` | colonnes **nullables** ajoutées | aucun : les factures existantes restent valides sans reprise |
+| `factures.assureur`, `factures.courtier` | colonnes **nullables** ajoutées, indexées | aucun : elles naissent vides, le tiers payant retombe sur `client` |
+| `entreprises.objectif_recouvrement_hebdomadaire` | colonne avec valeur par défaut | aucun |
+| `factures.commercial_id` | devient **facultatif** | aucun : toutes les factures existantes gardent leur commercial |
+| `encaissements.moyen`, `charges.moyen` | passent d'`ENUM` à `VARCHAR(60)` | aucun : les libellés sont conservés à l'identique |
+| rôles `agent_recouvrement`, `superviseur_recouvrement` | créés dans chaque entreprise | aucun : personne ne les porte tant qu'on ne les attribue pas |
+
+> Les deux dernières lignes **relâchent** une contrainte au lieu d'en ajouter une : une
+> ligne déjà saisie ne peut donc pas devenir invalide. La conversion `ENUM → VARCHAR`
+> corrige au passage un défaut qui existait déjà — un moyen de paiement ajouté depuis les
+> Paramètres était accepté par le formulaire puis refusé par la base, et l'écran tombait
+> en erreur au moment d'enregistrer.
 
 ## 3. Faire le ménage parmi les comptes de la plateforme
 
@@ -180,8 +194,14 @@ Les deux tables ajoutées sont indépendantes du métier : les supprimer ne fait
 l'historique de navigation.
 
 ```bash
-php artisan migrate:rollback --step=1 --force
+php artisan migrate:rollback --step=2 --force
 ```
+
+Le retour en arrière laisse volontairement `factures.commercial_id` facultatif et `moyen`
+en `VARCHAR` : les factures de recouvrement saisies entre-temps n'ont pas de commercial, et
+rétablir la contrainte imposerait de les supprimer — c'est-à-dire d'effacer du chiffre
+d'affaires réel. Un retour en arrière défait ce qu'une migration a ajouté ; il ne détruit
+pas ce que les gens ont saisi depuis.
 
 Pour l'adresse du super administrateur, relancer la commande du point 4 avec l'ancienne
 adresse en `--email` et `--compte=it.dcknowing@gmail.com`.

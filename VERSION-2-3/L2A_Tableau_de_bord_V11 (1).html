@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L2A — Tableau de bord de pilotage (V11)</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --ink:#16181B; --bg:#EFF1F3; --card:#FFFFFF; --line:#DCE0E5;
+  --red:#C8102E; --steel:#26415E; --ok:#1E7B4D; --warn:#B96E00;
+  --muted:#5C6470; --soft:#F6F7F8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:'Barlow',system-ui,Segoe UI,Arial,sans-serif;font-size:15px}
+h1,h2,h3,.kpi-v,.disp{font-family:'Barlow Condensed','Barlow',sans-serif}
+.num{font-variant-numeric:tabular-nums}
+
+header{background:var(--ink);color:#fff;border-bottom:4px solid var(--red)}
+.hd{max-width:1320px;margin:0 auto;padding:12px 20px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.brand{display:flex;align-items:center;gap:12px}
+.gear{width:38px;height:38px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed';font-weight:700;font-size:17px;flex:none}
+.brand h1{margin:0;font-size:23px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;line-height:1}
+.brand small{display:block;font-family:'Barlow';font-weight:400;font-size:12px;color:#C9CDD3;letter-spacing:.4px;text-transform:none;margin-top:3px}
+.hd-ctrl{margin-left:auto;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.hd-ctrl label{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:#AEB4BC;display:block;margin-bottom:3px}
+.hd-ctrl select,.hd-ctrl input{background:#22252A;color:#fff;border:1px solid #3A3F46;border-radius:6px;padding:7px 9px;font-family:inherit;font-size:13.5px;color-scheme:dark}
+.badge-flux{font-size:11px;background:#22252A;border:1px solid #3A3F46;color:#9FE2BE;padding:6px 10px;border-radius:6px}
+.role-chip{font-size:11px;background:var(--red);color:#fff;padding:6px 10px;border-radius:6px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+
+nav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
+.nv{max-width:1320px;margin:0 auto;padding:0 20px;display:flex;gap:30px;flex-wrap:wrap}
+.nv-grp{padding:10px 0 0}
+.nv-grp .g{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:600;margin-bottom:4px}
+.nv-grp .t{display:flex;gap:4px}
+.tab{border:0;background:none;font-family:'Barlow Condensed';font-size:16.5px;font-weight:600;letter-spacing:.4px;color:#3A3F46;padding:8px 12px 10px;cursor:pointer;border-bottom:3px solid transparent}
+.tab:hover{color:var(--ink)}
+.tab.on{color:var(--red);border-bottom-color:var(--red)}
+.tab:focus-visible{outline:2px solid var(--steel);outline-offset:-2px}
+.nv-grp.hidden,.tab.hidden{display:none}
+
+main{max-width:1320px;margin:0 auto;padding:22px 20px 60px}
+.pane{display:none}.pane.on{display:block}
+.sec-t{display:flex;align-items:baseline;gap:12px;margin:24px 0 12px;flex-wrap:wrap}
+.sec-t h2{margin:0;font-size:21px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.sec-t .src{font-size:12px;color:var(--muted)}
+.src-auto{color:var(--ok);font-weight:600}
+.src-saisie{color:var(--steel);font-weight:600}
+.ctx{font-size:12px;background:#E8EBEF;border-radius:6px;padding:4px 10px;color:var(--steel);font-weight:600}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--steel);border-radius:8px;padding:12px 14px}
+.kpi.red{border-left-color:var(--red)}.kpi.ok{border-left-color:var(--ok)}.kpi.warn{border-left-color:var(--warn)}
+.kpi-l{font-size:11.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600}
+.kpi-v{font-size:28px;font-weight:700;line-height:1.15;margin-top:3px}
+.kpi-s{font-size:12px;color:var(--muted);margin-top:2px}
+
+.grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px}
+.card h3{margin:0 0 10px;font-size:17px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.card .note{font-size:12.5px;color:var(--muted);line-height:1.5}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);text-align:left;padding:7px 8px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid #ECEEF1;vertical-align:top}
+tr:hover td{background:var(--soft)}
+td.r,th.r{text-align:right}
+.pill{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.3px;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.p-ok{background:#E4F3EA;color:var(--ok)}.p-warn{background:#FBF0DE;color:var(--warn)}
+.p-red{background:#FBE4E8;color:var(--red)}.p-neu{background:#EBEEF2;color:var(--steel)}
+.p-off{background:#EAEAEA;color:#7A7F86}
+.bar-w{background:#ECEEF1;border-radius:5px;height:9px;overflow:hidden;min-width:70px}
+.bar{height:100%;background:var(--steel);border-radius:5px}
+.bar.g{background:var(--ok)}.bar.r{background:var(--red)}.bar.o{background:var(--warn)}
+
+.alert{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;background:#fff;padding:11px 13px;margin-bottom:8px;font-size:13.5px}
+.alert.crit{border-left-color:var(--red)}
+.dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none}
+.dot.r{background:var(--red)}.dot.o{background:var(--warn)}.dot.g{background:var(--ok)}
+
+.hint{border:1px dashed var(--line);background:var(--soft);border-radius:8px;padding:12px 14px;font-size:13px;color:#3A3F46;line-height:1.55;margin:12px 0}
+.hint b{color:var(--ink)}
+
+input[type=number],input[type=text],input[type=date],input[type=month],select.inl{border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-family:inherit;font-size:14px}
+input[type=number]{width:130px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--steel)}
+.btn{background:var(--steel);color:#fff;border:0;border-radius:6px;padding:9px 16px;font-family:'Barlow Condensed';font-size:15.5px;font-weight:600;letter-spacing:.5px;cursor:pointer;text-transform:uppercase}
+.btn.sec{background:#fff;color:var(--steel);border:1px solid var(--steel)}
+.btn.red{background:var(--red)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:hover{filter:brightness(1.08)}
+details summary{cursor:pointer;font-size:12.5px;color:var(--steel);font-weight:600}
+details ul{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+
+.drop{border:2px dashed #A9B2BC;border-radius:10px;background:#fff;padding:34px 20px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
+.drop.hov{border-color:var(--steel);background:#F0F4F8;color:var(--steel)}
+.drop .disp{font-size:21px;font-weight:600;color:var(--ink);letter-spacing:.4px}
+.map-t td{font-size:13px}
+.log{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;background:#16181B;color:#C9F0D8;border-radius:8px;padding:12px 14px;max-height:220px;overflow:auto;white-space:pre-wrap;margin-top:10px}
+
+.ovl{position:fixed;inset:0;background:rgba(20,22,25,.55);display:none;align-items:flex-start;justify-content:center;padding:34px 14px;z-index:60;overflow:auto}
+.ovl.on{display:flex}
+.modal{background:#fff;border-radius:10px;max-width:760px;width:100%;padding:22px 24px;border-top:5px solid var(--red)}
+.modal h3{margin:0;font-family:'Barlow Condensed';font-size:22px;text-transform:uppercase;letter-spacing:.5px}
+.steps{margin-top:14px}
+.step{display:grid;grid-template-columns:26px 1fr 150px 120px;gap:10px;align-items:center;padding:8px 4px;border-bottom:1px solid #ECEEF1;font-size:13.5px}
+.step input[type=checkbox]{width:17px;height:17px;accent-color:var(--ok)}
+.step .who{color:var(--muted);font-size:12px}
+.chart-w{position:relative;height:250px}
+canvas{max-width:100%}
+.frm{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:12px}
+.frm label{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600}
+footer{border-top:1px solid var(--line);color:var(--muted);font-size:12px;text-align:center;padding:18px}
+@media(max-width:640px){.step{grid-template-columns:26px 1fr;gap:6px}.step .who,.step .del{grid-column:2}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hd">
+    <div class="brand">
+      <div class="gear">L2A</div>
+      <h1>L'Artisan Automobile
+        <small>Tableau de bord de pilotage — V11 · Comptes tiers : suivi fournisseurs (achats) & recouvrement clients (extraits de compte)</small>
+      </h1>
+    </div>
+    <div class="hd-ctrl">
+      <div><label for="selRole">Profil connecté</label>
+        <select id="selRole">
+          <option value="gerant">Gérant — Direction</option>
+          <option value="site">Gestionnaire de site</option>
+          <option value="achats">Service achats</option>
+          <option value="recouvrement">Service recouvrement</option>
+        </select></div>
+      <div><label for="selSite">Site</label><select id="selSite"></select></div>
+      <div><label for="selPer">Période</label>
+        <select id="selPer">
+          <option value="jour">Jour</option><option value="mois" selected>Mois</option>
+          <option value="annee">Année</option><option value="intervalle">Du … au …</option>
+        </select></div>
+      <div id="perInputs" style="display:flex;gap:6px;align-items:flex-end"></div>
+      <div class="badge-flux" title="Interfaçage en lecture seule">⇄ Flux entrant seul</div>
+      <div class="role-chip" id="roleChip">Gérant</div>
+    </div>
+  </div>
+</header>
+
+<nav><div class="nv">
+  <div class="nv-grp"><div class="g">Tableau de bord</div><div class="t">
+    <button class="tab on" data-p="synthese">Synthèse</button>
+    <button class="tab" data-p="commercial">Commercial</button>
+    <button class="tab" data-p="tresorerie" id="tabTre">Trésorerie & charges</button>
+  </div></div>
+  <div class="nv-grp"><div class="g">Gestion des dossiers</div><div class="t">
+    <button class="tab" data-p="dossiers">Dossiers véhicules</button>
+    <button class="tab" data-p="devis">Devis</button>
+    <button class="tab" data-p="import">Import données</button>
+  </div></div>
+  <div class="nv-grp" id="grpTiers"><div class="g">Comptes tiers</div><div class="t">
+    <button class="tab" data-p="fournisseurs">Fournisseurs — Achats</button>
+    <button class="tab" data-p="recouvrement">Recouvrement clients</button>
+  </div></div>
+  <div class="nv-grp" id="grpAdmin"><div class="g">Administration — Gérant</div><div class="t">
+    <button class="tab" data-p="commerciaux">Commerciaux</button>
+  </div></div>
+</div></nav>
+
+<main>
+
+<!-- ============ SYNTHÈSE ============ -->
+<section class="pane on" id="p-synthese">
+  <div class="sec-t"><h2>Synthèse d'activité</h2><span class="ctx" id="ctxSyn"></span>
+    <span class="src">Source : <span class="src-auto">extractions logiciel garage (aucune ressaisie)</span></span></div>
+  <div class="kpis" id="kpiSyn"></div>
+  <div class="grid2" style="margin-top:14px">
+    <div class="card"><h3>CA HT facturé par jour</h3><div class="chart-w"><canvas id="chCA"></canvas></div>
+      <div class="note">Lignes sans montant (attente BC, garantie…) exclues du CA, suivies en alertes.</div></div>
+    <div class="card"><h3>Répartition par prestation</h3><div class="chart-w"><canvas id="chPresta"></canvas></div>
+      <div class="note" id="notePresta"></div></div>
+  </div>
+  <div class="grid2" style="margin-top:14px">
+    <div class="card"><h3>Alertes de pilotage</h3><div id="alerts"></div>
+      <div class="note">Règles : livraison prévue dépassée · sortie sans facture · devis émis &gt; 48 h · dossier sans mouvement &gt; 24 h.</div></div>
+    <div class="card"><h3>Ponctualité des livraisons</h3><div id="ponct"></div>
+      <div class="hint"><b>Charges ≠ décaissements.</b> Les <b>charges</b> (engagements, réglés ou non), rapprochées du CA, mesurent la <b>rentabilité</b> du site. Les <b>décaissements</b>, rapprochés des encaissements, mesurent sa <b>liquidité</b>. Les deux lectures figurent au tableau de bord (décision du 13/08/2026).</div></div>
+  </div>
+</section>
+
+<!-- ============ COMMERCIAL ============ -->
+<section class="pane" id="p-commercial">
+  <div class="sec-t"><h2>Vue commerciale</h2><span class="ctx" id="ctxCom"></span>
+    <span class="src">CA : <span class="src-auto">extraction logiciel</span> · Objectifs & paramétrage : <span class="src-saisie">onglet Commerciaux (Gérant)</span> · Prospections & encaissé : <span class="src-saisie">saisie</span></span></div>
+  <div class="kpis" id="kpiCom"></div>
+  <div class="card" style="margin-top:14px"><h3>Réalisation par commercial(e) — actifs du périmètre</h3>
+    <table id="tbCom"><thead><tr>
+      <th>Commercial(e)</th><th>Site</th><th class="r">Objectif HT</th><th class="r">Réalisé HT</th>
+      <th>Taux de réalisation</th><th class="r">Écart restant</th>
+      <th>Taux de recouvrement</th><th class="r">Restant à recouvrer</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note">Réalisation issue de l'extraction « CA commercial » du logiciel (snapshot du 13/08) — elle sera calculée par période après interfaçage. Restant à recouvrer affiché dès que le taux &lt; 100 %. Les commerciaux désactivés n'apparaissent plus ici mais leur historique est conservé.</div>
+  </div>
+  <div class="grid2" style="margin-top:14px">
+    <div class="card"><h3>Taux de réalisation ventilé par prestation</h3><div id="ventil"></div>
+      <div class="note">Cible indicative <b>70 % mécanique / 30 % sinistre</b>. Commissions en cas d'atteinte globale mais de répartition non conforme : à arbitrer par la Direction.</div></div>
+    <div class="card"><h3>Prospections</h3>
+      <table><thead><tr><th>Commercial(e)</th><th class="r">Passages</th><th class="r">Devis après passage</th><th class="r">Clients spontanés</th><th>Observation</th></tr></thead>
+      <tbody id="tbProsp"></tbody></table>
+      <div class="note">« Passage » et « Devis après passage » = prospects démarchés. Clients venus d'eux-mêmes = rôle <b>client spontané</b>. Observation par ligne (commercial) ≠ Commentaire global (responsable de site) — non bloquants.</div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Commentaire du responsable de site (journée)</h3>
+    <input type="text" style="width:100%" placeholder="Contexte de la journée — champ global, non bloquant, renseigné par le responsable de site"></div>
+</section>
+
+<!-- ============ TRÉSORERIE & CHARGES ============ -->
+<section class="pane" id="p-tresorerie">
+  <div class="sec-t"><h2>Trésorerie & charges</h2><span class="ctx" id="ctxTre"></span>
+    <span class="src"><span class="src-saisie">Saisie trésorerie Abidjan</span> + <span class="src-auto">imports caisse / FSF dédoublonnés</span> — volet réservé Gérant & trésorerie</span></div>
+  <div class="kpis" id="kpiTre"></div>
+
+  <div class="card" style="margin-top:14px"><h3>Situation par compte — rapport du 10 au 13/08/2026</h3>
+    <table id="tbTre"><thead><tr>
+      <th>Compte</th><th class="r">Solde initial</th><th class="r">Encaissements</th><th class="r">Décaissements</th>
+      <th class="r">Solde final</th><th class="r">Chèques en circulation</th><th class="r">Gap à couvrir</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note">« Gap à couvrir » = solde final + chèques clients déposés non crédités − chèques émis en circulation.</div></div>
+
+  <div class="grid2" style="margin-top:14px">
+    <div class="card"><h3>Charges engagées (exploitation) — période & site sélectionnés</h3>
+      <div class="kpis" id="kpiChg" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+      <table id="tbChg" style="margin-top:10px"><thead><tr>
+        <th>Imputation</th><th class="r">Montant engagé</th><th class="r">Réglé</th><th class="r">Reste à payer</th><th class="r">Δ refacturation</th>
+      </tr></thead><tbody></tbody></table>
+      <div class="note">Alimenté par l'import du <b>Fichier Suivi Fournisseurs (feuille DETAIL)</b> — dédoublonné sur Fournisseur + N° de pièce. « Δ refacturation » = montant refacturé − montant engagé : un total négatif signale des pertes de refacturation (constat FICORE de l'audit). <b>Attention :</b> n'interpréter la marge indicative que si les factures de la même période et du même site ont bien été importées — sinon le ratio compare des périmètres différents.</div></div>
+    <div class="card"><h3>Flux de caisse importés — encaissements / décaissements</h3>
+      <div class="kpis" id="kpiFlux" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+      <table id="tbFlux" style="margin-top:10px"><thead><tr>
+        <th>Date</th><th>Libellé</th><th class="r">Encaissement</th><th class="r">Décaissement</th>
+      </tr></thead><tbody></tbody></table>
+      <div class="note">Alimenté par l'import des feuilles de <b>caisse mensuelle</b> (Date · Libellé · Entrées · Sorties) — dédoublonné sur date + libellé + montants. Affichage limité aux 15 derniers mouvements de la période.</div></div>
+  </div>
+</section>
+
+<!-- ============ DOSSIERS ============ -->
+<section class="pane" id="p-dossiers">
+  <div class="sec-t"><h2>Dossiers véhicules</h2><span class="ctx" id="ctxDos"></span>
+    <span class="src"><span class="src-auto">Extractions Entrées / Sorties / Factures</span> — pointage des étapes par le chef d'atelier (mi-journée & fin de journée)</span></div>
+  <div class="kpis" id="kpiDos"></div>
+  <div class="card" style="margin-top:14px"><h3>Dossiers en atelier (entrés, non livrés)</h3>
+    <table id="tbEnc"><thead><tr>
+      <th>Fiche</th><th>Véhicule</th><th>Client</th><th>Prestation</th>
+      <th>Entrée</th><th>Livraison prévue</th><th class="r">Jours atelier</th><th>Statut délai</th><th></th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note"><span class="pill p-ok">dans les délais</span> <span class="pill p-warn">échéance ≤ 24 h</span> <span class="pill p-red">livraison dépassée</span> — dossier sans action au-delà du délai : rouge + notification.</div></div>
+  <div class="card" style="margin-top:14px"><h3>Sorties de la période — contrôle facture</h3>
+    <table id="tbSor"><thead><tr>
+      <th>Sortie</th><th>Fiche</th><th>Véhicule</th><th>Client</th><th>Prestation</th><th>N° facture</th><th class="r">Montant HT</th><th>Contrôle</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note">Rapprochement automatique sorties ↔ factures sur le n° de fiche : aucun véhicule ne sort sans facture.</div></div>
+</section>
+
+<!-- ============ DEVIS ============ -->
+<section class="pane" id="p-devis">
+  <div class="sec-t"><h2>Suivi des devis</h2><span class="ctx" id="ctxDev"></span>
+    <span class="src"><span class="src-auto">Import extraction devis (dédoublonné, évolutions tracées)</span> ou <span class="src-saisie">saisie via bouton</span></span></div>
+  <div class="kpis" id="kpiDev"></div>
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <h3 style="margin:0">Devis de la période</h3>
+      <button class="btn" id="btnAddDevis">+ Ajouter un devis</button>
+    </div>
+    <table id="tbDev" style="margin-top:10px"><thead><tr>
+      <th>N° devis</th><th>Fiche</th><th>Client</th><th>Prestation</th><th>Demande</th><th>Émission</th>
+      <th class="r">Délai émission</th><th>Statut</th><th class="r">Montant HT</th><th>Évolution</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note">Statuts : <span class="pill p-warn">en attente</span> <span class="pill p-ok">validé</span> <span class="pill p-red">refusé</span>. Cible d'émission <b>48 h</b> — dépassement en rouge + alerte. Relance après 24 h sans retour.</div></div>
+  <div class="card" style="margin-top:14px"><h3>Journal des évolutions de devis</h3>
+    <table id="tbEvo"><thead><tr><th>Horodatage import</th><th>N° devis</th><th>Champ</th><th>Avant</th><th>Après</th></tr></thead><tbody></tbody></table>
+    <div class="note">À chaque import, les devis déjà connus (même n°) sont <b>mis à jour, jamais dupliqués</b> ; tout changement de statut ou de montant est consigné ici avec l'horodatage de l'import. C'est ce journal qui matérialise l'évolution des devis entre deux extractions.</div></div>
+</section>
+
+<!-- ============ IMPORT ============ -->
+<section class="pane" id="p-import">
+  <div class="sec-t"><h2>Import des extractions — zéro double saisie, zéro doublon</h2></div>
+  <div class="hint"><b>Principe (CR du 13/08/2026) :</b> l'application <b>lit</b> les données du logiciel WinDev sans jamais modifier la base source. <b>Dédoublonnage :</b> chaque enregistrement possède une clé naturelle (n° facture, n° fiche, n° devis, fournisseur + n° pièce, date + libellé + montants). À l'import : clé inconnue → <b>insertion</b> ; clé connue et contenu identique → <b>ignoré</b> ; clé connue et contenu différent → <b>mise à jour</b> (et pour les devis, l'évolution est consignée au journal). On peut donc réimporter les mêmes fichiers, ou des fichiers cumulatifs, sans créer de doublons.</div>
+
+  <div class="frm" style="margin-bottom:12px">
+    <div><label for="impSite">Site d'origine de l'extraction</label>
+      <select id="impSite" class="inl"></select></div>
+    <div class="note" style="max-width:560px">Les extractions véhicules/factures ne portent pas le site : il est affecté ici à l'import. Le Fichier Suivi Fournisseurs porte sa propre colonne SITE, qui prime.</div>
+  </div>
+
+  <div class="drop" id="drop" tabindex="0" role="button" aria-label="Importer des fichiers Excel">
+    <div class="disp">Déposer ici les extractions .xlsx / .xlsm du logiciel</div>
+    <div style="margin-top:6px">ou cliquer pour choisir — format reconnu automatiquement par ses en-têtes</div>
+    <input type="file" id="fileIn" accept=".xlsx,.xls,.xlsm" multiple style="display:none">
+  </div>
+  <div class="log" id="impLog">Prêt. Formats reconnus : Entrées · Sorties · Factures · Point CA · Devis · Charges (FSF, feuille DETAIL) · Caisse (encaissements/décaissements).</div>
+
+  <div class="card" style="margin-top:14px"><h3>Formats reconnus & clés de dédoublonnage</h3>
+    <table class="map-t"><thead><tr><th>Extraction</th><th>Signature d'en-têtes</th><th>Clé d'unicité</th><th>Alimente</th></tr></thead>
+    <tbody>
+      <tr><td>Entrées véhicules</td><td>DATE · N° FICHE · MOTIF DE LA VENUE · DATE DE LIVR. PRÉVUE</td><td>N° fiche</td><td>Dossiers, prestations, délais</td></tr>
+      <tr><td>Sorties véhicules</td><td>DATE SORTIE · N° FICHE · … · N° FACTURE</td><td>N° fiche + date de sortie</td><td>Livraisons, ponctualité, contrôle facture</td></tr>
+      <tr><td>Factures</td><td>DATE DE LA FACTURE · N° FACTURE · MONTANT FACTURE</td><td>N° facture</td><td>CA HT, ticket moyen</td></tr>
+      <tr><td>Point CA — véhicules livrés</td><td>DATE SORTIE · N° FICHE · MONTANT HT · OBSERVATIONS</td><td>N° fiche + date</td><td>CA mois en cours, attente BC</td></tr>
+      <tr><td><b>Devis</b></td><td>N° DEVIS · DATE DEMANDE · DATE EMISSION · STATUT · MONTANT (format à faire produire par l'éditeur)</td><td>N° devis</td><td>Suivi devis + journal des évolutions</td></tr>
+      <tr><td><b>Charges / Fournisseurs — FSF</b></td><td>DATE FACTURE/BC · SITE · N° PIECE · MONTANT · FOURNISSEUR · MONTANT REGLE · DATE ECHEANCE · MONTANT REFACTURE</td><td>Fournisseur + n° pièce</td><td>Charges, balance fournisseurs, échéances, FICORE</td></tr>
+      <tr><td><b>Créances clients — État des impayés</b></td><td>ASSUREUR · Numéro de la facture · montantTTC · Montantréglé · ResteàPayer (feuille Détail)</td><td>Assureur + n° facture + date d'édition + immat</td><td>Recouvrement, balance âgée, extraits de compte</td></tr>
+      <tr><td><b>Caisse — flux</b></td><td>Date · Libellé · Entrées · Sorties</td><td>Empreinte date + libellé + montants</td><td>Encaissements / décaissements</td></tr>
+    </tbody></table>
+    <div class="note">Jointure inter-fichiers sur le <b>n° de fiche de réception</b> (identifiant pivot confirmé en séance). Lignes non conformes ignorées et signalées au journal.</div></div>
+</section>
+
+<!-- ============ COMMERCIAUX (ADMIN) ============ -->
+<section class="pane" id="p-commerciaux">
+  <div class="sec-t"><h2>Gestion des commerciaux</h2>
+    <span class="src">Réservé au <span class="src-saisie">Gérant</span> — création, affectation, activation, objectifs réévalués. Chaque commercial(e) accède à ses seules données (droits à porter côté serveur).</span></div>
+
+  <div class="frm"><b style="font-family:'Barlow Condensed';text-transform:uppercase;letter-spacing:.5px">Créer un(e) commercial(e)</b>
+    <div><label for="ncNom">Nom</label><input type="text" id="ncNom" placeholder="Nom et prénom"></div>
+    <div><label for="ncSite">Site d'affectation</label><select id="ncSite" class="inl"></select></div>
+    <div><label for="ncObj">Objectif initial (HT)</label><input type="number" id="ncObj" value="5000000" step="100000"></div>
+    <button class="btn" id="btnAddCom">Créer</button>
+  </div>
+
+  <div class="card" style="margin-top:14px"><h3>Effectif commercial</h3>
+    <table id="tbAdm"><thead><tr>
+      <th>Commercial(e)</th><th>Site</th><th>Statut</th><th class="r">Objectif courant</th>
+      <th>Historique des objectifs</th><th class="r">Réalisé HT</th><th>Performance</th><th>Actions</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note">La <b>désactivation</b> retire le commercial des vues et des saisies sans effacer son historique (traçabilité). La <b>réévaluation</b> d'objectif conserve chaque valeur avec sa date et son motif ; le taux de réalisation s'apprécie sur l'objectif en vigueur. Le changement de <b>site</b> prend effet immédiatement sur les vues filtrées.</div></div>
+</section>
+
+
+<!-- ============ FOURNISSEURS (ACHATS) ============ -->
+<section class="pane" id="p-fournisseurs">
+  <div class="sec-t"><h2>Suivi fournisseurs — Service achats</h2><span class="ctx" id="ctxFrn"></span>
+    <span class="src">Source : <span class="src-auto">import FSF (feuille DETAIL), dédoublonné Fournisseur + N° pièce</span> — situation cumulée à date, filtrée par site, indépendante de la période</span></div>
+  <div class="kpis" id="kpiFrn"></div>
+
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <h3 style="margin:0">Balance fournisseurs — suivi des dettes</h3>
+      <input type="text" id="frnSearch" placeholder="Rechercher un fournisseur…" style="width:240px">
+    </div>
+    <table id="tbFrn" style="margin-top:10px"><thead><tr>
+      <th>Fournisseur</th><th class="r">Pièces</th><th class="r">Engagé</th><th class="r">Réglé</th>
+      <th class="r">Dette (reste à payer)</th><th class="r">Dont échues</th><th class="r">Δ refacturation</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note">« Dont échues » : reste à payer dont la <b>Date Échéance</b> du FSF est dépassée. Rappels des règles internes : règlement fournisseur conditionné à la vérification de la marge du dossier ; paiements sous-traitants exclusivement par virement bancaire. Affichage des 15 dettes les plus élevées — la recherche donne accès à tout fournisseur.</div></div>
+
+  <div class="card" style="margin-top:14px"><h3>Contrôle de refacturation des pièces (FICORE)</h3>
+    <div class="kpis" id="kpiFic" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
+    <table id="tbFic" style="margin-top:10px"><thead><tr>
+      <th>Pièce</th><th>Fournisseur</th><th>Véhicule / Immat</th><th class="r">Achat</th><th class="r">Refacturé</th><th class="r">Δ</th><th class="r">Marge</th><th>Contrôle</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note">Règle d'audit : marge minimale <b>30 %</b> sur la refacturation. <span class="pill p-red">perte</span> = pièce refacturée sous son coût d'achat (constat FICORE) · <span class="pill p-warn">&lt; 30 %</span> = marge insuffisante · <span class="pill p-ok">conforme</span>. Les 15 écarts les plus défavorables sont affichés ; les achats de pièces sans refacturation renseignée sont comptés à part (angles morts à qualifier par le service devis).</div></div>
+</section>
+
+<!-- ============ RECOUVREMENT CLIENTS ============ -->
+<section class="pane" id="p-recouvrement">
+  <div class="sec-t"><h2>Recouvrement clients</h2><span class="ctx" id="ctxRec"></span>
+    <span class="src">Source : <span class="src-auto">import État des impayés (feuille Détail), dédoublonné par facture</span> — situation cumulée à date · ancienneté sur la date d'édition</span></div>
+  <div class="kpis" id="kpiRec"></div>
+
+  <div class="grid2" style="margin-top:14px">
+    <div class="card"><h3>Balance âgée des créances</h3><div class="chart-w"><canvas id="chAge"></canvas></div>
+      <div class="note">Protocole de relance (fiche de poste Chargé du Recouvrement) : <b>J+7</b> relance mail · <b>J+15</b> appel téléphonique · <b>J+30</b> courrier formel · <b>J+60</b> mise en demeure / contentieux (voies OHADA).</div></div>
+    <div class="card"><h3>Accord avec la trésorerie</h3><div id="recTre"></div>
+      <div class="note">Le reste à recouvrer est le gisement d'encaissements de la trésorerie : la priorisation des relances (montant × ancienneté) se cale sur le gap à couvrir. Objectif hebdomadaire de recouvrement : <b>15 000 000 F</b> (fiche de poste validée).</div></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <h3 style="margin:0">Créances par client</h3>
+      <input type="text" id="recSearch" placeholder="Rechercher un client…" style="width:240px">
+    </div>
+    <table id="tbRec" style="margin-top:10px"><thead><tr>
+      <th>Client / Assureur</th><th class="r">Factures</th><th class="r">Montant TTC</th><th class="r">Réglé</th>
+      <th class="r">Reste à recouvrer</th><th>Taux</th><th>Ancienneté dominante</th><th>Niveau de relance</th><th></th>
+    </tr></thead><tbody></tbody></table></div>
+
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
+      <div><h3 style="margin:0 0 6px">Extrait de compte client</h3>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div><label style="font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:600;display:block;margin-bottom:3px">Client</label>
+            <select id="extClient" class="inl" style="min-width:220px"></select></div>
+          <label style="display:flex;gap:6px;align-items:center;font-size:13px;padding-bottom:8px">
+            <input type="checkbox" id="extImp" checked style="width:16px;height:16px"> Impayés uniquement</label>
+        </div></div>
+      <button class="btn" id="btnExtXls">Exporter l'extrait en Excel</button>
+    </div>
+    <div id="extHead" class="hint" style="margin-top:12px"></div>
+    <table id="tbExt"><thead><tr>
+      <th>Assureur</th><th>Date réception</th><th>Date édition</th><th>N° facture</th><th>Véhicule</th>
+      <th>Immatriculation</th><th class="r">Montant TTC</th><th class="r">Montant réglé</th><th class="r">Reste à payer</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="note">Reproduit le modèle d'extrait transmis aux clients (en-tête L2A, NCC 2197588 Q, ligne TOTAUX) — l'export Excel est prêt à joindre au courrier de relance.</div></div>
+</section>
+
+</main>
+
+<!-- Modale fiche de suivi -->
+<div class="ovl" id="ovl" aria-modal="true" role="dialog">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+      <div><h3 id="mTitle">Fiche de suivi</h3><div class="note" id="mSub"></div></div>
+      <button class="btn sec" id="mClose">Fermer</button>
+    </div>
+    <div class="steps" id="mSteps"></div>
+    <div class="note" style="margin-top:10px">Pointage par le chef d'atelier ou son superviseur, deux fois par jour — l'heure de pointage impacte le calcul des délais. Étape sans action au-delà du délai : rouge + notification.</div>
+  </div>
+</div>
+
+<footer>L'Artisan Automobile (L2A) × Cabinet DC-KNOWING — Maquette V11 du 17/08/2026 · Document de travail confidentiel · Données réelles des extractions (juillet–août 2026)</footer>
+
+<script>
+const L2A_DATA={"entrees":[{"date":"2026-07-01","fiche":"FR-YKN° 013613","immat":"AA122PR01","marque":"TOYOTA","modele":"HIGHLANDER","client":"ETS LOGOLAND CARS ABIDJAN SARL","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"LUSTRAGE","livrPrevue":"2026-07-01"},{"date":"2026-07-01","fiche":"FR-KZN° 013624","immat":"2712KY01","marque":"PEUGEOT","modele":"3008","client":"WILLIS TOWERS WATSON -CI +225 2720252500","motif":"SINISTRE","travaux":"POINT D'IMPACT : CHOCS MULTIPLES AVG; CAPOT MOTEUR ; PORTIERE AVG","livrPrevue":"2026-07-01"},{"date":"2026-07-02","fiche":"FR-YKN° 013626","immat":"AA361RJ01","marque":"KIAMOTORS","modele":"NEW SPORTAGE 2022 EX 4X2","client":"KOUAKOU KOUASSI FREDERIC","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"TOLEREIE ET PEINTURE PORTE AR D","livrPrevue":"2026-07-02"},{"date":"2026-07-03","fiche":"FR-YKN° 013649","immat":"AB753FZ01","marque":"TOYOTA","modele":"MATRIX","client":"TRAORE SALIFOU","motif":"TRAVAUX MECANIQUES","travaux":"PARALLELISME","livrPrevue":"2026-07-03"},{"date":"2026-07-04","fiche":"FR-YKN° 013090","immat":"5621FZ01","marque":"HONDA","modele":"CRV 4X4","client":"DJE KOUASSI","motif":"TRAVAUX MECANIQUES","travaux":"PARE BRISE","livrPrevue":"2026-07-04"},{"date":"2026-07-04","fiche":"FR-YKN° 013222","immat":"5834GX01","marque":"PEUGEOT","modele":"406","client":"SIAKA OUATTARA","motif":"TRAVAUX MECANIQUES","travaux":"CONTROLE MECANIQUE","livrPrevue":"2026-07-04"},{"date":"2026-07-07","fiche":"FR-YKN° 013740","immat":"5009HA01","marque":"TOYOTA","modele":"PRADO","client":"IBRAHIM HUSSEIN","motif":"TRAVAUX MECANIQUES","travaux":"EQUILIBRAGE DES 4ROUES","livrPrevue":"2026-07-07"},{"date":"2026-07-07","fiche":"FR-YKN° 013744","immat":"AA062XX01","marque":"HAVAL","modele":"JOLION","client":"KOUADIO LUCRAICE","motif":"TRAVAUX MECANIQUES","travaux":"REMPLACEMENT D'AMPOULE DE PHARE","livrPrevue":"2026-07-07"},{"date":"2026-07-07","fiche":"FR-YKN° 013749","immat":"4142KA01","marque":"MAZDA","modele":"BT-50 4X4","client":"CNRA 07 77 11 58 60","motif":"TRAVAUX MECANIQUES","travaux":"PARALLELISME","livrPrevue":"2026-07-07"},{"date":"2026-07-07","fiche":"FR-YKN° 013752","immat":"AB788AA01","marque":"TOYOTA","modele":"HILUX","client":"LIKA","motif":"SINISTRE","travaux":"POINT D'IMPACT: CHOCS MULTIPLES","livrPrevue":"2026-07-07"},{"date":"2026-07-08","fiche":"FR-YKN° 012886","immat":"4860KL01","marque":"GREAT WALL","modele":"M4","client":"BA-TRADOUA EDMOND","motif":"TRAVAUX MECANIQUES","travaux":"TRAVAUX MECANIQUE VIN:LGWED2A32LE629675","livrPrevue":"2026-07-08"},{"date":"2026-07-08","fiche":"FR-YKN° 013783","immat":"8989WWCI01","marque":"KIAMOTORS","modele":"SPORTAGE","client":"BAKAYOKO GOSSE","motif":"TRAVAUX MECANIQUES","travaux":"CONTROLE MECANIQUE(CONSOMMATION ABONDANTE D'HUILE) CONTROLE GENERAL","livrPrevue":"2026-07-08"},{"date":"2026-07-08","fiche":"FR-YKN° 013788","immat":"D4641432","marque":"TOYOTA","modele":"HILUX","client":"KOUASSI EDMOND","motif":"TRAVAUX MECANIQUES","travaux":"ENTRETIEN DU RESERVOIR FILTRE A GASOIL","livrPrevue":"2026-07-08"},{"date":"2026-07-08","fiche":"FR-YKN° 013797","immat":"4658WWCI01","marque":"BMW","modele":"X3 M COMPETITION","client":"MAIGA MOHAMED ALMOUTARE","motif":"TRAVAUX MECANIQUES","travaux":"VIDANGE ELEMENT FILTRANT APPORTER PAR LE CLIENT","livrPrevue":"2026-07-08"},{"date":"2026-07-09","fiche":"FR-YKN° 013610","immat":"AA238CJ","marque":"SUZUKI","modele":"CIAZ","client":"SGCI P/C CIE","motif":"TRAVAUX MECANIQUES","travaux":"REVISION COMPLETE DES 31258 KMS","livrPrevue":"2026-07-09"},{"date":"2026-07-09","fiche":"FR-YKN° 013611","immat":"AA238CJ","marque":"SUZUKI","modele":"CIAZ","client":"SGCI P/C CIE","motif":"TRAVAUX MECANIQUES","travaux":"PROTECTION BAS MOTEUR","livrPrevue":"2026-07-09"},{"date":"2026-07-09","fiche":"FR-YKN° 013806","immat":"5252HH01","marque":"BMW","modele":"4201","client":"OSSOLA JEAN FRANCOIS MEIZAN RICHMOND","motif":"TRAVAUX MECANIQUES","travaux":"REVISION GENERALE DES 95734 KMS","livrPrevue":"2026-07-09"},{"date":"2026-07-09","fiche":"FR-YKN° 013808","immat":"5252HH01","marque":"BMW","modele":"4201","client":"OSSOLA JEAN FRANCOIS MEIZAN RICHMOND","motif":"TRAVAUX MECANIQUES","travaux":"LA CLIMATISATION S'ARRETE A 130/140 LA VOITURE TREMBLE A 140 LA VOITURE CONSOMME SIGNALISATION SUR LE TABLEAU DE BORD PRIX COFFRE ELECTRIQUE","livrPrevue":"2026-07-09"},{"date":"2026-07-09","fiche":"FR-YKN° 013818","immat":"AA941JE01","marque":"MITSUBISHI","modele":"OUTLANDER","client":"LEGUEDE ADJE JACOB","motif":"TRAVAUX MECANIQUES","travaux":"REVISION GENERALE DES 171 273","livrPrevue":"2026-07-09"},{"date":"2026-07-10","fiche":"FR-YKN° 013839","immat":"4583KK01","marque":"HYUNDAI","modele":"SG13D5","client":"COULIBALY ISSIAKA","motif":"TRAVAUX MECANIQUES","travaux":"REGLAGE CLIMATISATION","livrPrevue":"2026-07-10"},{"date":"2026-07-10","fiche":"FR-YKN° 013845","immat":"3605LY01","marque":"MITSUBISHI","modele":"L200","client":"BICICI P/C LOXEA COTE D'IVOIRE","motif":"TRAVAUX MECANIQUES","travaux":"REVISION COMPLETE DES 151500 KMS","livrPrevue":"2026-07-10"},{"date":"2026-07-10","fiche":"FR-YKN° 013847","immat":"AA911NY01","marque":"CHANGAN","modele":"HUNTER","client":"OFFICE IVOIRIENS DES CHARGEURS OIC","motif":"TRAVAUX MECANIQUES","travaux":"PARALLELISME EQUILIRAGE CONTROLE COFFRE( le coffre ne s'ouvre pas)","livrPrevue":"2026-07-10"},{"date":"2026-07-13","fiche":"FR-YKN° 013881","immat":"2773LH01","marque":"CHANGAN","modele":"CS35 PLUS","client":"BOGUI EPSE KADJE KOCO EMILIENNE A","motif":"SINISTRE","travaux":"A REPARER ET PEINTDRE: PARE CHOC AR; AILE ARG A REMPLACER: FEU D'AILE ARG","livrPrevue":"2026-07-13"},{"date":"2026-07-16","fiche":"FR-YKN° 013986","immat":"3254GE01","marque":"MERCEDES BENZ","modele":"C200","client":"DJEDRI KOUASSI KOFFI CESAR","motif":"TRAVAUX MECANIQUES","travaux":"REGLAGE ELECTRICITE CHARGE FREON","livrPrevue":"2026-07-16"},{"date":"2026-07-16","fiche":"FR-YKN° 013988","immat":"3569GC01","marque":"HYUNDAI","modele":"TUCSON","client":"BLEOU EDOUKOU PAULIN","motif":"TRAVAUX MECANIQUES","travaux":"PARALLELISME EQUILIBREGE","livrPrevue":"2026-07-16"},{"date":"2026-07-16","fiche":"FR-YKN° 013989","immat":"912995WWCI01","marque":"HYUNDAI","modele":"TUCSON","client":"KOUADIO DJICKY FABRICE ROMARIC","motif":"TRAVAUX MECANIQUES","travaux":"SCANNER CHARGE FREON VIN: KM8JU3AC6BU191501(2011)","livrPrevue":"2026-07-16"},{"date":"2026-07-16","fiche":"FR-YKN° 013997","immat":"1673HH01","marque":"TOYOTA","modele":"CAMRY","client":"ZOUGO GUY STEPHANE","motif":"TRAVAUX MECANIQUES","travaux":"PARALELLISME-EQUILIBRAGE","livrPrevue":"2026-07-16"},{"date":"2026-07-17","fiche":"FR-YKN° 014020","immat":"2854LE01","marque":"CHEVROLET","modele":"CAPTIVA","client":"NOUFFE SIE ARMAND","motif":"TRAVAUX MECANIQUES","travaux":"LA VOITURE NE DEMARRE PAS VIN: MA3EDA53T00274760(2022)","livrPrevue":"2026-07-17"},{"date":"2026-07-20","fiche":"FR-YKN° 012413","immat":"2522FC01","marque":"SUZUKI","modele":"JIMNY","client":"OUATTARA DJOUMAN","motif":"TRAVAUX MECANIQUES","travaux":"ROTULE DE DIRECTION JOINT SPI DE BOITE DE VITESSE HUILE DE DIRECTION HUILE DE BOITE","livrPrevue":"2026-07-20"},{"date":"2026-07-20","fiche":"FR-YKN° 014041","immat":"7955JF01","marque":"HYUNDAI","modele":"TUCSON 4X4 BA","client":"KONATE DRAMANE","motif":"TRAVAUX MECANIQUES","travaux":"REPARATION BOITE ELECTRONIQUE DE FREIN A MAIN","livrPrevue":"2026-07-20"},{"date":"2026-07-20","fiche":"FR-YKN° 014049","immat":"AA556FF01","marque":"TOYOTA","modele":"HILUX","client":"ILBOUDO ISSA","motif":"TRAVAUX MECANIQUES","travaux":"EQUILIBRAGE ET PERMITATION DES VALVES DES PNEUS","livrPrevue":"2026-07-20"},{"date":"2026-07-20","fiche":"FR-YKN° 014051","immat":"4373F103","marque":"TOYOTA","modele":"TACOMA","client":"ILBOUDO ISSA","motif":"TRAVAUX MECANIQUES","travaux":"EQILIBRAGE ET PERMITATION DES VALVES DES PNEUS","livrPrevue":"2026-07-20"},{"date":"2026-07-20","fiche":"FR-YKN° 014054","immat":"914834WWCI01","marque":"TOYOTA","modele":"RAV4","client":"DABO MOUTAGA","motif":"TRAVAUX MECANIQUES","travaux":"EQUILIBRAGE","livrPrevue":"2026-07-20"},{"date":"2026-07-20","fiche":"FR-YKN° 014061","immat":"7318HN01","marque":"MERCEDES","modele":"GLK 350","client":"GBOSSO KOUAKOU EDGAR 0709884971","motif":"TRAVAUX MECANIQUES","travaux":"HUILE DE BOITE PROGRAMMATION","livrPrevue":"2026-07-20"},{"date":"2026-07-20","fiche":"FR-YKN° 014080","immat":"AA364BH","marque":"HYUNDAI","modele":"KONA","client":"SOW MOHAMED","motif":"TRAVAUX MECANIQUES","travaux":"LIQUIDE DE REFROIDISSEMENT","livrPrevue":"2026-07-20"},{"date":"2026-07-21","fiche":"FR-YKN° 014106","immat":"2133LA01","marque":"HYUNDAI","modele":"SANTAFE SPORT","client":"KOUAME YAO BLAISE 0707333185","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"LUSTRAGE COMPLET","livrPrevue":"2026-07-21"},{"date":"2026-07-21","fiche":"FR-YKN° 014131","immat":"AB646HA","marque":"FORD","modele":"FOCUS PHASE 3","client":"DEBOYE JEAN CLAUDE 0103360167","motif":"TRAVAUX MECANIQUES","travaux":"CHARGE FREON SCANNER","livrPrevue":"2026-07-21"},{"date":"2026-07-21","fiche":"FR-YKN° 014135","immat":"7974GE01","marque":"HONDA","modele":"CRV","client":"KANGA FRANCOIS KOUAME","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"LUSTRAGE DE PHARE","livrPrevue":"2026-07-21"},{"date":"2026-07-22","fiche":"FR-YKN° 013850","immat":"D326149","marque":"MITSUBISHI","modele":"L200","client":"MINISTERE D'ETAT,MINISTRE DE L'AGRICULTURE,DU DEVELOPPEMENT/ ANADER 27 20 21 89 47","motif":"TRAVAUX MECANIQUES","travaux":"REVISON COMPLETE 089335 KMS","livrPrevue":"2026-07-22"},{"date":"2026-07-22","fiche":"FR-YKN° 014186","immat":"AA451KK01","marque":"CITROEN","modele":"DS7 CROSSBACK","client":"BOSSON KOUTOUA JEAN FERRAN","motif":"TRAVAUX MECANIQUES","travaux":"EQUILIBRAGE","livrPrevue":"2026-07-22"},{"date":"2026-07-22","fiche":"FR-YKN° 014192","immat":"AA364BH","marque":"HYUNDAI","modele":"KONA","client":"SOW MOHAMED","motif":"TRAVAUX MECANIQUES","travaux":"PIPE A EAU THERMOSTAT","livrPrevue":"2026-07-22"},{"date":"2026-07-22","fiche":"FR-YKN° 014201","immat":"AA719FF01","marque":"TOYOTA","modele":"FORTUNER","client":"ACANDA VS-CI","motif":"TRAVAUX MECANIQUES","travaux":"EQUILIBRAGE","livrPrevue":"2026-07-22"},{"date":"2026-07-23","fiche":"FR-YKN° 013899","immat":"AA903JV01","marque":"JAC","modele":"JAC T8 BVM","client":"LIBERTY WORLD 0103597694","motif":"TRAVAUX MECANIQUES","travaux":"REVISION COMPLETE DES 54578 KMS VIN:LJ11PABDXRC086897(2024)","livrPrevue":"2026-07-23"},{"date":"2026-07-23","fiche":"FR-YKN° 014213","immat":"AB519FE01","marque":"HONDA","modele":"CIVIC","client":"DOSSO ALASSANE","motif":"TRAVAUX MECANIQUES","travaux":"EQUILIBRAGE PARALLELISME","livrPrevue":"2026-07-23"},{"date":"2026-07-23","fiche":"FR-YKN° 014229","immat":"AA479KK01","marque":"TOYOTA","modele":"FORTUNER","client":"MOTA-ENGIL COTE D'IVOIRE MINING","motif":"TRAVAUX MECANIQUES","travaux":"PARALLELISME/EQUILIBRAGE","livrPrevue":"2026-07-23"},{"date":"2026-07-23","fiche":"FR-YKN° 014243","immat":"2852ES01","marque":"LEXUS","modele":"N/A","client":"GAODE BOZON TCHETMAO","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"TOLERIE ET PEINTURE COMPLETE","livrPrevue":"2026-07-23"},{"date":"2026-07-24","fiche":"FR-YKN° 014260","immat":"5423HL01","marque":"HYUNDAI","modele":"SANTAFE","client":"AKA ETECHOUMOU DANIEL","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"PARE CHOC / GLISSIERE","livrPrevue":"2026-07-24"},{"date":"2026-07-24","fiche":"FR-YKN° 014265","immat":"AA193QY01","marque":"KARRY","modele":"Q22 L","client":"AL BARAKAH","motif":"TRAVAUX MECANIQUES","travaux":"REMORQUAGE DJEBONOUA-BOUAKE REMORQUAGE SUR LE SITE-STADE DE BOUAKE","livrPrevue":"2026-07-24"},{"date":"2026-07-24","fiche":"FR-YKN° 014058","immat":"671LU01","marque":"MITSUBISHI","modele":"L200","client":"NOUVELLE SOCIETE AUTO COTE D'IVOIRE 07 58 21 86 04","motif":"TRAVAUX MECANIQUES","travaux":"REVISION COMPLETE 146646 KMS","livrPrevue":"2026-07-24"},{"date":"2026-07-27","fiche":"FR-YKN° 012949","immat":"AA091QF04","marque":"HONDA","modele":"CR-V","client":"COULIBALY DRISSA","motif":"TRAVAUX MECANIQUES","travaux":"REMPLACEMENT DE PNEUS BOITIER ELECTRONIQUE","livrPrevue":"2026-07-27"},{"date":"2026-07-27","fiche":"FR-YKN° 013463","immat":"AA174BF","marque":"GAC","modele":"GS8","client":"MAIRIE NIAKARAMANDOUGOU","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"TOLERIE ET PEINTURE COMPLETE","livrPrevue":"2026-07-27"},{"date":"2026-07-27","fiche":"FR-YKN° 014316","immat":"8005FY03","marque":"MITSUBISHI","modele":"L200 2004","client":"BONI KOUADIO GEORGES","motif":"TRAVAUX MECANIQUES","travaux":"REVISION SIMPLE 346766 KMS","livrPrevue":"2026-07-27"},{"date":"2026-07-28","fiche":"FR-YKN° 014360","immat":"AA588HZ01","marque":"GREAT WALL","modele":"POER KINGKONG","client":"A NE PAS PRENDRE EN COMPTE","motif":"TRAVAUX MECANIQUES","travaux":"REMPLACEMENT DE FILTRE A HUILE","livrPrevue":"2026-07-28"},{"date":"2026-07-28","fiche":"FR-YKN° 013870","immat":"AA327JX01","marque":"TOYOTA","modele":"FORTUNER","client":"IPS CGRAE 27 20 25 12 12","motif":"SINISTRE","travaux":"A REMPLACER: PARE BRISE AV","livrPrevue":"2026-07-28"},{"date":"2026-07-28","fiche":"FR-YKN° 013871","immat":"AA327JX01","marque":"TOYOTA","modele":"FORTUNER","client":"IPS CGRAE 27 20 25 12 12","motif":"SINISTRE","travaux":"A REMPLACER ET PEINDRE:P/C AR A REPERER ET PEINDRE:P/C AV;AILE AR;PORTE AVD","livrPrevue":"2026-07-28"},{"date":"2026-07-28","fiche":"FR-YKN° 014319","immat":"1843KU01","marque":"MITSUBISHI","modele":"L200","client":"CSSCI","motif":"TRAVAUX MECANIQUES","travaux":"REVISION COMPLETE DES 180619 KMS","livrPrevue":"2026-07-28"},{"date":"2026-07-28","fiche":"FR-YKN° 014325","immat":"AA315YT01","marque":"SUZUKI","modele":"NEW GRAND VITARA","client":"CENTRE MEDICAL MIENMOH","motif":"TRAVAUX MECANIQUES","travaux":"REVISION COMPLETE DES 20159 KMS","livrPrevue":"2026-07-28"},{"date":"2026-07-31","fiche":"FR-YKN° 014336","immat":"AA588YG01","marque":"TOYOTA","modele":"HILUX","client":"SAFCA-ALIOS FINANCE CI P/C UNIVELECT","motif":"TRAVAUX MECANIQUES","travaux":"REVISION COMPLETE DES 250127 KMS","livrPrevue":"2026-07-31"},{"date":"2026-07-31","fiche":"FR-YKN° 014447","immat":"AA957RZ01","marque":"MERCEDES BENZ","modele":"C230","client":"COULIBALY BISSIRI","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"TOLERIE ET PEINTURE COMPLETE","livrPrevue":"2026-07-31"},{"date":"2026-07-31","fiche":"FR-YKN° 014451","immat":"910651WWCI01","marque":"HYUNDAI","modele":"TUCSON","client":"YAO KADIO LUCIEN","motif":"TRAVAUX TOLERIES ET PEINTURES","travaux":"A REPARER: PORTE AVANT DROIT","livrPrevue":"2026-07-31"}],"sorties":[{"dateSortie":"2026-07-01","livrPrevue":"2026-07-01","fiche":"FR-YKN° 013613","immat":"AA122PR01","marque":"TOYOTA","modele":"HIGHLANDER","client":"ETS LOGOLAND CARS ABIDJAN SARL","motif":"TRAVAUX TOLERIES ET PEINTURES","facture":"FA -7950"},{"dateSortie":"2026-07-04","livrPrevue":"2026-07-04","fiche":"FR-YKN° 013090","immat":"5621FZ01","marque":"HONDA","modele":"CRV 4X4","client":"DJE KOUASSI","motif":"TRAVAUX MECANIQUES","facture":"FA -7710"},{"dateSortie":"2026-07-04","livrPrevue":"2026-06-24","fiche":"FR-YKN° 013456","immat":"5330FN04","marque":"TOYOTA","modele":"AVANZA","client":"GNANMIEN MICHELLE","motif":"TRAVAUX MECANIQUES","facture":"FA -7640"},{"dateSortie":"2026-07-04","livrPrevue":"2026-07-04","fiche":"FR-YKN° 013222","immat":"5834GX01","marque":"PEUGEOT","modele":"406","client":"SIAKA OUATTARA","motif":"TRAVAUX MECANIQUES","facture":"FA -7714"},{"dateSortie":"2026-07-06","livrPrevue":"2026-06-26","fiche":"FR-YKN° 013507","immat":"910651WWCI01","marque":"HYUNDAI","modele":"TUCSON","client":"YAO KADIO LUCIEN","motif":"TRAVAUX MECANIQUES","facture":"FA -7661"},{"dateSortie":"2026-07-06","livrPrevue":"2026-06-29","fiche":"FR-KRN° 013534","immat":"AB2333FC01","marque":"KIAMOTORS","modele":"SPORTAGE","client":"DOGO KOUASSI HENRI JOEL","motif":"TRAVAUX MECANIQUES","facture":"FA -7658"},{"dateSortie":"2026-07-07","livrPrevue":"2026-07-07","fiche":"FR-YKN° 013740","immat":"5009HA01","marque":"TOYOTA","modele":"PRADO","client":"IBRAHIM HUSSEIN","motif":"TRAVAUX MECANIQUES","facture":"FA -7693"},{"dateSortie":"2026-07-07","livrPrevue":"2026-07-07","fiche":"FR-YKN° 013744","immat":"AA062XX01","marque":"HAVAL","modele":"JOLION","client":"KOUADIO LUCRAICE","motif":"TRAVAUX MECANIQUES","facture":"FA -7700"},{"dateSortie":"2026-07-07","livrPrevue":"2026-07-07","fiche":"FR-YKN° 013749","immat":"4142KA01","marque":"MAZDA","modele":"BT-50 4X4","client":"CNRA 07 77 11 58 60","motif":"TRAVAUX MECANIQUES","facture":"FA -7705"},{"dateSortie":"2026-07-08","livrPrevue":"2026-07-08","fiche":"FR-YKN° 013783","immat":"8989WWCI01","marque":"KIAMOTORS","modele":"SPORTAGE","client":"BAKAYOKO GOSSE","motif":"TRAVAUX MECANIQUES","facture":"FA -7706"},{"dateSortie":"2026-07-10","livrPrevue":"2026-07-10","fiche":"FR-YKN° 013839","immat":"4583KK01","marque":"HYUNDAI","modele":"SG13D5","client":"COULIBALY ISSIAKA","motif":"TRAVAUX MECANIQUES","facture":"FA -7823"},{"dateSortie":"2026-07-10","livrPrevue":"2026-07-10","fiche":"FR-YKN° 013845","immat":"3605LY01","marque":"MITSUBISHI","modele":"L200","client":"BICICI P/C LOXEA COTE D'IVOIRE","motif":"TRAVAUX MECANIQUES","facture":"FA -7800"},{"dateSortie":"2026-07-10","livrPrevue":"2026-07-09","fiche":"FR-YKN° 013610","immat":"AA238CJ","marque":"SUZUKI","modele":"CIAZ","client":"SGCI P/C CIE","motif":"TRAVAUX MECANIQUES","facture":"FA -7736"},{"dateSortie":"2026-07-10","livrPrevue":"2026-07-09","fiche":"FR-YKN° 013611","immat":"AA238CJ","marque":"SUZUKI","modele":"CIAZ","client":"SGCI P/C CIE","motif":"TRAVAUX MECANIQUES","facture":"FA -7735"},{"dateSortie":"2026-07-10","livrPrevue":"2026-07-09","fiche":"FR-YKN° 013818","immat":"AA941JE01","marque":"MITSUBISHI","modele":"OUTLANDER","client":"LEGUEDE ADJE JACOB","motif":"TRAVAUX MECANIQUES","facture":"FA -7952"},{"dateSortie":"2026-07-11","livrPrevue":"2026-07-08","fiche":"FR-YKN° 012886","immat":"4860KL01","marque":"GREAT WALL","modele":"M4","client":"BA-TRADOUA EDMOND","motif":"TRAVAUX MECANIQUES","facture":"FA -8142"},{"dateSortie":"2026-07-11","livrPrevue":"2026-07-08","fiche":"FR-YKN° 013797","immat":"4658WWCI01","marque":"BMW","modele":"X3 M COMPETITION","client":"MAIGA MOHAMED ALMOUTARE","motif":"TRAVAUX MECANIQUES","facture":"FA -7707"},{"dateSortie":"2026-07-14","livrPrevue":"2026-07-08","fiche":"FR-YKN° 013788","immat":"D4641432","marque":"TOYOTA","modele":"HILUX","client":"KOUASSI EDMOND","motif":"TRAVAUX MECANIQUES","facture":"FA -7780"},{"dateSortie":"2026-07-14","livrPrevue":"2026-07-09","fiche":"FR-YKN° 013806","immat":"5252HH01","marque":"BMW","modele":"4201","client":"OSSOLA JEAN FRANCOIS MEIZAN RICHMOND","motif":"TRAVAUX MECANIQUES","facture":"FA -7779"},{"dateSortie":"2026-07-14","livrPrevue":"2026-07-09","fiche":"FR-YKN° 013808","immat":"5252HH01","marque":"BMW","modele":"4201","client":"OSSOLA JEAN FRANCOIS MEIZAN RICHMOND","motif":"TRAVAUX MECANIQUES","facture":"FA -7778"},{"dateSortie":"2026-07-16","livrPrevue":"2026-07-16","fiche":"FR-YKN° 013986","immat":"3254GE01","marque":"MERCEDES BENZ","modele":"C200","client":"DJEDRI KOUASSI KOFFI CESAR","motif":"TRAVAUX MECANIQUES","facture":"FA -7953"},{"dateSortie":"2026-07-16","livrPrevue":"2026-07-16","fiche":"FR-YKN° 013988","immat":"3569GC01","marque":"HYUNDAI","modele":"TUCSON","client":"BLEOU EDOUKOU PAULIN","motif":"TRAVAUX MECANIQUES","facture":"FA -7826"},{"dateSortie":"2026-07-16","livrPrevue":"2026-07-16","fiche":"FR-YKN° 013989","immat":"912995WWCI01","marque":"HYUNDAI","modele":"TUCSON","client":"KOUADIO DJICKY FABRICE ROMARIC","motif":"TRAVAUX MECANIQUES","facture":"FA -7827"},{"dateSortie":"2026-07-16","livrPrevue":"2026-07-16","fiche":"FR-YKN° 013997","immat":"1673HH01","marque":"TOYOTA","modele":"CAMRY","client":"ZOUGO GUY STEPHANE","motif":"TRAVAUX MECANIQUES","facture":"FA -7825"},{"dateSortie":"2026-07-20","livrPrevue":"2026-07-17","fiche":"FR-YKN° 014020","immat":"2854LE01","marque":"CHEVROLET","modele":"CAPTIVA","client":"NOUFFE SIE ARMAND","motif":"TRAVAUX MECANIQUES","facture":"FA -7934"},{"dateSortie":"2026-07-20","livrPrevue":"2026-07-20","fiche":"FR-YKN° 014041","immat":"7955JF01","marque":"HYUNDAI","modele":"TUCSON 4X4 BA","client":"KONATE DRAMANE","motif":"TRAVAUX MECANIQUES","facture":"FA -7935"},{"dateSortie":"2026-07-20","livrPrevue":"2026-07-20","fiche":"FR-YKN° 014049","immat":"AA556FF01","marque":"TOYOTA","modele":"HILUX","client":"ILBOUDO ISSA","motif":"TRAVAUX MECANIQUES","facture":"FA -7936"},{"dateSortie":"2026-07-20","livrPrevue":"2026-07-20","fiche":"FR-YKN° 014051","immat":"4373F103","marque":"TOYOTA","modele":"TACOMA","client":"ILBOUDO ISSA","motif":"TRAVAUX MECANIQUES","facture":"FA -7937"},{"dateSortie":"2026-07-20","livrPrevue":"2026-07-20","fiche":"FR-YKN° 014080","immat":"AA364BH","marque":"HYUNDAI","modele":"KONA","client":"SOW MOHAMED","motif":"TRAVAUX MECANIQUES","facture":"FA -7938"},{"dateSortie":"2026-07-21","livrPrevue":"2026-07-21","fiche":"FR-YKN° 014131","immat":"AB646HA","marque":"FORD","modele":"FOCUS PHASE 3","client":"DEBOYE JEAN CLAUDE 0103360167","motif":"TRAVAUX MECANIQUES","facture":"FA -7940"},{"dateSortie":"2026-07-21","livrPrevue":"2026-07-21","fiche":"FR-YKN° 014135","immat":"7974GE01","marque":"HONDA","modele":"CRV","client":"KANGA FRANCOIS KOUAME","motif":"TRAVAUX TOLERIES ET PEINTURES","facture":"FA -7941"},{"dateSortie":"2026-07-22","livrPrevue":"2026-07-22","fiche":"FR-YKN° 013850","immat":"D326149","marque":"MITSUBISHI","modele":"L200","client":"MINISTERE D'ETAT,MINISTRE DE L'AGRICULTURE,DU DEVELOPPEMENT/ ANADER 27 20 21 89 47","motif":"TRAVAUX MECANIQUES","facture":"FA -7907"},{"dateSortie":"2026-07-22","livrPrevue":"2026-07-21","fiche":"FR-YKN° 014106","immat":"2133LA01","marque":"HYUNDAI","modele":"SANTAFE SPORT","client":"KOUAME YAO BLAISE 0707333185","motif":"TRAVAUX TOLERIES ET PEINTURES","facture":"FA -7943"},{"dateSortie":"2026-07-22","livrPrevue":"2026-05-29","fiche":"FR-YKN° 012867","immat":"AB224BF01","marque":"TOYOTA","modele":"HILUX","client":"PFO","motif":"SINISTRE","facture":"FA -7955"},{"dateSortie":"2026-07-22","livrPrevue":"2026-05-07","fiche":"FR-YKN° 012378","immat":"5134GT01","marque":"MAZDA","modele":"MAZDA6","client":"OUATTARA ADAMA","motif":"TRAVAUX MECANIQUES","facture":"FA -7635"},{"dateSortie":"2026-07-22","livrPrevue":"2026-07-22","fiche":"FR-YKN° 014186","immat":"AA451KK01","marque":"CITROEN","modele":"DS7 CROSSBACK","client":"BOSSON KOUTOUA JEAN FERRAN","motif":"TRAVAUX MECANIQUES","facture":"FA -7944"},{"dateSortie":"2026-07-22","livrPrevue":"2026-07-22","fiche":"FR-YKN° 014201","immat":"AA719FF01","marque":"TOYOTA","modele":"FORTUNER","client":"ACANDA VS-CI","motif":"TRAVAUX MECANIQUES","facture":"FA -7945"},{"dateSortie":"2026-07-23","livrPrevue":"2026-07-23","fiche":"FR-YKN° 013899","immat":"AA903JV01","marque":"JAC","modele":"JAC T8 BVM","client":"LIBERTY WORLD 0103597694","motif":"TRAVAUX MECANIQUES","facture":"FA -7946"},{"dateSortie":"2026-07-23","livrPrevue":"2026-07-22","fiche":"FR-YKN° 014192","immat":"AA364BH","marque":"HYUNDAI","modele":"KONA","client":"SOW MOHAMED","motif":"TRAVAUX MECANIQUES","facture":"FA -7947"},{"dateSortie":"2026-07-23","livrPrevue":"2026-07-23","fiche":"FR-YKN° 014213","immat":"AB519FE01","marque":"HONDA","modele":"CIVIC","client":"DOSSO ALASSANE","motif":"TRAVAUX MECANIQUES","facture":"FA -7948"},{"dateSortie":"2026-07-23","livrPrevue":"2026-07-23","fiche":"FR-YKN° 014229","immat":"AA479KK01","marque":"TOYOTA","modele":"FORTUNER","client":"MOTA-ENGIL COTE D'IVOIRE MINING","motif":"TRAVAUX MECANIQUES","facture":"FA -7949"},{"dateSortie":"2026-07-24","livrPrevue":"2026-07-24","fiche":"FR-YKN° 012392","immat":"1910LL01","marque":"MITSUBISHI","modele":"L200","client":"SITAB 2722489842","motif":"TRAVAUX MECANIQUES","facture":"FA -8079"},{"dateSortie":"2026-07-24","livrPrevue":"2026-07-20","fiche":"FR-YKN° 012413","immat":"2522FC01","marque":"SUZUKI","modele":"JIMNY","client":"OUATTARA DJOUMAN","motif":"TRAVAUX MECANIQUES","facture":"FA -8143"},{"dateSortie":"2026-07-24","livrPrevue":"2026-07-24","fiche":"FR-YKN° 014058","immat":"671LU01","marque":"MITSUBISHI","modele":"L200","client":"NOUVELLE SOCIETE AUTO COTE D'IVOIRE 07 58 21 86 04","motif":"TRAVAUX MECANIQUES","facture":"FA -7977"},{"dateSortie":"2026-07-24","livrPrevue":"2026-07-20","fiche":"FR-YKN° 014061","immat":"7318HN01","marque":"MERCEDES","modele":"GLK 350","client":"GBOSSO KOUAKOU EDGAR 0709884971","motif":"TRAVAUX MECANIQUES","facture":"FA -8078"},{"dateSortie":"2026-07-27","livrPrevue":"2026-07-27","fiche":"FR-YKN° 014316","immat":"8005FY03","marque":"MITSUBISHI","modele":"L200 2004","client":"BONI KOUADIO GEORGES","motif":"TRAVAUX MECANIQUES","facture":"FA -8080"},{"dateSortie":"2026-07-28","livrPrevue":"2026-06-18","fiche":"FR-YKN° 013314","immat":"19003WWCI01","marque":"SUZUKI","modele":"DZIRE","client":"N/A","motif":"SINISTRE","facture":"FA -8084"},{"dateSortie":"2026-07-28","livrPrevue":"2026-07-28","fiche":"FR-YKN° 014319","immat":"1843KU01","marque":"MITSUBISHI","modele":"L200","client":"CSSCI","motif":"TRAVAUX MECANIQUES","facture":"FA -8000"},{"dateSortie":"2026-07-28","livrPrevue":"2026-07-28","fiche":"FR-YKN° 014325","immat":"AA315YT01","marque":"SUZUKI","modele":"NEW GRAND VITARA","client":"CENTRE MEDICAL MIENMOH","motif":"TRAVAUX MECANIQUES","facture":"FA -8085"},{"dateSortie":"2026-07-31","livrPrevue":"2026-07-31","fiche":"FR-YKN° 014336","immat":"AA588YG01","marque":"TOYOTA","modele":"HILUX","client":"SAFCA-ALIOS FINANCE CI P/C UNIVELECT","motif":"TRAVAUX MECANIQUES","facture":"FA -8081"},{"dateSortie":"2026-07-31","livrPrevue":"2026-07-28","fiche":"FR-YKN° 013870","immat":"AA327JX01","marque":"TOYOTA","modele":"FORTUNER","client":"IPS CGRAE 27 20 25 12 12","motif":"SINISTRE","facture":"FA -8128"},{"dateSortie":"2026-07-31","livrPrevue":"2026-07-28","fiche":"FR-YKN° 013871","immat":"AA327JX01","marque":"TOYOTA","modele":"FORTUNER","client":"IPS CGRAE 27 20 25 12 12","motif":"SINISTRE","facture":"FA -8129"},{"dateSortie":"2026-07-31","livrPrevue":"2026-07-24","fiche":"FR-YKN° 014260","immat":"5423HL01","marque":"HYUNDAI","modele":"SANTAFE","client":"AKA ETECHOUMOU DANIEL","motif":"TRAVAUX TOLERIES ET PEINTURES","facture":"FA -8076"},{"dateSortie":"2026-07-31","livrPrevue":"2026-07-24","fiche":"FR-YKN° 014265","immat":"AA193QY01","marque":"KARRY","modele":"Q22 L","client":"AL BARAKAH","motif":"TRAVAUX MECANIQUES","facture":"FA -8075"}],"factures":[{"date":"2026-07-01","num":"FA -7639","fiche":"FR-YKN° 013377","sinistre":"","immat":"AA382YV01","marque":"MAZDA","client":"SIDIBE IDRISSA","montant":256864},{"date":"2026-07-04","num":"FA -7699","fiche":"FR-YKN° 013649","sinistre":"","immat":"AB753FZ01","marque":"TOYOTA","client":"TRAORE SALIFOU","montant":10000},{"date":"2026-07-04","num":"FA -7710","fiche":"FR-YKN° 013090","sinistre":"","immat":"5621FZ01","marque":"HONDA","client":"DJE KOUASSI","montant":101000},{"date":"2026-07-04","num":"FA -7714","fiche":"FR-YKN° 013222","sinistre":"","immat":"5834GX01","marque":"PEUGEOT","client":"SIAKA OUATTARA","montant":59300},{"date":"2026-07-04","num":"FA -7640","fiche":"FR-YKN° 013456","sinistre":"","immat":"5330FN04","marque":"TOYOTA","client":"GNANMIEN MICHELLE","montant":258745},{"date":"2026-07-04","num":"FA -7668","fiche":"FR-YKN° 013452","sinistre":"","immat":"5497FX01","marque":"HONDA","client":"BAHI DEKEMANHI MARIE BERNARD PARFAIT","montant":150000},{"date":"2026-07-06","num":"FA -7669","fiche":"FR-YKN° 013371","sinistre":"","immat":"AA322HX01","marque":"HYUNDAI","client":"NAHANA SYLLA","montant":350000},{"date":"2026-07-07","num":"FA -7700","fiche":"FR-YKN° 013744","sinistre":"","immat":"AA062XX01","marque":"HAVAL","client":"KOUADIO LUCRAICE","montant":15000},{"date":"2026-07-07","num":"FA -7705","fiche":"FR-YKN° 013749","sinistre":"","immat":"4142KA01","marque":"MAZDA","client":"CNRA","montant":11800},{"date":"2026-07-07","num":"FA -7693","fiche":"FR-YKN° 013740","sinistre":"","immat":"5009HA01","marque":"TOYOTA","client":"IBRAHIM HUSSEIN","montant":10000},{"date":"2026-07-08","num":"FA -7706","fiche":"FR-YKN° 013783","sinistre":"","immat":"8989WWCI01","marque":"KIAMOTORS","client":"BAKAYOKO GOSSE","montant":52000},{"date":"2026-07-08","num":"FA -7707","fiche":"FR-YKN° 013797","sinistre":"","immat":"4658WWCI01","marque":"BMW","client":"MAIGA MOHAMED ALMOUTARE","montant":10000},{"date":"2026-07-08","num":"FA -7649","fiche":"FR-YKN° 012523","sinistre":"","immat":"AA260AJ","marque":"GAC","client":"WAFA ASSURANCE","montant":299879},{"date":"2026-07-08","num":"FA -7650","fiche":"FR-YKN° 012937","sinistre":"","immat":"53489WWCI01","marque":"TOYOTA","client":"ELITE BETON","montant":237606},{"date":"2026-07-08","num":"FA -7661","fiche":"FR-YKN° 013507","sinistre":"","immat":"910651WWCI01","marque":"HYUNDAI","client":"YAO KADIO LUCIEN","montant":279100},{"date":"2026-07-08","num":"FA -7670","fiche":"FR-YKN° 013783","sinistre":"","immat":"8989WWCI01","marque":"KIAMOTORS","client":"BAKAYOKO GOSSE","montant":52000},{"date":"2026-07-09","num":"FA -7702","fiche":"FR-YKN° 013828","sinistre":"","immat":"TGWZA7744NO","marque":"HYUNDAI","client":"BLE","montant":20000},{"date":"2026-07-10","num":"FA -7735","fiche":"FR-YKN° 013611","sinistre":"","immat":"AA238CJ","marque":"SUZUKI","client":"SGCI P/C CIE","montant":60000},{"date":"2026-07-10","num":"FA -7736","fiche":"FR-YKN° 013610","sinistre":"","immat":"AA238CJ","marque":"SUZUKI","client":"SGCI P/C CIE","montant":65000},{"date":"2026-07-10","num":"FA -7822","fiche":"FR-YKN° 013655","sinistre":"","immat":"1544KN01","marque":"TOYOTA","client":"N'DRI KOUAKOU JUDA","montant":45000},{"date":"2026-07-10","num":"FA -7823","fiche":"FR-YKN° 013839","sinistre":"","immat":"4583KK01","marque":"HYUNDAI","client":"COULIBALY ISSIAKA","montant":40000},{"date":"2026-07-11","num":"FA -7824","fiche":"FR-YKN° 013797","sinistre":"","immat":"4658WWCI01","marque":"BMW","client":"MAIGA MOHAMED ALMOUTARE","montant":10000},{"date":"2026-07-14","num":"FA -7778","fiche":"FR-YKN° 013808","sinistre":"","immat":"5252HH01","marque":"BMW","client":"OSSOLA JEAN FRANCOIS MEIZAN RICHMOND","montant":280000},{"date":"2026-07-14","num":"FA -7779","fiche":"FR-YKN° 013806","sinistre":"","immat":"5252HH01","marque":"BMW","client":"OSSOLA JEAN FRANCOIS MEIZAN RICHMOND","montant":121565},{"date":"2026-07-14","num":"FA -7780","fiche":"FR-YKN° 013788","sinistre":"","immat":"D4641432","marque":"TOYOTA","client":"KOUASSI EDMOND","montant":149081},{"date":"2026-07-16","num":"FA -7800","fiche":"FR-YKN° 013845","sinistre":"","immat":"3605LY01","marque":"MITSUBISHI","client":"LOXEA CI","montant":187168},{"date":"2026-07-16","num":"FA -7825","fiche":"FR-YKN° 013997","sinistre":"","immat":"1673HH01","marque":"TOYOTA","client":"ZOUGO GUY STEPHANE","montant":15000},{"date":"2026-07-16","num":"FA -7826","fiche":"FR-YKN° 013988","sinistre":"","immat":"3569GC01","marque":"HYUNDAI","client":"BLEOU EDOUKOU PAULIN","montant":15000},{"date":"2026-07-16","num":"FA -7827","fiche":"FR-YKN° 013989","sinistre":"","immat":"912995WWCI01","marque":"HYUNDAI","client":"KOUADIO DJICKY FABRICE ROMARIC","montant":25000},{"date":"2026-07-18","num":"FA -7961","fiche":"FR-YKN° 014038","sinistre":"","immat":"AB934GG01","marque":"MAZDA","client":"KONE BENOGO","montant":10000},{"date":"2026-07-18","num":"FA -7962","fiche":"FR-YKN° 014032","sinistre":"","immat":"AA312NX01","marque":"KIA","client":"KABA MORY","montant":20000},{"date":"2026-07-20","num":"FA -7934","fiche":"FR-YKN° 014020","sinistre":"","immat":"2854LE01","marque":"CHEVROLET","client":"NOUFFE SIE ARMAND","montant":20000},{"date":"2026-07-20","num":"FA -7935","fiche":"FR-YKN° 014041","sinistre":"","immat":"7955JF01","marque":"HYUNDAI","client":"KONATE DRAMANE","montant":50000},{"date":"2026-07-20","num":"FA -7936","fiche":"FR-YKN° 014049","sinistre":"","immat":"AA556FF01","marque":"TOYOTA","client":"ILBOUDO ISSA","montant":20000},{"date":"2026-07-20","num":"FA -7937","fiche":"FR-YKN° 014051","sinistre":"","immat":"4373F103","marque":"TOYOTA","client":"ILBOUDO ISSA","montant":20000},{"date":"2026-07-20","num":"FA -7938","fiche":"FR-YKN° 014080","sinistre":"","immat":"AA364BH","marque":"HYUNDAI","client":"SOW MOHAMED","montant":20000},{"date":"2026-07-20","num":"FA -7940","fiche":"FR-YKN° 014131","sinistre":"","immat":"AB646HA","marque":"FORD","client":"DEBOYE JEAN CLAUDE","montant":30000},{"date":"2026-07-21","num":"FA -7964","fiche":"FR-YKN° 014063","sinistre":"","immat":"AA791EK01","marque":"TOYOTA","client":"KOFFI N'DRI ELVIS","montant":20000},{"date":"2026-07-21","num":"FA -7941","fiche":"FR-YKN° 014135","sinistre":"","immat":"7974GE01","marque":"HONDA","client":"KANGA FRANCOIS KOUAME","montant":15000},{"date":"2026-07-22","num":"FA -7885","fiche":"FR-YKN° 012435","sinistre":"","immat":"2557KY01","marque":"RENAULT","client":"CÔTE D'IVOIRE CABLES","montant":60180},{"date":"2026-07-22","num":"FA -7943","fiche":"FR-YKN° 014106","sinistre":"","immat":"2133LA01","marque":"HYUNDAI","client":"KOUAME YAO BLAISE","montant":150000},{"date":"2026-07-22","num":"FA -7944","fiche":"FR-YKN° 014186","sinistre":"","immat":"AA451KK01","marque":"CITROEN","client":"BOSSON KOUTOUA JEAN FERRAN","montant":20000},{"date":"2026-07-22","num":"FA -7945","fiche":"FR-YKN° 014201","sinistre":"","immat":"AA719FF01","marque":"TOYOTA","client":"ACANDA VS-CI","montant":10000},{"date":"2026-07-23","num":"FA -7963","fiche":"FR-YKN° 014219","sinistre":"","immat":"D661081","marque":"NISSAN","client":"MINISTERE DE L'ECONOMIE ,DU PLAN ET DU DEVELOPPEME","montant":15000},{"date":"2026-07-23","num":"FA -7907","fiche":"FR-YKN° 013850","sinistre":"","immat":"D326149","marque":"MITSUBISHI","client":"MINISTERE D'ETAT,MINISTRE DE L'AGRICULTURE,DU DEVE","montant":196915},{"date":"2026-07-23","num":"FA -7912","fiche":"FR-YKN° 013619","sinistre":"","immat":"5183GX01","marque":"GREAT WALL","client":"RADIO C ISLAMIQUE ALBAYANE","montant":437780},{"date":"2026-07-23","num":"FA -7946","fiche":"FR-YKN° 013899","sinistre":"","immat":"AA903JV01","marque":"JAC","client":"LIBERTY WORLD","montant":123696},{"date":"2026-07-23","num":"FA -7947","fiche":"FR-YKN° 014192","sinistre":"","immat":"AA364BH","marque":"HYUNDAI","client":"SOW MOHAMED","montant":100000},{"date":"2026-07-23","num":"FA -7948","fiche":"FR-YKN° 014213","sinistre":"","immat":"AB519FE01","marque":"HONDA","client":"DOSSO ALASSANE","montant":15000},{"date":"2026-07-23","num":"FA -7949","fiche":"FR-YKN° 014229","sinistre":"","immat":"AA479KK01","marque":"TOYOTA","client":"MOTA-ENGIL COTE D'IVOIRE MINING","montant":15000},{"date":"2026-07-23","num":"FA -7950","fiche":"FR-YKN° 013613","sinistre":"","immat":"AA122PR01","marque":"TOYOTA","client":"ETS LOGOLAND CARS ABIDJAN SARL","montant":90000},{"date":"2026-07-23","num":"FA -7952","fiche":"FR-YKN° 013818","sinistre":"","immat":"AA941JE01","marque":"MITSUBISHI","client":"LEGUEDE ADJE JACOB","montant":79800},{"date":"2026-07-23","num":"FA -7953","fiche":"FR-YKN° 013986","sinistre":"","immat":"3254GE01","marque":"MERCEDES BENZ","client":"DJEDRI KOUASSI KOFFI CESAR","montant":30000},{"date":"2026-07-24","num":"FA -7955","fiche":"FR-YKN° 012867","sinistre":"LOXEA 049/06/26","immat":"AB224BF01","marque":"TOYOTA","client":"LOXEA CI","montant":2675366},{"date":"2026-07-24","num":"FA -7959","fiche":"FR-YKN° 012867","sinistre":"LOXEA 049/06/26","immat":"AB224BF01","marque":"TOYOTA","client":"LOXEA CI","montant":140808},{"date":"2026-07-24","num":"FA -7977","fiche":"FR-YKN° 014058","sinistre":"","immat":"671LU01","marque":"MITSUBISHI","client":"NOUVELLE SOCIETE AUTO COTE D'IVOIRE","montant":168799},{"date":"2026-07-24","num":"FA -8078","fiche":"FR-YKN° 014061","sinistre":"","immat":"7318HN01","marque":"MERCEDES","client":"GBOSSO KOUAKOU EDGAR","montant":300000},{"date":"2026-07-24","num":"FA -8079","fiche":"FR-YKN° 012392","sinistre":"","immat":"1910LL01","marque":"MITSUBISHI","client":"SITAB","montant":108396},{"date":"2026-07-25","num":"FA -8077","fiche":"FR-YKN° 014274","sinistre":"","immat":"7318HN01","marque":"MERCEDES","client":"GBOSSO KOUAKOU EDGAR","montant":120000},{"date":"2026-07-27","num":"FA -8080","fiche":"FR-YKN° 014316","sinistre":"","immat":"8005FY03","marque":"MITSUBISHI","client":"BONI KOUADIO GEORGES","montant":27000},{"date":"2026-07-27","num":"FA -8084","fiche":"FR-YKN° 013314","sinistre":"","immat":"19003WWCI01","marque":"SUZUKI","client":"N/A","montant":100000},{"date":"2026-07-27","num":"FA -8088","fiche":"FR-YKN° 014452","sinistre":"","immat":"7084GJ01","marque":"MERCEDES BENZ","client":"YOBOUE EPSE ESSO N'GUESSAN YOLANDE","montant":50000},{"date":"2026-07-28","num":"FA -8000","fiche":"FR-YKN° 014319","sinistre":"","immat":"1843KU01","marque":"MITSUBISHI","client":"NOUVELLE SOCIETE AUTO COTE D'IVOIRE","montant":173598},{"date":"2026-07-28","num":"FA -8085","fiche":"FR-YKN° 014325","sinistre":"","immat":"AA315YT01","marque":"SUZUKI","client":"CENTRE MEDICAL MIENMOH","montant":88000},{"date":"2026-07-29","num":"FA -8086","fiche":"FR-YKN° 012891","sinistre":"","immat":"7683JL01","marque":"BMW","client":"DIABAGATE ALI","montant":2050000},{"date":"2026-07-31","num":"FA -8071","fiche":"FR-YKN° 012266","sinistre":"","immat":"AA588YG01","marque":"TOYOTA","client":"UNIVELECT","montant":355626},{"date":"2026-07-31","num":"FA -8075","fiche":"FR-YKN° 014265","sinistre":"","immat":"AA193QY01","marque":"KARRY","client":"AL BARAKAH","montant":75000},{"date":"2026-07-31","num":"FA -8076","fiche":"FR-YKN° 014260","sinistre":"","immat":"5423HL01","marque":"HYUNDAI","client":"AKA ETECHOUMOU DANIEL","montant":800000},{"date":"2026-07-31","num":"FA -8081","fiche":"FR-YKN° 014336","sinistre":"","immat":"AA588YG01","marque":"TOYOTA","client":"SAFCA-ALIOS FINANCE CI P/C UNIVELECT","montant":319280}],"treso":{"periode":"10/08/2026 au 13/08/2026","comptes":[{"nom":"Caisse","init":133275,"enc":4570000,"dec":4670650,"final":32625},{"nom":"BGFI Bank","init":-1108078,"enc":38791289,"dec":21443670,"final":16239541,"chqDeposes":9363305,"chqCirculation":36006756,"gap":-10403910},{"nom":"AFG Bank","init":3030391,"enc":1507006,"dec":3424210,"final":1113187,"chqDeposes":537035,"chqCirculation":1526274,"gap":123948}],"decDetail":[{"lib":"Carrosserie","v":9261538},{"lib":"Mécanique","v":3228100},{"lib":"Salaires / commissions","v":10409378},{"lib":"Gérant","v":330000},{"lib":"Autres (transport, divers)","v":2667550},{"lib":"Frais bancaires","v":191964}]},"commerciales":[{"nom":"MARIAM","ca":3288192},{"nom":"ELLA","ca":2850799},{"nom":"MELINA","ca":667202},{"nom":"Mme ADOU","ca":8829680},{"nom":"KAREL","ca":3818477},{"nom":"LEATICIA","ca":978285}],"creancesSeed":[{"assureur":"SAPH","client":"","site":"","dateRecep":"2023-03-08","dateEdit":"2023-03-07","num":"1097","vehicule":"NISSAN","immat":"3318FR01","ttc":190000,"regle":100241,"rap":89759},{"assureur":"SAPH","client":"","site":"","dateRecep":"2023-03-08","dateEdit":"2023-03-07","num":"1098","vehicule":"NISSAN","immat":"6439GN01","ttc":4375783,"regle":391367,"rap":3984416},{"assureur":"SAPH","client":"","site":"","dateRecep":"2023-08-11","dateEdit":"2023-08-10","num":"1413","vehicule":"VOLKWAGEN POLO 1,4","immat":"2783HN01","ttc":95309,"regle":0,"rap":95309},{"assureur":"SAPH","client":"","site":"","dateRecep":"2024-01-04","dateEdit":"2024-01-04","num":"572","vehicule":"NISSAN X-TRAIL","immat":"6384GY01","ttc":233758,"regle":0,"rap":233758}],"saph":[{"assureur":"SAPH","client":"","site":"Abidjan — Siège","courtier":"","dateRec":"2023-03-08","dateEd":"2023-03-07","numFact":"1097","sinistre":"","vehicule":"NISSAN","immat":"3318FR01","ttc":190000.0,"regle":100241.0,"mode":"","dateReg":"","banque":"","comment":""},{"assureur":"SAPH","client":"","site":"Abidjan — Siège","courtier":"","dateRec":"2023-03-08","dateEd":"2023-03-07","numFact":"1098","sinistre":"","vehicule":"NISSAN","immat":"6439GN01","ttc":4375783.0,"regle":391367.0,"mode":"","dateReg":"","banque":"","comment":""},{"assureur":"SAPH","client":"","site":"Abidjan — Siège","courtier":"","dateRec":"2023-08-11","dateEd":"2023-08-10","numFact":"1413","sinistre":"","vehicule":"VOLKWAGEN POLO 1,4","immat":"2783HN01","ttc":95309.0,"regle":0.0,"mode":"","dateReg":"","banque":"","comment":""},{"assureur":"SAPH","client":"","site":"Abidjan — Siège","courtier":"","dateRec":"2024-01-04","dateEd":"2024-01-04","numFact":"572","sinistre":"","vehicule":"NISSAN X-TRAIL","immat":"6384GY01","ttc":233758.0,"regle":0.0,"mode":"","dateReg":"","banque":"","comment":""}]};
+</script>
+<script>
+"use strict";
+/* ================= Constantes & utilitaires ================= */
+const SITES = ["Abidjan — Siège","Abidjan — Site 2","Bouaké","San Pedro"];
+const SITE_DEF = SITES[0];
+const F = n => (n==null||isNaN(n)) ? "—" : Math.round(n).toLocaleString("fr-FR");
+const FC = n => F(n)+" F";
+const dFR = s => s ? s.split("-").reverse().join("/") : "—";
+const days = (a,b)=>Math.round((new Date(b)-new Date(a))/86400000);
+const cut = (s,n)=>(s||"").length>n ? s.slice(0,n-1)+"…" : (s||"");
+const strip = s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/\s+/g," ").trim();
+function presta(m){ m=strip(m); if(!m) return "À qualifier";
+  if(m.includes("SINISTRE")) return "Sinistre";
+  if(m.includes("MECANIQUE")) return "Mécanique"; return "Autres"; }
+const P_COLORS={"Mécanique":"#26415E","Sinistre":"#C8102E","Autres":"#B96E00","À qualifier":"#9AA3AD"};
+function mapSiteFSF(s){ s=strip(s);
+  if(s.includes("SAN")) return "San Pedro";
+  if(s.includes("BOUAK")) return "Bouaké";
+  if(s.includes("SITE 2")||s.includes("SITE2")) return "Abidjan — Site 2";
+  return "Abidjan — Siège"; }
+let charts={};
+function mkChart(id,cfg){ if(charts[id])charts[id].destroy(); charts[id]=new Chart(document.getElementById(id),cfg); }
+Chart.defaults.font.family="'Barlow',system-ui,sans-serif"; Chart.defaults.color="#3A3F46";
+function kpi(l,v,s,cls){return `<div class="kpi ${cls||""}"><div class="kpi-l">${l}</div><div class="kpi-v num">${v}</div>${s?`<div class="kpi-s">${s}</div>`:""}</div>`;}
+
+/* ================= Stores à clé naturelle (dédoublonnage) ================= */
+const S = {
+  entrees: new Map(),   // clé : fiche
+  sorties: new Map(),   // clé : fiche|dateSortie
+  factures: new Map(),  // clé : n° facture
+  devis: new Map(),     // clé : n° devis — hist:[{ts,champ,avant,apres}]
+  charges: new Map(),   // clé : fournisseur|n° pièce
+  flux: new Map(),      // clé : empreinte date|libellé|entrée|sortie
+  creances: new Map()   // clé : assureur|n° facture|date édition|immat
+};
+const EVO = []; // journal des évolutions de devis
+
+/* upsert générique : retourne "new" | "maj" | "dup" */
+function upsert(map, key, rec, onChange){
+  if(!key) return "dup";
+  const old = map.get(key);
+  if(!old){ map.set(key, rec); return "new"; }
+  const a=JSON.stringify(old), b=JSON.stringify({...old, ...rec});
+  if(a===b) return "dup";
+  if(onChange) onChange(old, rec);
+  map.set(key, {...old, ...rec}); return "maj";
+}
+
+/* ================= Amorçage : données réelles juillet + trésorerie ================= */
+(function seed(){
+  L2A_DATA.entrees.forEach(e=>S.entrees.set(e.fiche,{...e,site:SITE_DEF}));
+  L2A_DATA.sorties.forEach(s=>S.sorties.set(s.fiche+"|"+s.dateSortie,{...s,site:SITE_DEF}));
+  L2A_DATA.factures.forEach(f=>S.factures.set(f.num,{...f,site:SITE_DEF}));
+  (L2A_DATA.creancesSeed||[]).forEach(c=>S.creances.set(strip(c.assureur)+"|"+c.num+"|"+c.dateEdit+"|"+strip(c.immat),{...c,site:c.site||""}));
+})();
+const TRESO = L2A_DATA.treso;
+const TODAY = new Date().toISOString().slice(0,10);
+function bucket(d){ if(!d)return "n.d."; const a=days(d,TODAY);
+  return a<=30?"0–30 j":a<=60?"31–60 j":a<=90?"61–90 j":">90 j"; }
+const BUCKETS=["0–30 j","31–60 j","61–90 j",">90 j","n.d."];
+function relance(b){ return b==="0–30 j"?["J+7 — relance mail","p-neu"]:b==="31–60 j"?["J+15 — appel","p-warn"]:b==="61–90 j"?["J+30 — courrier formel","p-warn"]:b===">90 j"?["J+60 — mise en demeure","p-red"]:["à dater","p-off"]; }
+
+/* ================= Commerciaux (paramétrage Gérant) ================= */
+let COM_SEQ = 1;
+const COMS = L2A_DATA.commerciales.map(c=>({
+  id: COM_SEQ++, nom: c.nom, site: SITE_DEF, actif: true,
+  objectifs: [{date:"2026-08-01", montant:5000000, motif:"Objectif initial (valeur d'exemple à fixer par la Direction)"}],
+  ca: c.ca, enc: c.ca, prosp:{pas:0,dev:0,spo:0}
+}));
+const objCourant = c => c.objectifs[c.objectifs.length-1].montant;
+
+/* ================= Devis : amorçage saisie d'exemple ================= */
+let DV_SEQ = 1;
+(function seedDevis(){
+  const enc = [...S.entrees.values()].filter(e=>![...S.sorties.values()].some(s=>s.fiche===e.fiche)).slice(0,6);
+  enc.forEach((e,i)=>{
+    const num = "DV-2026-"+String(DV_SEQ++).padStart(4,"0");
+    S.devis.set(num,{num, fiche:e.fiche, client:cut(e.client,26), presta:presta(e.motif), site:e.site,
+      demande:e.date, emission: i%3===2? "" : addD(e.date, i%3===0?1:3),
+      statut: i%2===0? "validé":"en attente", montant:null});
+  });
+})();
+function addD(s,n){const d=new Date(s);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+
+/* ================= Contexte : rôle / site / période ================= */
+const CTX = { role:"gerant", site:"__conso__", perMode:"mois", d1:"2026-07-01", d2:"2026-07-31" };
+
+function buildSiteSelect(){
+  const sel=document.getElementById("selSite"); sel.innerHTML="";
+  if(CTX.role==="gerant"){
+    sel.insertAdjacentHTML("beforeend",`<option value="__conso__">Consolidé — tous sites</option>`);
+    SITES.forEach(s=>sel.insertAdjacentHTML("beforeend",`<option value="${s}">${s}</option>`));
+    if(![...sel.options].some(o=>o.value===CTX.site)) CTX.site="__conso__";
+  } else {
+    SITES.forEach(s=>sel.insertAdjacentHTML("beforeend",`<option value="${s}">${s}</option>`));
+    if(CTX.site==="__conso__") CTX.site=SITE_DEF;
+  }
+  sel.value=CTX.site;
+}
+function buildPerInputs(){
+  // normaliser les bornes au changement de mode
+  if(CTX.perMode==="jour"){ CTX.d2=CTX.d1; }
+  else if(CTX.perMode==="mois"){ const m=CTX.d1.slice(0,7); CTX.d1=m+"-01"; CTX.d2=m+"-31"; }
+  else if(CTX.perMode==="annee"){ const y=CTX.d1.slice(0,4); CTX.d1=y+"-01-01"; CTX.d2=y+"-12-31"; }
+  const box=document.getElementById("perInputs"); box.innerHTML="";
+  const mk=(id,type,val)=>{box.insertAdjacentHTML("beforeend",`<input type="${type}" id="${id}" value="${val}">`);return document.getElementById(id);};
+  if(CTX.perMode==="jour"){ mk("pd1","date",CTX.d1).addEventListener("change",e=>{CTX.d1=CTX.d2=e.target.value;renderAll();}); }
+  else if(CTX.perMode==="mois"){ const m=mk("pm1","month",CTX.d1.slice(0,7));
+    m.addEventListener("change",e=>{const v=e.target.value; CTX.d1=v+"-01"; CTX.d2=v+"-31"; renderAll();}); }
+  else if(CTX.perMode==="annee"){ const y=mk("py1","number",CTX.d1.slice(0,4)); y.style.width="90px";
+    y.addEventListener("change",e=>{CTX.d1=e.target.value+"-01-01"; CTX.d2=e.target.value+"-12-31"; renderAll();}); }
+  else { mk("pi1","date",CTX.d1).addEventListener("change",e=>{CTX.d1=e.target.value;renderAll();});
+         mk("pi2","date",CTX.d2).addEventListener("change",e=>{CTX.d2=e.target.value;renderAll();}); }
+}
+const inPer = d => d && d>=CTX.d1 && d<=CTX.d2;
+const inSite = s => CTX.site==="__conso__" || (s||SITE_DEF)===CTX.site;
+const ctxLabel = ()=> (CTX.site==="__conso__"?"Consolidé tous sites":CTX.site)+" · "+
+  (CTX.perMode==="jour"? "le "+dFR(CTX.d1) : CTX.perMode==="mois"? "mois de "+CTX.d1.slice(0,7).split("-").reverse().join("/")
+   : CTX.perMode==="annee"? "année "+CTX.d1.slice(0,4) : "du "+dFR(CTX.d1)+" au "+dFR(CTX.d2));
+
+document.getElementById("selRole").addEventListener("change",e=>{
+  CTX.role=e.target.value; applyRole(); buildSiteSelect(); renderAll();
+});
+document.getElementById("selSite").addEventListener("change",e=>{CTX.site=e.target.value;renderAll();});
+document.getElementById("selPer").addEventListener("change",e=>{CTX.perMode=e.target.value;buildPerInputs();renderAll();});
+
+const ROLE_TABS={
+  gerant:["synthese","commercial","tresorerie","dossiers","devis","import","fournisseurs","recouvrement","commerciaux"],
+  site:["synthese","commercial","dossiers","devis","import"],
+  achats:["fournisseurs","import"],
+  recouvrement:["recouvrement","import"]
+};
+const ROLE_LBL={gerant:"Gérant",site:"Gestionnaire de site",achats:"Service achats",recouvrement:"Service recouvrement"};
+function applyRole(){
+  const vis=ROLE_TABS[CTX.role];
+  document.getElementById("roleChip").textContent=ROLE_LBL[CTX.role];
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("hidden",!vis.includes(t.dataset.p)));
+  document.querySelectorAll(".nv-grp").forEach(g=>{
+    g.classList.toggle("hidden",[...g.querySelectorAll(".tab")].every(t=>t.classList.contains("hidden")));});
+  const cur=document.querySelector(".tab.on");
+  if(!cur||!vis.includes(cur.dataset.p)) switchTab(vis[0]);
+}
+
+/* ================= Onglets ================= */
+function switchTab(p){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.p===p));
+  document.querySelectorAll(".pane").forEach(x=>x.classList.toggle("on",x.id==="p-"+p));
+}
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>switchTab(b.dataset.p)));
+
+/* ================= Modèle filtré ================= */
+let M={};
+function computeModel(){
+  const ent=[...S.entrees.values()].filter(e=>inSite(e.site)&&inPer(e.date));
+  const sor=[...S.sorties.values()].filter(s=>inSite(s.site)&&inPer(s.dateSortie));
+  const fac=[...S.factures.values()].filter(f=>inSite(f.site)&&inPer(f.date));
+  const dev=[...S.devis.values()].filter(d=>inSite(d.site)&&inPer(d.demande));
+  const chg=[...S.charges.values()].filter(c=>inSite(c.site)&&inPer(c.date));
+  const flx=[...S.flux.values()].filter(x=>inSite(x.site)&&inPer(x.date));
+  // Situations cumulées à date (indépendantes de la période) — filtrées par site
+  const chgAll=[...S.charges.values()].filter(c=>inSite(c.site));
+  const cre=[...S.creances.values()].filter(c=>{
+    if(CTX.site==="__conso__")return true;
+    if(!c.site)return CTX.site===SITE_DEF; // lignes sans site : rattachées au siège
+    return mapSiteFSF(c.site)===CTX.site;});
+
+  const motifMap={};
+  [...S.entrees.values()].forEach(e=>{motifMap[e.fiche]=e.motif;});
+  [...S.sorties.values()].forEach(s=>{if(!motifMap[s.fiche])motifMap[s.fiche]=s.motif;});
+
+  const factOk=fac.filter(f=>f.montant>0);
+  const ca=factOk.reduce((a,f)=>a+f.montant,0);
+  const byDay={}; factOk.forEach(f=>{byDay[f.date]=(byDay[f.date]||0)+f.montant;});
+  const vent={}; factOk.forEach(f=>{const p=presta(motifMap[f.fiche]);vent[p]=(vent[p]||0)+f.montant;});
+
+  const outF=new Set([...S.sorties.values()].map(s=>s.fiche));
+  const encours=ent.filter(e=>!outF.has(e.fiche));
+
+  const allD=[...sor.map(s=>s.dateSortie),...fac.map(f=>f.date),...ent.map(e=>e.date)].filter(Boolean).sort();
+  const refDate=allD[allD.length-1]||CTX.d2;
+
+  let onTime=0,late=0;
+  sor.forEach(s=>{if(s.dateSortie&&s.livrPrevue){(s.dateSortie<=s.livrPrevue)?onTime++:late++;}});
+  const factByFiche={}; [...S.factures.values()].forEach(f=>{if(f.fiche)factByFiche[f.fiche]=f;});
+  const sortSansFact=sor.filter(s=>!s.facture&&!factByFiche[s.fiche]);
+
+  M={ent,sor,fac,dev,chg,flx,chgAll,cre,motifMap,factOk,ca,byDay,vent,encours,refDate,onTime,late,factByFiche,sortSansFact};
+}
+
+/* ================= Synthèse ================= */
+function renderSynthese(){
+  document.getElementById("ctxSyn").textContent=ctxLabel();
+  const nb=M.factOk.length,tot=M.onTime+M.late,pct=tot?Math.round(100*M.onTime/tot):0;
+  document.getElementById("kpiSyn").innerHTML=
+    kpi("CA HT facturé",FC(M.ca),nb+" factures","red")+
+    kpi("Ticket moyen",FC(nb?M.ca/nb:0),"par facture")+
+    kpi("Véhicules entrés",M.ent.length,"sur la période")+
+    kpi("Véhicules livrés",M.sor.length,"sur la période")+
+    kpi("Dossiers en atelier",M.encours.length,"au "+dFR(M.refDate),M.encours.length>15?"warn":"")+
+    kpi("Livrés à l'heure",tot?pct+" %":"—",tot?M.late+" retard(s) / "+tot:"aucune sortie datée",pct>=80?"ok":(pct>=60?"warn":"red"));
+
+  const dk=Object.keys(M.byDay).sort();
+  mkChart("chCA",{type:"bar",data:{labels:dk.map(d=>d.slice(8)+"/"+d.slice(5,7)),
+    datasets:[{data:dk.map(k=>M.byDay[k]),backgroundColor:"#26415E",borderRadius:3}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>FC(c.raw)}}},
+      scales:{y:{ticks:{callback:v=>(v/1e6).toFixed(1)+" M"}},x:{grid:{display:false}}}}});
+  const pk=Object.keys(M.vent);
+  mkChart("chPresta",{type:"doughnut",data:{labels:pk,
+    datasets:[{data:pk.map(k=>M.vent[k]),backgroundColor:pk.map(k=>P_COLORS[k]),borderWidth:2,borderColor:"#fff"}]},
+    options:{maintainAspectRatio:false,cutout:"58%",plugins:{legend:{position:"bottom"},
+      tooltip:{callbacks:{label:c=>` ${c.label} : ${FC(c.raw)} (${M.ca?Math.round(100*c.raw/M.ca):0} %)`}}}}});
+  const mec=M.vent["Mécanique"]||0,sin=M.vent["Sinistre"]||0,base=mec+sin;
+  document.getElementById("notePresta").innerHTML=
+    `Sur le périmètre mécanique + sinistre : <b>${base?Math.round(100*mec/base):0} % / ${base?Math.round(100*sin/base):0} %</b> (cible indicative 70/30). « À qualifier » : fiches entrées hors période d'extraction — résorbé par l'interfaçage.`;
+
+  let al="";
+  M.sortSansFact.slice(0,5).forEach(s=>{al+=`<div class="alert crit"><span class="dot r"></span><div><b>Sortie sans facture</b> — ${s.fiche} · ${s.marque} ${cut(s.modele,14)} · ${cut(s.client,24)} (${dFR(s.dateSortie)}).</div></div>`;});
+  M.encours.forEach(e=>{ if(e.livrPrevue&&e.livrPrevue<M.refDate)
+    al+=`<div class="alert crit"><span class="dot r"></span><div><b>Livraison dépassée</b> — ${e.fiche} · ${e.marque} ${cut(e.modele,14)} · ${cut(e.client,24)} (prévue ${dFR(e.livrPrevue)}, +${days(e.livrPrevue,M.refDate)} j).</div></div>`;});
+  M.dev.filter(d=>d.emission&&days(d.demande,d.emission)>2).slice(0,4).forEach(d=>{
+    al+=`<div class="alert"><span class="dot o"></span><div><b>Devis émis &gt; 48 h</b> — ${d.num} (${days(d.demande,d.emission)} j) · ${d.client}.</div></div>`;});
+  document.getElementById("alerts").innerHTML=al||`<div class="alert"><span class="dot g"></span><div>Aucune alerte sur la période.</div></div>`;
+
+  const tot2=M.onTime+M.late;
+  document.getElementById("ponct").innerHTML=`<table><tbody>
+    <tr><td>Livrés à la date prévue ou avant</td><td class="r num"><b>${M.onTime}</b></td>
+      <td style="width:45%"><div class="bar-w"><div class="bar g" style="width:${tot2?100*M.onTime/tot2:0}%"></div></div></td></tr>
+    <tr><td>Livrés après la date prévue</td><td class="r num"><b>${M.late}</b></td>
+      <td><div class="bar-w"><div class="bar r" style="width:${tot2?100*M.late/tot2:0}%"></div></div></td></tr></tbody></table>
+    <div class="note" style="margin-top:8px">Sur ${tot2} sorties datées de la période — indicateur de la promesse client, par site.</div>`;
+}
+
+/* ================= Commercial ================= */
+function comsVisibles(){ return COMS.filter(c=>c.actif&&inSite(c.site)); }
+function renderCommercial(){
+  document.getElementById("ctxCom").textContent=ctxLabel();
+  const V=comsVisibles();
+  const caT=V.reduce((a,c)=>a+c.ca,0),objT=V.reduce((a,c)=>a+objCourant(c),0),encT=V.reduce((a,c)=>a+c.enc,0);
+  const tx=objT?Math.round(100*caT/objT):0, rec=caT?Math.round(100*encT/caT):0;
+  document.getElementById("kpiCom").innerHTML=
+    kpi("Commerciaux actifs",V.length,"sur le périmètre")+
+    kpi("Objectif cumulé",FC(objT),"objectifs en vigueur")+
+    kpi("Réalisation HT",FC(caT),"extraction CA du 13/08","red")+
+    kpi("Taux de réalisation",tx+" %","écart restant : "+FC(Math.max(objT-caT,0)),tx>=100?"ok":(tx>=70?"warn":"red"))+
+    kpi("Taux de recouvrement",rec+" %",rec<100?"restant : "+FC(caT-encT):"tout est encaissé",rec>=90?"ok":(rec>=70?"warn":"red"));
+
+  const tb=document.querySelector("#tbCom tbody");tb.innerHTML="";
+  V.forEach(c=>{
+    const o=objCourant(c),t=o?Math.round(100*c.ca/o):0,r=c.ca?Math.round(100*c.enc/c.ca):100,rest=Math.max(c.ca-c.enc,0);
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td><b>${c.nom}</b></td><td>${c.site}</td>
+      <td class="r num">${F(o)}</td><td class="r num"><b>${F(c.ca)}</b></td>
+      <td><div style="display:flex;gap:8px;align-items:center"><div class="bar-w" style="flex:1"><div class="bar ${t>=100?'g':(t>=70?'o':'r')}" style="width:${Math.min(t,100)}%"></div></div><span class="num" style="width:42px;text-align:right">${t} %</span></div></td>
+      <td class="r num">${F(Math.max(o-c.ca,0))}</td>
+      <td><input type="number" class="num" value="${c.enc}" data-id="${c.id}" step="50000" title="Encaissé (saisie trésorerie)"> <span class="pill ${r>=90?'p-ok':(r>=70?'p-warn':'p-red')}">${r} %</span></td>
+      <td class="r num">${r<100?"<b style='color:var(--red)'>"+F(rest)+"</b>":"—"}</td></tr>`);
+  });
+  tb.querySelectorAll("input").forEach(i=>i.addEventListener("change",e=>{
+    const c=COMS.find(x=>x.id==e.target.dataset.id); c.enc=Number(e.target.value)||0; renderCommercial();
+  }));
+
+  const mec=M.vent["Mécanique"]||0,sin=M.vent["Sinistre"]||0,base=mec+sin,pm=base?100*mec/base:0,ps=base?100*sin/base:0;
+  document.getElementById("ventil").innerHTML=`<table><tbody>
+    <tr><td>Mécanique — réalisé</td><td class="r num"><b>${FC(mec)}</b></td>
+      <td style="width:40%"><div class="bar-w"><div class="bar" style="width:${pm}%"></div></div></td>
+      <td class="r num">${Math.round(pm)} % <span class="note">(cible 70 %)</span></td></tr>
+    <tr><td>Sinistre — réalisé</td><td class="r num"><b>${FC(sin)}</b></td>
+      <td><div class="bar-w"><div class="bar r" style="width:${ps}%"></div></div></td>
+      <td class="r num">${Math.round(ps)} % <span class="note">(cible 30 %)</span></td></tr></tbody></table>`;
+
+  const tp=document.getElementById("tbProsp");tp.innerHTML="";
+  V.forEach(c=>{
+    tp.insertAdjacentHTML("beforeend",`<tr><td><b>${c.nom}</b></td>
+      <td class="r"><input type="number" value="${c.prosp.pas}" min="0" style="width:70px" data-id="${c.id}" data-k="pas"></td>
+      <td class="r"><input type="number" value="${c.prosp.dev}" min="0" style="width:70px" data-id="${c.id}" data-k="dev"></td>
+      <td class="r"><input type="number" value="${c.prosp.spo}" min="0" style="width:70px" data-id="${c.id}" data-k="spo"></td>
+      <td><input type="text" placeholder="Observation (non bloquant)" style="width:100%"></td></tr>`);
+  });
+  tp.querySelectorAll("input[type=number]").forEach(i=>i.addEventListener("change",e=>{
+    const c=COMS.find(x=>x.id==e.target.dataset.id); c.prosp[e.target.dataset.k]=Number(e.target.value)||0;
+  }));
+}
+
+/* ================= Trésorerie & charges ================= */
+function renderTresorerie(){
+  document.getElementById("ctxTre").textContent=ctxLabel();
+  const t=TRESO;
+  const enc=t.comptes.reduce((a,c)=>a+c.enc,0),dec=t.comptes.reduce((a,c)=>a+c.dec,0),fin=t.comptes.reduce((a,c)=>a+c.final,0);
+  const gap=t.comptes.reduce((a,c)=>a+(c.gap||0),0);
+  document.getElementById("kpiTre").innerHTML=
+    kpi("Encaissements",FC(enc),t.periode)+
+    kpi("Décaissements",FC(dec),t.periode)+
+    kpi("Trésorerie disponible",FC(fin),"caisse + banques",fin>0?"ok":"red")+
+    kpi("Chèques en circulation",FC(t.comptes.reduce((a,c)=>a+(c.chqCirculation||0),0)),"émis non débités","warn")+
+    kpi("Gap net à couvrir",FC(gap),gap<0?"tension à l'échéance":"couvert",gap<0?"red":"ok");
+  const tb=document.querySelector("#tbTre tbody");tb.innerHTML="";
+  t.comptes.forEach(c=>{tb.insertAdjacentHTML("beforeend",`<tr>
+    <td><b>${c.nom}</b></td><td class="r num">${F(c.init)}</td>
+    <td class="r num" style="color:var(--ok)">${F(c.enc)}</td>
+    <td class="r num" style="color:var(--red)">${F(c.dec)}</td>
+    <td class="r num"><b>${F(c.final)}</b></td>
+    <td class="r num">${c.chqCirculation!=null?F(c.chqCirculation):"—"}</td>
+    <td class="r num">${c.gap!=null?`<span class="pill ${c.gap<0?'p-red':'p-ok'}">${F(c.gap)}</span>`:"—"}</td></tr>`);});
+
+  // Charges (import FSF)
+  const chg=M.chg;
+  const eng=chg.reduce((a,c)=>a+c.montant,0), reg=chg.reduce((a,c)=>a+c.regle,0);
+  const rap=eng-reg, dRef=chg.reduce((a,c)=>a+(c.refact!=null&&c.refact!==0? c.refact-c.montant:0),0);
+  const marge = M.ca? Math.round(100*(M.ca-eng)/M.ca):null;
+  document.getElementById("kpiChg").innerHTML=
+    kpi("Charges engagées",FC(eng),chg.length+" pièces")+
+    kpi("Réglé",FC(reg),"")+
+    kpi("Reste à payer",FC(rap),"",rap>0?"warn":"ok")+
+    kpi("Marge indicative",marge==null?"—":marge+" %","(CA − charges) / CA",marge==null?"":(marge>=30?"ok":"red"));
+  const byImp={};
+  chg.forEach(c=>{const k=c.imputation||"Non imputé"; byImp[k]=byImp[k]||{m:0,r:0,rap:0,dr:0};
+    byImp[k].m+=c.montant; byImp[k].r+=c.regle; byImp[k].rap+=c.montant-c.regle;
+    if(c.refact!=null&&c.refact!==0) byImp[k].dr+=c.refact-c.montant;});
+  const tc=document.querySelector("#tbChg tbody");tc.innerHTML="";
+  Object.entries(byImp).sort((a,b)=>b[1].m-a[1].m).slice(0,10).forEach(([k,v])=>{
+    tc.insertAdjacentHTML("beforeend",`<tr><td>${cut(k,32)}</td><td class="r num">${F(v.m)}</td>
+      <td class="r num">${F(v.r)}</td><td class="r num">${F(v.rap)}</td>
+      <td class="r num" style="color:${v.dr<0?'var(--red)':'inherit'}">${v.dr?F(v.dr):"—"}</td></tr>`);});
+  if(!chg.length) tc.innerHTML=`<tr><td colspan="5" class="note">Aucune charge sur la période — importer le Fichier Suivi Fournisseurs (onglet Import, feuille DETAIL reconnue automatiquement).</td></tr>`;
+
+  // Flux importés
+  const flx=M.flx, fe=flx.reduce((a,x)=>a+x.entree,0), fd=flx.reduce((a,x)=>a+x.sortie,0);
+  document.getElementById("kpiFlux").innerHTML=
+    kpi("Encaissements importés",FC(fe),flx.length+" mouvements")+
+    kpi("Décaissements importés",FC(fd),"")+
+    kpi("Flux net",FC(fe-fd),"",fe-fd>=0?"ok":"red");
+  const tf=document.querySelector("#tbFlux tbody");tf.innerHTML="";
+  flx.slice().sort((a,b)=>a.date<b.date?1:-1).slice(0,15).forEach(x=>{
+    tf.insertAdjacentHTML("beforeend",`<tr><td class="num">${dFR(x.date)}</td><td>${cut(x.lib,42)}</td>
+      <td class="r num" style="color:var(--ok)">${x.entree?F(x.entree):""}</td>
+      <td class="r num" style="color:var(--red)">${x.sortie?F(x.sortie):""}</td></tr>`);});
+  if(!flx.length) tf.innerHTML=`<tr><td colspan="4" class="note">Aucun flux importé sur la période — importer une feuille de caisse mensuelle (Date · Libellé · Entrées · Sorties).</td></tr>`;
+}
+
+/* ================= Dossiers ================= */
+const STEPS=[["Réception client & véhicule à l'accueil (checklist, fiche de réception)","Accueil","À l'arrivée"],
+["Réception du véhicule à l'atelier + fiche de travaux","Chef d'atelier","Dès transmission"],
+["Devis atelier","Superviseur","Le jour même"],["Transmission au service devis","Superviseur","Le jour même"],
+["Devis client","Agent back-office","24 à 48 h"],["Validation client / assureur / expert","Client — relance 24 h","Relance après 24 h"],
+["Expression de besoin + bon de commande","Superviseur / Acheteur","Après validation"],
+["Achat & réception des pièces au magasin","Acheteur / Magasinier","À la livraison"],
+["Travaux (carrosserie / mécanique)","Techniciens sous contrôle superviseur","Selon planning"],
+["Contrôle qualité (fiche de contrôle)","Contrôleur qualité / Superviseur","Avant livraison"],
+["Prise de vue + vérification des travaux effectués","Superviseur + back-office","Avant livraison"],
+["Livraison du véhicule au client","Atelier / Accueil","—"]];
+
+function renderDossiers(){
+  document.getElementById("ctxDos").textContent=ctxLabel();
+  document.getElementById("kpiDos").innerHTML=
+    kpi("En atelier",M.encours.length,"dossiers ouverts au "+dFR(M.refDate))+
+    kpi("Délai moyen en atelier",Math.round(M.encours.reduce((a,e)=>a+days(e.date,M.refDate),0)/(M.encours.length||1))+" j","entrée → aujourd'hui")+
+    kpi("Livraisons dépassées",M.encours.filter(e=>e.livrPrevue&&e.livrPrevue<M.refDate).length,"dossiers en rouge","red")+
+    kpi("Sorties sans facture",M.sortSansFact.length,"rapprochement fiche ↔ facture",M.sortSansFact.length?"red":"ok");
+  const tb=document.querySelector("#tbEnc tbody");tb.innerHTML="";
+  const enc=M.encours.slice().sort((a,b)=>(a.livrPrevue||"9")<(b.livrPrevue||"9")?-1:1);
+  enc.forEach((e,ix)=>{
+    const late=e.livrPrevue&&e.livrPrevue<M.refDate, soon=e.livrPrevue&&!late&&days(M.refDate,e.livrPrevue)<=1;
+    const st=late?`<span class="pill p-red">dépassée de ${days(e.livrPrevue,M.refDate)} j</span>`:
+      soon?`<span class="pill p-warn">échéance ≤ 24 h</span>`:
+      e.livrPrevue?`<span class="pill p-ok">dans les délais</span>`:`<span class="pill p-neu">sans date prévue</span>`;
+    tb.insertAdjacentHTML("beforeend",`<tr><td class="num">${e.fiche}</td>
+      <td>${e.marque} ${cut(e.modele,16)}<div class="note">${e.immat}</div></td>
+      <td>${cut(e.client,26)}</td><td><span class="pill p-neu">${presta(e.motif)}</span></td>
+      <td class="num">${dFR(e.date)}</td><td class="num">${dFR(e.livrPrevue)}</td>
+      <td class="r num">${days(e.date,M.refDate)}</td><td>${st}</td>
+      <td><button class="btn sec sm" data-ix="${ix}">Fiche de suivi</button></td></tr>`);});
+  tb.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>openFiche(enc[Number(b.dataset.ix)])));
+  const ts=document.querySelector("#tbSor tbody");ts.innerHTML="";
+  M.sor.forEach(s=>{
+    const f=M.factByFiche[s.fiche],okF=s.facture||f;
+    ts.insertAdjacentHTML("beforeend",`<tr><td class="num">${dFR(s.dateSortie)}</td><td class="num">${s.fiche}</td>
+      <td>${s.marque} ${cut(s.modele,14)}</td><td>${cut(s.client,24)}</td>
+      <td><span class="pill p-neu">${presta(s.motif)}</span></td>
+      <td class="num">${s.facture||(f?f.num:"—")}</td><td class="r num">${f?F(f.montant):"—"}</td>
+      <td>${okF?'<span class="pill p-ok">facturé</span>':'<span class="pill p-red">sans facture</span>'}</td></tr>`);});
+}
+function openFiche(e){
+  document.getElementById("mTitle").textContent="Fiche de suivi — "+e.fiche;
+  document.getElementById("mSub").innerHTML=`${e.marque} ${e.modele} · ${e.immat} · ${cut(e.client,40)} · ${e.site}<br>`+
+    `Prestation : <b>${presta(e.motif)}</b> — entré le ${dFR(e.date)} · livraison prévue ${dFR(e.livrPrevue)} · travaux : ${cut(e.travaux,70)}`;
+  const box=document.getElementById("mSteps");box.innerHTML="";
+  STEPS.forEach((s,i)=>{box.insertAdjacentHTML("beforeend",`<div class="step">
+    <input type="checkbox" ${i===0?"checked":""} aria-label="${s[0]}">
+    <div>${s[0]}</div><div class="who">${s[1]}</div>
+    <div class="del"><span class="pill ${i===0?'p-ok':'p-neu'}">${s[2]}</span></div></div>`);});
+  document.getElementById("ovl").classList.add("on");
+}
+document.getElementById("mClose").addEventListener("click",()=>document.getElementById("ovl").classList.remove("on"));
+document.getElementById("ovl").addEventListener("click",e=>{if(e.target.id==="ovl")e.target.classList.remove("on");});
+
+/* ================= Devis ================= */
+function renderDevis(){
+  document.getElementById("ctxDev").textContent=ctxLabel();
+  const dev=M.dev, emis=dev.filter(d=>d.emission);
+  const del=emis.map(d=>days(d.demande,d.emission));
+  const moy=del.length?del.reduce((a,b)=>a+b,0)/del.length:0, dep=del.filter(x=>x>2).length;
+  document.getElementById("kpiDev").innerHTML=
+    kpi("Devis de la période",dev.length,"importés / saisis")+
+    kpi("En attente",dev.filter(d=>d.statut==="en attente").length,"relance après 24 h","warn")+
+    kpi("Validés",dev.filter(d=>d.statut==="validé").length,"","ok")+
+    kpi("Refusés",dev.filter(d=>d.statut==="refusé").length,"","")+
+    kpi("Délai moyen d'émission",del.length?moy.toFixed(1)+" j":"—","cible ≤ 48 h",moy<=2?"ok":"red")+
+    kpi("Dépassements 48 h",dep,"alerte automatique",dep?"red":"ok");
+  const tb=document.querySelector("#tbDev tbody");tb.innerHTML="";
+  dev.slice().sort((a,b)=>a.demande<b.demande?1:-1).forEach(d=>{
+    const dl=d.emission?days(d.demande,d.emission):days(d.demande,M.refDate), over=dl>2;
+    const nEvo=EVO.filter(e=>e.num===d.num).length;
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td class="num"><b>${d.num}</b></td><td class="num">${d.fiche||"—"}</td><td>${d.client||"—"}</td>
+      <td><span class="pill p-neu">${d.presta||"—"}</span></td>
+      <td class="num">${dFR(d.demande)}</td>
+      <td class="num">${d.emission?dFR(d.emission):'<span class="pill p-red">non émis</span>'}</td>
+      <td class="r num">${over?`<b style="color:var(--red)">${dl} j</b> <span class="pill p-red">&gt; 48 h</span>`:dl+" j"}</td>
+      <td>${d.statut==="validé"?'<span class="pill p-ok">validé</span>':d.statut==="refusé"?'<span class="pill p-red">refusé</span>':'<span class="pill p-warn">en attente</span>'}</td>
+      <td class="r num">${d.montant?F(d.montant):"—"}</td>
+      <td>${nEvo?`<span class="pill p-neu">${nEvo} changement(s)</span>`:"—"}</td></tr>`);});
+  const te=document.querySelector("#tbEvo tbody");te.innerHTML="";
+  EVO.slice().reverse().slice(0,20).forEach(e=>{
+    te.insertAdjacentHTML("beforeend",`<tr><td class="num">${e.ts}</td><td class="num"><b>${e.num}</b></td>
+      <td>${e.champ}</td><td>${e.avant||"—"}</td><td><b>${e.apres||"—"}</b></td></tr>`);});
+  if(!EVO.length) te.innerHTML=`<tr><td colspan="5" class="note">Aucune évolution enregistrée — réimporter une extraction devis plus récente pour voir les changements de statut apparaître ici.</td></tr>`;
+}
+document.getElementById("btnAddDevis").addEventListener("click",()=>{
+  const fiche=prompt("N° de fiche de réception ?"); if(!fiche)return;
+  const client=prompt("Client ?")||"—";
+  const num="DV-2026-"+String(DV_SEQ++).padStart(4,"0");
+  S.devis.set(num,{num,fiche,client:cut(client,26),presta:"Mécanique",site:CTX.site==="__conso__"?SITE_DEF:CTX.site,
+    demande:M.refDate,emission:M.refDate,statut:"en attente",montant:null});
+  computeModel();renderDevis();
+});
+
+/* ================= Administration commerciaux ================= */
+function fillSiteOptions(sel,val){ sel.innerHTML=""; SITES.forEach(s=>sel.insertAdjacentHTML("beforeend",`<option ${s===val?"selected":""}>${s}</option>`)); }
+function renderAdmin(){
+  fillSiteOptions(document.getElementById("ncSite"));
+  fillSiteOptions(document.getElementById("impSite"));
+  const tb=document.querySelector("#tbAdm tbody");tb.innerHTML="";
+  COMS.forEach(c=>{
+    const o=objCourant(c),t=o?Math.round(100*c.ca/o):0;
+    const hist=c.objectifs.map(h=>`<li>${dFR(h.date)} — ${F(h.montant)} F <span class="note">(${h.motif})</span></li>`).join("");
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td><b>${c.nom}</b></td>
+      <td><select class="inl" data-id="${c.id}" data-a="site">${SITES.map(s=>`<option ${s===c.site?"selected":""}>${s}</option>`).join("")}</select></td>
+      <td>${c.actif?'<span class="pill p-ok">actif</span>':'<span class="pill p-off">désactivé</span>'}</td>
+      <td class="r num"><b>${F(o)}</b></td>
+      <td><details><summary>${c.objectifs.length} valeur(s)</summary><ul>${hist}</ul></details></td>
+      <td class="r num">${F(c.ca)}</td>
+      <td><div style="display:flex;gap:8px;align-items:center"><div class="bar-w" style="flex:1;min-width:60px"><div class="bar ${t>=100?'g':(t>=70?'o':'r')}" style="width:${Math.min(t,100)}%"></div></div><span class="num">${t} %</span></div></td>
+      <td style="white-space:nowrap">
+        <button class="btn sec sm" data-id="${c.id}" data-a="obj">Réévaluer</button>
+        <button class="btn sm ${c.actif?'red':''}" data-id="${c.id}" data-a="tog">${c.actif?"Désactiver":"Réactiver"}</button>
+      </td></tr>`);});
+  tb.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+    const c=COMS.find(x=>x.id==b.dataset.id);
+    if(b.dataset.a==="tog"){ c.actif=!c.actif; }
+    else{
+      const m=prompt("Nouvel objectif HT pour "+c.nom+" ?",objCourant(c)); if(m==null)return;
+      const motif=prompt("Motif de la réévaluation ?","Réévaluation Direction")||"Réévaluation";
+      c.objectifs.push({date:new Date().toISOString().slice(0,10),montant:Number(m)||0,motif});
+    }
+    renderAdmin();renderCommercial();
+  }));
+  tb.querySelectorAll("select").forEach(s=>s.addEventListener("change",e=>{
+    const c=COMS.find(x=>x.id==e.target.dataset.id); c.site=e.target.value; renderAdmin();renderCommercial();
+  }));
+}
+document.getElementById("btnAddCom").addEventListener("click",()=>{
+  const nom=document.getElementById("ncNom").value.trim(); if(!nom)return alert("Renseigner le nom.");
+  COMS.push({id:COM_SEQ++,nom:nom.toUpperCase(),site:document.getElementById("ncSite").value,actif:true,
+    objectifs:[{date:new Date().toISOString().slice(0,10),montant:Number(document.getElementById("ncObj").value)||0,motif:"Création du compte"}],
+    ca:0,enc:0,prosp:{pas:0,dev:0,spo:0}});
+  document.getElementById("ncNom").value="";
+  renderAdmin();renderCommercial();
+});
+
+
+/* ================= Fournisseurs — Achats ================= */
+let frnFilter="";
+function renderFournisseurs(){
+  document.getElementById("ctxFrn").textContent=(CTX.site==="__conso__"?"Consolidé tous sites":CTX.site)+" · situation au "+dFR(TODAY);
+  const L=M.chgAll;
+  const eng=L.reduce((a,c)=>a+c.montant,0), reg=L.reduce((a,c)=>a+c.regle,0);
+  const byF={};
+  L.forEach(c=>{const k=c.fournisseur||"—";const o=byF[k]=byF[k]||{n:0,m:0,r:0,d:0,ech:0,dr:0};
+    o.n++;o.m+=c.montant;o.r+=c.regle;const rst=c.reste!=null?c.reste:c.montant-c.regle;o.d+=rst;
+    if(rst>0&&c.echeance&&c.echeance<TODAY)o.ech+=rst;
+    if(c.refact!=null&&c.refact!==0)o.dr+=c.refact-c.montant;});
+  const dette=Object.values(byF).reduce((a,o)=>a+o.d,0);
+  const crediteurs=Object.values(byF).filter(o=>o.d>500).length;
+  const echues=Object.values(byF).reduce((a,o)=>a+o.ech,0);
+  document.getElementById("kpiFrn").innerHTML=
+    kpi("Engagé cumulé",FC(eng),L.length+" pièces")+
+    kpi("Réglé",FC(reg),"")+
+    kpi("Dette fournisseurs",FC(dette),crediteurs+" fournisseurs créditeurs",dette>0?"warn":"ok")+
+    kpi("Dont échéances dépassées",FC(echues),"à régler en priorité",echues>0?"red":"ok");
+  const tb=document.querySelector("#tbFrn tbody");tb.innerHTML="";
+  Object.entries(byF).filter(([k])=>!frnFilter||strip(k).includes(strip(frnFilter)))
+    .sort((a,b)=>b[1].d-a[1].d).slice(0,15).forEach(([k,o])=>{
+    tb.insertAdjacentHTML("beforeend",`<tr><td><b>${cut(k,30)}</b></td>
+      <td class="r num">${o.n}</td><td class="r num">${F(o.m)}</td><td class="r num">${F(o.r)}</td>
+      <td class="r num"><b>${F(o.d)}</b></td>
+      <td class="r num">${o.ech?`<span style="color:var(--red)"><b>${F(o.ech)}</b></span>`:"—"}</td>
+      <td class="r num" style="color:${o.dr<0?'var(--red)':'inherit'}">${o.dr?F(o.dr):"—"}</td></tr>`);});
+  if(!L.length)tb.innerHTML=`<tr><td colspan="7" class="note">Aucune donnée fournisseur — importer le Fichier Suivi Fournisseurs (onglet Import).</td></tr>`;
+
+  // FICORE — pièces refacturées
+  const ref=L.filter(c=>c.refact!=null&&c.refact!==0&&c.montant>0);
+  const sans=L.filter(c=>(c.refact==null||c.refact===0)&&strip(c.imputation||"").includes("PIECE")).length;
+  const pertes=ref.filter(c=>c.refact<c.montant);
+  const sous=ref.filter(c=>c.refact>=c.montant&&(c.refact-c.montant)/c.montant<0.30);
+  const perteT=pertes.reduce((a,c)=>a+(c.refact-c.montant),0);
+  const achT=ref.reduce((a,c)=>a+c.montant,0), refT=ref.reduce((a,c)=>a+c.refact,0);
+  const margeG=achT?100*(refT-achT)/achT:0;
+  document.getElementById("kpiFic").innerHTML=
+    kpi("Pièces refacturées suivies",ref.length,"refacturation renseignée")+
+    kpi("Marge globale pondérée",ref.length?Math.round(margeG)+" %":"—","(Σ refacturé − Σ achat) / Σ achat · cible ≥ 30 %",!ref.length?"":(margeG>=30?"ok":"warn"))+
+    kpi("Pertes de refacturation",FC(perteT),pertes.length+" pièce(s) sous le coût",pertes.length?"red":"ok")+
+    kpi("Marges < 30 %",sous.length,"à revoir avant règlement",sous.length?"warn":"ok")+
+    kpi("Sans refacturation renseignée",sans,"achats de pièces — angles morts",sans?"warn":"");
+  const tf=document.querySelector("#tbFic tbody");tf.innerHTML="";
+  ref.slice().sort((a,b)=>(a.refact-a.montant)-(b.refact-b.montant)).slice(0,15).forEach(c=>{
+    const dd=c.refact-c.montant,p=Math.round(100*dd/c.montant);
+    const st=dd<0?'<span class="pill p-red">perte</span>':p<30?'<span class="pill p-warn">&lt; 30 %</span>':'<span class="pill p-ok">conforme</span>';
+    tf.insertAdjacentHTML("beforeend",`<tr><td class="num">${cut(c.piece,16)}</td><td>${cut(c.fournisseur,22)}</td>
+      <td>${cut(((c.vehicule||"")+" "+(c.immat||"")).trim(),22)||"—"}</td>
+      <td class="r num">${F(c.montant)}</td><td class="r num">${F(c.refact)}</td>
+      <td class="r num" style="color:${dd<0?'var(--red)':'inherit'}">${F(dd)}</td>
+      <td class="r num">${p} %</td><td>${st}</td></tr>`);});
+  if(!ref.length)tf.innerHTML=`<tr><td colspan="8" class="note">Aucune pièce avec refacturation renseignée sur le périmètre.</td></tr>`;
+}
+document.getElementById("frnSearch").addEventListener("input",e=>{frnFilter=e.target.value;renderFournisseurs();});
+
+/* ================= Recouvrement clients ================= */
+let recFilter="", extSel="";
+function renderRecouvrement(){
+  document.getElementById("ctxRec").textContent=(CTX.site==="__conso__"?"Consolidé tous sites":CTX.site)+" · situation au "+dFR(TODAY);
+  const L=M.cre;
+  const ttc=L.reduce((a,c)=>a+c.ttc,0), reg=L.reduce((a,c)=>a+c.regle,0);
+  const rap=L.reduce((a,c)=>a+c.rap,0), tx=ttc?Math.round(100*reg/ttc):0;
+  const imp=L.filter(c=>c.rap>500);
+  const v90=imp.filter(c=>bucket(c.dateEdit)===">90 j").reduce((a,c)=>a+c.rap,0);
+  const deb=new Set(imp.map(c=>c.assureur)).size;
+  document.getElementById("kpiRec").innerHTML=
+    kpi("Créances facturées TTC",FC(ttc),L.length+" factures")+
+    kpi("Encaissé",FC(reg),"")+
+    kpi("Reste à recouvrer",FC(rap),deb+" clients débiteurs","red")+
+    kpi("Taux de recouvrement",tx+" %","",tx>=90?"ok":(tx>=75?"warn":"red"))+
+    kpi("Créances > 90 jours",FC(v90),"niveau contentieux (J+60)",v90>0?"red":"ok");
+
+  const ag={}; BUCKETS.forEach(b=>ag[b]=0);
+  imp.forEach(c=>{ag[bucket(c.dateEdit)]+=c.rap;});
+  mkChart("chAge",{type:"bar",data:{labels:BUCKETS,
+    datasets:[{data:BUCKETS.map(b=>ag[b]),backgroundColor:["#26415E","#B96E00","#B96E00","#C8102E","#9AA3AD"],borderRadius:3}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>FC(c.raw)}}},
+      scales:{y:{ticks:{callback:v=>(v/1e6).toFixed(0)+" M"}},x:{grid:{display:false}}}}});
+
+  const gapNeg=TRESO.comptes.reduce((a,c)=>a+Math.min(c.gap||0,0),0);
+  const obj=15000000;
+  document.getElementById("recTre").innerHTML=`<table><tbody>
+    <tr><td>Reste à recouvrer (gisement d'encaissements)</td><td class="r num"><b>${F(rap)}</b> F</td></tr>
+    <tr><td>Gap de trésorerie à couvrir (chèques en circulation, rapport 10–13/08)</td><td class="r num" style="color:var(--red)"><b>${F(gapNeg)}</b> F</td></tr>
+    <tr><td>Créances &gt; 90 j mobilisables face au gap</td><td class="r num">${gapNeg<0?Math.min(999,Math.round(100*v90/(-gapNeg)))+" %":"—"}</td></tr>
+    <tr><td>Objectif hebdomadaire de recouvrement</td><td class="r num">${F(obj)} F <span class="pill ${rap>obj*4?'p-red':'p-warn'}">${(rap/obj).toFixed(1)} semaine(s) de stock</span></td></tr>
+  </tbody></table>`;
+
+  const agg={};
+  L.forEach(c=>{const k=c.assureur||"—";const o=agg[k]=agg[k]||{n:0,ttc:0,reg:0,rap:0,buck:{}};
+    o.n++;o.ttc+=c.ttc;o.reg+=c.regle;o.rap+=c.rap;
+    if(c.rap>500){const b=bucket(c.dateEdit);o.buck[b]=(o.buck[b]||0)+c.rap;}});
+  const tb=document.querySelector("#tbRec tbody");tb.innerHTML="";
+  Object.entries(agg).filter(([k,o])=>o.rap>500&&(!recFilter||strip(k).includes(strip(recFilter))))
+    .sort((a,b)=>b[1].rap-a[1].rap).slice(0,15).forEach(([k,o])=>{
+    const t=o.ttc?Math.round(100*o.reg/o.ttc):0;
+    const ents=Object.entries(o.buck).sort((a,b)=>b[1]-a[1]);
+    const dom=ents.length?ents[0][0]:"n.d.";
+    const rl=relance(dom);
+    tb.insertAdjacentHTML("beforeend",`<tr><td><b>${cut(k,26)}</b></td>
+      <td class="r num">${o.n}</td><td class="r num">${F(o.ttc)}</td><td class="r num">${F(o.reg)}</td>
+      <td class="r num"><b style="color:var(--red)">${F(o.rap)}</b></td>
+      <td><span class="pill ${t>=90?'p-ok':(t>=75?'p-warn':'p-red')}">${t} %</span></td>
+      <td><span class="pill p-neu">${dom}</span></td>
+      <td><span class="pill ${rl[1]}">${rl[0]}</span></td>
+      <td><button class="btn sec sm" data-cl="${k}">Extrait</button></td></tr>`);});
+  if(![...Object.values(agg)].some(o=>o.rap>500))tb.innerHTML=`<tr><td colspan="9" class="note">Aucune créance impayée — importer l'État des impayés (feuille Détail) via l'onglet Import.</td></tr>`;
+  tb.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{extSel=b.dataset.cl;fillExtClients();renderExtrait();}));
+  fillExtClients(); renderExtrait();
+}
+document.getElementById("recSearch").addEventListener("input",e=>{recFilter=e.target.value;renderRecouvrement();});
+
+function fillExtClients(){
+  const sel=document.getElementById("extClient");
+  const clients=[...new Set(M.cre.map(c=>c.assureur).filter(Boolean))].sort();
+  if(!extSel||!clients.includes(extSel))extSel=clients[0]||"";
+  sel.innerHTML=clients.map(c=>`<option ${c===extSel?"selected":""}>${c}</option>`).join("");
+}
+function extLines(){
+  const impOnly=document.getElementById("extImp").checked;
+  return M.cre.filter(c=>c.assureur===extSel&&(!impOnly||c.rap>500))
+    .sort((a,b)=>a.dateEdit<b.dateEdit?-1:1);
+}
+function renderExtrait(){
+  const L=extLines();
+  const ttc=L.reduce((a,c)=>a+c.ttc,0),reg=L.reduce((a,c)=>a+c.regle,0),rap=L.reduce((a,c)=>a+c.rap,0);
+  document.getElementById("extHead").innerHTML=
+    `<b>L'ARTISAN AUTOMOBILE</b> · NCC : 2197588 Q · 10 BP 259 ABJ 10<br>
+     Extrait de compte — <b>${extSel||"—"}</b> · au ${dFR(TODAY)} · ${L.length} facture(s)<br>
+     <b>TOTAUX</b> — TTC : <b>${F(ttc)}</b> F · Réglé : ${F(reg)} F · Reste à payer : <b style="color:var(--red)">${F(rap)}</b> F`;
+  const tb=document.querySelector("#tbExt tbody");tb.innerHTML="";
+  L.slice(0,40).forEach(c=>{tb.insertAdjacentHTML("beforeend",`<tr>
+    <td>${c.assureur}</td><td class="num">${dFR(c.dateRecep)}</td><td class="num">${dFR(c.dateEdit)}</td>
+    <td class="num">${c.num}</td><td>${cut(c.vehicule,20)}</td><td class="num">${c.immat}</td>
+    <td class="r num">${F(c.ttc)}</td><td class="r num">${F(c.regle)}</td>
+    <td class="r num"><b>${F(c.rap)}</b></td></tr>`);});
+  if(L.length>40)tb.insertAdjacentHTML("beforeend",`<tr><td colspan="9" class="note">… ${L.length-40} ligne(s) supplémentaires reprises dans l'export Excel.</td></tr>`);
+  if(!L.length)tb.innerHTML=`<tr><td colspan="9" class="note">Aucune ligne pour ce client avec le filtre courant.</td></tr>`;
+}
+document.getElementById("extClient").addEventListener("change",e=>{extSel=e.target.value;renderExtrait();});
+document.getElementById("extImp").addEventListener("change",renderExtrait);
+document.getElementById("btnExtXls").addEventListener("click",()=>{
+  const L=extLines(); if(!L.length)return alert("Aucune ligne à exporter.");
+  const ttc=L.reduce((a,c)=>a+c.ttc,0),reg=L.reduce((a,c)=>a+c.regle,0),rap=L.reduce((a,c)=>a+c.rap,0);
+  const aoa=[["L'ARTISAN AUTOMOBILE"],["NCC : 2197588 Q"],["10 BP 259 ABJ 10"],
+    ["","","","","","TOTAUX",ttc,reg,rap],
+    ["ASSUREUR","Date de reception de la facture","Date d'edition de la facture","Numéro de la facture","Vehicule","Immatriculation","montantTTC","Montantréglé","ResteàPayer"],
+    ...L.map(c=>[c.assureur,c.dateRecep,c.dateEdit,c.num,c.vehicule,c.immat,c.ttc,c.regle,c.rap])];
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:18},{wch:16},{wch:16},{wch:14},{wch:22},{wch:16},{wch:12},{wch:12},{wch:12}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Extrait");
+  XLSX.writeFile(wb,"EXTRAIT_COMPTE_"+strip(extSel).replace(/[^A-Z0-9]+/g,"_")+"_"+TODAY.replace(/-/g,"")+".xlsx");
+});
+
+/* ================= Import — détection, upsert, journal ================= */
+const SIG=[ // de la plus spécifique à la plus générale
+  {type:"creances", need:["ASSUREUR","NUMERO DE LA FACTURE","MONTANTTTC"], label:"Créances clients — État des impayés (Détail)"},
+  {type:"charges", need:["FOURNISSEUR","N° PIECE","MONTANT"], label:"Charges / Fournisseurs — FSF (DETAIL)"},
+  {type:"devis",   need:["N° DEVIS","STATUT"], label:"Devis"},
+  {type:"flux",    need:["DATE","LIBELLE","ENTREES","SORTIES"], not:["N° FICHE"], label:"Caisse — encaissements/décaissements"},
+  {type:"factures",need:["DATE DE LA FACTURE","N° FACTURE","MONTANT FACTURE"], label:"Factures"},
+  {type:"pointca", need:["DATE SORTIE","N° FICHE","MONTANT HT","OBSERVATIONS"], label:"Point CA — véhicules livrés"},
+  {type:"sorties", need:["DATE SORTIE","N° FICHE","N° FACTURE"], label:"Sorties véhicules"},
+  {type:"entrees", need:["DATE","N° FICHE","MOTIF DE LA VENUE","DATE DE LIVR"], not:["DATE SORTIE"], label:"Entrées véhicules"}
+];
+const log=m=>{const l=document.getElementById("impLog");l.textContent+="\n"+m;l.scrollTop=l.scrollHeight;};
+const toISO=v=>{
+  if(v&&typeof v.toISOString==="function")return v.toISOString().slice(0,10);
+  if(typeof v==="number"){const d=XLSX.SSF.parse_date_code(v);if(d)return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;}
+  const m=String(v||"").match(/(\d{2})\/(\d{2})\/(\d{4})/);if(m)return `${m[3]}-${m[2]}-${m[1]}`;return "";};
+function detect(rows){
+  for(let r=0;r<Math.min(rows.length,12);r++){
+    const H=rows[r].map(strip);
+    for(const s of SIG){
+      if(s.need.every(n=>H.some(h=>h.startsWith(strip(n))))&&!(s.not||[]).some(n=>H.some(h=>h.startsWith(strip(n)))))
+        return {sig:s,hRow:r,H};
+    }
+  } return null;
+}
+const col=(H,n)=>H.findIndex(h=>h.startsWith(strip(n)));
+const cnt=()=>({new:0,maj:0,dup:0});
+const num0=v=>Number(v)||0;
+const ts=()=>new Date().toISOString().slice(0,16).replace("T"," ");
+
+function handleFiles(files){
+  const impSite=document.getElementById("impSite").value||SITE_DEF;
+  [...files].forEach(f=>{
+    const rd=new FileReader();
+    rd.onload=ev=>{
+      try{
+        const wb=XLSX.read(ev.target.result,{type:"array",cellDates:true});
+        // Passe 1 : détecter toutes les feuilles reconnues
+        const matches=[];
+        wb.SheetNames.forEach(sn=>{
+          const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:""});
+          const d=detect(rows); if(d) matches.push({sn,rows,...d});
+        });
+        // Charges : ne garder que la feuille DETAIL (ou la plus fournie) pour éviter
+        // qu'une feuille de même structure (ex. « contrôle chq ») n'écrase les données
+        const chgM=matches.filter(m=>m.sig.type==="charges");
+        if(chgM.length>1){
+          const keep=chgM.find(m=>strip(m.sn).includes("DETAIL"))||chgM.reduce((a,b)=>a.rows.length>=b.rows.length?a:b);
+          matches.forEach(m=>{ if(m.sig.type==="charges"&&m!==keep){ m.skip=true;
+            log(`↷ ${f.name} — « ${m.sn} » ignorée (même structure que « ${keep.sn} », seule la feuille de détail est retenue).`);}});
+        }
+        let hit=false;
+        matches.forEach(({sn,rows,sig,hRow,H,skip})=>{
+          if(skip)return;
+          hit=true;
+          const body=rows.slice(hRow+1).filter(r=>r.some(c=>c!==""));
+          const c=cnt(); let evoN=0;
+          const txt=(r,n)=>String(r[col(H,n)]??"").split("\n")[0].trim();
+
+          if(sig.type==="entrees"){
+            body.forEach(r=>{const fiche=txt(r,"N° FICHE");if(!fiche)return;
+              c[upsert(S.entrees,fiche,{date:toISO(r[col(H,"DATE")]),fiche,immat:txt(r,"N° IMMAT"),marque:txt(r,"MARQUE"),modele:txt(r,"MODELE"),client:txt(r,"CLIENTS"),motif:txt(r,"MOTIF DE LA VENUE"),travaux:txt(r,"TRAVAUX"),livrPrevue:toISO(r[col(H,"DATE DE LIVR")]),site:impSite})]++;});
+          }else if(sig.type==="sorties"){
+            body.forEach(r=>{const fiche=txt(r,"N° FICHE"),ds=toISO(r[col(H,"DATE SORTIE")]);if(!fiche)return;
+              c[upsert(S.sorties,fiche+"|"+ds,{dateSortie:ds,livrPrevue:toISO(r[col(H,"DATE DE LIVR")]),fiche,immat:txt(r,"N° IMMAT"),marque:txt(r,"MARQUE"),modele:txt(r,"MODELE"),client:txt(r,"CLIENTS"),motif:txt(r,"MOTIF DE LA VENUE"),facture:txt(r,"N° FACTURE"),site:impSite})]++;});
+          }else if(sig.type==="factures"){
+            body.forEach(r=>{const num=txt(r,"N° FACTURE");if(!num)return;
+              c[upsert(S.factures,num,{date:toISO(r[col(H,"DATE DE LA FACTURE")]),num,fiche:txt(r,"FICHE DE RECEPTION"),immat:txt(r,"IMMAT"),marque:txt(r,"MARQUE"),client:txt(r,"CLIENTS"),montant:num0(r[col(H,"MONTANT FACTURE")]),site:impSite})]++;});
+          }else if(sig.type==="pointca"){
+            let noMt=0;
+            body.forEach(r=>{const fiche=txt(r,"N° FICHE");if(!fiche)return;
+              const mt=num0(r[col(H,"MONTANT HT")]);if(!mt)noMt++;
+              c[upsert(S.factures,"PC|"+fiche+"|"+toISO(r[col(H,"DATE SORTIE")]),{date:toISO(r[col(H,"DATE SORTIE")]),num:"(point CA)",fiche,immat:"",marque:txt(r,"MARQUE"),client:txt(r,"CLIENTS"),montant:mt,site:impSite})]++;});
+            if(noMt)log(`   ↳ ${noMt} dossier(s) sans montant (attente BC / garantie).`);
+          }else if(sig.type==="devis"){
+            body.forEach(r=>{const num=txt(r,"N° DEVIS");if(!num)return;
+              const rec={num,fiche:txt(r,"FICHE"),client:txt(r,"CLIENT"),presta:txt(r,"PRESTATION")||"—",
+                demande:toISO(r[col(H,"DATE DEMANDE")]),emission:toISO(r[col(H,"DATE EMISSION")]),
+                statut:(txt(r,"STATUT")||"en attente").toLowerCase(),montant:num0(r[col(H,"MONTANT")]),site:impSite};
+              c[upsert(S.devis,num,rec,(old,nw)=>{
+                ["statut","emission","montant"].forEach(k=>{
+                  if(String(old[k]??"")!==String(nw[k]??"")&&nw[k]!=null&&nw[k]!==""){
+                    EVO.push({ts:ts(),num,champ:k==="emission"?"date d'émission":k,avant:old[k],apres:nw[k]});evoN++;}});
+              })]++;});
+            if(evoN)log(`   ↳ ${evoN} évolution(s) de devis consignée(s) au journal.`);
+          }else if(sig.type==="charges"){
+            body.forEach(r=>{const four=txt(r,"FOURNISSEUR"),piece=txt(r,"N° PIECE");if(!four||!piece)return;
+              const siteC=col(H,"SITE")>=0?mapSiteFSF(r[col(H,"SITE")]):impSite;
+              const dte=toISO(r[col(H,"DATE FACTURE")])||toISO(r[col(H,"DATE DE REGLEMENT")]);
+              const mnt=num0(r[col(H,"MONTANT")]),rgl=num0(r[col(H,"MONTANT REGLE")]);
+              c[upsert(S.charges,strip(four)+"|"+strip(piece),{date:dte,fournisseur:four,piece,section:txt(r,"SECTION"),
+                montant:mnt,regle:rgl,
+                reste:col(H,"RESTE A PAYER")>=0?num0(r[col(H,"RESTE A PAYER")]):mnt-rgl,
+                echeance:col(H,"DATE ECHEANCE")>=0?toISO(r[col(H,"DATE ECHEANCE")]):"",
+                vehicule:txt(r,"VEHICULE"),immat:txt(r,"IMMAT"),
+                refact:col(H,"MONTANT REFACTUR")>=0?num0(r[col(H,"MONTANT REFACTUR")]):null,
+                imputation:txt(r,"IMPUTATION")||txt(r,"SECTION"),site:siteC})]++;});
+          }else if(sig.type==="creances"){
+            body.forEach(r=>{const ass=txt(r,"ASSUREUR"),num=txt(r,"NUMERO DE LA FACTURE");
+              if(!ass||!num)return;
+              const ttcV=num0(r[col(H,"MONTANTTTC")]),regV=num0(r[col(H,"MONTANTREGLE")]);
+              const rapV=col(H,"RESTEAPAYER")>=0?num0(r[col(H,"RESTEAPAYER")]):ttcV-regV;
+              const de=toISO(r[col(H,"DATE D'EDITION")]),im=txt(r,"IMMATRICULATION");
+              c[upsert(S.creances,strip(ass)+"|"+num+"|"+de+"|"+strip(im),
+                {assureur:ass,client:txt(r,"CLIENT"),site:txt(r,"SITE"),courtier:txt(r,"COURTIER"),
+                 dateRecep:toISO(r[col(H,"DATE DE RECEPTION")]),dateEdit:de,num,
+                 numSinistre:txt(r,"NUMERO SINISTRE"),vehicule:txt(r,"VEHICULE"),immat:im,
+                 ttc:ttcV,regle:regV,rap:rapV,mode:txt(r,"MODEDEREGLEMENT")})]++;});
+          }else if(sig.type==="flux"){
+            body.forEach(r=>{const dte=toISO(r[col(H,"DATE")]),lib=txt(r,"LIBELLE");
+              const e=num0(r[col(H,"ENTREES")]),s2=num0(r[col(H,"SORTIES")]);
+              if(!dte||(!e&&!s2))return;
+              c[upsert(S.flux,dte+"|"+strip(lib)+"|"+e+"|"+s2,{date:dte,lib,entree:e,sortie:s2,site:impSite})]++;});
+          }
+          log(`✔ ${f.name} — « ${sn} » : ${sig.label} → ${c.new} nouvelle(s), ${c.maj} mise(s) à jour, ${c.dup} doublon(s) ignoré(s).`);
+        });
+        if(!hit)log(`✖ ${f.name} — aucun format reconnu.`);
+        computeModel();renderAll();
+      }catch(err){log(`✖ ${f.name} — erreur : ${err.message}`);}
+    };
+    rd.readAsArrayBuffer(f);
+  });
+}
+const drop=document.getElementById("drop"),fi=document.getElementById("fileIn");
+drop.addEventListener("click",()=>fi.click());
+drop.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" ")fi.click();});
+fi.addEventListener("change",e=>handleFiles(e.target.files));
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hov");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hov");}));
+drop.addEventListener("drop",e=>handleFiles(e.dataTransfer.files));
+
+/* ================= Rendu global ================= */
+function renderAll(){
+  computeModel();
+  const vis=ROLE_TABS[CTX.role];
+  if(vis.includes("synthese")){renderSynthese();renderCommercial();renderDossiers();renderDevis();}
+  if(vis.includes("tresorerie")){renderTresorerie();renderAdmin();}
+  if(vis.includes("fournisseurs"))renderFournisseurs();
+  if(vis.includes("recouvrement"))renderRecouvrement();
+}
+applyRole();buildSiteSelect();buildPerInputs();renderAll();
+
+</script>
+</body>
+</html>

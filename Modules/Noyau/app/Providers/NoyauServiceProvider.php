@@ -24,5 +24,11 @@ class NoyauServiceProvider extends ServiceProvider
         Route::middleware('web')->group(module_path('Noyau', 'routes/web.php'));
 
         Volt::mount([module_path('Noyau', 'resources/views')]);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                \Modules\Noyau\Console\RattacherLesCodes::class,
+            ]);
+        }
     }
 }

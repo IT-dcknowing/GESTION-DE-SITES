@@ -133,20 +133,14 @@ $enregistrer = function () {
                 <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin-bottom:6px;">Nouveau mot de passe</label>
                 <div class="champ-mot-de-passe">
                     <input type="password" wire:model="nouveauMotDePasse" class="champ" autocomplete="new-password" autofocus>
-                    <button type="button" tabindex="-1" aria-label="Afficher ou masquer le mot de passe"
-                        onclick="const i=this.previousElementSibling; const v=i.type==='password'; i.type=v?'text':'password'; this.firstElementChild.textContent=v?'🙈':'👁';">
-                        <span>👁</span>
-                    </button>
+                    <x-oeil-mot-de-passe />
                 </div>
                 @error('nouveauMotDePasse') <div style="color:#C8102E; font-size:13.5px; margin-bottom:8px;">{{ $message }}</div> @enderror
 
                 <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">Confirmer le mot de passe</label>
                 <div class="champ-mot-de-passe">
                     <input type="password" wire:model="nouveauMotDePasse_confirmation" class="champ" autocomplete="new-password">
-                    <button type="button" tabindex="-1" aria-label="Afficher ou masquer le mot de passe"
-                        onclick="const i=this.previousElementSibling; const v=i.type==='password'; i.type=v?'text':'password'; this.firstElementChild.textContent=v?'🙈':'👁';">
-                        <span>👁</span>
-                    </button>
+                    <x-oeil-mot-de-passe />
                 </div>
 
                 <button type="submit" wire:loading.attr="disabled" class="bouton" style="margin-top:14px;">

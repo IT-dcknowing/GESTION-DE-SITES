@@ -13,7 +13,8 @@ Modules/
 ├── Superviseur/     la ville : le pilotage
 ├── ResponsableSite/ le lieu : la saisie du jour
 ├── Comptabilite/    la caisse d'une ville
-└── Commercial/      le terrain
+├── Commercial/      le terrain
+└── Recouvrement/    la poursuite des créances
 ```
 
 ## Pourquoi le Noyau existe
@@ -77,6 +78,46 @@ ordre d'exécution difficile à suivre.
 | `ResponsableSite` | `saisie/` : saisie du jour, fiche prospection | `responsable_site` (partagé avec `responsable_ville`) |
 | `Comptabilite` | tableau de bord, encaissements, décaissements | `caissier` |
 | `Commercial` | mes prospections, ma performance, mes notes | `commercial` |
+| `Recouvrement` | `recouvrement/` : saisie, synthèse, balance âgée, courtiers, clients & tiers, extrait de compte, journal des relances, journal des encaissements, piste d'audit | `agent_recouvrement`, `superviseur_recouvrement` (et `gerant`, qui a les neuf) |
+
+### Comment le Recouvrement partage ses neuf pages
+
+Le module ne crée pas les factures qu'il poursuit : il lit celles du Noyau, et un
+encaissement qu'il enregistre entre aussitôt en trésorerie — pas de reprise, pas de
+rapprochement.
+
+Le partage traduit une séparation des fonctions, et non une hiérarchie de confort :
+l'agent ne voit ni la **synthèse** (les objectifs qui pilotent son propre travail) ni la
+**piste d'audit** (le registre de ses propres gestes) ; le superviseur voit la synthèse
+mais pas l'audit ; le gérant voit tout, et lui seul engage le contentieux (N5).
+
+Deux middlewares se superposent sur chaque route, et ce n'est pas une redondance :
+`role:` dit qui entre dans le module, `VerifiePageRecouvrement` dit jusqu'où. Sans le
+second, un agent qui tape `/recouvrement/piste-audit` lirait le journal de ses propres
+actions — le grisé de la barre latérale n'a jamais fermé une adresse.
+
+### Qui doit l'argent : le tiers payant
+
+Une facture de sinistre a jusqu'à trois noms dessus, et un seul débiteur. Le **tiers
+payant** se dérive dans cet ordre : le **courtier** qui a apporté le dossier, sinon
+l'**assurance** représentée, sinon le **client** lui-même. La dérivation vit dans
+`Facture::tiersPayant()` et nulle part ailleurs — la balance âgée, l'extrait de compte,
+la page Courtiers et les listes de la saisie s'y réfèrent toutes, faute de quoi deux
+écrans finiraient par désigner deux débiteurs différents pour la même facture.
+
+C'est la réalité du paiement : un courtier encaisse le règlement de la compagnie et le
+reverse ; relancer la compagnie pour une créance portée par son courtier revient à écrire
+à quelqu'un qui n'a rien à payer. La page **Courtiers** en tire les deux tableaux qui
+rendent une relance utilisable : ce que chaque courtier porte en tout, puis pour le compte
+de quelle compagnie — on n'écrit pas « vous devez trente-huit millions », on écrit « dont
+trente-six pour cent au titre d'AXA ».
+
+Les deux colonnes sont nullables et naissent vides : sur une base déjà en service, le
+tiers payant retombe sur `client` et aucun écran ne change de comportement.
+
+Le niveau de relance maximal (N3 agent, N4 superviseur, N5 gérant) est revérifié côté
+serveur à chaque enregistrement : une option désactivée dans une liste déroulante se
+rouvre d'un clic, et une mise en demeure envoyée sans mandat engage l'entreprise.
 
 ### Où passe la frontière entre Superviseur et ResponsableSite
 

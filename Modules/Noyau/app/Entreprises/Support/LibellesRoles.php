@@ -26,6 +26,8 @@ class LibellesRoles
         'responsable_site' => 'Responsable de site',
         'caissier' => 'Comptabilité',
         'commercial' => 'Commercial',
+        'superviseur_recouvrement' => 'Superviseur recouvrement',
+        'agent_recouvrement' => 'Agent de recouvrement',
     ];
 
     /**

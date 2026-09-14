@@ -16,9 +16,9 @@ class ForcerChangementMotDePasse
     {
         $utilisateur = $request->user();
 
-        // Seules les navigations complètes (GET) sont redirigées : les appels AJAX Livewire
-        // (dont celui qui soumet le formulaire de changement de mot de passe lui-même) doivent
-        // pouvoir aboutir, sans quoi le formulaire ne pourrait jamais être validé.
+        // Seules les navigations complètes (GET) sont redirigées. L'enregistrement du
+        // nouveau mot de passe est un POST vers cette même adresse : le renvoyer ici
+        // bouclerait, et le formulaire ne pourrait jamais aboutir.
         if ($utilisateur
             && $utilisateur->doit_changer_mot_de_passe
             && $request->isMethod('GET')

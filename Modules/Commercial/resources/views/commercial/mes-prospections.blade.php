@@ -15,6 +15,13 @@ uses([GereLesDonneesLibres::class, WithPagination::class]);
 usesPagination();
 
 state([
+    // Les informations libres ajoutées après transmission, une par ligne ouverte.
+    'complements' => [],
+
+    // Le complément d'observation s'ouvre à la demande, une ligne à la fois : une boîte
+    // de saisie posée en permanence dans une colonne de valeurs se lit comme un champ
+    // resté ouvert, et l'on ne sait plus si ce qu'on voit est enregistré.
+    'completionId' => null,
     'date' => null,
     'client' => '', 'localisation' => '', 'moyen' => 'RDV',
     'activite' => '', 'passage' => false, 'datePassage' => null,
@@ -193,7 +200,9 @@ $enregistrerProspection = function (string $statut) {
         'entreprise_id' => auth()->user()->entreprise_id,
         'site_id' => $siteId,
         'commercial_id' => $this->commercial->id,
-        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'pro'),
+        // La date de la prospection entre dans son numéro : P-1409-0574. Celle de
+        // l'opération, pas celle de la frappe — on saisit souvent le lendemain.
+        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'pro', $donnees['date']),
         'date' => $donnees['date'],
         'client' => $donnees['client'],
         'localisation' => $donnees['localisation'] ?: null,
@@ -201,6 +210,9 @@ $enregistrerProspection = function (string $statut) {
         'activite' => $donnees['activite'],
         ...$coherence,
         'observations' => $donnees['observations'] ?: null,
+        // Le commentaire part avec la prospection. Il était saisi et jamais enregistré :
+        // le responsable recevait des lignes nues, le commercial croyait avoir expliqué.
+        'commentaire' => trim($this->commentaire) ?: null,
         'cree_par' => auth()->id(),
         'statut_validation' => $statut,
         'transmise_le' => $statut === 'Transmise' ? now() : null,
@@ -210,7 +222,7 @@ $enregistrerProspection = function (string $statut) {
         $this->prevenirLeResponsable(1);
     }
 
-    $this->reset(['client', 'localisation', 'observations', 'passage', 'datePassage', 'devisApres', 'dateDevis']);
+    $this->reset(['client', 'localisation', 'observations', 'commentaire', 'passage', 'datePassage', 'devisApres', 'dateDevis']);
     $this->resetPage();
     $this->annoncer($statut === 'Transmise'
         ? 'Prospection transmise à votre responsable.'
@@ -358,9 +370,20 @@ $basculerPassage = function (int $id) {
     ]);
 };
 
+/**
+ * Cocher « devis après passage », **y compris sur une prospection déjà transmise**.
+ *
+ * Un devis ne se signe pas pendant la visite : il arrive un jour, une semaine plus tard.
+ * Interdire cette case après transmission revenait à garantir que l'indicateur reste vide
+ * pour presque toutes les prospections — celles qui sont parties, c'est-à-dire toutes celles
+ * qui comptent.
+ *
+ * La ligne refusée, elle, reste fermée : elle a été arbitrée, la rouvrir par une case
+ * effacerait la décision du responsable.
+ */
 $basculerDevisApres = function (int $id) {
     $p = Prospection::where('commercial_id', $this->commercial?->id ?? 0)
-        ->where('statut_validation', 'Brouillon')->findOrFail($id);
+        ->whereIn('statut_validation', ['Brouillon', 'Transmise'])->findOrFail($id);
 
     $devisApres = ! $p->devis_apres_passage;
     $dateDevis = $devisApres ? ($p->date_devis ?? $p->date_passage ?? $p->date) : null;
@@ -371,6 +394,64 @@ $basculerDevisApres = function (int $id) {
         'passage' => $devisApres ? true : $p->passage,
         'date_passage' => $devisApres ? $dateDevis : $p->date_passage,
     ]);
+
+    // Le responsable arbitre cette ligne : si elle change après lui être partie, il doit
+    // l'apprendre. Une ligne qui bouge en silence sous les yeux de qui l'arbitre est pire
+    // qu'une ligne qu'on ne peut pas corriger.
+    if ($p->statut_validation === 'Transmise') {
+        $this->prevenirDUnComplement($p, $devisApres ? 'un devis obtenu après le passage' : 'le retrait du devis');
+    }
+
+    $this->annoncer($p->statut_validation === 'Transmise'
+        ? 'Mise à jour transmise à votre responsable.'
+        : 'Brouillon modifié.');
+};
+
+/**
+ * Compléter les informations libres d'une prospection déjà partie.
+ *
+ * Il n'y a pas de brouillon ici : ce qui est écrit est immédiatement transmis, parce que
+ * la ligne est déjà chez le responsable. D'où un seul bouton, et son libellé qui le dit.
+ */
+$ouvrirCompletion = function (int $id) {
+    $this->completionId = $id;
+};
+
+$fermerCompletion = function () {
+    $this->completionId = null;
+};
+
+$completerLesInformations = function (int $id) {
+    $p = Prospection::where('commercial_id', $this->commercial?->id ?? 0)
+        ->where('statut_validation', 'Transmise')->find($id);
+
+    if (! $p) {
+        return;
+    }
+
+    $texte = trim((string) ($this->complements[$id] ?? ''));
+
+    $p->update(['observations' => $texte ?: null]);
+    $this->completionId = null;
+    $this->prevenirDUnComplement($p, 'des informations complémentaires');
+    $this->annoncer('Informations transmises à votre responsable.');
+};
+
+/**
+ * Prévenir l'encadrement qu'une ligne déjà partie vient de changer.
+ *
+ * Le même chemin que la transmission elle-même — pas un second mécanisme : deux façons de
+ * prévenir finissent toujours par en avoir une qui ne prévient plus.
+ */
+$prevenirDUnComplement = function (Prospection $p, string $quoi) {
+    Notificateur::pourPlusieurs(
+        destinataires: Notificateur::encadrementDeVille($this->commercial?->ville_id, auth()->user()->entreprise_id),
+        titre: 'Prospection '.$p->numero.' complétée',
+        corps: auth()->user()->name.' a ajouté '.$quoi.' sur une prospection déjà transmise.',
+        canal: NotificationApp::CANAL_GESTION,
+        niveau: NotificationApp::NIVEAU_INFO,
+        lien: route('saisie-du-jour'),
+    );
 };
 
 $supprimer = function (int $id) {
@@ -528,7 +609,8 @@ $transmettreSelection = function () {
                         <tr>
                             <th>✓</th><th>N°</th><th>Date</th><th>Clients visités</th><th>Localisation</th>
                             <th>Moyens</th><th>Activité</th><th>Passage</th><th>Devis après passage</th>
-                            <th>Observations</th><th>Informations libres</th><th>Statut</th><th></th>
+                            <th>Observations</th><th>Informations libres</th><th>Statut</th>
+                            <th>Décision</th><th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -548,19 +630,19 @@ $transmettreSelection = function () {
                                     <td>—</td>
                                     <td><x-numero-ligne :ligne="$ligne" /></td>
                                     <td>{{ $ligne->date->format('d/m/Y') }}</td>
-                                    <td><input type="text" wire:model="eClient" class="champ" style="min-width:130px;"></td>
-                                    <td><input type="text" wire:model="eLocalisation" class="champ" style="min-width:110px;"></td>
+                                    <td><input type="text" wire:model="eClient" value="{{ $eClient }}" class="champ" style="min-width:130px;"></td>
+                                    <td><input type="text" wire:model="eLocalisation" value="{{ $eLocalisation }}" class="champ" style="min-width:110px;"></td>
                                     <td>
                                         <select wire:model="eMoyen" class="champ">
                                             @foreach ($this->optionsMoyen as $valeur => $libelle)
-                                                <option value="{{ $valeur }}">{{ $libelle }}</option>
+                                                <option value="{{ $valeur }}" @selected((string) $eMoyen === (string) $valeur)>{{ $libelle }}</option>
                                             @endforeach
                                         </select>
                                     </td>
                                     <td>
                                         <select wire:model="eActivite" class="champ">
                                             @foreach ($this->optionsActivite as $valeur => $libelle)
-                                                <option value="{{ $valeur }}">{{ $libelle }}</option>
+                                                <option value="{{ $valeur }}" @selected((string) $eActivite === (string) $valeur)>{{ $libelle }}</option>
                                             @endforeach
                                         </select>
                                     </td>
@@ -569,7 +651,7 @@ $transmettreSelection = function () {
                                             <input type="checkbox" wire:model.live="ePassage"> Passage
                                         </label>
                                         @if ($ePassage && ! $eDevisApres)
-                                            <input type="date" wire:model="eDatePassage" class="champ" style="margin-top:4px;">
+                                            <input type="date" wire:model="eDatePassage" value="{{ $eDatePassage }}" class="champ" style="margin-top:4px;">
                                         @endif
                                     </td>
                                     <td style="white-space:normal; min-width:170px;">
@@ -577,7 +659,7 @@ $transmettreSelection = function () {
                                             <input type="checkbox" wire:model.live="eDevisApres"> Devis après passage
                                         </label>
                                         @if ($eDevisApres)
-                                            <input type="date" wire:model.live="eDateDevis" class="champ" style="margin-top:4px;">
+                                            <input type="date" wire:model.live="eDateDevis" value="{{ $eDateDevis }}" class="champ" style="margin-top:4px;">
                                         @endif
                                     </td>
                                     <td style="white-space:normal; min-width:180px;">
@@ -586,6 +668,7 @@ $transmettreSelection = function () {
                                     </td>
                                     <td>—</td>
                                     <td><span class="pastille pastille-ambre">Brouillon</span></td>
+                                    <td>—</td>
                                     <td style="text-align:right; white-space:nowrap;">
                                         <button type="button" wire:click="enregistrerEdition" class="bouton bouton-petit bouton-vert" style="margin-right:5px;">Enregistrer</button>
                                         <button type="button" wire:click="annulerEdition" class="bouton bouton-petit bouton-secondaire">Annuler</button>
@@ -605,11 +688,15 @@ $transmettreSelection = function () {
                                 <td>{{ $ligne->moyen }}</td>
                                 <td>{{ $ligne->activite }}</td>
 
-                                {{-- Sur un brouillon, la case se coche d'un clic. Une fois transmise,
-                                     la ligne se fige : elle ne doit pas changer sous les yeux du
-                                     responsable en train de l'arbitrer. Dans les deux cas la date
-                                     reste affichée sous la case : une coche sans date laisse croire
-                                     que la date n'a pas été enregistrée. --}}
+                                {{-- Ce qui est **arbitré** se fige à la transmission — le client, la
+                                     date, le moyen, l'activité : ils ne doivent pas changer sous les
+                                     yeux du responsable. Ce qui est **constaté** reste ouvert, et le
+                                     devis en fait partie : il arrive une semaine après la visite, et
+                                     verrouiller sa case revenait à garantir que l'indicateur reste
+                                     vide pour toutes les prospections parties.
+
+                                     La date reste affichée sous la case : une coche sans date laisse
+                                     croire que la date n'a pas été enregistrée. --}}
                                 <td style="text-align:center;">
                                     @if ($brouillon)
                                         <input type="checkbox" wire:click="basculerPassage({{ $ligne->id }})"
@@ -621,20 +708,67 @@ $transmettreSelection = function () {
                                     <x-date-sous-case :date="$ligne->date_passage" />
                                 </td>
                                 <td style="text-align:center;">
-                                    @if ($brouillon)
+                                    @if ($brouillon || $ligne->statut_validation === 'Transmise')
                                         <input type="checkbox" wire:click="basculerDevisApres({{ $ligne->id }})"
                                             @checked($ligne->devis_apres_passage) style="width:16px; height:16px; cursor:pointer;"
-                                            title="Un devis doit-il suivre ? Cocher marque aussi le passage.">
+                                            title="Un devis a-t-il suivi ? Sur une ligne transmise, la mise à jour part aussitôt au responsable.">
                                     @else
                                         {{ $ligne->devis_apres_passage ? '☑' : '☐' }}
                                     @endif
                                     <x-date-sous-case :date="$ligne->date_devis" />
                                 </td>
 
-                                <td style="color:var(--th-gris,#6B6E76);">{{ $ligne->observations ?? '—' }}</td>
+                                {{-- Sur une ligne transmise, les informations libres restent
+                                     ouvertes — mais il n'y a plus de brouillon : ce qui est écrit
+                                     part immédiatement, puisque la ligne est déjà chez le
+                                     responsable. D'où un seul bouton, et son libellé qui le dit. --}}
+                                {{-- L'observation est une valeur, et elle s'affiche comme les
+                                     autres. Elle sortait ici sous la forme d'une boîte de saisie
+                                     doublée d'un bouton, au milieu d'une colonne de textes : on ne
+                                     savait plus si ce qu'on lisait était enregistré ou en cours de
+                                     frappe. Ce qu'on peut encore ajouter après transmission se fait
+                                     dans la colonne d'à côté, avec les autres informations libres. --}}
+                                <td style="color:var(--th-gris,#6B6E76); white-space:normal; min-width:200px;">
+                                    {{ $ligne->observations ?: '—' }}
+                                </td>
                                 <td style="white-space:normal; min-width:230px;">
-                                    <x-saisie-libre :sujet="$ligne"
+                                    {{-- Une fois la ligne transmise, on ajoute encore mais on
+                                         n'efface plus : le responsable arbitre sur ce qu'il lit. --}}
+                                    <x-saisie-libre :sujet="$ligne" :supprimable="$brouillon"
                                         :ouvert="$libreSujetId === $ligne->id && $libreSujetType === get_class($ligne)" />
+
+                                    {{-- Compléter l'observation d'une ligne déjà partie. C'est le
+                                         même geste que la saisie libre — ajouter un renseignement à
+                                         une ligne qui est chez le responsable — et il se tient donc
+                                         au même endroit. Il n'y a pas de brouillon ici : ce qui est
+                                         écrit part aussitôt, et le libellé du bouton le dit. --}}
+                                    @if ($ligne->statut_validation === 'Transmise')
+                                        @if ($completionId === $ligne->id)
+                                            <div style="margin-top:8px; background:#FAF9F5; border:1px dashed var(--th-ligne,#E2E0D8);
+                                                        border-radius:8px; padding:10px;">
+                                                <label style="display:block; font-size:12px; font-weight:700;
+                                                              color:#4B4E55; margin-bottom:4px;">
+                                                    Observations
+                                                </label>
+                                                <textarea wire:model="complements.{{ $ligne->id }}" rows="2"
+                                                    placeholder="Ce que vous voulez ajouter à cette prospection…"
+                                                    style="width:100%; box-sizing:border-box; padding:6px 8px;
+                                                           border:1px solid var(--th-ligne,#E2E0D8); border-radius:6px;
+                                                           font-size:12.5px;">{{ $ligne->observations }}</textarea>
+                                                <div style="display:flex; gap:7px; margin-top:6px; flex-wrap:wrap;">
+                                                    <button type="button" wire:click="completerLesInformations({{ $ligne->id }})"
+                                                        class="bouton bouton-petit bouton-vert">Valider et transmettre</button>
+                                                    <button type="button" wire:click="fermerCompletion"
+                                                        class="bouton bouton-secondaire bouton-petit">Annuler</button>
+                                                </div>
+                                            </div>
+                                        @else
+                                            <button type="button" wire:click="ouvrirCompletion({{ $ligne->id }})"
+                                                class="bouton bouton-secondaire bouton-petit" style="margin-top:6px;">
+                                                + Observation
+                                            </button>
+                                        @endif
+                                    @endif
                                 </td>
                                 <td>
                                     <span class="pastille {{ $pastille }}">{{ $ligne->statut_validation }}</span>
@@ -642,7 +776,30 @@ $transmettreSelection = function () {
                                         <div style="font-size:11px; color:var(--th-accent,#C8102E); margin-top:3px; white-space:normal;">{{ $ligne->motif_refus }}</div>
                                     @endif
                                 </td>
+
+                                {{-- Qui a tranché, et quand. La ligne passait au vert sans qu'on
+                                     sache à qui s'adresser quand le devis promis tardait. --}}
+                                <td style="white-space:normal; min-width:150px;">
+                                    @if ($ligne->validateur)
+                                        <b>{{ $ligne->validateur }}</b>
+                                        <div style="font-size:11px; color:var(--th-gris,#6B6E76);">
+                                            {{ $ligne->valide_le?->format('d/m/Y à H\hi') }}
+                                        </div>
+                                    @elseif (in_array($ligne->statut_validation, ['Validée', 'Refusée'], true))
+                                        <span style="color:var(--th-gris,#6B6E76); font-size:12px;">
+                                            avant la traçabilité
+                                        </span>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td style="text-align:right; white-space:nowrap;">
+                                    {{-- Le détail est un lien, pas un bouton : il s'ouvre dans un
+                                         autre onglet, se met en favori, et ne dépend d'aucun script. --}}
+                                    <a href="{{ route('prospection.fiche', $ligne->id) }}"
+                                       class="bouton bouton-secondaire bouton-petit"
+                                       style="text-decoration:none; margin-right:5px;">Détail</a>
+
                                     @if ($brouillon)
                                         {{-- Transmettre une seule ligne sans passer par la sélection :
                                              cocher puis remonter au bouton du haut faisait trois gestes

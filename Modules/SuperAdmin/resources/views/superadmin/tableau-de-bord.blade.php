@@ -42,6 +42,9 @@ $repartition = computed(function () {
 ?>
 
 <div>
+    <x-titre-ecran titre="Tableau de bord de la plateforme"
+        sous-titre="Les entreprises hébergées et leur activité." />
+
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px;">
         <x-kpi-card label="Entreprises" :value="$this->stats['entreprises']" :sub="$this->stats['entreprises_actives'].' actives'" couleur="#0E9F6E" />
         <x-kpi-card label="Utilisateurs" :value="$this->stats['utilisateurs']" />

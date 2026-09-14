@@ -6,6 +6,7 @@ use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
+use Modules\Noyau\Tracabilite\Services\SignatureDeDecision;
 use Modules\Noyau\Exploitation\Modeles\SaisieJournaliere;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Commun\Concerns\GereLesDonneesLibres;
@@ -245,8 +246,11 @@ $avertirDuRetour = function (array $ids, string $statut, ?string $motif = null) 
 $validerProspection = function (int $id) {
     $this->avertirDuRetour([$id], 'Validée');
 
+    // La décision se signe : qui, quand, d'où, depuis quel poste. Sans cette signature,
+    // le commercial voyait sa ligne passer au vert sans savoir à qui s'adresser.
     Prospection::whereIn('site_id', $this->siteIdsActifs)->aTraiter()->where('id', $id)
-        ->update(['statut_validation' => 'Validée', 'motif_refus' => null]);
+        ->update(['statut_validation' => 'Validée', 'motif_refus' => null]
+            + SignatureDeDecision::colonnes());
     unset($this->prospectionsATraiter, $this->prospectionsDuJour, $this->prospectionsAttenteDevis);
 
     // Valider une prospection qui annonce un devis, c'est s'engager à l'établir : le
@@ -263,8 +267,11 @@ $refuserProspection = function (int $id) {
     $motif = $this->motifRefus[$id] ?? null;
     $this->avertirDuRetour([$id], 'Refusée', $motif);
 
+    // Refuser est une décision autant que valider, et c'est celle qu'on conteste : elle
+    // se signe de la même façon.
     Prospection::whereIn('site_id', $this->siteIdsActifs)->aTraiter()->where('id', $id)
-        ->update(['statut_validation' => 'Refusée', 'motif_refus' => $motif]);
+        ->update(['statut_validation' => 'Refusée', 'motif_refus' => $motif]
+            + SignatureDeDecision::colonnes());
     unset($this->prospectionsATraiter, $this->prospectionsDuJour);
 };
 
@@ -317,7 +324,8 @@ $validerToutesProspections = function () {
     $this->avertirDuRetour($ids, 'Validée');
 
     Prospection::whereIn('site_id', $this->siteIdsActifs)->aTraiter()
-        ->update(['statut_validation' => 'Validée', 'motif_refus' => null]);
+        ->update(['statut_validation' => 'Validée', 'motif_refus' => null]
+            + SignatureDeDecision::colonnes());
     unset($this->prospectionsATraiter, $this->prospectionsDuJour);
 };
 
@@ -349,8 +357,16 @@ $prospectionsAttenteDevis = computed(fn () => Prospection::whereIn('site_id', $t
  * Un devis refusé, ou déjà facturé, sort de l'écran de saisie et se retrouve dans la
  * page Devis. Là encore, pas de filtre sur la date : un devis émis la semaine dernière
  * et toujours sans réponse doit rester sous les yeux.
+ *
+ * **Et seulement les devis saisis ici.** Une proforma reprise du logiciel d'atelier porte
+ * le statut « En attente » faute que le fichier en dise autre chose — ce n'est pas une
+ * décision qui se prépare, c'est une information absente. Les faire entrer dans ce tableau
+ * y déverserait deux mille lignes d'historique et noierait les quelques-unes sur
+ * lesquelles le responsable doit réellement se prononcer aujourd'hui. Elles restent
+ * entièrement visibles dans la page Devis et comptent dans les indicateurs.
  */
 $devisDuJour = computed(fn () => Devis::whereIn('site_id', $this->siteIdsActifs)
+    ->saisieManuelle()
     ->where(fn ($q) => $q
         ->where('statut', 'En attente')
         ->orWhere(fn ($r) => $r->where('statut', 'Validé')->doesntHave('facture')))
@@ -363,18 +379,28 @@ $devisDuJour = computed(fn () => Devis::whereIn('site_id', $this->siteIdsActifs)
     ->sortBy(fn ($d) => $d->statut === 'En attente' ? 0 : 1)
     ->values());
 
-$devisEnAttente = computed(fn () => Devis::whereIn('site_id', $this->siteIdsActifs)->where('statut', 'En attente')->with('commercial')->latest('date_emission')->latest('id')->get());
+$devisEnAttente = computed(fn () => Devis::whereIn('site_id', $this->siteIdsActifs)->saisieManuelle()->where('statut', 'En attente')->with('commercial')->latest('date_emission')->latest('id')->get());
 
-$devisValidesNonFactures = computed(fn () => Devis::whereIn('site_id', $this->siteIdsActifs)->where('statut', 'Validé')->doesntHave('facture')->with('commercial')->latest('date_emission')->latest('id')->get());
+$devisValidesNonFactures = computed(fn () => Devis::whereIn('site_id', $this->siteIdsActifs)->saisieManuelle()->where('statut', 'Validé')->doesntHave('facture')->with('commercial')->latest('date_emission')->latest('id')->get());
 
-$facturesDuJour = computed(fn () => Facture::whereIn('site_id', $this->siteIdsActifs)->whereDate('date', $this->date)->with(['commercial', 'donneesLibres'])->orderByDesc('id')->get());
+$facturesDuJour = computed(fn () => Facture::whereIn('site_id', $this->siteIdsActifs)->saisieManuelle()->whereDate('date', $this->date)->with(['commercial', 'donneesLibres'])->orderByDesc('id')->get());
 
-$encaissementsDuJour = computed(fn () => Encaissement::whereIn('site_id', $this->siteIdsActifs)->whereDate('date', $this->date)->with('donneesLibres')->orderByDesc('id')->get());
+$encaissementsDuJour = computed(fn () => Encaissement::whereIn('site_id', $this->siteIdsActifs)->saisieManuelle()->whereDate('date', $this->date)->with('donneesLibres')->orderByDesc('id')->get());
 
-/** Factures encore soldables sur les sites actifs : c'est la garde-fou anti-double-saisie avec le caissier. */
-$facturesAvecReste = computed(fn () => Facture::whereIn('site_id', $this->siteIdsActifs)->avecResteAEncaisser()->latest('date')->latest('id')->get());
+/**
+ * Factures encore soldables sur les sites actifs : c'est le garde-fou anti-double-saisie
+ * avec le caissier.
+ *
+ * Les factures reprises du logiciel d'atelier en sont écartées, et c'est la précaution la
+ * plus importante de cet écran : **leur historique de règlement n'a pas été importé**. Une
+ * facture d'octobre réglée depuis longtemps paraîtrait donc entièrement due, et on
+ * proposerait de l'encaisser une seconde fois. Ce qui reste réellement à recouvrer est
+ * dans l'état des impayés, qui a sa propre reprise ; tant qu'elle n'est pas faite, aucune
+ * ligne importée n'entre dans un écran d'encaissement.
+ */
+$facturesAvecReste = computed(fn () => Facture::whereIn('site_id', $this->siteIdsActifs)->saisieManuelle()->avecResteAEncaisser()->latest('date')->latest('id')->get());
 
-$chargesDuJour = computed(fn () => Charge::whereIn('site_id', $this->siteIdsActifs)->whereDate('date', $this->date)->with('donneesLibres')->orderByDesc('id')->get());
+$chargesDuJour = computed(fn () => Charge::whereIn('site_id', $this->siteIdsActifs)->saisieManuelle()->whereDate('date', $this->date)->with('donneesLibres')->orderByDesc('id')->get());
 
 /**
  * Les numéros que porteront les factures en cours de saisie.
@@ -384,7 +410,7 @@ $chargesDuJour = computed(fn () => Charge::whereIn('site_id', $this->siteIdsActi
  * trou dans la séquence — ce qu'une facturation ne pardonne pas.
  */
 $numerosFacturePrevus = computed(fn () => GenerateurNumero::apercus(
-    auth()->user()->entreprise_id, 'nfa', count($this->factureBrouillon),
+    auth()->user()->entreprise_id, 'nfa', count($this->factureBrouillon), $this->date,
 ));
 
 $clientsConnus = computed(function () {
@@ -476,7 +502,9 @@ $ajouterProspection = function () {
         'entreprise_id' => auth()->user()->entreprise_id,
         'site_id' => $this->site->id,
         'commercial_id' => $donnees['prosCommercialId'],
-        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'pro'),
+        // La journée saisie entre dans le numéro : P-1409-0574. On saisit souvent la
+        // veille ou le lendemain — c'est la date de l'opération qui compte, pas la frappe.
+        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'pro', $this->date),
         'date' => $this->date,
         'client' => $donnees['prosClient'],
         'localisation' => $donnees['prosLocalisation'] ?: null,
@@ -640,7 +668,7 @@ $validerDevis = function () {
             'site_id' => $this->site->id,
             'commercial_id' => $ligne['commercial_id'],
             'prospection_id' => $ligne['prospection_id'],
-            'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'dev'),
+            'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'dev', $ligne['date_emission']),
             'n_fiche_reception' => $ligne['n_fiche_reception'] ?: null,
             'date_reception' => $ligne['date_reception'] ?: null,
             'date_emission' => $ligne['date_emission'],
@@ -826,7 +854,7 @@ $ajouterDevisLibre = function () {
         'site_id' => $this->site->id,
         'commercial_id' => $donnees['devLibreCommercialId'],
         'prospection_id' => null,
-        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'dev'),
+        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'dev', $donnees['devLibreDateEmission']),
         'n_fiche_reception' => $donnees['devLibreFiche'] ?: null,
         'date_reception' => $donnees['devLibreDateReception'] ?: null,
         'date_emission' => $donnees['devLibreDateEmission'],
@@ -906,10 +934,10 @@ $validerFactures = function () {
             'site_id' => $this->site->id,
             'devis_id' => $ligne['devis_id'],
             'commercial_id' => $ligne['commercial_id'],
-            'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'fac'),
+            'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'fac', $this->date),
             // Le N° de facture est généré automatiquement, jamais saisi à la main — un champ
             // manuel oublié faisait silencieusement disparaître la ligne à la validation.
-            'n_facture' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'nfa'),
+            'n_facture' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'nfa', $this->date),
             'reference_devis' => $ligne['devis_numero'],
             'date' => $this->date,
             'client' => $ligne['client'],
@@ -976,8 +1004,8 @@ $ajouterFactureLibre = function () {
         'devis_id' => $devisLie?->id,
         'reference_devis' => $donnees['facLibreRefDevis'] ?: null,
         'commercial_id' => $donnees['facLibreCommercialId'],
-        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'fac'),
-        'n_facture' => $donnees['facLibreNumero'] ?: GenerateurNumero::suivant(auth()->user()->entreprise_id, 'nfa'),
+        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'fac', $this->date),
+        'n_facture' => $donnees['facLibreNumero'] ?: GenerateurNumero::suivant(auth()->user()->entreprise_id, 'nfa', $this->date),
         'date' => $this->date,
         'client' => $donnees['facLibreClient'],
         'type' => $donnees['facLibreType'],
@@ -1129,22 +1157,34 @@ $ajouterCharge = function () {
                 </h1>
                 <p style="color:#6B6E76; font-size:14px; margin:0;">Chaque ligne est enregistrée immédiatement à l'ajout et alimente les tableaux de bord en temps réel. Les deux activités (Mécanique et Sinistre) se saisissent ici, ligne par ligne.</p>
             </div>
-            <div style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+            {{-- Les deux champs s'alignent par le haut, et non par le bas.
+
+                 Alignés par le bas, ils ne l'étaient pas : la date porte une mention sous
+                 elle — le rattachement — que le site n'avait pas, si bien que la liste du
+                 site descendait de la hauteur de cette ligne et que les deux cadres ne
+                 tombaient plus au même niveau. Chaque champ porte désormais sa propre
+                 mention, et les deux se posent sur la même ligne d'appui. --}}
+            <div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                 {{-- Le choix du lieu n'apparaît que là où la ville en compte plusieurs : une
                      journée se saisit toujours pour un endroit précis, jamais pour deux. --}}
                 @if ($this->mesSites->count() > 1)
                     <div style="display:flex; flex-direction:column; gap:4px;">
-                        <label class="champ-libelle">Site de saisie</label>
-                        <select wire:model.live="siteSaisieId" class="champ" style="width:auto; font-weight:600;">
+                        <label class="champ-libelle" for="site-saisie">Site de saisie</label>
+                        <select id="site-saisie" wire:model.live="siteSaisieId" class="champ"
+                                style="width:auto; font-weight:600;">
                             @foreach ($this->mesSites as $s)
-                                <option value="{{ $s->id }}">{{ $s->nom }}</option>
+                                <option value="{{ $s->id }}" @selected((string) $siteSaisieId === (string) $s->id)>{{ $s->nom }}</option>
                             @endforeach
                         </select>
+                        <span style="font-size:11.5px; color:var(--th-gris,#6B6E76);">
+                            Ville : <b>{{ $this->site->ville?->nom ?? '—' }}</b>
+                        </span>
                     </div>
                 @endif
                 <div style="display:flex; flex-direction:column; gap:4px;">
-                    <label class="champ-libelle">Date de la journée (calendrier)</label>
-                    <input type="date" wire:model.live="date" class="champ" style="width:158px;">
+                    <label class="champ-libelle" for="date-journee">Date de la journée (calendrier)</label>
+                    <input type="date" id="date-journee" wire:model.live="date" value="{{ $date }}"
+                           class="champ" style="width:158px;">
                     <span style="font-size:11.5px; color:var(--th-gris,#6B6E76);">Rattachement : <b>{{ $this->dateLabel }}</b></span>
                 </div>
             </div>
@@ -1198,26 +1238,26 @@ $ajouterCharge = function () {
                                 <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8); background:#FDF2F4;" wire:key="pros-edit-{{ $p->id }}">
                                     <td><x-numero-ligne :ligne="$p" /></td>
                                     <td>—</td>
-                                    <td><input type="text" wire:model="editionProsClient" class="champ" style="min-width:130px;"></td>
-                                    <td><input type="text" wire:model="editionProsLocalisation" class="champ" style="min-width:110px;"></td>
+                                    <td><input type="text" wire:model="editionProsClient" value="{{ $editionProsClient }}" class="champ" style="min-width:130px;"></td>
+                                    <td><input type="text" wire:model="editionProsLocalisation" value="{{ $editionProsLocalisation }}" class="champ" style="min-width:110px;"></td>
                                     <td>
                                         <select wire:model="editionProsMoyen" class="champ">
                                             @foreach ($this->optionsMoyenProspection as $valeur => $libelle)
-                                                <option value="{{ $valeur }}">{{ $libelle }}</option>
+                                                <option value="{{ $valeur }}" @selected((string) $editionProsMoyen === (string) $valeur)>{{ $libelle }}</option>
                                             @endforeach
                                         </select>
                                     </td>
                                     <td>
                                         <select wire:model="editionProsCommercialId" class="champ">
                                             @foreach ($this->commerciauxSelectables as $idCom => $nomCom)
-                                                <option value="{{ $idCom }}">{{ $nomCom }}</option>
+                                                <option value="{{ $idCom }}" @selected((string) $editionProsCommercialId === (string) $idCom)>{{ $nomCom }}</option>
                                             @endforeach
                                         </select>
                                     </td>
                                     <td>
                                         <select wire:model="editionProsActivite" class="champ">
                                             @foreach ($this->optionsActivite as $valeur => $libelle)
-                                                <option value="{{ $valeur }}">{{ $libelle }}</option>
+                                                <option value="{{ $valeur }}" @selected((string) $editionProsActivite === (string) $valeur)>{{ $libelle }}</option>
                                             @endforeach
                                         </select>
                                     </td>
@@ -1226,7 +1266,7 @@ $ajouterCharge = function () {
                                             <input type="checkbox" wire:model.live="editionProsPassage"> Passage
                                         </label>
                                         @if ($editionProsPassage && ! $editionProsDevisApres)
-                                            <input type="date" wire:model="editionProsDatePassage" class="champ" style="margin-top:4px;">
+                                            <input type="date" wire:model="editionProsDatePassage" value="{{ $editionProsDatePassage }}" class="champ" style="margin-top:4px;">
                                         @endif
                                     </td>
                                     <td style="white-space:normal; min-width:180px;">
@@ -1234,7 +1274,7 @@ $ajouterCharge = function () {
                                             <input type="checkbox" wire:model.live="editionProsDevisApres"> Devis après passage
                                         </label>
                                         @if ($editionProsDevisApres)
-                                            <input type="date" wire:model.live="editionProsDateDevis" class="champ" style="margin-top:4px;">
+                                            <input type="date" wire:model.live="editionProsDateDevis" value="{{ $editionProsDateDevis }}" class="champ" style="margin-top:4px;">
                                             <span style="font-size:10.5px; color:#9A9DA5;">= date de passage</span>
                                         @endif
                                     </td>
@@ -1500,7 +1540,7 @@ $ajouterCharge = function () {
                                 <td style="min-width:270px;">
                                     @if ($devisAValiderId === $d->id)
                                         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                            <input type="number" wire:model="montantValidation" min="1" autofocus
+                                            <input type="number" wire:model="montantValidation" value="{{ $montantValidation }}" min="1" autofocus
                                                 placeholder="Montant retenu"
                                                 style="padding:5px 8px; border:1px solid var(--th-accent,#C8102E); border-radius:6px; font-size:13px; width:120px;">
                                             <button type="button" wire:click="confirmerValidationDevis"
@@ -1513,7 +1553,7 @@ $ajouterCharge = function () {
                                         @enderror
                                     @elseif ($devisARefuserId === $d->id)
                                         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                            <input type="text" wire:model="motifRefusDevis" autofocus
+                                            <input type="text" wire:model="motifRefusDevis" value="{{ $motifRefusDevis }}" autofocus
                                                 placeholder="Motif du refus (prix, délai…)"
                                                 style="padding:5px 8px; border:1px solid var(--th-accent,#C8102E); border-radius:6px; font-size:13px; width:170px;">
                                             <button type="button" wire:click="confirmerRefusDevis"
@@ -1649,7 +1689,7 @@ $ajouterCharge = function () {
                             <x-champ label="N° de facture (vide = généré)" model="facLibreNumero" width="170" />
                             <div style="display:flex; flex-direction:column; gap:4px; min-width:160px;">
                                 <label style="font-size:12.5px; font-weight:600; color:#4B4E55;">N° de devis d'origine</label>
-                                <input type="text" wire:model="facLibreRefDevis" list="devis-rattachables" class="champ" placeholder="Facultatif">
+                                <input type="text" wire:model="facLibreRefDevis" value="{{ $facLibreRefDevis }}" list="devis-rattachables" class="champ" placeholder="Facultatif">
                                 <datalist id="devis-rattachables">
                                     @foreach ($this->numerosDevisRattachables as $numero)
                                         <option value="{{ $numero }}"></option>
@@ -1765,7 +1805,7 @@ $ajouterCharge = function () {
                 @if ($encType !== 'Client')
                     <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:160px;">
                         <label style="font-size:12.5px; font-weight:600; color:#4B4E55;">Clients</label>
-                        <input type="text" wire:model="encClient" list="clients-connus"
+                        <input type="text" wire:model="encClient" value="{{ $encClient }}" list="clients-connus"
                             style="padding:8px 10px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
                         <datalist id="clients-connus">
                             @foreach ($this->clientsConnus as $client)
@@ -1795,7 +1835,7 @@ $ajouterCharge = function () {
             </div>
         </x-carte-section>
 
-        <x-carte-section titre="Charges &amp; décaissements" icone="charge" couleur="var(--th-accent,#C8102E)">
+        <x-carte-section titre="Charges & décaissements" icone="charge" couleur="var(--th-accent,#C8102E)">
             <div class="tableau-conteneur">
                 <table class="tableau">
                     <thead>

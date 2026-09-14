@@ -1,0 +1,11 @@
+{
+    "name": "Import",
+    "alias": "import",
+    "description": "Import des exports du logiciel d atelier : depot, controle, journal des lots, parc vehicules, codes employes, correspondances.",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Import\\Providers\\ImportServiceProvider"
+    ],
+    "files": []
+}

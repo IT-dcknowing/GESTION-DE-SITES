@@ -4,11 +4,13 @@ namespace Modules\Noyau\Entreprises\Actions;
 
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
+use Modules\Noyau\Commun\Services\CodeAuteur;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\HierarchieAcces;
 use Modules\Noyau\Entreprises\Support\LibellesRoles;
+use Modules\Noyau\Imports\Services\CodeDeLAtelier;
 use Modules\Noyau\Commun\Mails\BienvenueNouvelAcces;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -26,11 +28,24 @@ use Spatie\Permission\PermissionRegistrar;
  *   commerciaux travaillent pour une ville entière, pas pour un lieu précis) ;
  * - responsable_site → `site_id`, le lieu dont il répond ;
  * - gerant → aucun, son périmètre étant l'entreprise.
+ *
+ * `code_agent` est facultatif et vient d'ailleurs : c'est le code de deux lettres que la
+ * personne laisse sur tout ce qu'elle saisit dans le logiciel de l'atelier — « FR-KZN°
+ * 010669 ». Le renseigner ici évite d'avoir à le rattacher après coup, et fait aussitôt
+ * remonter dans la bonne ville et le bon atelier tout ce que cette personne a déjà écrit.
  */
 class CreerAcces
 {
     /** Rôles dont le titulaire prospecte aussi : il doit donc exister comme commercial. */
     private const ROLES_COMMERCIAUX = ['responsable_ville', 'responsable_site', 'commercial'];
+
+    /**
+     * Pourquoi le code employé n'a pas pu être rattaché, le cas échéant.
+     *
+     * L'accès est créé quoi qu'il arrive ; l'écran lit cette propriété pour dire, sans
+     * dramatiser, qu'il reste deux lettres à régler.
+     */
+    public ?string $refusDuCode = null;
 
     public function executer(Entreprise $entreprise, string $role, array $donnees): User
     {
@@ -106,6 +121,12 @@ class CreerAcces
                 'est_actif' => $donnees['est_actif'] ?? true,
             ]);
 
+            // Le rang qui fera son identifiant, posé tout de suite et pour toujours. Le
+            // laisser à la première saisie marcherait aussi, mais quelqu'un qui n'a rien
+            // saisi n'aurait alors aucun code à montrer — or c'est précisément dans ce
+            // moment-là, à l'arrivée, qu'on le lui apprend.
+            CodeAuteur::rangDe($utilisateur);
+
             /*
              * assignRole écrit dans l'équipe posée : il faut donc la poser sur
              * l'entreprise du nouveau compte. Mais elle est ensuite remise telle qu'on
@@ -128,6 +149,30 @@ class CreerAcces
 
             if (in_array($role, self::ROLES_COMMERCIAUX, true) && $ville) {
                 $this->creerFicheCommercial($entreprise, $utilisateur, $ville, $donnees);
+            }
+
+            // Le code vient après le périmètre, et c'est l'ordre qui compte : il en reprend
+            // la ville et le site plutôt que de les redemander.
+            //
+            // **Il ne bloque jamais la création.** Un code mal formé ou déjà porté par
+            // quelqu'un d'autre est une question de référentiel, pas une raison de refuser
+            // un accès dont tout le reste est valable — et refuser au dernier moment
+            // obligerait à ressaisir le formulaire entier pour deux lettres. Le compte est
+            // créé, le motif du refus est conservé sur l'action, et le code se rattache
+            // plus tard depuis l'écran des codes employés.
+            if (! empty($donnees['code_agent'])) {
+                try {
+                    // Par le service plutôt que par l'affectation brute : lui seul inscrit
+                    // le geste au journal et laisse la confirmation à faire, pour que la
+                    // personne reconnaisse elle-même son code à son premier écran.
+                    CodeDeLAtelier::attribuer(
+                        $utilisateur->refresh(),
+                        $donnees['code_agent'],
+                        auth()->user() ?? $utilisateur,
+                    );
+                } catch (\InvalidArgumentException $refus) {
+                    $this->refusDuCode = $refus->getMessage();
+                }
             }
 
             return $utilisateur;

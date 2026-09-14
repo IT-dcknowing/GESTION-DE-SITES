@@ -226,7 +226,7 @@ $repondre = function () {
 
                 <div style="margin-top:12px;">
                     <label class="champ-libelle">Objet</label>
-                    <input type="text" wire:model="sujet" class="champ" placeholder="Ex : Objectifs de la semaine">
+                    <input type="text" wire:model="sujet" value="{{ $sujet }}" class="champ" placeholder="Ex : Objectifs de la semaine">
                     @error('sujet') <span class="champ-erreur">{{ $message }}</span> @enderror
                 </div>
 

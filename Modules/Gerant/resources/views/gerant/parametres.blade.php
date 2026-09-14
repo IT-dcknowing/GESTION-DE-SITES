@@ -2,11 +2,15 @@
 
 use Modules\Noyau\Commun\Modeles\Referentiel;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
+use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Exercice;
+use Modules\Noyau\Entreprises\Modeles\Reaffectation;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\EnregistreurLogo;
+use Modules\Noyau\Entreprises\Services\ReaffecterUnEmploye;
+use Modules\Noyau\Entreprises\Support\LibellesRoles;
 use App\Models\User;
 use Illuminate\Validation\Rule;
 use function Livewire\Volt\{state, computed, mount, protect, usesFileUploads};
@@ -66,6 +70,35 @@ $personnel = computed(function () {
 
     return $utilisateurs->map(fn ($u) => ['utilisateur' => $u, 'role' => $roles[$u->id] ?? '—']);
 });
+
+/**
+ * Les personnes qu'on peut déplacer.
+ *
+ * Le gérant n'y figure pas, et ce n'est pas un oubli : il ne saisit dans aucun atelier, il
+ * n'a donc ni lieu à quitter ni lieu à rejoindre. L'y proposer inviterait à un geste qui
+ * n'a pas de sens et que le service refuserait de toute façon.
+ */
+$employesDeplacables = computed(function () {
+    return $this->personnel
+        ->reject(fn (array $ligne) => in_array(
+            $ligne['utilisateur']->roles()->pluck('name')->first(),
+            ReaffecterUnEmploye::ROLES_INTERDITS,
+            true,
+        ))
+        ->values();
+});
+
+/** L'histoire des mutations, la plus récente d'abord — lecture seule, toujours. */
+$reaffectations = computed(fn () => Reaffectation::where('entreprise_id', auth()->user()->entreprise_id)
+    ->with(['utilisateur', 'villeAvant', 'villeApres', 'siteAvant', 'siteApres', 'decideur'])
+    ->latest()
+    ->limit(200)
+    ->get());
+
+/** Les rôles vers lesquels on peut muter quelqu'un — le gérant n'en est pas. */
+$rolesDeMutation = computed(fn () => collect(LibellesRoles::TOUS ?? [])
+    ->reject(fn ($libelle, $cle) => in_array($cle, ReaffecterUnEmploye::ROLES_INTERDITS, true))
+    ->all());
 
 /** Commerciaux nommés de l'entreprise, pour la réaffectation de ville (Gérant uniquement). */
 $commerciauxReaffectation = computed(fn () => Commercial::where('entreprise_id', auth()->user()->entreprise_id)
@@ -350,29 +383,21 @@ $definirExerciceParDefaut = function (int $exerciceId) {
     $this->message = "Exercice {$exercice->annee} marqué par défaut — c'est celui-ci que toute l'équipe voit dans l'en-tête.";
 };
 
-$clorePourVille = function (int $exerciceId, int $villeId) {
-    $exercice = Exercice::where('entreprise_id', auth()->user()->entreprise_id)->findOrFail($exerciceId);
-    $ville = Ville::where('entreprise_id', auth()->user()->entreprise_id)->findOrFail($villeId);
-
-    $exercice->clorePourVille($ville, auth()->user());
-    unset($this->exercices);
-    $this->message = "Exercice {$exercice->annee} clos pour {$ville->nom}.";
-};
-
-$reouvrirPourVille = function (int $exerciceId, int $villeId) {
-    $exercice = Exercice::where('entreprise_id', auth()->user()->entreprise_id)->findOrFail($exerciceId);
-    $ville = Ville::where('entreprise_id', auth()->user()->entreprise_id)->findOrFail($villeId);
-
-    $exercice->reouvrirPourVille($ville);
-    unset($this->exercices);
-    $this->message = "Exercice {$exercice->annee} réouvert pour {$ville->nom}.";
-};
-
-$cloreExercice = function (int $exerciceId) {
-    $exercice = Exercice::where('entreprise_id', auth()->user()->entreprise_id)->findOrFail($exerciceId);
-    $exercice->update(['statut' => 'Clos', 'cloture_le' => now()]);
-    unset($this->exercices);
-    $this->message = "Exercice {$exercice->annee} clos.";
+/**
+ * Combien de factures porte une année, ville par ville.
+ *
+ * Le tableau ne montre plus de statut de clôture, puisqu'il n'y a plus de clôture. Ce qui
+ * reste utile à voir, c'est le contenu : un exercice vide se remarque en une seconde, et
+ * c'est presque toujours un import qu'on a oublié de faire.
+ */
+$facturesDeLAnnee = function (int $annee, int $villeId): int {
+    // Une facture ne porte pas de ville : elle porte un **atelier**, et c'est l'atelier
+    // qui dit la ville. Passer par `ville_id` ici échouait en base — la colonne n'existe
+    // pas sur cette table, et le raccourci était le mien.
+    return Facture::where('entreprise_id', auth()->user()->entreprise_id)
+        ->whereYear('date', $annee)
+        ->whereIn('site_id', Site::where('ville_id', $villeId)->pluck('id'))
+        ->count();
 };
 
 /*
@@ -446,18 +471,14 @@ $supprimerValeurReferentiel = function (int $id) {
     $this->message = "« $intitule » supprimée.";
 };
 
-$reouvrirExercice = function (int $exerciceId) {
-    $exercice = Exercice::where('entreprise_id', auth()->user()->entreprise_id)->findOrFail($exerciceId);
-    $exercice->update(['statut' => 'Ouvert', 'cloture_le' => null]);
-    unset($this->exercices);
-    $this->message = "Exercice {$exercice->annee} réouvert.";
-};
-
 ?>
 
 <div>
+    <x-titre-ecran titre="Paramètres de l'entreprise"
+        sous-titre="Villes, ateliers, personnel, exercices et référentiels." />
+
     <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
-        @foreach (['entreprise' => 'Fiche entreprise', 'compte' => 'Mon compte', 'villes' => 'Villes', 'personnel' => 'Personnel', 'acces' => 'Ajouter un accès', 'exercices' => 'Exercices', 'referentiels' => 'Listes déroulantes'] as $cle => $libelle)
+        @foreach (['entreprise' => 'Fiche entreprise', 'compte' => 'Mon compte', 'villes' => 'Villes', 'personnel' => 'Personnel', 'acces' => 'Ajouter un accès', 'reaffectations' => 'Réaffectations', 'exercices' => 'Exercices', 'referentiels' => 'Listes déroulantes'] as $cle => $libelle)
             <button type="button" wire:click="$set('onglet', '{{ $cle }}')"
                 class="onglet {{ $onglet === $cle ? 'est-actif' : '' }}">{{ $libelle }}</button>
         @endforeach
@@ -605,7 +626,7 @@ $reouvrirExercice = function (int $exerciceId) {
 
                                     @if ($lieuVilleId === $ville->id)
                                         <div style="display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
-                                            <input type="text" wire:model="lieuNom" class="champ" style="min-width:170px;"
+                                            <input type="text" wire:model="lieuNom" value="{{ $lieuNom }}" class="champ" style="min-width:170px;"
                                                 placeholder="Ex : {{ $ville->nom }} — Site 2">
                                             <button type="button" wire:click="ajouterLieu({{ $ville->id }})"
                                                 class="bouton bouton-petit bouton-vert">Ajouter</button>
@@ -644,27 +665,168 @@ $reouvrirExercice = function (int $exerciceId) {
 
             <div class="tableau-conteneur" style="margin-top:16px;">
                 <table class="tableau">
-                    <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Statut</th></tr></thead>
+                    <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Affectation</th><th>Statut</th></tr></thead>
                     <tbody>
                         @forelse ($this->personnel->forPage($pagePersonnel, 10) as $ligne)
+                            @php
+                                $u = $ligne['utilisateur'];
+                                $sonSite = $u->site_id ? $this->sites->firstWhere('id', $u->site_id) : null;
+                                $saVille = $u->ville_id ? $this->villes->firstWhere('id', $u->ville_id) : null;
+                            @endphp
                             <tr>
-                                <td style="font-weight:600;">{{ $ligne['utilisateur']->name }}</td>
-                                <td>{{ $ligne['utilisateur']->email }}</td>
+                                <td style="font-weight:600;">{{ $u->name }}</td>
+                                <td>{{ $u->email }}</td>
                                 <td>{{ $ligne['role'] }}</td>
+                                {{-- Où travaille cette personne aujourd'hui. La colonne manquait, et
+                                     son absence rendait la mutation impossible à préparer : on ne
+                                     savait pas d'où l'on partait. --}}
                                 <td>
-                                    <span class="pastille {{ $ligne['utilisateur']->est_actif ? 'pastille-vert' : 'pastille-rouge' }}">
-                                        {{ $ligne['utilisateur']->est_actif ? 'Actif' : 'Révoqué' }}
+                                    @if ($sonSite)
+                                        {{ $sonSite->nom }}
+                                    @elseif ($saVille)
+                                        {{ $saVille->nom }}
+                                    @else
+                                        <span style="color:#6B6E76;">toute l'entreprise</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <span class="pastille {{ $u->est_actif ? 'pastille-vert' : 'pastille-rouge' }}">
+                                        {{ $u->est_actif ? 'Actif' : 'Révoqué' }}
                                     </span>
                                 </td>
                             </tr>
                         @empty
-                            <x-table-vide :colspan="4" texte="Aucun membre du personnel." />
+                            <x-table-vide :colspan="5" texte="Aucun membre du personnel." />
                         @endforelse
                     </tbody>
                 </table>
             </div>
             <x-pagination :page="$pagePersonnel" :total="$this->personnel->count()" prop="pagePersonnel" />
         </x-carte-section>
+
+        {{-- ------------------------------------------------------ muter un employé
+
+             Le geste passe par un **formulaire qui poste**, pas par une action interactive :
+             il change ce qu'une personne voit et où elle saisit, et il ne doit pas pouvoir
+             échouer en silence parce qu'un script ne s'est pas chargé.
+
+             Ce qu'il fait, et ce qu'il ne fait pas : la personne change de lieu, son code du
+             logiciel d'atelier la suit, et **rien de son travail ne bouge**. Une facture faite
+             au Site 1 reste au Site 1 : c'est là que le chiffre d'affaires a eu lieu. --}}
+        @if (auth()->user()->hasRole('gerant'))
+            <x-carte-section titre="Réaffecter un employé" icone="liste" couleur="#2563EB">
+                <p style="font-size:13px; color:var(--th-gris,#6B6E76); margin:0 0 14px; line-height:1.65;">
+                    Une mutation déplace la <strong>personne</strong>, jamais son <strong>travail</strong>.
+                    Ses fiches et ses factures restent dans l'atelier où elles ont été faites — les déplacer
+                    fausserait deux ateliers d'un coup, celui qu'on vide et celui qu'on gonfle.
+                    Elle continue de <strong>consulter</strong> son ancien lieu, sans plus pouvoir y saisir.
+                </p>
+
+                @error('employe')
+                    <div class="encart encart-alerte" style="margin-bottom:12px;">{{ $message }}</div>
+                @enderror
+
+                <form method="POST" action="{{ route('reaffecter') }}">
+                    @csrf
+
+                    <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:end;">
+                        <div>
+                            <label for="ra-employe" class="champ-libelle">Qui</label>
+                            <select id="ra-employe" name="employe" class="champ" required>
+                                <option value="">— choisir la personne —</option>
+                                @foreach ($this->employesDeplacables as $ligne)
+                                    <option value="{{ $ligne['utilisateur']->id }}"
+                                        @selected((string) old('employe') === (string) $ligne['utilisateur']->id)>
+                                        {{ $ligne['utilisateur']->name }} — {{ $ligne['role'] }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="ra-role" class="champ-libelle">Rôle après la mutation</label>
+                            <select id="ra-role" name="role" class="champ">
+                                <option value="">— conserver son rôle actuel —</option>
+                                @foreach ($this->rolesDeMutation as $cle => $libelle)
+                                    <option value="{{ $cle }}" @selected((string) old('role') === (string) $cle)>{{ $libelle }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="ra-ville" class="champ-libelle">Ville de destination</label>
+                            <select id="ra-ville" name="ville" class="champ" required>
+                                <option value="">— choisir —</option>
+                                @foreach ($this->villesActives as $ville)
+                                    <option value="{{ $ville->id }}" @selected((string) old('ville') === (string) $ville->id)>{{ $ville->nom }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        {{-- L'atelier n'a de sens que là où la ville en compte plusieurs. Tous
+                             sont rendus ; le navigateur ne montre que ceux de la ville retenue,
+                             et masque le champ quand il n'y a pas de choix à faire. --}}
+                        <div id="ra-bloc-site">
+                            <label for="ra-site" class="champ-libelle">Atelier</label>
+                            <select id="ra-site" name="site" class="champ">
+                                <option value="" data-ville="">— toute la ville —</option>
+                                @foreach ($this->villes as $ville)
+                                    @if ($ville->sites->count() > 1)
+                                        @foreach ($ville->sites as $site)
+                                            <option value="{{ $site->id }}" data-ville="{{ $ville->id }}"
+                                                @selected((string) old('site') === (string) $site->id)>{{ $site->nom }}</option>
+                                        @endforeach
+                                    @endif
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div style="grid-column:1 / -1;">
+                            <label for="ra-motif" class="champ-libelle">Motif</label>
+                            <input type="text" id="ra-motif" name="motif" class="champ" maxlength="255"
+                                   value="{{ old('motif') }}"
+                                   placeholder="Renfort à San Pédro, ouverture d'un poste, retour de congé…">
+                        </div>
+                    </div>
+
+                    <div style="margin-top:14px;">
+                        <button type="submit" class="bouton bouton-sombre">Réaffecter</button>
+                    </div>
+                </form>
+
+                <script data-navigate-once>
+                    (function () {
+                        var ville = document.getElementById('ra-ville');
+                        var site = document.getElementById('ra-site');
+                        var bloc = document.getElementById('ra-bloc-site');
+
+                        if (! ville || ! site || ! bloc) { return; }
+
+                        var filtrer = function () {
+                            var choisie = ville.value;
+                            var visibles = 0;
+
+                            Array.prototype.forEach.call(site.options, function (option) {
+                                var sienne = option.getAttribute('data-ville');
+                                var garder = sienne === '' || sienne === choisie;
+                                option.hidden = ! garder;
+                                option.disabled = ! garder;
+                                if (garder && sienne !== '') { visibles++; }
+                            });
+
+                            if (site.selectedOptions.length && site.selectedOptions[0].disabled) {
+                                site.value = '';
+                            }
+
+                            bloc.style.display = visibles > 0 ? '' : 'none';
+                        };
+
+                        ville.addEventListener('change', filtrer);
+                        filtrer();
+                    })();
+                </script>
+            </x-carte-section>
+        @endif
 
         @if (auth()->user()->hasRole('gerant'))
             <x-carte-section titre="Réaffecter un commercial">
@@ -709,12 +871,96 @@ $reouvrirExercice = function (int $exerciceId) {
     @endif
 
     {{-- -------------------------------------------------------- Exercices --}}
+    {{-- ---------------------------------------------- Réaffectations (lecture seule)
+
+         L'écran ne propose aucun geste : il raconte. C'est ce qu'on vient y chercher six
+         mois plus tard, quand le chiffre d'affaires d'un atelier baisse et qu'on se demande
+         qui l'a quitté. Le geste, lui, est dans l'onglet Personnel — là où l'on a la liste
+         des gens sous les yeux. --}}
+    @if ($onglet === 'reaffectations')
+        @if (session('message-reaffectation'))
+            <div class="encart encart-succes">{{ session('message-reaffectation') }}</div>
+        @endif
+
+        <x-carte-section titre="Historique des réaffectations" icone="liste" couleur="#6B6E76">
+            <p style="font-size:13px; color:var(--th-gris,#6B6E76); margin:0 0 14px; line-height:1.65;">
+                Chaque mutation, telle qu'elle a été décidée. <strong>Rien ne se modifie ici</strong> —
+                une mutation est un fait daté, pas un réglage : la corriger reviendrait à réécrire
+                l'histoire d'un atelier. Pour déplacer quelqu'un, passez par l'onglet
+                <button type="button" wire:click="$set('onglet', 'personnel')"
+                        style="background:none; border:0; padding:0; color:var(--th-accent,#C8102E); font-weight:700; cursor:pointer; font-size:13px;">Personnel</button>.
+            </p>
+
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Qui</th><th>Depuis</th><th>Vers</th>
+                            <th>Rôle</th><th>Motif</th><th>Décidé par</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($this->reaffectations as $mouvement)
+                            <tr wire:key="ra-{{ $mouvement->id }}">
+                                <td>{{ $mouvement->created_at?->format('d/m/Y') }}</td>
+                                <td style="font-weight:600;">{{ $mouvement->utilisateur?->name ?? 'compte supprimé' }}</td>
+                                <td>{{ $mouvement->siteAvant?->nom ?? $mouvement->villeAvant?->nom ?? '—' }}</td>
+                                <td>{{ $mouvement->siteApres?->nom ?? $mouvement->villeApres?->nom ?? '—' }}</td>
+                                <td>
+                                    @if ($mouvement->role_avant !== $mouvement->role_apres)
+                                        {{ LibellesRoles::de($mouvement->role_avant) }}
+                                        → <strong>{{ LibellesRoles::de($mouvement->role_apres) }}</strong>
+                                    @else
+                                        <span style="color:#6B6E76;">{{ LibellesRoles::de($mouvement->role_apres) }} — inchangé</span>
+                                    @endif
+                                </td>
+                                <td>{{ $mouvement->motif ?: '—' }}</td>
+                                <td>{{ $mouvement->decideur?->name ?? '—' }}</td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="7"
+                                texte="Aucune réaffectation à ce jour. Elles apparaîtront ici dès la première mutation." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </x-carte-section>
+    @endif
+
     @if ($onglet === 'exercices')
-        <x-carte-section titre="Nouvel exercice" icone="liste" couleur="#2563EB">
-            <p style="font-size:13px; color:var(--th-gris,#6B6E76); margin:0 0 14px;">
-                Un exercice couvre une année civile. Il se clôture ville par ville ; tant qu'une
-                ville reste ouverte, la saisie y reste possible. La clôture complète de
-                l'exercice est toujours une décision volontaire, jamais automatique.
+        {{-- **Les exercices ne se clôturent plus.**
+
+             La page proposait encore de clore une année, ville par ville puis en bloc. Le
+             moteur, lui, avait déjà changé de règle : au passage d'année, le système crée
+             l'exercice suivant et y bascule tout seul, sans rien fermer derrière. Les deux
+             se contredisaient, et c'est l'écran qui avait tort — un bouton « Clôturer » sur
+             une mécanique qui ne clôture rien ne pouvait que tromper.
+
+             Ce qui reste : la création manuelle, qui sert à ouvrir une année *antérieure*
+             pour y importer l'historique. Une année future, elle, s'ouvrira d'elle-même le
+             jour venu — inutile de la préparer. --}}
+        <x-carte-section titre="Comment fonctionnent les exercices" icone="liste" couleur="#0E9F6E">
+            <div style="font-size:13.5px; color:var(--th-gris,#6B6E76); margin:0 0 14px; line-height:1.7;">
+                <p style="margin:0 0 8px;">
+                    <strong style="color:var(--th-ink,#191B20);">Aucun exercice ne se clôture.</strong>
+                    Au passage d'une année à l'autre — le 1<sup>er</sup> janvier, à la première connexion —
+                    le système crée l'exercice suivant et bascule dessus. L'année précédente reste
+                    <strong>ouverte</strong>&nbsp;: consultable, corrigeable, et une facture de décembre
+                    qui arrive le 8 janvier se saisit à sa date sans qu'on ait à rouvrir quoi que ce soit.
+                </p>
+                <p style="margin:0;">
+                    Pour <strong>consulter</strong> une autre année, il n'y a rien à faire ici&nbsp;:
+                    le sélecteur « Exercice&nbsp;{{ now()->year }} » du bandeau, en haut de chaque écran,
+                    change l'année regardée sans rien modifier en base.
+                </p>
+            </div>
+        </x-carte-section>
+
+        <x-carte-section titre="Ouvrir une année antérieure" icone="liste" couleur="#2563EB">
+            <p style="font-size:13px; color:var(--th-gris,#6B6E76); margin:0 0 14px; line-height:1.6;">
+                Utile pour <strong>reprendre un historique</strong>&nbsp;: créez l'année, puis importez-y
+                les fichiers de cette période. Les années à venir n'ont pas besoin d'être préparées —
+                elles s'ouvrent d'elles-mêmes le jour où elles commencent.
             </p>
             <div class="bloc-saisie">
                 <x-champ label="Année" model="exerciceAnnee" type="number" width="140" />
@@ -723,59 +969,37 @@ $reouvrirExercice = function (int $exerciceId) {
         </x-carte-section>
 
         @foreach ($this->exercices as $exercice)
-            @php
-                $toutesClosesIci = $exercice->toutesLesVillesSontClosesPour(auth()->user()->entreprise_id);
-            @endphp
-            <x-carte-section titre="Exercice {{ $exercice->annee }}" icone="liste" couleur="{{ $exercice->statut === 'Clos' ? '#C8102E' : '#0E9F6E' }}">
+            <x-carte-section titre="Exercice {{ $exercice->annee }}" icone="liste"
+                             couleur="{{ $exercice->est_defaut ? '#0E9F6E' : '#6B6E76' }}">
                 <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
-                    <span class="pastille {{ $exercice->statut === 'Clos' ? 'pastille-rouge' : 'pastille-vert' }}">
-                        {{ $exercice->statut === 'Clos' ? 'Exercice clos' : 'Exercice ouvert' }}
-                    </span>
+                    <span class="pastille pastille-vert">Ouvert</span>
+
                     @if ($exercice->est_defaut)
-                        <span class="pastille pastille-bleu">★ Par défaut — visible par toute l'équipe</span>
+                        <span class="pastille pastille-bleu">★ Exercice en cours — celui où l'on saisit</span>
                     @else
-                        <button type="button" wire:click="definirExerciceParDefaut({{ $exercice->id }})" class="bouton bouton-secondaire bouton-petit">
-                            Définir par défaut
-                        </button>
-                    @endif
-                    @if ($exercice->statut === 'Clos')
-                        <span style="font-size:12.5px; color:#6B6E76;">Clos le {{ $exercice->cloture_le?->format('d/m/Y') }}</span>
-                        <button type="button" wire:click="reouvrirExercice({{ $exercice->id }})" class="bouton bouton-secondaire bouton-petit">Réouvrir l'exercice</button>
-                    @elseif ($toutesClosesIci)
-                        <span style="font-size:12.5px; color:#D97706; font-weight:600;">Toutes les villes sont closes — l'exercice peut être clôturé.</span>
-                        <button type="button" wire:click="cloreExercice({{ $exercice->id }})"
-                            wire:confirm="Clôturer définitivement l'exercice {{ $exercice->annee }} ? Plus aucune saisie ne sera possible pour cette année, sur aucune ville."
-                            class="bouton bouton-sombre bouton-petit">Clôturer l'exercice</button>
+                        <span style="font-size:12.5px; color:#6B6E76;">
+                            Année antérieure — consultable et corrigeable.
+                        </span>
                     @endif
                 </div>
 
+                {{-- Les villes n'ont plus de statut à afficher : rien ne se ferme. Ce qui
+                     reste utile, c'est de savoir ce que cette année contient — un exercice
+                     vide se remarque tout de suite, et c'est souvent un import oublié. --}}
                 <div class="tableau-conteneur">
                     <table class="tableau">
-                        <thead><tr><th>Ville</th><th>Statut</th><th>Clôturé le</th><th style="text-align:right;">Actions</th></tr></thead>
+                        <thead><tr><th>Ville</th><th>Saisie</th><th style="text-align:right;">Factures de l'année</th></tr></thead>
                         <tbody>
                             @forelse ($this->villesActives as $ville)
-                                @php
-                                    $pivot = $exercice->villes->firstWhere('id', $ville->id)?->pivot;
-                                    $statutVille = $pivot?->statut ?? 'Ouvert';
-                                @endphp
                                 <tr wire:key="exercice-{{ $exercice->id }}-ville-{{ $ville->id }}">
                                     <td style="font-weight:600;">{{ $ville->nom }}</td>
-                                    <td>
-                                        <span class="pastille {{ $statutVille === 'Clos' ? 'pastille-rouge' : 'pastille-vert' }}">{{ $statutVille }}</span>
-                                    </td>
-                                    <td>{{ $pivot?->cloture_le ? \Illuminate\Support\Carbon::parse($pivot->cloture_le)->format('d/m/Y') : '—' }}</td>
-                                    <td style="text-align:right;">
-                                        @if ($statutVille === 'Clos')
-                                            <button type="button" wire:click="reouvrirPourVille({{ $exercice->id }}, {{ $ville->id }})" class="bouton bouton-secondaire bouton-petit">Réouvrir</button>
-                                        @else
-                                            <button type="button" wire:click="clorePourVille({{ $exercice->id }}, {{ $ville->id }})"
-                                                wire:confirm="Clôturer l'exercice {{ $exercice->annee }} pour {{ $ville->nom }} ? Plus aucune saisie ne sera possible pour cette ville sur cette année."
-                                                class="bouton bouton-secondaire bouton-petit">Clôturer</button>
-                                        @endif
+                                    <td><span class="pastille pastille-vert">Ouverte</span></td>
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums;">
+                                        {{ number_format($this->facturesDeLAnnee($exercice->annee, $ville->id), 0, ',', ' ') }}
                                     </td>
                                 </tr>
                             @empty
-                                <x-table-vide :colspan="4" texte="Aucune ville active." />
+                                <x-table-vide :colspan="3" texte="Aucune ville active." />
                             @endforelse
                         </tbody>
                     </table>

@@ -33,14 +33,19 @@ class ModifierAcces
 
     /**
      * @param  array<string, mixed>  $donnees  nom, email, telephone, mot_de_passe, entreprise_id, ville_id, site_id, objectifs
-     * @param  bool  $structureModifiable  faux si l'accès a déjà servi : le rôle et
-     *                                     l'entreprise sont alors figés, ses écritures
-     *                                     leur étant rattachées.
+     * @param  bool  $structureModifiable  faux quand l'entreprise du compte est figée :
+     *                                     il a servi, ses écritures y sont rattachées, et
+     *                                     le déplacer les laisserait derrière lui. Le
+     *                                     **rôle**, lui, n'emporte aucune écriture — voir
+     *                                     $roleModifiable.
+     * @param  bool  $roleModifiable  vrai quand le rôle peut être repris. Une écriture porte
+     *                                un lieu et un auteur, jamais un rôle : la changer de
+     *                                rôle ne déplace donc rien.
      * @return array<string, string> ce qui a changé, pour l'annoncer sans le deviner
      */
-    public function executer(User $compte, string $role, array $donnees, bool $structureModifiable): array
+    public function executer(User $compte, string $role, array $donnees, bool $structureModifiable, bool $roleModifiable = false): array
     {
-        return DB::transaction(function () use ($compte, $role, $donnees, $structureModifiable) {
+        return DB::transaction(function () use ($compte, $role, $donnees, $structureModifiable, $roleModifiable) {
             $ancienRole = $this->roleActuel($compte);
             $changements = [];
 
@@ -61,9 +66,20 @@ class ModifierAcces
             $compte->save();
 
             if (! $structureModifiable) {
-                // L'accès a servi : seul son périmètre à l'intérieur du rôle reste
-                // ajustable, et c'est l'ancien rôle qui commande.
-                $this->poserLePerimetre($compte, $ancienRole, $donnees, $changements);
+                // L'entreprise est figée. Le rôle, lui, peut suivre : il ne déplace aucune
+                // écriture, et refuser de le reprendre obligeait à créer un second compte
+                // pour la même personne — deux comptes dont un seul porte l'historique.
+                if ($roleModifiable && $role !== $ancienRole) {
+                    DB::table('villes')->where('responsable_id', $compte->id)->update(['responsable_id' => null]);
+                    DB::table('sites')->where('responsable_id', $compte->id)->update(['responsable_id' => null]);
+
+                    $this->poserLeRole($compte, $role, (int) $compte->entreprise_id);
+                    $changements['rôle'] = ($ancienRole ?: '—').' → '.$role;
+                    $ancienRole = $role;
+                }
+
+                $ville = $this->poserLePerimetre($compte, $ancienRole, $donnees, $changements);
+                $this->accorderLaFiche($compte, $ancienRole, $ville, $donnees, $changements);
 
                 return $changements;
             }

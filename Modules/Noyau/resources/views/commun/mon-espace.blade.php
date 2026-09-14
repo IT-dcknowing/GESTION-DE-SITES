@@ -202,6 +202,9 @@ $enregistrerProfil = function (EnregistreurPhoto $enregistreur) {
 ?>
 
 <div>
+    <x-titre-ecran titre="Mon espace"
+        sous-titre="Votre fiche, vos codes et vos réglages personnels." />
+
     <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
         @php
             $onglets = ['profil' => 'Mon profil', 'entreprise' => 'Mon entreprise'];
@@ -254,6 +257,17 @@ $enregistrerProfil = function (EnregistreurPhoto $enregistreur) {
                 </div>
             </x-carte-section>
         </form>
+
+        {{-- Les deux codes qui désignent la personne. Ils n'existaient que sur « Mon
+             profil », que presque personne n'ouvre : c'est ici que les rôles arrivent
+             depuis leur menu Paramètres, et ceux qui saisissent dans le logiciel
+             d'atelier n'avaient donc aucun endroit pour corriger leur identifiant.
+
+             Hors du formulaire ci-dessus, et c'est voulu : la liaison poste vers sa
+             propre adresse, sans dépendre de la couche interactive. --}}
+        <x-carte-section titre="Mes codes">
+            <x-codes-du-profil />
+        </x-carte-section>
     @endif
 
     {{-- -------------------------------------------------- Mon entreprise --}}

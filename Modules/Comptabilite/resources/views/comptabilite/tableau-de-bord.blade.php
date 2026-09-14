@@ -38,7 +38,10 @@ $villeUnique = computed(fn () => PerimetreSites::villeUnique(auth()->user()));
 $idsSites = computed(fn () => PerimetreSites::idsRetenus(auth()->user(), $this->villeFiltre));
 $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->user(), $this->villeFiltre));
 
+// Les factures reprises du logiciel d'atelier sont écartées : leur historique de
+// règlement n'a pas été importé, elles paraîtraient donc toutes intégralement dues.
 $facturesEnAttente = computed(fn () => Facture::whereIn('site_id', $this->idsSites)
+    ->saisieManuelle()
     ->avecResteAEncaisser()
     ->withSum('encaissements', 'montant')
     ->latest('date')->latest('id')->get());
@@ -78,6 +81,9 @@ $dernieresOperations = computed(function () {
 ?>
 
 <div>
+    <x-titre-ecran titre="Comptabilité — tableau de bord"
+        sous-titre="Ce qui reste à encaisser, et ce qui est sorti de la caisse." />
+
     <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :masquer-activite="true"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />

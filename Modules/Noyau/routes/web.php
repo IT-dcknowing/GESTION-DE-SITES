@@ -4,7 +4,11 @@ use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\LogoEntrepriseController;
 use App\Http\Controllers\RedirectionController;
 use Illuminate\Support\Facades\Route;
+use Modules\Noyau\Commun\Controleurs\ChangerLeMotDePasse;
+use Modules\Noyau\Commun\Controleurs\ConfirmerLeCodeAtelier;
+use Modules\Noyau\Commun\Controleurs\EnregistrerLaLiaison;
 use Livewire\Volt\Volt;
+use Modules\Noyau\Commun\Controleurs\ChoisirLaLoupe;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,7 +63,36 @@ Route::middleware(['guest'])->group(function () {
 Route::middleware(['auth'])->group(function () {
     Route::get('/redirection', RedirectionController::class)->name('redirection');
 
+    // Les deux loupes — année et ville regardées. Elles ne modifient rien en base mais
+    // commandent ce que tout écran calcule : elles ne doivent pas dépendre d'un script.
+    Route::post('/loupe/ville', [ChoisirLaLoupe::class, 'ville'])->name('loupe.ville');
+    Route::post('/loupe/exercice', [ChoisirLaLoupe::class, 'exercice'])->name('loupe.exercice');
+
+    // Le profil : les deux codes qui désignent la personne, et celui qui se modifie.
+    Volt::route('/mon-profil', 'commun.mon-profil')->name('mon-profil');
+    // Le rattachement au code du logiciel d'atelier : requête ordinaire, comme le dépôt.
+    // Un écran où l'on relie son propre travail n'a pas à dépendre de la couche interactive.
+    Route::post('/mon-profil/liaison', EnregistrerLaLiaison::class)->name('mon-profil.liaison');
+
+    // « Oui, c'est bien mon code. » Posée sur tous les écrans tant qu'on n'a pas répondu,
+    // la question se ferme ici — et laisse une ligne au journal, comme l'attribution.
+    Route::post('/mon-profil/code-atelier/confirmer', ConfirmerLeCodeAtelier::class)
+        ->name('code-atelier.confirmer');
+
+    /*
+     * La fiche d'une prospection vue par le commercial — sa ligne, et la signature de la
+     * décision prise dessus. Le responsable a la sienne, qui porte en plus l'historique
+     * des modifications ; les deux montrent la même traçabilité, par le même composant.
+     */
+    Route::middleware(['role:commercial'])->group(function () {
+        Volt::route('/prospections/{prospection}', 'commun.prospection-fiche')
+            ->name('prospection.fiche')->whereNumber('prospection');
+    });
+
     Volt::route('/mon-compte/mot-de-passe', 'commun.mot-de-passe')->name('mot-de-passe.modifier');
+    // L'enregistrement est une requete ordinaire : cet ecran est un passage oblige, et un
+    // bouton qui depend d'un script est ici une porte fermee sur un compte neuf.
+    Route::post('/mon-compte/mot-de-passe', ChangerLeMotDePasse::class)->name('mot-de-passe.enregistrer');
 
     // Messagerie interne : ouverte à tous les rôles, les destinataires étant filtrés
     // par AnnuaireMessagerie selon le rôle et l'entreprise.
@@ -68,8 +101,18 @@ Route::middleware(['auth'])->group(function () {
     // Activation et diagnostic des notifications poussées, ouverts à tous les rôles.
     Volt::route('/mes-notifications', 'commun.mes-notifications')->name('mes-notifications');
 
-    // Espace personnel : profil, photo, rattachement, listes déroulantes.
-    Route::middleware(['role:responsable_ville|responsable_site|commercial|caissier'])->group(function () {
+    /*
+     * Espace personnel : profil, photo, rattachement, listes déroulantes.
+     *
+     * Il était fermé aux deux rôles du recouvrement, dont le bandeau proposait pourtant
+     * l'onglet : on cliquait sur « Paramètres » et l'on tombait sur un refus. Un écran où
+     * l'on règle son propre compte n'a pas à dépendre du métier qu'on exerce — le gérant
+     * garde le sien, plus vaste, et tous les autres ont celui-ci.
+     */
+    Route::middleware([
+        'role:responsable_ville|responsable_site|commercial|caissier'
+            .'|superviseur_recouvrement|agent_recouvrement',
+    ])->group(function () {
         Volt::route('/mon-espace', 'commun.mon-espace')->name('mon-espace');
     });
 });

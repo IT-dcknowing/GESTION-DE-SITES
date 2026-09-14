@@ -122,7 +122,7 @@ $sInscrire = function (CreerAcces $action) {
             <div class="carte" style="padding:28px;">
                 <form wire:submit="verifierCode">
                     <label class="champ-libelle">Code entreprise <span style="color:var(--th-accent,#C8102E);">*</span></label>
-                    <input type="text" wire:model="code" placeholder="Ex : ART-K7M2QP" class="champ"
+                    <input type="text" wire:model="code" value="{{ $code }}" placeholder="Ex : ART-K7M2QP" class="champ"
                         style="font-family:'Barlow Condensed',sans-serif; font-size:26px; font-weight:700; letter-spacing:3px; text-align:center; text-transform:uppercase;">
                     @error('code') <span class="champ-erreur">{{ $message }}</span> @enderror
 

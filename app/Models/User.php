@@ -30,6 +30,9 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'derniere_connexion_le' => 'datetime',
+            // Le moment où la personne a reconnu son code d'atelier. Une date plutôt qu'un
+            // oui : elle dit si la confirmation portait sur le code d'avant ou celui d'après.
+            'code_atelier_confirme_le' => 'datetime',
             'password' => 'hashed',
             'est_actif' => 'boolean',
             'doit_changer_mot_de_passe' => 'boolean',

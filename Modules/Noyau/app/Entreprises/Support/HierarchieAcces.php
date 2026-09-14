@@ -30,12 +30,18 @@ class HierarchieAcces
         'gerant' => 0,
         'responsable_ville' => 1,
         'responsable_site' => 2,
+        // Le superviseur recouvrement relève directement de la direction : sa filière est
+        // parallèle à celle des villes, et non subordonnée à elle. Il est placé au même
+        // rang qu'un superviseur de ville, ce qui a une conséquence voulue — aucun des
+        // deux ne peut agir sur l'accès de l'autre.
+        'superviseur_recouvrement' => 1,
         'caissier' => 3,
         'commercial' => 3,
+        'agent_recouvrement' => 3,
     ];
 
     /** Rôles autorisés à gérer les accès d'autrui au sein d'une entreprise. */
-    private const ENCADRANTS = ['gerant', 'responsable_ville'];
+    private const ENCADRANTS = ['gerant', 'responsable_ville', 'superviseur_recouvrement'];
 
     /**
      * Le motif du refus, ou null si l'acte est permis.
@@ -77,6 +83,14 @@ class HierarchieAcces
 
         if ($roleActeur === 'responsable_ville' && ! in_array($cible->ville_id, self::villesDe($acteur), true)) {
             return "Cet accès ne relève pas de votre ville.";
+        }
+
+        // Le rang seul ouvrirait trop : un superviseur recouvrement encadre des agents de
+        // recouvrement, pas les commerciaux ni la comptabilité, qui sont au même rang mais
+        // dans une autre filière. La hiérarchie n'est pas qu'une hauteur, c'est aussi une
+        // branche.
+        if ($roleActeur === 'superviseur_recouvrement' && self::roleDe($cible) !== 'agent_recouvrement') {
+            return "Vous ne gérez que les accès des agents de recouvrement.";
         }
 
         return null;

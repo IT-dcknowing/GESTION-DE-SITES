@@ -5,5 +5,7 @@
     "Superviseur": true,
     "ResponsableSite": true,
     "Comptabilite": true,
-    "Commercial": true
+    "Commercial": true,
+    "Recouvrement": true,
+    "Import": true
 }

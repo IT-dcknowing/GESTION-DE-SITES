@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\CodeAuteur;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Entreprises\Actions\CreerAcces;
 use Modules\Noyau\Entreprises\Actions\RenvoyerLAcces;
@@ -9,6 +10,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\Annuaire;
 use Modules\Noyau\Entreprises\Support\HierarchieAcces;
 use Modules\Noyau\Entreprises\Support\LibellesRoles;
+use Modules\Noyau\Imports\Services\RapprochementDesCodes;
 use function Livewire\Volt\{state, computed, mount, protect, rules};
 
 state([
@@ -16,6 +18,7 @@ state([
     'nom' => '',
     'email' => '',
     'motDePasse' => '',
+    'codeAgent' => '',
     // Un acces prepare n'est pas un acces ouvert : cree inactif, il attend qu'on
     // l'active. Aucun courriel ne part, et la connexion est refusee entre-temps.
     'ouverture' => 'actif',
@@ -46,8 +49,14 @@ mount(function () {
  */
 $rolesDisponibles = computed(function () {
     $noms = match (true) {
-        auth()->user()->hasRole('gerant') => ['responsable_ville', 'responsable_site', 'commercial', 'caissier'],
+        auth()->user()->hasRole('gerant') => [
+            'responsable_ville', 'responsable_site', 'commercial', 'caissier',
+            // Le recouvrement relève de la direction : c'est le gérant qui nomme le
+            // superviseur, et le superviseur qui nommera ses agents.
+            'superviseur_recouvrement', 'agent_recouvrement',
+        ],
         auth()->user()->hasRole('responsable_ville') => ['responsable_site', 'commercial', 'caissier'],
+        auth()->user()->hasRole('superviseur_recouvrement') => ['agent_recouvrement'],
         default => ['commercial', 'caissier'],
     };
 
@@ -94,6 +103,37 @@ $derniersAcces = computed(function () {
         'role' => LibellesRoles::liste($roles[$u->id] ?? null),
         'commercial' => $fiches->get($u->id),
     ]);
+});
+
+/**
+ * Les codes libres dont les initiales collent au nom saisi.
+ *
+ * Une aide, jamais une conclusion : on a mesuré que sur les dix-sept codes relevés dans
+ * les exports, sept ne correspondent à personne — dont les deux plus gros. Les codes
+ * désignent qui rédige des fiches dans le logiciel de l'atelier, pas qui se connecte ici.
+ */
+$codesProposes = computed(fn () => trim($this->nom) === ''
+    ? collect()
+    : (new RapprochementDesCodes((int) auth()->user()->entreprise_id))->codesPossiblesPour($this->nom));
+
+/**
+ * Le code que la plateforme donnera à cette personne — montré, jamais choisi.
+ *
+ * Il se recompose à chaque frappe à partir de la ville, du rôle et du nom : ce sont
+ * exactement les trois éléments dont il est fait. Rien n'est consommé ni enregistré ; le
+ * rang, qui compte les documents de la personne, reste en pointillés jusqu'à sa première
+ * saisie.
+ */
+$apercuDuCode = computed(function () {
+    // La ville est celle du choix explicite, ou celle du site retenu, ou à défaut celle
+    // de l'entreprise — c'est la cascade que suit le service lui-même.
+    $ville = match (true) {
+        $this->villeChoix !== '' => Ville::find($this->villeChoix)?->nom,
+        $this->siteChoix !== '' => Site::with('ville')->find($this->siteChoix)?->ville?->nom,
+        default => auth()->user()->entreprise?->nom,
+    };
+
+    return CodeAuteur::apercuDuPrefixe($ville, $this->roleActif, $this->nom);
 });
 
 /** Vrai si l'annuaire est ouvert à ce lecteur : gérant et superviseur, pas plus bas. */
@@ -309,6 +349,11 @@ $creer = function (CreerAcces $action) {
         'nom' => ['required', 'string', 'max:255'],
         'email' => ['required', 'email', 'max:255', 'unique:users,email'],
         'motDePasse' => ['required', 'string', 'min:8'],
+        // Deux lettres : c'est sous cette forme que le logiciel d'atelier inscrit le code
+        // dans les numéros de fiche, « FR-KZN° 010669 ». On le vérifie ici pour éviter une
+        // faute de frappe évidente, mais un code refusé plus loin — déjà porté par
+        // quelqu'un d'autre — n'empêchera pas la création de l'accès.
+        'codeAgent' => ['nullable', 'string', 'regex:/^[A-Za-z]{2}$/'],
     ];
 
     if ($this->roleActif === 'responsable_site') {
@@ -326,6 +371,7 @@ $creer = function (CreerAcces $action) {
         'nom' => 'nom et prénoms',
         'email' => 'adresse e-mail',
         'motDePasse' => 'mot de passe',
+        'codeAgent' => 'code employé',
         'siteChoix' => 'site',
         'villeChoix' => 'ville',
         'objectifGlobal' => 'objectif mensuel',
@@ -336,6 +382,7 @@ $creer = function (CreerAcces $action) {
         'nom' => $donnees['nom'],
         'email' => $donnees['email'],
         'mot_de_passe' => $donnees['motDePasse'],
+        'code_agent' => $donnees['codeAgent'] ?? null,
         'ville_id' => $donnees['villeChoix'] ?? null,
         'site_id' => $donnees['siteChoix'] ?? null,
         'objectif_mecanique' => $this->objectifMecanique,
@@ -343,18 +390,29 @@ $creer = function (CreerAcces $action) {
         'est_actif' => $this->ouverture === 'actif',
     ]);
 
-    $this->reset(['nom', 'email', 'motDePasse', 'siteChoix']);
+    $this->reset(['nom', 'email', 'motDePasse', 'siteChoix', 'codeAgent']);
     $this->villeChoix = count($this->optionsVilleCommercial) === 1 ? array_key_first($this->optionsVilleCommercial) : '';
     $this->objectifGlobal = Commercial::OBJECTIF_MENSUEL_DEFAUT;
     $this->pourcentageMecanique = (int) (Commercial::PART_MECANIQUE_DEFAUT * 100);
     $this->confirmation = $this->ouverture === 'actif'
         ? "Accès créé — courriel envoyé, mot de passe à choisir à la première connexion."
         : "Accès préparé, non activé — aucun courriel envoyé. Activez-le quand la place sera prête.";
+
+    // Le code n'a jamais empêché la création. S'il n'a pas pu être rattaché, on le dit à
+    // côté de la confirmation : le compte existe, il reste deux lettres à régler.
+    if ($action->refusDuCode) {
+        $this->confirmation .= " Le code employé n'a pas été rattaché : ".$action->refusDuCode
+            .' Vous pourrez le faire depuis Import › Codes employés.';
+    }
 };
 
 ?>
 
 <div>
+    @if (session('refus-acces'))
+        <x-boite-message titre="Geste refusé" ton="alerte">{{ session('refus-acces') }}</x-boite-message>
+    @endif
+
     <div class="carte">
         <h1 style="font-size:18px; font-weight:800; margin:0 0 4px;">Ajouter un accès</h1>
         <p style="color:#6B6E76; font-size:15px; margin:0 0 18px;">Créez un compte pour un membre de votre équipe. Le mot de passe devra être changé à la première connexion.</p>
@@ -381,7 +439,7 @@ $creer = function (CreerAcces $action) {
 
         <form wire:submit="creer" style="max-width:480px;">
             <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin-bottom:6px;">Nom et prénoms</label>
-            <input type="text" wire:model="nom"
+            <input type="text" wire:model="nom" value="{{ $nom }}"
                 style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:15.5px; margin-bottom:4px;">
             @error('nom') <div style="color:#C8102E; font-size:13.5px; margin-bottom:8px;">{{ $message }}</div> @enderror
 
@@ -395,14 +453,82 @@ $creer = function (CreerAcces $action) {
                 style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:15.5px; margin-bottom:4px;">
             @error('motDePasse') <div style="color:#C8102E; font-size:13.5px; margin-bottom:8px;">{{ $message }}</div> @enderror
 
+            {{-- Le code employé.
+
+                 Deux lettres, et elles valent cher : dans le logiciel de l'atelier, les
+                 trois villes vivent dans la même base, et rien ne dit d'où vient une ligne
+                 sauf ces deux lettres inscrites dans le numéro de fiche. Les renseigner ici
+                 évite de le faire après coup — et fait aussitôt remonter dans la bonne
+                 ville et le bon atelier tout ce que la personne a déjà saisi. --}}
+            <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">
+                Code employé dans le logiciel d'atelier
+                <span style="font-weight:400; color:#6B6E76;">— facultatif, deux lettres</span>
+            </label>
+            <input type="text" wire:model.live.debounce.500ms="codeAgent" value="{{ $codeAgent }}" maxlength="2" placeholder="KZ"
+                style="width:110px; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:15.5px; margin-bottom:4px; text-transform:uppercase; font-family:ui-monospace,Consolas,monospace;">
+            @error('codeAgent') <div style="color:#C8102E; font-size:13.5px; margin-bottom:8px;">{{ $message }}</div> @enderror
+
+            <div style="font-size:13px; color:#6B6E76; line-height:1.55; margin-bottom:8px;">
+                Ce sont les deux lettres du numéro de fiche —
+                <span style="font-family:ui-monospace,Consolas,monospace;">FR-<strong>KZ</strong>N° 010669</span>.
+                Elles disent de quelle ville et de quel atelier relève chaque ligne importée.
+                Laissez vide si la personne ne saisit pas dans le logiciel d'atelier.
+            </div>
+
+            {{-- Le code de la plateforme, à côté, en lecture seule.
+
+                 Les deux codes se ressemblent assez pour qu'on les confonde, et ils ne
+                 servent pas du tout à la même chose. Celui du dessus vient du **logiciel
+                 d'atelier** : c'est une clé de rattachement, elle décide où va une ligne
+                 importée. Celui-ci est produit par **la plateforme** : il signe chaque
+                 saisie faite ici, et se lit sous le numéro de document dans tous les
+                 tableaux.
+
+                 Il est grisé parce qu'il ne se choisit pas — il se déduit de la ville, du
+                 rôle et du nom. Le montrer à la création évite la question qui revenait
+                 sans cesse : « et lui, quel est son code ? ». --}}
+            <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">
+                Code de saisie sur la plateforme
+                <span style="font-weight:400; color:#6B6E76;">— attribué automatiquement</span>
+            </label>
+            <input type="text" value="{{ $this->apercuDuCode }}" disabled
+                style="width:190px; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8);
+                       border-radius:8px; font-size:15.5px; margin-bottom:4px; background:#F1EFE9; color:#6B6E76;
+                       font-family:ui-monospace,Consolas,monospace; cursor:not-allowed;">
+            <div style="font-size:13px; color:#6B6E76; line-height:1.55; margin-bottom:8px;">
+                Ville, rôle, initiales, puis le rang du document dans le travail de la personne.
+                Les quatre points seront remplacés par ce rang à sa première saisie.
+                <strong>À ne pas confondre avec le code ci-dessus</strong> : celui-là vient du logiciel
+                d'atelier et sert à l'import, celui-ci vient de la plateforme et signe les saisies.
+            </div>
+
+            @if ($this->codesProposes->isNotEmpty())
+                <div style="background:#F4F2EC; border:1px dashed var(--th-ligne,#E2E0D8); border-radius:8px; padding:9px 11px; margin-bottom:10px;">
+                    <div style="font-size:12.5px; font-weight:700; color:#4B4E55; margin-bottom:6px;">
+                        Codes libres dont les initiales collent à ce nom — à vérifier, pas à croire :
+                    </div>
+                    <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                        @foreach ($this->codesProposes as $propose)
+                            <button type="button" wire:click="$set('codeAgent', '{{ $propose->code }}')"
+                                style="background:#fff; border:1px solid var(--th-ligne,#E2E0D8); border-radius:6px; padding:5px 11px; font-size:13px; font-weight:600; cursor:pointer; color:#4B4E55;">
+                                <span style="font-family:ui-monospace,Consolas,monospace; font-weight:800;">{{ $propose->code }}</span>
+                                <span style="color:#6B6E76; font-weight:400;">
+                                    — {{ number_format((int) $propose->occurrences, 0, ',', ' ') }} fiche(s)
+                                </span>
+                            </button>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
             {{-- Un accès préparé n'est pas un accès ouvert. Créé inactif, il existe avec
                  son rôle et son périmètre, mais son titulaire n'en sait rien : aucun
                  courriel ne part, et la connexion lui est refusée. C'est le brouillon
                  d'un accès — utile quand on prépare une arrivée à l'avance. --}}
             <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">Ouverture de l'accès</label>
             <select wire:model.live="ouverture" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:15.5px;">
-                <option value="actif">Actif — courriel envoyé, le titulaire peut se connecter</option>
-                <option value="inactif">Inactif — accès préparé, aucun courriel, connexion refusée</option>
+                <option value="actif" @selected((string) $ouverture === 'actif')>Actif — courriel envoyé, le titulaire peut se connecter</option>
+                <option value="inactif" @selected((string) $ouverture === 'inactif')>Inactif — accès préparé, aucun courriel, connexion refusée</option>
             </select>
             <p style="font-size:11.5px; color:#9A9DA5; margin:5px 0 0;">
                 Le courriel de bienvenue partira le jour où vous activerez l'accès, pas avant.
@@ -413,18 +539,18 @@ $creer = function (CreerAcces $action) {
                      couvrent une ville entière, lieux et activités confondus. --}}
                 <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">Site (lieu dont il répond)</label>
                 <select wire:model="siteChoix" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:15.5px;">
-                    <option value="">— Choisir un site —</option>
+                    <option value="" @selected($siteChoix === '')>— Choisir un site —</option>
                     @foreach ($this->optionsSite as $id => $nom)
-                        <option value="{{ $id }}">{{ $nom }}</option>
+                        <option value="{{ $id }}" @selected((string) $siteChoix === (string) $id)>{{ $nom }}</option>
                     @endforeach
                 </select>
                 @error('siteChoix') <div style="color:#C8102E; font-size:13.5px; margin-top:6px;">{{ $message }}</div> @enderror
             @else
                 <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">Ville</label>
                 <select wire:model.live="villeChoix" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:15.5px;">
-                    <option value="">— Choisir une ville —</option>
+                    <option value="" @selected($villeChoix === '')>— Choisir une ville —</option>
                     @foreach ($this->optionsVilleCommercial as $id => $nom)
-                        <option value="{{ $id }}">{{ $nom }}</option>
+                        <option value="{{ $id }}" @selected((string) $villeChoix === (string) $id)>{{ $nom }}</option>
                     @endforeach
                 </select>
                 @error('villeChoix') <div style="color:#C8102E; font-size:13.5px; margin-top:6px;">{{ $message }}</div> @enderror
@@ -434,14 +560,14 @@ $creer = function (CreerAcces $action) {
                 {{-- Les responsables prospectent eux aussi : ils apparaissent parmi les
                      commerciaux et portent donc leurs propres objectifs. --}}
                 <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:14px 0 6px;">Objectif mensuel global (FCFA)</label>
-                <input type="number" wire:model.live="objectifGlobal"
+                <input type="number" wire:model.live="objectifGlobal" value="{{ $objectifGlobal }}"
                     style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:15.5px;">
                 @error('objectifGlobal') <div style="color:#C8102E; font-size:13.5px; margin-top:6px;">{{ $message }}</div> @enderror
 
                 <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">
                     Répartition — % Mécanique (le reste va au Sinistre)
                 </label>
-                <input type="number" wire:model.live="pourcentageMecanique" min="0" max="100"
+                <input type="number" wire:model.live="pourcentageMecanique" value="{{ $pourcentageMecanique }}" min="0" max="100"
                     style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:15.5px;">
                 @error('pourcentageMecanique') <div style="color:#C8102E; font-size:13.5px; margin-top:6px;">{{ $message }}</div> @enderror
 
@@ -540,7 +666,7 @@ $creer = function (CreerAcces $action) {
                         <th>Objectif mensuel (FCFA)</th>
                         <th>Objectif par activité</th>
                         <th>Statut</th>
-                        <th>Action</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -574,28 +700,60 @@ $creer = function (CreerAcces $action) {
                                     <span style="color:#C8102E; font-weight:600;">Révoqué</span>
                                 @endif
                             </td>
+                            {{-- Quatre gestes, quatre formulaires. Ils étaient posés sur la
+                                 couche interactive : dans un navigateur où celle-ci ne démarre
+                                 pas, ils ne faisaient rien du tout — et il s'agit ici de fermer
+                                 ou d'ouvrir l'accès de quelqu'un. --}}
                             <td style="white-space:nowrap;">
                                 @if (\Modules\Noyau\Entreprises\Support\HierarchieAcces::autorise(auth()->user(), $ligne['utilisateur']))
-                                    <button type="button" wire:click="basculerActif({{ $ligne['utilisateur']->id }})"
-                                        wire:confirm="{{ $ligne['utilisateur']->est_actif ? 'Révoquer cet accès ?' : 'Réactiver cet accès ?' }}"
-                                        style="background:transparent; border:1px solid var(--th-ligne,#E2E0D8); border-radius:6px; padding:5px 10px; font-size:12.5px; font-weight:600; cursor:pointer; margin-right:6px; color:{{ $ligne['utilisateur']->est_actif ? '#C8102E' : '#0E9F6E' }};">
-                                        {{ $ligne['utilisateur']->est_actif ? 'Révoquer' : 'Réactiver' }}
-                                    </button>
+                                    @php $bouton = 'border-radius:6px; padding:5px 10px; font-size:12.5px; font-weight:600; cursor:pointer; margin-right:6px; font-family:inherit;'; @endphp
+
+                                    <a href="{{ route('acces.modifier', $ligne['utilisateur']->id) }}"
+                                       title="Corriger le nom, l'adresse, le rôle"
+                                       style="{{ $bouton }} background:transparent; border:1px solid #191B20; color:#191B20; text-decoration:none; display:inline-block;">
+                                        Modifier
+                                    </a>
+
+                                    <form method="POST" action="{{ route('acces.agir', $ligne['utilisateur']->id) }}" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" name="geste" value="basculer"
+                                            data-confirmer-titre="{{ $ligne['utilisateur']->est_actif ? 'Révoquer cet accès' : 'Réactiver cet accès' }}"
+                                            data-confirmer="{{ $ligne['utilisateur']->est_actif ? 'L\'accès de '.$ligne['utilisateur']->name.' sera fermé immédiatement.' : 'L\'accès de '.$ligne['utilisateur']->name.' sera rouvert.' }}"
+                                            data-confirmer-detail="{{ $ligne['utilisateur']->est_actif ? 'Sa session en cours est coupée. Ses saisies sont conservées.' : 'Un courriel de bienvenue lui est envoyé.' }}"
+                                            data-confirmer-libelle="{{ $ligne['utilisateur']->est_actif ? 'Révoquer' : 'Réactiver' }}"
+                                            @if ($ligne['utilisateur']->est_actif) data-confirmer-ton="alerte" @endif
+                                            style="{{ $bouton }} background:transparent; border:1px solid var(--th-ligne,#E2E0D8); color:{{ $ligne['utilisateur']->est_actif ? '#C8102E' : '#0E9F6E' }};">
+                                            {{ $ligne['utilisateur']->est_actif ? 'Révoquer' : 'Réactiver' }}
+                                        </button>
+                                    </form>
 
                                     {{-- Renvoi du courriel : aucune écriture métier, et sur un
                                          compte déjà en service le mot de passe reste le sien. --}}
-                                    <button type="button" wire:click="renvoyer({{ $ligne['utilisateur']->id }})"
-                                        wire:confirm="Renvoyer le courriel d'accès à {{ $ligne['utilisateur']->name }} ({{ $ligne['utilisateur']->email }}) ?&#10;&#10;Aucune donnée ne sera modifiée."
-                                        title="Renvoyer le courriel d'accès"
-                                        style="background:transparent; border:1px solid #1D4ED855; color:#1D4ED8; border-radius:6px; padding:5px 10px; font-size:12.5px; font-weight:600; cursor:pointer; margin-right:6px;">
-                                        ✉ Renvoyer
-                                    </button>
+                                    <form method="POST" action="{{ route('acces.agir', $ligne['utilisateur']->id) }}" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" name="geste" value="renvoyer"
+                                            title="Renvoyer le courriel d'accès — aucune donnée ne sera modifiée"
+                                            data-confirmer-titre="Renvoyer le courriel"
+                                            data-confirmer="Le courriel d'accès repart à {{ $ligne['utilisateur']->email }}."
+                                            data-confirmer-detail="Aucune donnée n'est modifiée. Sur un compte déjà en service, le mot de passe reste le sien."
+                                            data-confirmer-libelle="Renvoyer"
+                                            style="{{ $bouton }} background:transparent; border:1px solid #1D4ED855; color:#1D4ED8;">
+                                            ✉ Renvoyer
+                                        </button>
+                                    </form>
 
-                                    <button type="button" wire:click="supprimer({{ $ligne['utilisateur']->id }})"
-                                        wire:confirm="Supprimer définitivement l'accès de {{ $ligne['utilisateur']->name }} ?&#10;&#10;La personne ne pourra plus se connecter. Ses saisies, elles, sont conservées : elles appartiennent à l'entreprise."
-                                        style="background:#C8102E; border:0; color:#fff; border-radius:6px; padding:5px 10px; font-size:12.5px; font-weight:600; cursor:pointer;">
-                                        Supprimer
-                                    </button>
+                                    <form method="POST" action="{{ route('acces.agir', $ligne['utilisateur']->id) }}" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" name="geste" value="supprimer"
+                                            data-confirmer-titre="Supprimer cet accès"
+                                            data-confirmer="L'accès de {{ $ligne['utilisateur']->name }} sera supprimé définitivement."
+                                            data-confirmer-detail="La personne ne pourra plus se connecter. Ses saisies, elles, sont conservées : elles appartiennent à l'entreprise."
+                                            data-confirmer-libelle="Supprimer"
+                                            data-confirmer-ton="alerte"
+                                            style="{{ $bouton }} background:#C8102E; border:0; color:#fff; margin-right:0;">
+                                            Supprimer
+                                        </button>
+                                    </form>
                                 @else
                                     <span style="color:#B7B9BE; font-size:12.5px;">—</span>
                                 @endif
