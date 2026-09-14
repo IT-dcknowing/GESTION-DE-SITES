@@ -1,10 +1,34 @@
-# Mise à jour du serveur — `gestionsites.dc-knowing.com`
+# Mise à jour des serveurs
 
-> **La base en ligne porte des données réelles.** Rien de ce qui suit ne modifie une
-> écriture métier : aucune purge, aucun seeder, aucun `migrate:fresh`. Les migrations
-> ajoutées ici **créent des tables neuves et vides**, ajoutent des colonnes facultatives
-> et **relâchent** deux contraintes — jamais l'inverse. La commande d'identifiants, elle, ne modifie **qu'une seule ligne** de la
-> table `users`, et seulement les colonnes nommées.
+Deux serveurs, un seul dépôt. Ils reçoivent le même code et ne diffèrent que par leur
+fichier `.env` — c'est lui, et lui seul, qui sépare la production du développement.
+
+| | Production | Développement |
+|---|---|---|
+| Adresse | `gestionsites.dc-knowing.com` | `gestion-dev.dc-knowing.com` |
+| Dossier | `~/public_html/GESTION-DE-SITES` | `~/public_html/gestion-dev/GESTION-DE-SITES` |
+| Base | `cp2255957p00_gestionsites` | `cp2255957p00_gestiondev` |
+| `APP_ENV` | `production` | `local` |
+| Courrier | SMTP réel | `log` — rien ne part |
+| Accès | connexion applicative | mot de passe navigateur en plus |
+
+Pour créer l'environnement de développement à partir de rien, voir
+[ENVIRONNEMENT-DE-DEV.md](ENVIRONNEMENT-DE-DEV.md).
+
+> **La base en ligne porte des données réelles.** C'est la règle qui commande tout le
+> reste : aucune purge, aucun seeder, aucun `migrate:fresh` sur un serveur en service. Les
+> migrations du projet créent des tables neuves, ajoutent des colonnes facultatives ou
+> relâchent une contrainte — jamais l'inverse. Une ligne déjà saisie ne peut donc pas
+> devenir invalide du fait d'une mise à jour.
+>
+> Avant chaque déploiement, vérifier ce qui attend et ce que cela fait :
+>
+> ```bash
+> php artisan migrate:status | grep Pending
+> ```
+>
+> Une migration qui **réécrit** des données existantes — et il en existe — mérite qu'on
+> relise sa méthode `up()` avant de la lancer.
 >
 > Avant de commencer, faire malgré tout une sauvegarde depuis cPanel → *Sauvegardes* →
 > *Télécharger une sauvegarde de base de données MySQL*. Une sauvegarde inutile ne coûte
@@ -12,48 +36,105 @@
 
 ---
 
-## 1. Récupérer le code
+## 1. Le rituel, à chaque mise à jour
+
+Sur **chaque** serveur, dans son propre dossier :
 
 ```bash
-cd ~/gestionsites.dc-knowing.com     # ou le dossier réel de l'application
+cd ~/public_html/GESTION-DE-SITES              # ou .../gestion-dev/GESTION-DE-SITES
 git pull origin main
-```
-
-Aucune dépendance nouvelle n'a été ajoutée : **pas besoin de `composer install`**. Le
-générateur de PDF de l'annuaire et le journal de traçabilité sont écrits sans paquet
-tiers, précisément pour que `vendor/` — qui n'est pas suivi par git — n'ait pas à bouger.
-
-## 2. Migrer et vider les caches
-
-```bash
 php artisan app:deployer
 ```
 
-Cette commande enchaîne `migrate --force`, puis le vidage des caches de configuration, de
-routes, d'évènements et de gabarits. Le vidage des gabarits n'est pas facultatif : Volt met
-en cache la classe de chaque écran, et une classe restée en arrière donne une erreur 500 sur
-une propriété introuvable.
+`app:deployer` enchaîne `migrate --force` puis vide les caches de configuration, de routes,
+d'évènements, de données et de gabarits, et recrée le lien `public/storage` s'il manque.
+La variante `--sans-migration` fait tout sauf les migrations, quand la base ne doit pas
+bouger.
 
-Ce que les migrations font :
+**Le vidage des gabarits n'est pas facultatif.** Volt met en cache la classe compilée de
+chaque écran et ne la refabrique que si le fichier source paraît plus récent — une
+comparaison de dates. Selon la façon dont les fichiers arrivent, cette comparaison peut se
+tromper : le gabarit est neuf, la classe reste l'ancienne, et la page tombe en erreur 500
+sur une propriété introuvable.
 
-| Objet | Contenu | Effet sur les données existantes |
-|---|---|---|
-| `sessions_utilisateur` *(table neuve)* | une ligne par connexion | aucun |
-| `visites_ecran` *(table neuve)* | une ligne par écran ouvert | aucun |
-| `relances_recouvrement` *(table neuve)* | une ligne par relance N1–N5 | aucun |
-| `commentaires_ecart_recouvrement` *(table neuve)* | l'explication d'un écart | aucun |
-| `factures.vehicule`, `factures.immatriculation` | colonnes **nullables** ajoutées | aucun : les factures existantes restent valides sans reprise |
-| `factures.assureur`, `factures.courtier` | colonnes **nullables** ajoutées, indexées | aucun : elles naissent vides, le tiers payant retombe sur `client` |
-| `entreprises.objectif_recouvrement_hebdomadaire` | colonne avec valeur par défaut | aucun |
-| `factures.commercial_id` | devient **facultatif** | aucun : toutes les factures existantes gardent leur commercial |
-| `encaissements.moyen`, `charges.moyen` | passent d'`ENUM` à `VARCHAR(60)` | aucun : les libellés sont conservés à l'identique |
-| rôles `agent_recouvrement`, `superviseur_recouvrement` | créés dans chaque entreprise | aucun : personne ne les porte tant qu'on ne les attribue pas |
+### Si `composer.json` a changé
 
-> Les deux dernières lignes **relâchent** une contrainte au lieu d'en ajouter une : une
-> ligne déjà saisie ne peut donc pas devenir invalide. La conversion `ENUM → VARCHAR`
-> corrige au passage un défaut qui existait déjà — un moyen de paiement ajouté depuis les
-> Paramètres était accepté par le formulaire puis refusé par la base, et l'écran tombait
-> en erreur au moment d'enregistrer.
+```bash
+git diff HEAD@{1} --name-only | grep composer.json
+```
+
+Si la commande répond quelque chose, l'autochargeur doit être refait **avant**
+`app:deployer` :
+
+```bash
+composer dump-autoload -o
+```
+
+C'est une opération purement locale : aucune dépendance n'est téléchargée. Sans elle,
+l'application s'arrête sur `Class "Modules\…\…ServiceProvider" not found` — un module
+ajouté au dépôt existe sur le disque mais reste invisible à PHP.
+
+### Un réglage de file d'attente à ne pas oublier
+
+Le traitement d'un fichier importé passe par une file (`QUEUE_CONNECTION=database`) et peut
+durer jusqu'à 900 secondes. Le `.env` de chaque serveur doit donc porter :
+
+```
+DB_QUEUE_RETRY_AFTER=1200
+```
+
+Laravel exige que ce délai dépasse la durée maximale d'une tâche. Avec la valeur par défaut
+— 90 secondes —, un import un peu long est cru abandonné, repris par un second ouvrier, et
+se retrouve marqué en échec alors qu'il a parfaitement abouti.
+
+### Les tâches planifiées
+
+Une paire par serveur, dans cPanel → *Tâches Cron*, toutes les minutes. Sans la première,
+un fichier déposé à l'import monte, s'inscrit en base, et n'est **jamais** traité.
+
+```
+/usr/local/bin/php /home/cp2255957p00/public_html/GESTION-DE-SITES/artisan queue:work --stop-when-empty --timeout=3600 --tries=1 >> /dev/null 2>&1
+/usr/local/bin/php /home/cp2255957p00/public_html/GESTION-DE-SITES/artisan schedule:run >> /dev/null 2>&1
+```
+
+La table des crons est commune à tout le compte d'hébergement : d'autres projets y
+cohabitent. Passer par l'interface cPanel plutôt que par `crontab -e` évite d'abîmer leurs
+lignes.
+
+## 2. Ce qu'un envoi ne doit jamais emporter
+
+Le 14 septembre 2026, le projet a été mis en ligne par un zip du dossier local. La
+production a reçu, en même temps que le code, le `.env` du poste de développement — et
+s'est mise à chercher une base `gestionsites` chez un utilisateur `root` sans mot de passe.
+Le site est tombé pour la journée.
+
+**La règle est donc simple : on ne déploie pas par zip.** `git pull` ne transporte ni le
+`.env`, ni `vendor/`, ni `storage/` — précisément les trois choses qui appartiennent au
+serveur et non au dépôt.
+
+Si un envoi manuel est malgré tout inévitable, il ne doit **jamais** contenir :
+
+| Chemin | Pourquoi |
+|---|---|
+| `.env` | identifiants de base, clés, mots de passe — propres à chaque serveur |
+| `storage/` | fichiers déposés, journaux, sessions, gabarits compilés |
+| `vendor/` | dépendances, reconstruites par Composer |
+| `bootstrap/cache/` | chemins absolus du poste d'origine |
+| `public/storage` | c'est un lien symbolique ; un zip le transforme en copie figée |
+| `.git/` | sinon le serveur hérite de la branche du poste, pas de la sienne |
+
+### Remettre un serveur d'aplomb après un envoi malheureux
+
+```bash
+git fetch origin
+git log --oneline origin/main..HEAD     # doit ne rien afficher
+git checkout -f -B main origin/main
+git clean -fd
+php artisan app:deployer
+```
+
+⚠️ **`-fd`, jamais `-fdx`.** Le `-fd` efface les fichiers non suivis ; le `-x` y ajouterait
+ceux que `.gitignore` protège, c'est-à-dire `.env`, `vendor/` et les fichiers déposés.
 
 ## 3. Faire le ménage parmi les comptes de la plateforme
 
@@ -171,12 +252,9 @@ les cinq sections ouvertes. Puis se déconnecter et se reconnecter avec la nouve
 
 ## 6. Facultatif — entretien du journal de traçabilité
 
-Le journal des connexions est nominatif et se conserve six mois. Si l'hébergement dispose
-d'une tâche planifiée (cPanel → *Tâches Cron*), y ajouter l'ordonnanceur Laravel :
-
-```
-* * * * * cd ~/gestionsites.dc-knowing.com && php artisan schedule:run >> /dev/null 2>&1
-```
+Le journal des connexions est nominatif et se conserve six mois. L'ordonnanceur qui en
+assure l'entretien est déjà déclaré au point 1, parmi les deux tâches planifiées de chaque
+serveur.
 
 Sans cron, l'écran de traçabilité reste **juste** : une session silencieuse depuis plus de
 quinze minutes n'y est pas comptée comme présente, et les durées sont tenues à jour à chaque
@@ -190,12 +268,18 @@ php artisan tracabilite:entretenir
 
 ## En cas de retour en arrière
 
-Les deux tables ajoutées sont indépendantes du métier : les supprimer ne fait perdre que
-l'historique de navigation.
+Un retour en arrière se compte en **lots**, pas en migrations : `migrate:status` donne le
+numéro de lot de chacune, et `--step=1` défait le dernier lot entier — c'est-à-dire tout ce
+qu'un `app:deployer` a posé d'un coup.
 
 ```bash
-php artisan migrate:rollback --step=2 --force
+php artisan migrate:status | tail -20
+php artisan migrate:rollback --step=1 --force
 ```
+
+Vérifier avant de lancer ce que la méthode `down()` des migrations concernées supprime :
+une table neuve et vide se perd sans conséquence, une colonne remplie depuis emporte ce
+qu'elle contient.
 
 Le retour en arrière laisse volontairement `factures.commercial_id` facultatif et `moyen`
 en `VARCHAR` : les factures de recouvrement saisies entre-temps n'ont pas de commercial, et
