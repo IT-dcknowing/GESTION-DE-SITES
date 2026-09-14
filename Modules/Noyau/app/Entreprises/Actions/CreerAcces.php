@@ -13,6 +13,7 @@ use Modules\Noyau\Entreprises\Support\ChoixDeLieu;
 use Modules\Noyau\Entreprises\Support\ChoixDeVille;
 use Modules\Noyau\Entreprises\Support\HierarchieAcces;
 use Modules\Noyau\Entreprises\Support\LibellesRoles;
+use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
 use Modules\Noyau\Imports\Services\CodeDeLAtelier;
 use Modules\Noyau\Commun\Mails\BienvenueNouvelAcces;
 use App\Models\User;
@@ -40,9 +41,8 @@ use Spatie\Permission\PermissionRegistrar;
 class CreerAcces
 {
     /** Rôles dont le titulaire prospecte aussi : il doit donc exister comme commercial. */
-    // Le responsable commercial vend lui aussi : il lui faut sa fiche et ses objectifs,
-    // sans quoi ni ses prospections ni son chiffre ne seraient rattachables à personne.
-    private const ROLES_COMMERCIAUX = ['responsable_ville', 'responsable_site', 'responsable_commercial', 'commercial'];
+    /** Voir RolesCommerciaux : la liste vit là, pour n'exister qu'une fois. */
+    private const ROLES_COMMERCIAUX = RolesCommerciaux::TOUS;
 
     /**
      * Pourquoi le code employé n'a pas pu être rattaché, le cas échéant.

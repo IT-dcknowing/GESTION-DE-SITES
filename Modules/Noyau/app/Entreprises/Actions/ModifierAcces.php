@@ -10,6 +10,7 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\ChoixDeLieu;
 use Modules\Noyau\Entreprises\Support\ChoixDeVille;
+use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
@@ -31,7 +32,8 @@ use Spatie\Permission\PermissionRegistrar;
 class ModifierAcces
 {
     /** Rôles dont le titulaire prospecte : il doit exister comme commercial. */
-    private const ROLES_COMMERCIAUX = ['responsable_ville', 'responsable_site', 'responsable_commercial', 'commercial'];
+    /** Voir RolesCommerciaux : la liste vit là, pour n'exister qu'une fois. */
+    private const ROLES_COMMERCIAUX = RolesCommerciaux::TOUS;
 
     /**
      * @param  array<string, mixed>  $donnees  nom, email, telephone, mot_de_passe, entreprise_id, ville_id, site_id, objectifs

@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Commun\Services;
 
 use App\Models\User;
+use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
 
 /**
  * Construit le menu du bandeau supérieur selon le rôle de l'utilisateur connecté.
@@ -205,10 +206,25 @@ class MenuNavigation
             ],
         ];
 
+        $general = [
+            ['label' => 'Ajouter un accès', 'route' => 'acces.creer'],
+        ];
+
+        /*
+         * Sa performance individuelle, pour qui vend. Un responsable de ville et un
+         * responsable de site portent une fiche commercial et des objectifs depuis
+         * toujours — mais l'onglet n'avait été donné qu'au commercial, et personne ne
+         * voyait donc ses propres chiffres. Le gérant en est exclu : il répond de
+         * l'entreprise entière et ne porte pas d'objectif individuel.
+         */
+        if (RolesCommerciaux::enFaitPartie($utilisateur)) {
+            $general[] = ['label' => 'Ma performance individuelle', 'route' => 'ma-performance'];
+        }
+
         $onglets[] = [
             'label' => 'Général',
             'groupe' => [
-                ['label' => 'Ajouter un accès', 'route' => 'acces.creer'],
+                ...$general,
                 ['label' => 'Messages', 'route' => 'messages'],
                 ['label' => 'Notifications', 'route' => 'mes-notifications'],
                 ['label' => 'Paramètres', 'route' => $parametres],
