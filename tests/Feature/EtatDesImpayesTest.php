@@ -172,6 +172,36 @@ class EtatDesImpayesTest extends TestCase
         $this->assertSame(180_000, $creance->fresh()->resteAEncaisser());
     }
 
+    public function test_le_formulaire_porte_les_seize_colonnes_saisissables_du_classeur(): void
+    {
+        /*
+         * **Pourquoi la liste des intitulés est tenue par un test.** Le superviseur de veille
+         * tient ce classeur depuis quatre ans. Il ne saisit pas champ par champ : il reprend
+         * une ligne de tableur et la retape, de gauche à droite. Un intitulé traduit, un champ
+         * déplacé ou supprimé lui ferait chercher, à chaque créance, ce qu'il trouvait sans
+         * regarder — et c'est ce genre de friction qui fait qu'on retourne au fichier.
+         *
+         * Les quatre colonnes non saisissables du classeur n'y sont pas, et c'est voulu : le
+         * reste à payer et les deux ancienneté se calculent, la colonne A ne porte rien.
+         */
+        $this->actingAs($this->compte('gerant'));
+
+        $ecran = Volt::test('pilotage.impayes')->call('basculerFormulaire');
+
+        foreach ([
+            'ASSUREUR', 'Client', 'SITE', 'Courtier',
+            "Date d'édition", 'Date de réception', 'N° de la facture', 'Numéro Sinistre',
+            'Vehicule', 'Immatriculation', 'montantTTC', 'Montantréglé',
+            'Modederèglement', 'Datederèglement', 'banque', 'Commentaires',
+        ] as $intitule) {
+            $ecran->assertSee($intitule, false);
+        }
+
+        // Ce qui ne se saisit pas ne doit pas être proposé : un champ « Reste à payer » dans
+        // un formulaire invite à le remplir, et l'on aurait deux vérités pour un même chiffre.
+        $ecran->assertDontSee('ResteàPayer', false);
+    }
+
     public function test_un_reglement_superieur_au_montant_facture_est_refuse(): void
     {
         /*

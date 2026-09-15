@@ -372,41 +372,44 @@ $enregistrer = function () {
     @if ($formulaireOuvert)
         <div class="carte" style="margin-bottom:16px; border-left:3px solid var(--th-accent,#C8102E);">
             <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Nouvelle créance</h3>
-            <p style="font-size:12.5px; color:#6B6E76; margin:0 0 14px;">
-                Elle portera la référence <strong>{{ $this->apercuNumero }}</strong>, posée à l'enregistrement.
-                Le reste à payer ne se saisit pas : il se déduit du montant TTC et des règlements.
+            <p style="font-size:12.5px; color:#6B6E76; margin:0 0 12px; line-height:1.55;">
+                Référence <strong>{{ $this->apercuNumero }}</strong>, posée à l'enregistrement.
+                Le reste à payer ne se saisit pas — il se déduit du montant TTC et des règlements.
+                La date de réception ne peut pas précéder l'édition, le montant réglé ne peut pas
+                dépasser le TTC, et un numéro de sinistre range la créance en Sinistre.
             </p>
 
+            {{-- Deux rangées, et pas quatre.
+                 Les seize colonnes du classeur tiennent en deux bandes — l'affaire, puis l'argent —
+                 parce que la saisie se fait en série : on reprend une ligne du tableur et on la
+                 retape. Quatre rangées obligeaient à descendre des yeux quatre fois par créance, et
+                 sur deux cents créances cela se paie. Les aides sont remontées dans la phrase
+                 ci-dessus : sous un champ, elles décalaient les rangées les unes par rapport aux
+                 autres et cassaient l'alignement qu'on cherche ici.
+
+                 `flex-wrap` garde le formulaire utilisable sur un écran étroit : les champs se
+                 replient au lieu de déborder. --}}
             <form wire:submit.prevent="enregistrer">
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-                    <x-champ label="ASSUREUR" model="fAssureur" width="190" />
-                    <x-champ label="Client" model="fClient" :requis="true" width="220" />
-                    <x-champ label="SITE" model="fSiteId" type="select" :options="$this->sitesSaisissables" vide="— choisir —" :requis="true" width="200" />
-                    <x-champ label="Courtier" model="fCourtier" width="190" />
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:flex-start;">
+                    <x-champ label="ASSUREUR" model="fAssureur" width="150" />
+                    <x-champ label="Client" model="fClient" :requis="true" width="175" />
+                    <x-champ label="SITE" model="fSiteId" type="select" :options="$this->sitesSaisissables" vide="— choisir —" :requis="true" width="155" />
+                    <x-champ label="Courtier" model="fCourtier" width="150" />
+                    <x-champ label="Date d'édition" model="fDate" type="date" :requis="true" width="140" />
+                    <x-champ label="Date de réception" model="fDateReception" type="date" width="140" />
+                    <x-champ label="N° de la facture" model="fNumero" :requis="true" width="135" />
+                    <x-champ label="Numéro Sinistre" model="fSinistre" width="145" />
                 </div>
 
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-                    <x-champ label="Date d'edition de la facture" model="fDate" type="date" :requis="true" width="200" />
-                    <x-champ label="Date de reception de la facture" model="fDateReception" type="date" width="215"
-                        aide="Facultative, jamais avant l'édition." />
-                    <x-champ label="Numéro de la facture" model="fNumero" :requis="true" width="180" />
-                    <x-champ label="Numéro Sinistre" model="fSinistre" width="180"
-                        aide="Renseigné, la créance est rangée en Sinistre." />
-                </div>
-
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-                    <x-champ label="Vehicule" model="fVehicule" width="200" />
-                    <x-champ label="Immatriculation" model="fImmatriculation" width="160" />
-                    <x-champ label="montantTTC" model="fMontant" type="number" :requis="true" width="160" />
-                    <x-champ label="Montantréglé" model="fRegle" type="number" width="160"
-                        aide="Jamais supérieur au montant TTC." />
-                </div>
-
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
-                    <x-champ label="Modederèglement" model="fModeReglement" type="select" :options="$this->modes" vide="— aucun —" width="180" />
-                    <x-champ label="Datederèglement" model="fDateReglement" type="date" width="170" />
-                    <x-champ label="banque" model="fBanque" width="170" />
-                    <x-champ label="Commentaires" model="fCommentaires" width="240" />
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:flex-start;">
+                    <x-champ label="Vehicule" model="fVehicule" width="150" />
+                    <x-champ label="Immatriculation" model="fImmatriculation" width="140" />
+                    <x-champ label="montantTTC" model="fMontant" type="number" :requis="true" width="130" />
+                    <x-champ label="Montantréglé" model="fRegle" type="number" width="130" />
+                    <x-champ label="Modederèglement" model="fModeReglement" type="select" :options="$this->modes" vide="— aucun —" width="160" />
+                    <x-champ label="Datederèglement" model="fDateReglement" type="date" width="140" />
+                    <x-champ label="banque" model="fBanque" width="140" />
+                    <x-champ label="Commentaires" model="fCommentaires" width="185" />
                 </div>
 
                 <div style="display:flex; gap:10px; align-items:center;">
