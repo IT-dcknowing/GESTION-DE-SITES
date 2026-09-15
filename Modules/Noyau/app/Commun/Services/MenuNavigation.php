@@ -195,6 +195,14 @@ class MenuNavigation
                 ['label' => 'Entrées / sorties', 'route' => 'mouvements-vehicules'],
                 ['label' => 'Clients', 'route' => 'clients'],
                 ['label' => "Chiffre d'affaires", 'route' => 'chiffre-affaires'],
+                /*
+                 * L'état des impayés suit immédiatement le chiffre d'affaires, et c'est
+                 * voulu : c'est le même chiffre vu par l'autre bout — ce qui a été facturé,
+                 * puis ce qui en a été réglé. Les lire l'un sous l'autre est la façon dont
+                 * on s'en sert. Le rapprochement, qui les confronte, vient juste après.
+                 */
+                ['label' => 'État des impayés — FICORE', 'route' => 'impayes', 'actifPattern' => 'impayes'],
+                ['label' => 'Rapprochement CA / impayés', 'route' => 'rapprochement-ca-impayes'],
                 ['label' => 'Charges', 'route' => 'charges'],
                 ['label' => 'Trésorerie', 'route' => 'tresorerie'],
                 // La caisse et les fournisseurs suivent la trésorerie : ce sont les deux

@@ -59,6 +59,23 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     // La fiche a son adresse propre : elle se met en favori et se transmet, ce qu'un volet
     // replié sous un tableau ne permet pas.
     Volt::route('/parc-vehicules/{dossier}', 'pilotage.parc-fiche')->name('parc-fiche');
+
+    /*
+     * L'état des impayés, et ce qui va avec.
+     *
+     * Il est ici et non dans le module Recouvrement, et le choix se défend : ce que le
+     * superviseur de veille tient dans son classeur, c'est l'état du chiffre d'affaires et de
+     * ses règlements — un indicateur de l'exploitation. Le recouvrement, lui, poursuit les
+     * créances que cet état fait apparaître ; il les lit, il ne les relève pas.
+     *
+     * Fermé au responsable commercial, comme les charges et la trésorerie : animer une équipe
+     * de vente ne donne aucun titre à lire ce que les clients de l'entreprise doivent.
+     */
+    Volt::route('/impayes', 'pilotage.impayes')->name('impayes');
+    // La reprise du classeur a son adresse propre : c'est une page qu'on ouvre à côté de
+    // l'autre pour comparer, pas un volet qu'on replie sous elle.
+    Volt::route('/impayes/etat-initial', 'pilotage.impayes-etat-initial')->name('impayes.etat-initial');
+    Volt::route('/rapprochement-ca-impayes', 'pilotage.rapprochement-ca-impayes')->name('rapprochement-ca-impayes');
 });
 
 /*

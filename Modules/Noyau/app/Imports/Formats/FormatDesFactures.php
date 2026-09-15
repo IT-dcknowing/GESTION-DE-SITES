@@ -20,8 +20,15 @@ use Modules\Noyau\Imports\Modeles\DossierVehicule;
  *   gagne — une affaire ne change pas de ville entre deux fichiers, et la fiche de réception
  *   est établie avant la facture.
  * - **Aucun numéro de facture n'est commun avec l'état des impayés.** Les deux fichiers
- *   parlent des mêmes affaires sans partager leur clé. Le pont entre eux, c'est la fiche de
- *   réception, présente des deux côtés — d'où l'ordre d'import : le parc d'abord.
+ *   parlent des mêmes affaires sans partager leur clé : « FA -5713 » d'un côté, « 17 » de
+ *   l'autre. Le pont a été cherché et mesuré depuis : c'est le couple **immatriculation +
+ *   montant**, qui retrouve 71 % des factures de ce fichier dans l'état des impayés, et 78 %
+ *   sur la seule plaque. Voir `EtatDesImpayes::clePont()` et l'écran de rapprochement. La
+ *   fiche de réception, elle, reste ce qui donne la ville — d'où l'ordre d'import : le parc
+ *   d'abord ; mais elle est absente de l'état des impayés et ne peut donc pas les relier.
+ * - **Ce fichier ne porte qu'une année.** Le CATTC repris couvre 2026 — 2 375 lignes,
+ *   1 384 588 526 F — là où l'état des impayés remonte à 2022. Aucun des deux n'est le
+ *   sous-ensemble de l'autre, et c'est pourquoi le rapprochement compare année par année.
  * - **Les dates sortent en clair**, contrairement aux devis où elles arrivent en numéros de
  *   série. La conversion gère les deux sans qu'on ait à choisir.
  *
@@ -145,9 +152,25 @@ class FormatDesFactures extends Format
             ), 120),
             'immatriculation' => self::texte($ligne['immatriculation'] ?? null, 30),
             'montant' => (int) round((float) self::montant($ligne['montant'] ?? null)),
-            'observations' => $this->observations($ligne),
             'activite' => $this->activite($ligne),
             'type' => 'FNE',
+            /*
+             * Les quatre colonnes du fichier qui finissaient dans une phrase.
+             *
+             * Elles étaient concaténées en observation — « Sinistre : X · Sticker : Y · Code
+             * client : Z » — ce qui les conservait sans les rendre lisibles : on ne trie pas
+             * sur un morceau de phrase, on ne filtre pas dessus, et l'écran du chiffre
+             * d'affaires ne pouvait pas afficher les colonnes du fichier qu'il montre.
+             *
+             * `observations` n'est plus écrite ici : la remplir de null écraserait une note
+             * ajoutée à la main sur une facture importée. Les lignes déjà reprises gardent
+             * donc leur phrase jusqu'à ce que `impayes:ranger-les-colonnes` la range.
+             */
+            'n_sinistre' => self::texte($ligne['sinistre'] ?? null, 60),
+            'n_sticker' => self::texte($ligne['sticker'] ?? null, 60),
+            'code_client' => self::texte($ligne['code_client'] ?? null, 40),
+            'marque' => self::texte($ligne['marque'] ?? null, 60),
+            'modele' => self::texte($ligne['modele'] ?? null, 60),
         ];
 
         $existante = isset($this->numerosConnus[$numero])
@@ -214,15 +237,10 @@ class FormatDesFactures extends Format
         return ($this->motifsDesFiches[$fiche] ?? null) === 'SINISTRE' ? 'Sinistre' : 'Mécanique';
     }
 
-    /** Ce que le fichier porte en plus et qu'aucune colonne n'accueille. */
-    private function observations(array $ligne): ?string
-    {
-        $morceaux = array_filter([
-            ($s = self::texte($ligne['sinistre'] ?? null, 60)) ? "Sinistre : {$s}" : null,
-            ($t = self::texte($ligne['sticker'] ?? null, 60)) ? "Sticker : {$t}" : null,
-            ($c = self::texte($ligne['code_client'] ?? null, 40)) ? "Code client : {$c}" : null,
-        ]);
-
-        return $morceaux === [] ? null : implode(' · ', $morceaux);
-    }
+    /*
+     * L'import n'écrit plus de phrase en observation : sticker, n° de sinistre et code client
+     * ont désormais leur colonne. Les lignes déjà reprises portent encore la leur — du genre
+     * « Sinistre : X · Sticker : Y · Code client : Z » — et c'est `impayes:ranger-les-colonnes`
+     * qui la démêle, en rangeant la donnée et en gardant la note quand il y en a une à côté.
+     */
 }

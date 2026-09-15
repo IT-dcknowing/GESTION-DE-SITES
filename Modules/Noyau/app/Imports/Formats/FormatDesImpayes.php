@@ -4,6 +4,7 @@ namespace Modules\Noyau\Imports\Formats;
 
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 
 /**
  * L'état des impayés — les créances, et ce qui a déjà été encaissé dessus.
@@ -36,6 +37,24 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
  *   suffisent pas à identifier une facture : la clé retenue est donc le numéro **et** la
  *   date d'édition, faute de quoi la facture n° 17 de 2022 et celle de 2024 n'en feraient
  *   qu'une.
+ *
+ * **Deux autres, découverts en ouvrant le classeur lui-même :**
+ *
+ * - **La colonne « Commentaires » sert à deux choses.** Elle porte 345 vraies consignes de
+ *   travail — « FACTURE D'AVOIR A ETABLIR », « EN ATTENTE DE JUSTIF DE REGLEMENT PAR SAAR » —
+ *   et, sur 4 299 lignes, une formule `CONCATENATE` de repérage des doublons. Les résultats de
+ *   cette formule ne sont pas enregistrés dans le fichier reçu, donc rien de technique
+ *   n'arrive aujourd'hui en observation ; ils y arriveraient au premier recalcul du classeur.
+ *   Voir {@see observations()}, qui recompose la clé depuis la ligne pour l'écarter, et laisse
+ *   passer tout le reste.
+ * - **Le classeur avait trouvé la même clé que nous, de son côté.** Son `CONCATENATE` accole
+ *   exactement les quatre champs que l'import avait retenus en éprouvant les combinaisons
+ *   sur le fichier entier. C'est la meilleure preuve qu'on puisse avoir qu'un numéro de
+ *   facture, seul, n'identifie rien ici.
+ *
+ * **Et ses chiffres sont justes** : 6 329 977 795 F facturés, 5 535 425 213 F réglés, et
+ * 798 999 354 F de reste à payer sur 1 332 créances ouvertes. La reprise en base y retombe —
+ * 791 268 390 F. Voir {@see EtatDesImpayes} pour le détail de la mesure.
  */
 class FormatDesImpayes extends Format
 {
@@ -68,6 +87,14 @@ class FormatDesImpayes extends Format
             'mode_reglement' => 'Modederèglement',
             'date_reglement' => 'Datederèglement',
             'banque' => 'banque',
+            // Le classeur porte l'ancienneté deux fois : en jours (R), puis en tranche (S).
+            //
+            // Les jours sont déclarés ici sans être conservés : l'application les recalcule à
+            // chaque lecture, et une durée stockée serait fausse dès le lendemain. Ils figurent
+            // dans la liste pour que l'en-tête du fichier soit reconnu en entier — c'est ce qui
+            // permet à l'écran de dépôt d'annoncer les vingt colonnes attendues, et au contrôle
+            // d'affinité de dire si le fichier déposé est bien celui-là.
+            'anciennete_jours' => 'Anciennetéfactures1',
             'anciennete' => 'Anciennetéfactures',
             'commentaires' => 'Commentaires',
         ];
@@ -188,11 +215,29 @@ class FormatDesImpayes extends Format
             'immatriculation' => self::texte($ligne['immatriculation'] ?? null, 30),
             'montant' => $montant,
             'observations' => $this->observations($ligne),
+            /*
+             * L'année de la créance, et la marque de la reprise.
+             *
+             * L'année est celle de la facture, jamais celle du dépôt : c'est elle qui fait
+             * qu'une créance de 2024 encore ouverte apparaîtra dans l'état de 2026 sous la
+             * mention « Reporté 2024 ». La déduire de la date du fichier plutôt que de la
+             * demander évite la seule erreur qu'on ne rattrape pas — un report daté de
+             * travers, qu'aucun écran ne peut contredire.
+             */
+            'exercice_impayes' => $date?->format('Y'),
+            'est_etat_initial' => true,
+            // Les colonnes qui n'avaient nulle part où aller, et qui en ont désormais une.
+            'date_reception' => self::date($ligne['date_reception'] ?? null),
+            'banque' => self::texte($ligne['banque'] ?? null, 120),
+            'n_sinistre' => $this->numeroDeSinistre($ligne),
+            'anciennete_declaree' => self::texte($ligne['anciennete'] ?? null, 20),
             // L'activité n'est pas dans ce fichier. « Sinistre » quand un numéro de sinistre
             // est renseigné, ce qui est une lecture du fichier et non une supposition ;
-            // « Mécanique » sinon, qui est le cas majeur mesuré.
-            'activite' => self::texte($ligne['sinistre'] ?? null, 60) !== null
-                && trim((string) $ligne['sinistre']) !== '-' ? 'Sinistre' : 'Mécanique',
+            // « Mécanique » sinon, qui est le cas majeur mesuré. La règle vit dans
+            // EtatDesImpayes, où l'écran de saisie la lit aussi : si l'import et l'écran en
+            // gardaient chacun une copie, la même créance changerait d'activité selon la
+            // porte par laquelle elle est entrée.
+            'activite' => EtatDesImpayes::activiteDeduite($ligne['sinistre'] ?? null),
             'type' => 'FNE',
         ];
 
@@ -291,14 +336,74 @@ class FormatDesImpayes extends Format
         return true;
     }
 
+    /** Le numéro de sinistre, où « - » veut dire « pas de sinistre » et non « sinistre nommé - ». */
+    private function numeroDeSinistre(array $ligne): ?string
+    {
+        $numero = self::texte($ligne['sinistre'] ?? null, 60);
+
+        return $numero !== null && trim($numero) !== '-' ? $numero : null;
+    }
+
+    /**
+     * Les observations — et la colonne « Commentaires » qui sert à deux choses.
+     *
+     * **Ce qu'on a découvert en ouvrant le classeur.** Sous l'intitulé « Commentaires », la
+     * colonne T sert à deux usages : 345 vraies consignes de travail, et une formule
+     * `CONCATENATE` posée sur 4 299 lignes, qui accole date d'édition, numéro, immatriculation
+     * et montant pour repérer les doublons — des chaînes du genre « 44673261179JF01147050 ».
+     *
+     * Le fichier reçu n'enregistre pas le résultat de ces formules : aujourd'hui, seules les
+     * consignes arrivent jusqu'à l'import. Mais il suffirait qu'on ouvre le classeur et qu'on
+     * l'enregistre pour qu'Excel écrive les 4 299 clés, et l'import les recopierait alors en
+     * observation. Ce garde-fou coûte trois lignes et évite d'avoir à s'en apercevoir.
+     *
+     * On ne devine pas : on recompose la clé depuis la ligne elle-même, sous ses deux formes
+     * — celle à quatre champs et celle à deux — et l'on écarte la valeur si elle coïncide.
+     * Un vrai commentaire, lui, passe intact. Écarter au flair « ce qui ressemble à une
+     * clé » aurait fini par manger une immatriculation notée à la main.
+     *
+     * Le numéro de sinistre n'est plus recopié ici : il a sa colonne, où il se filtre et se
+     * cherche. Le laisser aux deux endroits aurait créé deux vérités pour un même numéro.
+     */
     private function observations(array $ligne): ?string
     {
-        $morceaux = array_filter([
-            ($s = self::texte($ligne['sinistre'] ?? null, 60)) && trim($s) !== '-' ? "Sinistre : {$s}" : null,
-            ($c = self::texte($ligne['commentaires'] ?? null, 255)) ? $c : null,
-        ]);
+        $valeur = self::texte($ligne['commentaires'] ?? null, 255);
 
-        return $morceaux === [] ? null : implode(' · ', $morceaux);
+        if ($valeur === null) {
+            return null;
+        }
+
+        $numero = self::texte($ligne['numero'] ?? null, 60);
+        $immatriculation = self::texte($ligne['immatriculation'] ?? null, 30);
+        $montant = (string) (int) round((float) self::montant($ligne['montant'] ?? null));
+        $edition = $this->dateDeLaFacture($ligne);
+
+        $cles = [
+            // CONCATENATE(G;H;K;L) — la forme dominante, 3 804 lignes.
+            ($edition !== null ? $edition->format('Ymd') : '').$numero.$immatriculation.$montant,
+            // La date telle qu'Excel la stocke : la concaténation produit un numéro de série.
+            ($edition !== null ? self::serieExcel($edition) : '').$numero.$immatriculation.$montant,
+            // CONCATENATE(K;L) — la forme ancienne, 495 lignes.
+            $immatriculation.$montant,
+        ];
+
+        $comparable = preg_replace('/\s+/', '', $valeur) ?? $valeur;
+
+        foreach ($cles as $cle) {
+            if ($cle !== '' && $comparable === preg_replace('/\s+/', '', $cle)) {
+                return null;
+            }
+        }
+
+        return $valeur;
+    }
+
+    /** Le numéro de série Excel d'une date : c'est sous cette forme que le CONCATENATE la voit. */
+    private static function serieExcel(\DateTimeInterface $date): string
+    {
+        $origine = new \DateTimeImmutable('1899-12-30');
+
+        return (string) $origine->diff($date)->days;
     }
 
     /**

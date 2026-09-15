@@ -20,6 +20,16 @@ state([
     'activiteFiltre' => '',
     'recherche' => '',
     'commercialFiltre' => '',
+    /*
+     * L'origine de la ligne : reprise du logiciel d'atelier, ou saisie ici.
+     *
+     * La distinction existait en base depuis longtemps — `lot_import_id` — sans qu'aucun écran
+     * ne permette de s'en servir. Or elle change ce qu'on peut attendre d'une ligne : une
+     * facture reprise n'a pas de commercial, parce que le logiciel d'atelier ne connaît pas
+     * cette notion, et son atelier peut manquer tant que le code de liaison n'est pas
+     * rattaché. Voir PeutVenirDUnImport.
+     */
+    'origineFiltre' => '',
     'pageDetail' => 1,
 ]);
 
@@ -32,6 +42,7 @@ $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre 
 $updatedSemaineFiltre = function () { $this->jourFiltre = ''; };
 /** Changer de ville rend caduc le lieu choisi dans la précédente. */
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; };
+$updatedOrigineFiltre = function () { $this->pageDetail = 1; };
 
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin, $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null
@@ -141,7 +152,35 @@ $graphique = computed(function () {
     ];
 });
 
-$detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'site'])->latest('date')->latest('id')->get());
+/**
+ * Le détail, avec les colonnes du fichier CATTC et le filtre d'origine.
+ *
+ * **Le filtre d'origine ne porte que sur ce tableau**, jamais sur les totaux ni sur le
+ * graphique, et c'est délibéré : un chiffre d'affaires amputé de ce qui a été importé ne
+ * serait plus celui de l'entreprise, ce serait celui de ce qu'on a tapé. On regarde les lignes
+ * d'une origine ; on ne réduit pas le chiffre à cette origine.
+ *
+ * Il s'appuie sur les portées du modèle — `importee()`, `saisieManuelle()` — plutôt que sur un
+ * `whereNull('lot_import_id')` écrit ici : la même question se pose sur cinq écrans, et une
+ * condition recopiée finit par diverger de celle qui décide ailleurs si une ligne est reprise.
+ */
+$detail = computed(function () {
+    $q = (clone $this->requeteBase)->with(['commercial', 'site']);
+
+    if ($this->origineFiltre === 'import') {
+        $q->importee();
+    } elseif ($this->origineFiltre === 'local') {
+        $q->saisieManuelle();
+    }
+
+    return $q->latest('date')->latest('id')->get();
+});
+
+/** Combien de lignes de chaque origine, pour que le filtre annonce ce qu'il va trouver. */
+$comptesParOrigine = computed(fn () => [
+    'import' => (clone $this->requeteBase)->importee()->count(),
+    'local' => (clone $this->requeteBase)->saisieManuelle()->count(),
+]);
 
 ?>
 
@@ -174,8 +213,18 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
             :labels="$this->graphique['labels']" :datasets="$this->graphique['datasets']" />
     </div>
 
+    {{-- Le détail porte désormais les colonnes du fichier CATTC, sous ses propres intitulés.
+         Cinq d'entre elles manquaient : le sticker, le n° de sinistre et le code client étaient
+         concaténés dans une phrase rangée en observation, la marque et le modèle fondus en une
+         seule valeur. Une donnée dans une phrase ne se trie pas, ne se filtre pas et ne
+         s'affiche pas en colonne : elle était conservée sans être consultable. --}}
     <div class="carte">
-        <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Détail des factures ({{ $this->detail->count() }})</h3>
+        <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Détail des factures ({{ $this->detail->count() }})</h3>
+        <p style="font-size:12.5px; color:#6B6E76; margin:0 0 14px;">
+            Les colonnes sont celles du fichier CATTC. Le filtre d'origine ne touche que ce tableau :
+            les totaux et le graphique ci-dessus comptent tout, sans quoi ce ne serait plus le chiffre
+            d'affaires de l'entreprise mais celui de ce qu'on a tapé.
+        </p>
         <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
             <input type="text" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}"
                 placeholder="Client, ou référence — 1409 pour la journée…"
@@ -186,43 +235,80 @@ $detail = computed(fn () => (clone $this->requeteBase)->with(['commercial', 'sit
                     <option value="{{ $commercial->id }}" @selected((string) $commercialFiltre === (string) $commercial->id)>{{ $commercial->nom }}</option>
                 @endforeach
             </select>
+            {{-- Le décompte est dans l'intitulé de chaque choix : un filtre qui annonce
+                 « 0 » avant qu'on le choisisse évite le clic qui ne trouve rien. --}}
+            <select wire:model.live="origineFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
+                <option value="" @selected($origineFiltre === '')>Origine : toutes</option>
+                <option value="import" @selected($origineFiltre === 'import')>
+                    Reprises du logiciel d'atelier ({{ $this->comptesParOrigine['import'] }})
+                </option>
+                <option value="local" @selected($origineFiltre === 'local')>
+                    Saisies sur la plateforme ({{ $this->comptesParOrigine['local'] }})
+                </option>
+            </select>
         </div>
         <div class="tableau-conteneur">
             <table class="tableau">
                 <thead>
                     <tr>
-                        <th>N°</th>
-                        <th>Date</th>
-                        <th>Commercial</th>
-                        <th>Clients</th>
-                        <th>Type</th>
-                        <th>N° de facture</th>
-                        <th>Activité</th>
+                        <th>Référence</th>
+                        <th>Origine</th>
+                        <th>DATE DE LA FACTURE</th>
+                        <th>N° FACTURE</th>
+                        <th>N° STICKER</th>
+                        <th>FICHE DE RECEPTION</th>
+                        <th>N° SINISTRE</th>
+                        <th>IMMAT. VEHICULE</th>
+                        <th>MARQUE</th>
+                        <th>MODELE</th>
+                        <th>CODE CLIENT</th>
+                        <th>CLIENTS</th>
+                        <th style="text-align:right;">MONTANT FACTURE</th>
                         @if (count($this->idsSites) > 1)
-                            <th>Site</th>
+                            <th>SITE</th>
                         @endif
-                        <th>Montant</th>
-                        <th>Observations</th>
+                        <th>Activité</th>
+                        <th>Commercial</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse ($this->detail->forPage($pageDetail, 10) as $ligne)
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td><x-numero-ligne :ligne="$ligne" /></td>
-                            <td>{{ $ligne->date->format('d/m/Y') }}</td>
-                            <td>{{ $ligne->commercial?->nom ?? '—' }}</td>
+                            <td>
+                                @if ($ligne->estImportee())
+                                    <span style="font-size:11.5px; color:#B9791C; font-weight:600;">Reprise</span>
+                                @else
+                                    <span style="font-size:11.5px; color:#0E9F6E; font-weight:600;">Saisie ici</span>
+                                @endif
+                            </td>
+                            <td>{{ $ligne->date?->format('d/m/Y') ?? '—' }}</td>
+                            <td>{{ $ligne->n_facture ?? '—' }}</td>
+                            <td>{{ $ligne->n_sticker ?? '—' }}</td>
+                            <td>{{ $ligne->reference_devis ?? '—' }}</td>
+                            <td>{{ $ligne->n_sinistre ?? '—' }}</td>
+                            <td>{{ $ligne->immatriculation ?? '—' }}</td>
+                            {{-- Marque et modèle sont deux colonnes du fichier que l'import
+                                 fusionnait en une seule valeur. Les lignes déjà reprises
+                                 portent donc le véhicule entier : il s'affiche ici plutôt
+                                 que d'être découpé au premier espace — « LAND ROVER
+                                 DEFENDER » donnerait la marque « LAND ». Le prochain dépôt
+                                 du fichier remplit les deux colonnes. --}}
+                            <td @if (! $ligne->marque && $ligne->vehicule) title="Véhicule non encore séparé en marque et modèle — le prochain dépôt du CATTC le fera." style="color:#6B6E76;" @endif>
+                                {{ $ligne->marque ?: ($ligne->vehicule ?: '—') }}
+                            </td>
+                            <td>{{ $ligne->modele ?: '—' }}</td>
+                            <td>{{ $ligne->code_client ?? '—' }}</td>
                             <td>{{ $ligne->client }}</td>
-                            <td>{{ $ligne->type }}</td>
-                            <td>{{ $ligne->n_facture }}</td>
-                            <td>{{ $ligne->activite }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($ligne->montant) }}</td>
                             @if (count($this->idsSites) > 1)
-                                <td>{{ $ligne->site->nom }}</td>
+                                <td>{{ $ligne->site?->nom ?? '— à rattacher —' }}</td>
                             @endif
-                            <td style="font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($ligne->montant) }}</td>
-                            <td style="color:#6B6E76;">{{ $ligne->observations ?? '—' }}</td>
+                            <td>{{ $ligne->activite }}</td>
+                            <td>{{ $ligne->commercial?->nom ?? '—' }}</td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 10 : 9" texte="Aucune facture enregistrée sur cette période." />
+                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 16 : 15" texte="Aucune facture enregistrée sur cette période." />
                     @endforelse
                 </tbody>
             </table>

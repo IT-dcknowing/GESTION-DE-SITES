@@ -101,6 +101,31 @@ La table des crons est commune à tout le compte d'hébergement : d'autres proje
 cohabitent. Passer par l'interface cPanel plutôt que par `crontab -e` évite d'abîmer leurs
 lignes.
 
+### Une seule fois, après la mise à jour du 15 septembre 2026
+
+L'écran **État des impayés — FICORE** a besoin que chaque créance déjà reprise porte son
+année : c'est elle qui la fait apparaître dans l'état d'un exercice, et sans elle la page
+reste vide sur une base qui contient pourtant des milliers de créances. La même commande
+range au passage le numéro de sinistre, le sticker et le code client, que l'import gardait
+jusqu'ici dans une phrase.
+
+Elle ne s'écrit **pas** dans `app:deployer` : elle touche aux données, et cela se regarde
+avant de se lancer.
+
+```bash
+php artisan impayes:ranger-les-colonnes              # constat : n'écrit rien
+php artisan impayes:ranger-les-colonnes --appliquer  # écrit
+```
+
+Elle est sans danger et rejouable : elle ne remplit que ce qui est vide, ne crée ni ne
+supprime aucune ligne, et ne jette aucun texte qu'elle n'a pas reconnu. Relancée, elle
+annonce zéro.
+
+Trois colonnes restent vides ensuite — **date de réception**, **banque** et la tranche
+d'ancienneté annoncée par le classeur : elles n'existaient pas en base, donc l'import
+précédent ne les avait pas lues. Redéposer le fichier des impayés depuis **Import** les
+remplit. Rien ne l'exige, et l'écran fonctionne sans.
+
 ## 2. Ce qu'un envoi ne doit jamais emporter
 
 Le 14 septembre 2026, le projet a été mis en ligne par un zip du dossier local. La
