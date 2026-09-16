@@ -232,12 +232,45 @@ class DepotEtVilleDesCreancesTest extends TestCase
         $creance = $this->creance('4421', 300_000, dateDepot: now()->subDays(3));
         $this->encaisser($creance, 75_000, 'CHÈQUE');
 
-        Volt::test('pilotage.impayes')
-            ->set('exercice', (int) now()->format('Y'))
-            ->call('voirDetail', $creance->id)
+        // Le détail a sa propre page, et non un volet déplié sous la ligne.
+        $this->get(route('impayes.detail', $creance->id))
+            ->assertOk()
             ->assertSee("Saisie à l'état des impayés")
             ->assertSee("Qui l'a touchée", false)
-            ->assertSee('CHÈQUE');
+            ->assertSee('CHÈQUE')
+            ->assertSee(route('impayes', ['exercice' => $creance->exercice_impayes, 'modifier' => $creance->id]));
+
+        Volt::test('pilotage.impayes')
+            ->set('exercice', (int) now()->format('Y'))
+            ->assertSee(route('impayes.detail', $creance->id), false)
+            ->assertDontSee("Qui l'a touchée", false);
+    }
+
+    public function test_la_page_de_detail_ne_montre_pas_une_creance_hors_du_perimetre(): void
+    {
+        $horsPerimetre = $this->creance('BOU-2', 300_000, site: $this->siteBouake, dateDepot: now()->subDays(3));
+        $horsPerimetre->update(['observations' => 'NOTE CONFIDENTIELLE DE BOUAKE']);
+
+        $responsable = $this->compte('responsable_site');
+        $this->site->update(['responsable_id' => $responsable->id]);
+
+        $this->actingAs($responsable)
+            ->get(route('impayes.detail', $horsPerimetre->id))
+            ->assertOk()
+            ->assertSee('Créance introuvable')
+            ->assertDontSee('NOTE CONFIDENTIELLE DE BOUAKE');
+    }
+
+    public function test_modifier_depuis_la_page_de_detail_ouvre_le_formulaire(): void
+    {
+        $this->actingAs($this->compte('gerant'));
+
+        $creance = $this->creance('4424', 300_000, dateDepot: now()->subDays(3));
+
+        $this->get(route('impayes', ['modifier' => $creance->id]))
+            ->assertOk()
+            ->assertSee('Modifier la créance '.$creance->numero)
+            ->assertSee('Enregistrer les modifications');
     }
 
     public function test_modifier_corrige_la_ligne_et_ajoute_un_nouveau_reglement(): void

@@ -333,7 +333,8 @@ Colonne SITE du classeur, mesurée par l'import lui-même : ABIDJAN 5 097 lignes
 - [x] Nom de l'écran : « État des impayés » (FICORE retiré)
 - [x] La définition « facture déposée chez le client » écrite dans le code et à l'écran
 - [x] 16/09 — tableau : toutes les colonnes du classeur (commentaires, date de réception,
-      véhicule, mode et date de règlement, banque) ; boutons **Détail** et **Modifier**
+      véhicule, mode et date de règlement, banque) ; boutons **Détail** (page propre,
+      `/impayes/creance/{id}`, avec « Modifier » en tête) et **Modifier**
 - [x] 16/09 — **Porter une facture existante**
 - [x] 16/09 — date de réception **obligatoire** ; ancienneté **depuis le dépôt**
 - [x] 16/09 — `factures.ville_id`, commande `factures:poser-la-ville` ; sélecteur de ville sur
@@ -347,7 +348,7 @@ Tout, sauf sur une **ligne reprise du classeur** : date d'édition, numéro, imm
 montant y sont verrouillés (côté serveur, pas seulement à l'écran), parce que c'est la clé par
 laquelle l'import reconnaît la ligne — les changer ferait créer un doublon au prochain dépôt. Le
 montant ne peut pas descendre sous ce qui est encaissé. « Nouveau règlement » **ajoute** un
-encaissement. Chaque modification est tracée avant/après, et se lit dans **Détail**. Une
+encaissement. Chaque modification est tracée avant/après, et se lit sur la page **Détail**. Une
 créance hors du périmètre du compte ne s'ouvre pas, même en forgeant son identifiant.
 
 ### À faire sur chaque serveur

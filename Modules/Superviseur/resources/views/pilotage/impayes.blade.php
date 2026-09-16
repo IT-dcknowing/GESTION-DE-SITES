@@ -12,7 +12,6 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
-use Spatie\Activitylog\Models\Activity;
 use function Livewire\Volt\{computed, mount, state};
 
 /*
@@ -79,9 +78,6 @@ state([
      */
     'enModification' => null,
 
-    /** La ligne dont le détail est déplié sous elle. */
-    'detailId' => null,
-
     // Les colonnes du classeur, dans son ordre et sous ses mots — voir
     // EtatDesImpayes::COLONNES_DU_FICHIER. Le superviseur de veille tient ce fichier depuis
     // quatre ans : lui présenter ses propres colonnes dans un autre ordre reviendrait à lui
@@ -122,14 +118,22 @@ state([
 
 mount(function () {
     $this->exercice ??= EtatDesImpayes::exerciceOuvert(auth()->user()->entreprise_id);
+
+    // « Modifier » depuis la page de détail d'une créance arrive ici, formulaire ouvert.
+    // L'identifiant passe par `modifier()`, qui le relit dans le périmètre du compte.
+    $aModifier = request()->integer('modifier');
+
+    if ($aModifier > 0) {
+        $this->modifier($aModifier);
+    }
 });
 
-$updatedVilleFiltre = function () { $this->siteFiltre = ''; $this->page = 1; $this->detailId = null; };
-$updatedSiteFiltre = function () { $this->page = 1; $this->detailId = null; };
-$updatedExercice = function () { $this->page = 1; $this->detailId = null; };
-$updatedStatutFiltre = function () { $this->page = 1; $this->detailId = null; };
-$updatedReportFiltre = function () { $this->page = 1; $this->detailId = null; };
-$updatedRecherche = function () { $this->page = 1; $this->detailId = null; };
+$updatedVilleFiltre = function () { $this->siteFiltre = ''; $this->page = 1; };
+$updatedSiteFiltre = function () { $this->page = 1; };
+$updatedExercice = function () { $this->page = 1; };
+$updatedStatutFiltre = function () { $this->page = 1; };
+$updatedReportFiltre = function () { $this->page = 1; };
+$updatedRecherche = function () { $this->page = 1; };
 $updatedPorterRecherche = function () { $this->porterFactureId = null; };
 
 $annee = computed(fn () => (int) ($this->exercice ?: now()->year));
@@ -250,37 +254,6 @@ $ligneModifiee = computed(fn () => $this->enModification === null ? null : EtatD
 
 $verrouilles = computed(fn () => $this->ligneModifiee ? EtatDesImpayes::champsVerrouilles($this->ligneModifiee) : []);
 
-/** Le détail déplié : la ligne, ses règlements, et qui l'a touchée. */
-$detail = computed(function () {
-    if ($this->detailId === null) {
-        return null;
-    }
-
-    $ligne = EtatDesImpayes::dansLePerimetre(
-        Facture::query()->whereNotNull('exercice_impayes')->withSum('encaissements', 'montant'),
-        $this->idsSitesDuCompte,
-        $this->idsVillesDuCompte,
-    )->with(['site.ville', 'ville', 'encaissements' => fn ($q) => $q->orderByDesc('date')->orderByDesc('id')])
-        ->find((int) $this->detailId);
-
-    if ($ligne === null) {
-        return null;
-    }
-
-    return [
-        'ligne' => $ligne,
-        'historique' => Activity::query()
-            ->with('causer')
-            ->where('subject_type', $ligne->getMorphClass())
-            ->where('subject_id', $ligne->id)
-            ->latest('id')
-            ->limit(12)
-            ->get(),
-        'auteurs' => \App\Models\User::whereIn('id', $ligne->encaissements->pluck('cree_par')->filter()->unique())
-            ->pluck('name', 'id'),
-    ];
-});
-
 /**
  * Les factures qu'on peut porter à l'état : connues de l'application, pas encore déposées.
  *
@@ -380,10 +353,6 @@ $basculerFormulaire = function () {
     }
 };
 
-$voirDetail = function (int $id) {
-    $this->detailId = $this->detailId === $id ? null : $id;
-};
-
 /** Ouvre le formulaire sur une ligne existante. */
 $modifier = function (int $id) {
     $this->viderLeFormulaire();
@@ -416,7 +385,6 @@ $modifier = function (int $id) {
 
     $this->formulaireOuvert = true;
     $this->porterOuvert = false;
-    $this->detailId = null;
 };
 
 /**
@@ -654,7 +622,7 @@ $enregistrer = function () {
         $this->fCourtier = (string) $valeurs['courtier'];
     }
 
-    unset($this->lignes, $this->totaux, $this->apercuNumero, $this->exercices, $this->detail);
+    unset($this->lignes, $this->totaux, $this->apercuNumero, $this->exercices);
 
     $this->page = $modifiee ? $this->page : 1;
 
@@ -1187,82 +1155,13 @@ $porter = function () {
                                 {{ EtatDesImpayes::libelleReport($ligne, $this->annee) }}
                             </td>
                             <td style="white-space:nowrap;">
-                                <button type="button" wire:click="voirDetail({{ $ligne->id }})" class="bouton bouton-secondaire"
-                                    style="padding:4px 10px; font-size:12px;">{{ $detailId === $ligne->id ? 'Replier' : 'Détail' }}</button>
+                                {{-- Le détail a sa page : il se lit au large, et se rouvre dans un autre onglet. --}}
+                                <a href="{{ route('impayes.detail', $ligne->id) }}" wire:navigate class="bouton bouton-secondaire"
+                                    style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
                                 <button type="button" wire:click="modifier({{ $ligne->id }})" class="bouton"
                                     style="padding:4px 10px; font-size:12px;">Modifier</button>
                             </td>
                         </tr>
-
-                        {{-- Le détail se déplie sous sa ligne, et non dans une fenêtre : on garde sous
-                             les yeux la ligne dont on parle, et l'on replie sans perdre sa place. --}}
-                        @if ($detailId === $ligne->id && $this->detail)
-                            @php $d = $this->detail; $f = $d['ligne']; @endphp
-                            <tr wire:key="detail-{{ $ligne->id }}">
-                                <td colspan="22" style="background:#FBFAF6; padding:14px 16px;">
-                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px; font-size:13px; line-height:1.6;">
-                                        <div>
-                                            <div style="font-weight:700; margin-bottom:4px;">La créance</div>
-                                            Référence : <strong>{{ $f->numero }}</strong><br>
-                                            Origine : {{ EtatDesImpayes::origine($f) }}<br>
-                                            Année de l'état : {{ $f->exercice_impayes }}<br>
-                                            Activité : {{ $f->activite ?? '—' }}<br>
-                                            Tiers payant : {{ $f->tiersPayant() }}<br>
-                                            Ville : {{ $f->site?->ville?->nom ?? $f->ville?->nom ?? 'à préciser' }}
-                                            · Atelier : {{ $f->site?->nom ?? 'à préciser' }}<br>
-                                            Déposée le : {{ $f->date_reception?->format('d/m/Y') ?? 'non renseigné' }}
-                                            · éditée le {{ $f->date?->format('d/m/Y') ?? '—' }}<br>
-                                            @if ($f->anciennete_declaree)
-                                                Tranche écrite dans le classeur : {{ $f->anciennete_declaree }}<br>
-                                            @endif
-                                            Clé du classeur : <code style="font-size:11.5px;">{{ EtatDesImpayes::cleDuFichier($f) }}</code>
-                                        </div>
-
-                                        <div>
-                                            <div style="font-weight:700; margin-bottom:4px;">
-                                                Règlements — {{ ae((int) ($f->encaissements_sum_montant ?? 0)) }} sur {{ ae($f->montant) }}
-                                            </div>
-                                            @forelse ($f->encaissements as $e)
-                                                <div>
-                                                    {{ $e->date?->format('d/m/Y') ?? '—' }} — <strong>{{ ae($e->montant) }}</strong>
-                                                    · {{ $e->moyen ?? '—' }}
-                                                    @if ($e->lot_import_id) · <span style="color:#6B6E76;">repris du classeur</span>
-                                                    @elseif ($e->cree_par) · <span style="color:#6B6E76;">{{ $d['auteurs'][$e->cree_par] ?? '' }}</span>
-                                                    @endif
-                                                </div>
-                                            @empty
-                                                <div style="color:#6B6E76;">Aucun règlement enregistré.</div>
-                                            @endforelse
-                                        </div>
-
-                                        <div>
-                                            <div style="font-weight:700; margin-bottom:4px;">Qui l'a touchée</div>
-                                            @forelse ($d['historique'] as $trace)
-                                                @php
-                                                    $avant = $trace->properties['old'] ?? [];
-                                                    $apres = $trace->properties['attributes'] ?? [];
-                                                @endphp
-                                                <div style="margin-bottom:4px;">
-                                                    {{ $trace->created_at?->format('d/m/Y H:i') }} —
-                                                    {{ $trace->causer?->name ?? 'import' }} —
-                                                    {{ $trace->description }}
-                                                    @foreach ($avant as $champ => $valeur)
-                                                        @if (($apres[$champ] ?? null) !== $valeur)
-                                                            <div style="font-size:11.5px; color:#6B6E76;">
-                                                                {{ $champ }} : {{ is_scalar($valeur) ? \Illuminate\Support\Str::limit((string) $valeur, 40) : '—' }}
-                                                                → {{ is_scalar($apres[$champ] ?? null) ? \Illuminate\Support\Str::limit((string) $apres[$champ], 40) : '—' }}
-                                                            </div>
-                                                        @endif
-                                                    @endforeach
-                                                </div>
-                                            @empty
-                                                <div style="color:#6B6E76;">Aucune trace.</div>
-                                            @endforelse
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                        @endif
                     @empty
                         <x-table-vide :colspan="22"
                             texte="Aucune créance dans l'état {{ $this->annee }}. Le bouton « Ajouter une créance » ouvre la saisie." />

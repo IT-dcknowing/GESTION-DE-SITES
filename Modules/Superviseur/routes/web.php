@@ -75,6 +75,11 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     // La reprise du classeur a son adresse propre : c'est une page qu'on ouvre à côté de
     // l'autre pour comparer, pas un volet qu'on replie sous elle.
     Volt::route('/impayes/etat-initial', 'pilotage.impayes-etat-initial')->name('impayes.etat-initial');
+    // Le détail d'une créance a sa page, comme la fiche d'un véhicule : il se lit au large,
+    // se rouvre dans un autre onglet et se transmet. Déplié sous sa ligne, il poussait le
+    // tableau vers le bas et se perdait au premier changement de page.
+    Volt::route('/impayes/creance/{creance}', 'pilotage.impayes-detail')
+        ->name('impayes.detail')->whereNumber('creance');
     Volt::route('/rapprochement-ca-impayes', 'pilotage.rapprochement-ca-impayes')->name('rapprochement-ca-impayes');
 });
 

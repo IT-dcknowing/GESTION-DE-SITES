@@ -160,7 +160,7 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
 ### Fait le 16/09 (deuxième séance)
 
 - Tableau de l'état : toutes les colonnes du classeur, dont **Commentaires** ; boutons
-  **Détail** (origine, règlements, historique avant/après) et **Modifier** (clé d'import
+  **Détail** — une page propre, `/impayes/creance/{id}` (origine, règlements, historique avant/après) et **Modifier** (clé d'import
   verrouillée côté serveur sur les lignes reprises ; « nouveau règlement » ajoute un
   encaissement ; périmètre relu à chaque action).
 - Migration `2026_09_16_000001` (`factures.ville_id`, additive) ; commande
