@@ -1,10 +1,10 @@
 # État des impayés — où nous en sommes
 
-*Dernière mise à jour : 15 septembre 2026. Branche `impayes`, commit `6013a36`.*
+*Dernière mise à jour : 16 septembre 2026. Branche `impayes`.*
 
 Ce document dit trois choses : **ce que contient le classeur** que nous reprenons, **ce qui a
 été construit** autour, et **ce qui reste à trancher** — en particulier la question du
-recouvrement, qui est la bonne question et à laquelle je réponds au § 5.
+recouvrement, tranchée au § 5.
 
 ---
 
@@ -68,7 +68,7 @@ contre la main qui le tient :
 Trois écrans, dans la section **Indicateurs**, ouverts au gérant, au superviseur de ville et
 au responsable de site. Fermés au responsable commercial, comme les charges et la trésorerie.
 
-**État des impayés — FICORE** (`/impayes`) — l'état de l'année. Un bouton « Ajouter une
+**État des impayés** (`/impayes`) — l'état de l'année. Un bouton « Ajouter une
 créance » ouvre les seize colonnes saisissables du classeur, dans son ordre et sous ses mots
 exacts, sur deux rangées. Chacun des défauts du § 1 y est refusé à la frappe. Référence
 générée `IMP-1509-0001`, avec le code de saisie et le nom dessous.
@@ -221,65 +221,56 @@ Et leurs comportements diffèrent sur quatre points :
 | Doublon refusé sur | client + n° de facture | date + n° + immatriculation + montant (la clé du classeur) |
 | Référence | `F-1509-0001` | `IMP-1509-0001` |
 
-### Le trou, chiffré
+### Ce qui distingue les deux : le dépôt
 
-La communication existe déjà **dans un sens** : une créance saisie à l'état des impayés entre
-aussitôt dans la balance âgée, l'extrait de compte, les relances et la trésorerie. Rien à
-rapprocher — c'est une facture comme une autre, et `avecHistoriqueDeReglement()` la retient.
+**Décision du 15 septembre 2026 : on garde les deux.** Et la raison est venue avec elle :
 
-**Dans l'autre sens, non.** Une facture créée depuis le recouvrement ne porte pas d'année
-d'état des impayés, donc n'apparaît dans aucun état. Mesuré sur la base :
+> **L'état des impayés est basé sur les factures physiquement déposées chez le client.
+> Tout s'y saisit, le numéro de facture compris.**
 
-> **103 factures saisies sur la plateforme, pour 40 424 806 F, que le recouvrement compte et
-> que l'état des impayés ignore.**
+Cela change la lecture de l'écart relevé plus haut. Les deux écrans n'enregistrent pas le même
+fait :
 
-C'est exactement le genre d'écart qu'on ne découvre qu'en rapprochant deux totaux à la main.
+| | Recouvrement > Saisie > « Facture » | État des impayés |
+|---|---|---|
+| Ce qu'on enregistre | une créance découverte en relançant quelqu'un | **une facture remise au client** |
+| Le moment | pendant la poursuite | au dépôt |
+| La date qui compte | la date de la facture | **la date de réception = le dépôt** |
+| Le numéro | celui qu'on connaît | celui lu sur la facture papier |
 
-### Trois façons de les faire communiquer
+Une facture saisie à la main n'est donc pas, par le seul fait d'être saisie, une facture
+déposée. C'est pourquoi l'état garde **son propre marqueur** (`exercice_impayes`) au lieu de
+se régler sur l'origine de la facture.
 
-**A — La règle commune.** *(recommandée)*
+### Ce qu'on ne fait donc pas
 
-L'état des impayés cesse de s'appuyer sur sa colonne `exercice_impayes` et reprend **la règle
-qui gouverne déjà tout le recouvrement** : `avecHistoriqueDeReglement()` — toute facture
-saisie sur la plateforme, d'où qu'elle vienne, plus toute facture reprise d'un fichier qui
-apporte ses règlements. Les factures du CATTC restent dehors : elles arrivent sans un seul
-règlement en face, et les compter en créance porterait la balance de 5 millions à 1,4
-milliard. C'est mesuré, et c'est déjà écrit dans le code.
+L'option que je recommandais — que l'état des impayés reprenne la règle du recouvrement et
+compte toute facture saisie sur la plateforme — **est écartée**. Elle aurait versé dans l'état
+les 103 factures du recouvrement (40 424 806 F) sans qu'aucune ait été déposée : l'état aurait
+cessé de dire ce qu'il dit.
 
-L'année d'une créance se lit alors sur la date de sa facture.
+Ces 103 factures ne sont donc pas un « trou » : ce sont des créances poursuivies qui n'ont pas
+(encore) été relevées comme déposées.
 
-- Les deux écrans montrent **la même population, pour toujours**, sans marqueur à maintenir.
-- Les 103 créances entrent d'elles-mêmes.
-- Une seule règle décide de ce qu'est une créance, au lieu de deux.
-- Coût : une requête à changer, un test à ajouter. **Aucune migration, aucune écriture de
-  données.** La colonne reste en base, sans danger, et sert encore à distinguer la reprise.
+### Ce qui communique déjà, et ce qui reste à construire
 
-**B — Le marqueur posé des deux côtés.**
+- **État → Recouvrement : fait.** Une facture saisie à l'état entre aussitôt dans la balance
+  âgée, l'extrait de compte, les relances et la trésorerie. Rien à rapprocher.
+- **Recouvrement → État : à construire, si vous le voulez.** Le geste naturel serait
+  « **porter une facture existante à l'état** » : choisir une facture qui n'y figure pas, saisir
+  sa date de dépôt, et elle y entre — sans être retapée, sans doublon. Ce n'est pas fait.
 
-Le formulaire du recouvrement pose `exercice_impayes` comme celui de l'état. Même résultat
-immédiat, coût identique — mais la règle reste **recopiée à deux endroits**, et c'est
-exactement ce qui a creusé le trou d'aujourd'hui. Le troisième écran qui créera une facture
-l'oubliera à son tour.
+### Une conséquence à trancher : d'où compte-t-on l'âge d'une créance ?
 
-**C — Une seule porte d'entrée.**
+Le classeur compte l'ancienneté **depuis la date de réception** (`AUJOURDHUI − dateRéception`).
+L'application la compte **depuis la date d'édition**, pour toute la balance âgée et les
+niveaux de relance.
 
-Le bloc « Facture » du recouvrement disparaît ; toute créance naît à l'état des impayés. Le
-plus net conceptuellement, et le seul qui supprime vraiment le doublon de formulaire. Mais il
-retire un geste au superviseur recouvrement, qui crée aujourd'hui ses créances depuis son
-propre écran sans quitter son module. **À ne faire que s'il ne s'en sert pas** — la réponse
-est dans le journal d'activité.
-
-### Ma recommandation
-
-**A, et garder les deux formulaires.** Deux portes, un seul registre.
-
-Ce n'est pas un compromis : les deux écrans ne servent pas le même moment. Le recouvrement
-saisit une créance qu'il découvre en relançant quelqu'un — il a le tiers sous les yeux, pas le
-classeur. Le superviseur de veille, lui, reprend une ligne de tableur et la retape, avec son
-règlement. Même table, même règle, deux gestes différents. Ce qui doit être unique, c'est la
-définition d'une créance — pas la façon d'en saisir une.
-
-**A est réversible et ne touche à aucune donnée. Dites un mot et je l'applique.**
+Avec votre définition, c'est le classeur qui a raison : le délai de paiement court à partir du
+moment où le client a la facture en main. Mais changer la règle déplace les tranches et les
+niveaux de relance de **tout** le module Recouvrement, sur des données réelles. Je ne l'ai pas
+fait sans votre accord. Garder une règle par écran, en revanche, est exclu : la même créance
+aurait deux âges.
 
 ---
 
@@ -289,10 +280,12 @@ définition d'une créance — pas la façon d'en saisir une.
 
 - [x] Migration additive : 10 colonnes nullables sur `factures`, aucune donnée touchée
 - [x] `EtatDesImpayes` — les formules du classeur, la reconduction, le pont vers le CATTC
-- [x] Les trois écrans, et le formulaire de saisie sur deux rangées
+- [x] Les trois écrans ; le formulaire de saisie sur deux rangées
 - [x] Les colonnes du CATTC et le filtre d'origine sur l'écran du chiffre d'affaires
 - [x] `impayes:ranger-les-colonnes` — commande de reprise, en constat par défaut
-- [x] 17 tests dédiés ; 542 au total, 535 réussis, 0 échec
+- [x] Nom de l'écran : « État des impayés » (FICORE retiré)
+- [x] La définition « facture déposée chez le client » écrite dans le code et à l'écran
+- [x] 18 tests dédiés ; 543 au total, 536 réussis, 0 échec
 
 ### À faire sur chaque serveur
 
@@ -309,16 +302,24 @@ travail gardées seules. Elle ne remplit que ce qui est vide et, relancée, anno
 
 Trois colonnes resteront vides — date de réception, banque, tranche annoncée : elles
 n'existaient pas au moment du premier import. Redéposer le fichier des impayés depuis
-**Import** les remplit. Rien ne l'exige.
+**Import** les remplit.
+
+### Tranché
+
+- On garde **les deux** formulaires ; l'état des impayés = factures déposées chez le client.
+- Le nom de l'écran est **État des impayés**.
 
 ### À trancher
 
-1. **Le lien avec le recouvrement** — option A, B ou C du § 5.
-2. **L'année d'une créance** est celle de sa facture, pas celle de l'écran depuis lequel on la
-   saisit. Une facture de décembre 2025 relevée en 2026 apparaît donc d'emblée « Reporté 2025 ».
-3. **L'état initial est en lecture seule** ; on corrige dans l'état de l'année.
-4. **L'état des impayés est fermé au responsable commercial**, comme les charges.
-5. **Les créances portent la série `IMP-`**, distincte du `F-` des factures d'atelier.
+1. **L'âge d'une créance** part-il du dépôt (comme le classeur) ou de l'édition (comme
+   aujourd'hui) ? Voir § 5.
+2. **Construire « porter une facture existante à l'état »** pour le sens Recouvrement → État ?
+3. **La date de réception doit-elle devenir obligatoire ?** Si l'état recense les dépôts, c'est
+   le fait qui le définit. Elle est facultative aujourd'hui.
+4. L'année d'une créance est celle de sa facture, pas celle de l'écran de saisie.
+5. L'état initial est en lecture seule ; on corrige dans l'état de l'année.
+6. L'état des impayés est fermé au responsable commercial, comme les charges.
+7. Les créances portent la série `IMP-`, distincte du `F-` des factures d'atelier.
 
 ### Hors de ce module, et toujours en attente
 

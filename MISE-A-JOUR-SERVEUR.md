@@ -103,7 +103,7 @@ lignes.
 
 ### Une seule fois, après la mise à jour du 15 septembre 2026
 
-L'écran **État des impayés — FICORE** a besoin que chaque créance déjà reprise porte son
+L'écran **État des impayés** a besoin que chaque créance déjà reprise porte son
 année : c'est elle qui la fait apparaître dans l'état d'un exercice, et sans elle la page
 reste vide sur une base qui contient pourtant des milliers de créances. La même commande
 range au passage le numéro de sinistre, le sticker et le code client, que l'import gardait

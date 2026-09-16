@@ -201,7 +201,7 @@ class MenuNavigation
                  * puis ce qui en a été réglé. Les lire l'un sous l'autre est la façon dont
                  * on s'en sert. Le rapprochement, qui les confronte, vient juste après.
                  */
-                ['label' => 'État des impayés — FICORE', 'route' => 'impayes', 'actifPattern' => 'impayes'],
+                ['label' => 'État des impayés', 'route' => 'impayes', 'actifPattern' => 'impayes'],
                 ['label' => 'Rapprochement CA / impayés', 'route' => 'rapprochement-ca-impayes'],
                 ['label' => 'Charges', 'route' => 'charges'],
                 ['label' => 'Trésorerie', 'route' => 'tresorerie'],

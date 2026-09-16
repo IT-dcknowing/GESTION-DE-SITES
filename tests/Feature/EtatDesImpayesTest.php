@@ -116,7 +116,7 @@ class EtatDesImpayesTest extends TestCase
 
         $etiquettes = $this->etiquettes(MenuNavigation::pour($gerant));
 
-        $this->assertContains('État des impayés — FICORE', $etiquettes);
+        $this->assertContains('État des impayés', $etiquettes);
         $this->assertContains('Rapprochement CA / impayés', $etiquettes);
     }
 

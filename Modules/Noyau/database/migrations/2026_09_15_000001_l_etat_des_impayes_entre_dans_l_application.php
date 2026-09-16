@@ -83,6 +83,9 @@ return new class extends Migration
              * donnée rangée dans une phrase ne se filtre pas, ne se totalise pas et ne se
              * compare pas — c'est une donnée qu'on a gardée sans la conserver.
              */
+            // La plus importante des quatre, et son nom dit moins que ce qu'elle porte : c'est
+            // la date du dépôt de la facture chez le client. L'état recense les factures
+            // physiquement remises, et c'est ce dépôt qui ouvre le droit de réclamer.
             $table->date('date_reception')->nullable()->after('date');
             $table->string('banque', 120)->nullable()->after('courtier');
             $table->string('n_sinistre', 60)->nullable()->after('immatriculation');

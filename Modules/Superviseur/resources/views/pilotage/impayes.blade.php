@@ -14,9 +14,25 @@ use function Livewire\Volt\{computed, mount, state};
 
 /*
 |--------------------------------------------------------------------------
-| État des impayés — FICORE
+| État des impayés
 |--------------------------------------------------------------------------
 | L'écran qui remplace le classeur.
+|
+| **Ce que cet état recense : les factures physiquement déposées chez le client.** Ce
+| n'est pas le registre de ce qui a été facturé, c'est celui de ce qui a été remis, donc
+| réclamable. On ne relance pas quelqu'un sur une facture qu'il n'a jamais reçue.
+|
+| Deux conséquences, qui commandent tout l'écran :
+|
+|   - **la date de réception est la date du dépôt chez le client** — c'est elle qui ouvre
+|     le droit de réclamer ;
+|   - **tout se saisit à la main, le numéro de facture compris.** Il se lit sur la facture
+|     papier, pas dans le logiciel d'atelier — d'où des entiers simples, « 17 », « 23 »,
+|     remis à zéro chaque année, qui n'identifient rien à eux seuls.
+|
+| C'est ce qui distingue cet écran du bloc « Facture » du recouvrement : celui-là
+| enregistre une créance qu'on découvre en relançant, celui-ci enregistre un dépôt. Deux
+| faits, deux gestes, une seule table — voir ETAT-DES-IMPAYES.md § 5.
 |
 | Le classeur qu'il remplace est juste — 798 999 354 F de reste à payer sur 1 332
 | créances ouvertes, et la reprise en base y retombe. Ce qu'un tableur ne peut pas
@@ -333,8 +349,8 @@ $enregistrer = function () {
 ?>
 
 <div>
-    <x-titre-ecran titre="État des impayés — FICORE"
-        sous-titre="Les créances clients et leurs règlements, année par année. Ce qui n'est pas soldé se reporte de lui-même sur l'année suivante." />
+    <x-titre-ecran titre="État des impayés"
+        sous-titre="Les factures déposées chez le client et leurs règlements, année par année. Ce qui n'est pas soldé se reporte de lui-même sur l'année suivante." />
 
     {{-- Le bandeau : l'année regardée, le périmètre, et le bouton qui ouvre la saisie. --}}
     <div class="carte" style="margin-bottom:16px;">
@@ -374,6 +390,8 @@ $enregistrer = function () {
             <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Nouvelle créance</h3>
             <p style="font-size:12.5px; color:#6B6E76; margin:0 0 12px; line-height:1.55;">
                 Référence <strong>{{ $this->apercuNumero }}</strong>, posée à l'enregistrement.
+                On saisit ici une <strong>facture déposée chez le client</strong> : sa date de
+                réception est celle du dépôt, et c'est elle qui ouvre le droit de réclamer.
                 Le reste à payer ne se saisit pas — il se déduit du montant TTC et des règlements.
                 La date de réception ne peut pas précéder l'édition, le montant réglé ne peut pas
                 dépasser le TTC, et un numéro de sinistre range la créance en Sinistre.
