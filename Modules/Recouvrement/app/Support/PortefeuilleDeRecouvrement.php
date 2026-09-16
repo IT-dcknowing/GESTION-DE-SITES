@@ -110,8 +110,10 @@ final class PortefeuilleDeRecouvrement
                 $encaisse = $this->encaissementsParTiers[$tiers] ?? ['montant' => 0, 'date' => null, 'auteur' => null];
 
                 $factures = $this->ouvertesParTiers->get($tiers, collect());
-                $plusAncienne = $factures->filter(fn (Facture $f) => $f->date !== null)
-                    ->sortBy(fn (Facture $f) => $f->date)->first();
+                // La plus ancienne au sens du recouvrement : déposée la première, et non
+                // éditée la première — voir Recouvrement::dateDeDepart().
+                $plusAncienne = $factures->filter(fn (Facture $f) => Recouvrement::dateDeDepart($f) !== null)
+                    ->sortBy(fn (Facture $f) => Recouvrement::dateDeDepart($f))->first();
 
                 return $ligne + [
                     // Depuis quand ce tiers doit-il : l'âge de sa plus vieille facture non
@@ -119,7 +121,7 @@ final class PortefeuilleDeRecouvrement
                     'depuis' => $plusAncienne
                         ? Recouvrement::anciennete($plusAncienne, $this->arrete)
                         : null,
-                    'plus_ancienne' => $plusAncienne?->date,
+                    'plus_ancienne' => $plusAncienne ? Recouvrement::dateDeDepart($plusAncienne) : null,
                     'plus_ancienne_numero' => $plusAncienne?->n_facture,
 
                     // Le dernier geste, et qui l'a fait.
@@ -144,7 +146,11 @@ final class PortefeuilleDeRecouvrement
                     // Le silence : jours écoulés depuis le dernier geste, relance ou
                     // encaissement confondus. Sans relance ni règlement, c'est l'âge de la
                     // créance elle-même — personne ne s'en est jamais occupé.
-                    'silence' => $this->silence($derniere?->date, $encaisse['date'], $plusAncienne?->date),
+                    'silence' => $this->silence(
+                        $derniere?->date,
+                        $encaisse['date'],
+                        $plusAncienne ? Recouvrement::dateDeDepart($plusAncienne) : null,
+                    ),
                 ];
             })
             ->values();
@@ -358,7 +364,10 @@ final class PortefeuilleDeRecouvrement
     {
         // Mémorisé sur l'instance, et non en statique : une statique survivrait au
         // changement de période et servirait les chiffres du filtre précédent.
-        return $this->encaissements ??= Encaissement::query()
+        //
+        // Restreints à la ville regardée, comme les factures : sans cela « Encaissé sur la
+        // période » gardait le total de l'entreprise à côté d'un encours filtré.
+        return $this->encaissements ??= Recouvrement::encaissementsDeLaVilleRegardee(Encaissement::query())
             ->when($this->debut, fn ($q) => $q->whereDate('date', '>=', $this->debut))
             ->whereDate('date', '<=', $this->arrete)
             ->get();

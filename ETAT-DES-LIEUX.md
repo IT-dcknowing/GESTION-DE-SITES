@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 543 tests, 536 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 561 tests, 554 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -118,6 +118,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 15/09 | `6013a36` | **impayes** | état des impayés, état initial, rapprochement, colonnes du CATTC |
 | 15/09 | `517416e` | **impayes** | formulaire en deux rangées, `ETAT-DES-IMPAYES.md` |
 | 16/09 | `e1e3782` | **impayes** | FICORE retiré ; définition « facture déposée » ; ce fichier |
+| 16/09 | *(voir `git log`)* | **impayes** | âge depuis le dépôt ; ville des factures ; Détail, Modifier, Porter ; date de réception obligatoire |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -148,17 +149,40 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
   relançant) et saisie de l'état des impayés (facture déposée). Ils ne consignent pas le même
   fait ; l'état garde donc son propre marqueur `exercice_impayes`.
 - Le nom de l'écran est **« État des impayés »** (FICORE retiré).
+- **16/09 — l'âge d'une créance part du dépôt** (date de réception), de l'édition à défaut,
+  pour **tout** le recouvrement (`Recouvrement::dateDeDepart()`). Fait.
+- **16/09 — « Porter une facture existante »** construit (CATTC, saisie du jour, bloc Facture
+  du recouvrement → état, avec le règlement déjà reçu). Fait.
+- **16/09 — date de réception obligatoire** à la saisie et au portage. Fait.
+- **16/09 — la ville du recouvrement** : sélecteur sur le tableau de bord ; `factures.ville_id`
+  (la colonne SITE des fichiers nomme une ville, Abidjan a deux ateliers). Fait.
+
+### Fait le 16/09 (deuxième séance)
+
+- Tableau de l'état : toutes les colonnes du classeur, dont **Commentaires** ; boutons
+  **Détail** (origine, règlements, historique avant/après) et **Modifier** (clé d'import
+  verrouillée côté serveur sur les lignes reprises ; « nouveau règlement » ajoute un
+  encaissement ; périmètre relu à chaque action).
+- Migration `2026_09_16_000001` (`factures.ville_id`, additive) ; commande
+  `factures:poser-la-ville` (constat par défaut) ; l'import écrit la ville **établie** par le
+  fichier, jamais la ville présumée du dépôt.
+- Recouvrement : filtre ville par ville **ou** atelier ; encaissements filtrés par ville
+  (tableau de bord, écran Encaissements) ; « déposée le » sous l'âge dans dossier et extrait.
+- Une facture portée à l'état entre au recouvrement (`Facture::scopeAvecHistoriqueDeReglement`).
+- Défaut corrigé : `reset()` de Volt remettait les champs à null — la seconde créance d'une
+  série se voyait réclamer un mode de règlement.
+- En local seulement : les deux fichiers d'origine (`PLAN/MODULE-2`, empreintes vérifiées) ont
+  été relus pour écrire ville et date de réception ; le lot local n° 20 est passé un instant en
+  « échec » (fichier stocké absent) et a été rétabli à partir de ses compteurs.
+- Tests : `DepotEtVilleDesCreancesTest` (18) ; suite complète 561 tests, 554 réussis, 0 échec.
 
 ### Ce qui attend une décision
 
-1. **L'âge d'une créance** : depuis le dépôt (comme le classeur, et cohérent avec la définition)
-   ou depuis l'édition (règle actuelle de toute la balance âgée) ? Changer déplace les tranches
-   et niveaux de relance de tout le Recouvrement — **ne pas le faire sans accord**.
-2. **« Porter une facture existante à l'état »** : un geste pour qu'une facture du Recouvrement
-   entre à l'état sans être retapée. Proposé, non construit.
-3. **Date de réception obligatoire ?** Facultative aujourd'hui.
-4. Fusion de `impayes` dans `main`, puis déploiement (dev d'abord) et exécution de la commande
-   de reprise sur chaque serveur.
+1. Les arbitrages pris sans confirmation, listés au § 6 d'ETAT-DES-IMPAYES.md (année = année
+   de la facture ; état initial en lecture seule ; fermé au responsable commercial ; série
+   `IMP-` ; atelier facultatif en modification ; relances non filtrées par ville).
+2. Fusion de `impayes` dans `main`, puis déploiement (dev d'abord) et, sur chaque serveur :
+   `impayes:ranger-les-colonnes` puis `factures:poser-la-ville` (constat, puis `--appliquer`).
 
 ### Chiffres de référence (à ne pas remesurer)
 
@@ -167,6 +191,9 @@ reste sur 1 332 créances ouvertes. Reprise en base : 791 268 390 F. CATTC repri
 seulement, 2 375 lignes, 1 384 588 526 F. Pont immatriculation + montant : 71 % (78 % sur la
 plaque). Écart 2026 : 95 176 169 F sur 424 factures. 103 factures du Recouvrement
 (40 424 806 F) hors de l'état — normal depuis la définition « facture déposée ».
+Colonne SITE du classeur (lue par l'import) : ABIDJAN 5 097, SAN PEDRO 4, vide 3 771 → en
+local 274 créances ouvertes (134 509 255 F) « ville à préciser », visibles dans toutes les
+villes. Âge depuis le dépôt : 8 factures ouvertes sur 1 341 changent de niveau.
 
 ---
 
@@ -206,6 +233,8 @@ php artisan test
 | `git commit` avec heredoc refusé | message dans un fichier, `git commit -F fichier` |
 | `git push` refusé par le classifieur | ne pas contourner ; demander au propriétaire de pousser |
 | `x-champ` attend `[valeur => libellé]` ; `PerimetreSites::optionsVilles/Sites` rendent des modèles **ou null** | `?->pluck('nom', 'id')->all() ?? []` |
+| `$this->reset([...])` dans un composant Volt remet à **null**, pas à la valeur de `state()` | vider par affectation (`$this->champ = ''`) — sinon `exclude_if:champ,` ne reconnaît plus le vide |
+| Un script qui rejoue un lot d'import le fait passer « en cours » puis « échec » si le fichier stocké manque | appeler le format directement sur le fichier d'origine (empreinte vérifiée), sans passer par `Executeur` |
 | `Handler::render()` passe les callbacks avant `AuthenticationException` | toute page de panne doit exclure explicitement authentification et validation |
 
 ### Où regarder

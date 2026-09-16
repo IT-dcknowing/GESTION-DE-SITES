@@ -57,7 +57,7 @@ contre la main qui le tient :
 | Formule | Ce que l'application en fait |
 |---|---|
 | `ResteàPayer = montantTTC − Montantréglé` | Se déduit des encaissements, jamais d'une colonne. Les totaux se somment **par ligne, à plancher zéro** — un client qui a trop payé ne rembourse pas la dette d'un autre. |
-| `IF(N=0; 0; AUJOURDHUI − dateRéception)` | L'application garde **sa** règle d'ancienneté, celle de la balance âgée, qui part de la date d'édition. Deux règles voisines donneraient deux âges pour la même créance. |
+| `IF(N=0; 0; AUJOURDHUI − dateRéception)` | **Reprise depuis le 16/09** : l'ancienneté part du dépôt, et de l'édition quand le dépôt n'est pas connu — pour tout le recouvrement à la fois. Voir § 5. |
 | `SI(<30 … 30<>60 … 60<>90 … >90)` | Conservée telle quelle pour pouvoir confronter la tranche que le classeur annonçait à celle qu'on recalcule. L'application en a cinq — elle coupe le « >90 » à 180 jours. |
 | `CONCATENATE(date; n°; immat; montant)` | **Confirme notre clé d'import.** Son auteur avait retenu exactement les quatre champs que l'import avait trouvés de son côté, en éprouvant les combinaisons sur le fichier entier. Un numéro de facture, seul, n'identifie rien ici. |
 
@@ -71,7 +71,9 @@ au responsable de site. Fermés au responsable commercial, comme les charges et 
 **État des impayés** (`/impayes`) — l'état de l'année. Un bouton « Ajouter une
 créance » ouvre les seize colonnes saisissables du classeur, dans son ordre et sous ses mots
 exacts, sur deux rangées. Chacun des défauts du § 1 y est refusé à la frappe. Référence
-générée `IMP-1509-0001`, avec le code de saisie et le nom dessous.
+générée `IMP-1509-0001`, avec le code de saisie et le nom dessous. Depuis le 16/09 : toutes
+les colonnes du classeur au tableau, **Détail** et **Modifier** sur chaque ligne, et **Porter
+une facture existante** — voir § 5 et § 6.
 
 **Tableau état initial** (`/impayes/etat-initial`) — la reprise telle quelle, toutes années
 mêlées, en lecture seule. Rien n'a été redressé d'office : ce serait réécrire quatre ans de
@@ -252,25 +254,70 @@ cessé de dire ce qu'il dit.
 Ces 103 factures ne sont donc pas un « trou » : ce sont des créances poursuivies qui n'ont pas
 (encore) été relevées comme déposées.
 
-### Ce qui communique déjà, et ce qui reste à construire
+### Ce qui communique, dans les deux sens
 
 - **État → Recouvrement : fait.** Une facture saisie à l'état entre aussitôt dans la balance
   âgée, l'extrait de compte, les relances et la trésorerie. Rien à rapprocher.
-- **Recouvrement → État : à construire, si vous le voulez.** Le geste naturel serait
-  « **porter une facture existante à l'état** » : choisir une facture qui n'y figure pas, saisir
-  sa date de dépôt, et elle y entre — sans être retapée, sans doublon. Ce n'est pas fait.
+- **Reste de l'application → État : fait le 16/09.** Le bouton **« Porter une facture
+  existante »** cherche une facture qui n'est pas encore à l'état, où qu'elle soit née, et l'y
+  fait entrer en saisissant sa **date de dépôt** — sans la retaper, sans la renuméroter.
 
-### Une conséquence à trancher : d'où compte-t-on l'âge d'une créance ?
+### D'où vient une facture qu'on porte
 
-Le classeur compte l'ancienneté **depuis la date de réception** (`AUJOURDHUI − dateRéception`).
-L'application la compte **depuis la date d'édition**, pour toute la balance âgée et les
-niveaux de relance.
+Une facture « existe déjà » quand l'un de ces trois gestes l'a créée :
 
-Avec votre définition, c'est le classeur qui a raison : le délai de paiement court à partir du
-moment où le client a la facture en main. Mais changer la règle déplace les tranches et les
-niveaux de relance de **tout** le module Recouvrement, sur des données réelles. Je ne l'ai pas
-fait sans votre accord. Garder une règle par écran, en revanche, est exclu : la même créance
-aurait deux âges.
+| Où elle est née | Écran ou fichier | Ses règlements |
+|---|---|---|
+| **CATTC importé** | Import › Chiffre d'affaires TTC | **aucun** — le fichier n'en porte pas |
+| **Saisie du jour** | Responsable de site › Saisie du jour › Factures | ceux saisis ensuite en caisse |
+| **Recouvrement** | Recouvrement › Saisie › bloc « Facture » | ceux saisis au recouvrement ou en caisse |
+
+**« Enregistrer un encaissement » ne crée jamais de facture** : il règle une facture qui existe
+déjà. Il y a quatre écrans d'encaissement — Comptabilité › Encaissements, Saisie du jour,
+Recouvrement › Saisie, et la saisie de l'état des impayés — plus l'import du classeur des
+impayés, qui transforme sa colonne « Montantréglé » en encaissements.
+
+**Les encaissements ne viennent pas du CATTC.** Ce fichier liste les factures émises, sans un
+seul règlement. C'est pourquoi une facture du CATTC reste hors du recouvrement : comptée telle
+quelle, elle se lirait intégralement due. La porter à l'état **demande donc ce qui a déjà été
+payé** et l'enregistre en encaissement dans le même geste ; elle entre alors au recouvrement.
+
+Garde-fous du geste :
+
+- la date de dépôt est obligatoire et ne peut pas précéder l'édition ;
+- le règlement déclaré ne peut pas dépasser le reste ;
+- si une ligne de l'état porte **la même immatriculation et le même montant** — la même affaire
+  reprise du classeur sous un autre numéro, le cas de 71 % du CATTC —, l'écran la montre et
+  demande de cocher « ce n'est pas la même facture » avant d'accepter ;
+- deux personnes qui portent la même facture au même instant : la seconde est refusée.
+
+### L'âge d'une créance part du dépôt — décidé le 16/09
+
+Le classeur comptait l'ancienneté **depuis la date de réception** ; l'application, depuis
+l'édition. **Désormais, partout, depuis le dépôt**, et depuis l'édition quand le dépôt n'est pas
+connu (`Recouvrement::dateDeDepart()`). Une seule règle pour tout le recouvrement : balance
+âgée, relances, contentieux, tableau de bord, extrait.
+
+Mesuré en local après relecture du classeur (8 850 dates de réception) : **8 factures ouvertes
+sur 1 341 changent de niveau**. Le dossier et l'extrait de compte affichent « déposée le … » sous
+l'âge, pour qu'on voie d'où il part.
+
+**Lire « 34 j / 30<>60 »** : 34 jours entre la date de départ (dépôt, ou édition à défaut — la
+mention « dépôt » ou « édition » est écrite à côté) et la date d'arrêté de l'état ; « 30<>60 »
+est la tranche **du classeur** (<30, 30<>60, 60<>90, >90). La balance âgée du recouvrement
+coupe autrement (0-30, 31-60, 61-90, 91-180, +180) : ce sont les mêmes jours, rangés dans deux
+grilles.
+
+### La ville d'une facture — 16/09
+
+La colonne SITE des fichiers nomme une **ville**, pas un atelier, et Abidjan en a deux : le site
+restait vide, la ville était perdue. Les factures ont maintenant `ville_id`. Le modèle la
+déduit de l'atelier ; l'import l'écrit **quand le fichier la dit** (colonne SITE, code agent),
+jamais d'après la seule ville déclarée au dépôt.
+
+Colonne SITE du classeur, mesurée par l'import lui-même : ABIDJAN 5 097 lignes, SAN PEDRO 4,
+**vide 3 771**. Ces dernières restent « à préciser » et s'affichent dans toutes les villes —
+274 créances ouvertes, 134 509 255 F en local. Elles se situent une à une par **Modifier**.
 
 ---
 
@@ -285,7 +332,23 @@ aurait deux âges.
 - [x] `impayes:ranger-les-colonnes` — commande de reprise, en constat par défaut
 - [x] Nom de l'écran : « État des impayés » (FICORE retiré)
 - [x] La définition « facture déposée chez le client » écrite dans le code et à l'écran
-- [x] 18 tests dédiés ; 543 au total, 536 réussis, 0 échec
+- [x] 16/09 — tableau : toutes les colonnes du classeur (commentaires, date de réception,
+      véhicule, mode et date de règlement, banque) ; boutons **Détail** et **Modifier**
+- [x] 16/09 — **Porter une facture existante**
+- [x] 16/09 — date de réception **obligatoire** ; ancienneté **depuis le dépôt**
+- [x] 16/09 — `factures.ville_id`, commande `factures:poser-la-ville` ; sélecteur de ville sur
+      le tableau de bord du recouvrement ; encaissements filtrés par ville
+- [x] 16/09 — corrigé : après une première créance, la suivante sans règlement réclamait un mode
+      de règlement (`reset()` de Volt remet à null)
+
+### Modifier — ce qu'on peut changer
+
+Tout, sauf sur une **ligne reprise du classeur** : date d'édition, numéro, immatriculation et
+montant y sont verrouillés (côté serveur, pas seulement à l'écran), parce que c'est la clé par
+laquelle l'import reconnaît la ligne — les changer ferait créer un doublon au prochain dépôt. Le
+montant ne peut pas descendre sous ce qui est encaissé. « Nouveau règlement » **ajoute** un
+encaissement. Chaque modification est tracée avant/après, et se lit dans **Détail**. Une
+créance hors du périmètre du compte ne s'ouvre pas, même en forgeant son identifiant.
 
 ### À faire sur chaque serveur
 
@@ -294,32 +357,35 @@ git pull origin impayes        # ou main, après fusion
 php artisan app:deployer
 php artisan impayes:ranger-les-colonnes              # constat, n'écrit rien
 php artisan impayes:ranger-les-colonnes --appliquer
+php artisan factures:poser-la-ville                  # constat, n'écrit rien
+php artisan factures:poser-la-ville --appliquer
 ```
 
-Sans la commande, **les écrans restent vides** : les créances reprises n'ont pas d'année.
-Éprouvée sur la base locale : 8 852 créances datées, 7 560 phrases défaites, 283 consignes de
-travail gardées seules. Elle ne remplit que ce qui est vide et, relancée, annonce zéro.
+Sans la première commande, **les écrans restent vides** : les créances reprises n'ont pas
+d'année. Éprouvée sur la base locale : 8 852 créances datées, 7 560 phrases défaites, 283
+consignes de travail gardées seules. Elle ne remplit que ce qui est vide et, relancée, annonce
+zéro.
 
-Trois colonnes resteront vides — date de réception, banque, tranche annoncée : elles
-n'existaient pas au moment du premier import. Redéposer le fichier des impayés depuis
-**Import** les remplit.
+Date de réception, banque, tranche annoncée et **ville** des lignes reprises se remplissent en
+**redéposant** le fichier des impayés depuis **Import**.
 
 ### Tranché
 
 - On garde **les deux** formulaires ; l'état des impayés = factures déposées chez le client.
 - Le nom de l'écran est **État des impayés**.
+- **16/09** : l'âge part du dépôt ; « Porter une facture existante » construit ; date de
+  réception obligatoire ; ville sur le tableau de bord du recouvrement.
 
-### À trancher
+### À confirmer (arbitrages pris sans confirmation)
 
-1. **L'âge d'une créance** part-il du dépôt (comme le classeur) ou de l'édition (comme
-   aujourd'hui) ? Voir § 5.
-2. **Construire « porter une facture existante à l'état »** pour le sens Recouvrement → État ?
-3. **La date de réception doit-elle devenir obligatoire ?** Si l'état recense les dépôts, c'est
-   le fait qui le définit. Elle est facultative aujourd'hui.
-4. L'année d'une créance est celle de sa facture, pas celle de l'écran de saisie.
-5. L'état initial est en lecture seule ; on corrige dans l'état de l'année.
-6. L'état des impayés est fermé au responsable commercial, comme les charges.
-7. Les créances portent la série `IMP-`, distincte du `F-` des factures d'atelier.
+1. L'année d'une créance est celle de sa facture, pas celle de l'écran de saisie.
+2. L'état initial est en lecture seule ; on corrige dans l'état de l'année (par **Modifier**).
+3. L'état des impayés est fermé au responsable commercial, comme les charges.
+4. Les créances portent la série `IMP-`, distincte du `F-` des factures d'atelier.
+5. En modification, l'atelier reste facultatif (les 3 771 lignes sans SITE) ; une ville seule
+   peut être choisie.
+6. Relances (journal) : elles restent comptées pour l'entreprise entière quand on regarde une
+   ville — une relance vise un tiers, et un tiers travaille dans plusieurs villes.
 
 ### Hors de ce module, et toujours en attente
 

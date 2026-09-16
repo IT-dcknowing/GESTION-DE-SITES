@@ -204,6 +204,18 @@ class FormatDesImpayes extends Format
 
         $valeurs = [
             'site_id' => $rattachement['site_id'],
+            /*
+             * La ville, quand le fichier la dit — et seulement dans ce cas.
+             *
+             * Mesuré sur le classeur : sa colonne SITE dit « ABIDJAN » sur 5 097 lignes,
+             * « SAN PEDRO » sur 4, et rien sur 3 771. Pour ces dernières, le rattachement
+             * retombe sur la ville déclarée au dépôt — « Abidjan » — alors que le classeur
+             * couvre toute l'entreprise. Écrire cette présomption rangerait d'office à Abidjan
+             * des créances de Bouaké et de San Pedro, où le filtre par ville les cacherait.
+             * Laissée vide, la ville se lit « à préciser » et la ligne reste visible partout —
+             * voir Recouvrement::dansLaVille().
+             */
+            'ville_id' => $rattachement['presumee'] ? null : $rattachement['ville_id'],
             'lot_import_id' => $lotId,
             'date' => $date,
             'client' => self::texte($ligne['client'] ?? null, 255)
@@ -263,6 +275,11 @@ class FormatDesImpayes extends Format
 
         if ($rattachement['presumee'] && $existante->site_id !== null) {
             unset($valeurs['site_id']);
+        }
+
+        // Une présomption n'efface pas une ville posée depuis — à la main, par « Modifier ».
+        if ($rattachement['presumee']) {
+            unset($valeurs['ville_id']);
         }
 
         $existante->fill($valeurs);

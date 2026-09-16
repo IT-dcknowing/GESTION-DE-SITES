@@ -35,7 +35,9 @@ $encaissements = computed(function () {
     $recherche = trim($this->recherche);
     [$du, $au] = $this->periode;
 
-    return Encaissement::query()
+    // La ville choisie dans le bandeau s'applique ici aussi : le sélecteur est affiché sur
+    // cet écran, et un sélecteur qui ne filtre pas se lit comme un filtre qui marche.
+    return Recouvrement::encaissementsDeLaVilleRegardee(Encaissement::query())
         ->whereNotNull('facture_id')
         ->whereBetween('date', [$du, $au])
         ->when($recherche !== '', fn ($q) => $q->where(fn ($r) => $r

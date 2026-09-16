@@ -171,7 +171,14 @@ $dossier = computed(fn () => (new PortefeuilleDeRecouvrement($this->arrete, $thi
                             <tr>
                                 <td><b>{{ $facture->n_facture }}</b></td>
                                 <td>{{ $facture->date?->format('d/m/Y') ?? '—' }}</td>
-                                <td class="num">{{ $age !== null ? $age.' j' : '·' }}</td>
+                                <td class="num">
+                                    {{ $age !== null ? $age.' j' : '·' }}
+                                    {{-- L'âge part du dépôt quand il est connu : on l'écrit, sinon
+                                         il ne se rapproche pas de la date d'édition d'à côté. --}}
+                                    @if ($facture->date_reception)
+                                        <div style="font-size:10.5px; color:#6B6E76; font-weight:400;">déposée le {{ $facture->date_reception->format('d/m/Y') }}</div>
+                                    @endif
+                                </td>
                                 <td>{{ $facture->activite ?? '·' }}</td>
                                 <td>{{ $facture->client ?? '·' }}</td>
                                 <td class="num">{{ number_format((int) $facture->montant, 0, ',', ' ') }}</td>

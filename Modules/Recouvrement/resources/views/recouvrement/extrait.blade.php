@@ -205,6 +205,9 @@ $totaux = computed(fn () => [
                                     @if ($age !== null && $reste >= Recouvrement::SEUIL_SOLDE)
                                         <span style="color:#5A6472; font-size:11px;"> · {{ $age }} j</span>
                                     @endif
+                                    @if ($facture->date_reception)
+                                        <div style="color:#5A6472; font-size:10.5px;">depuis le dépôt du {{ $facture->date_reception->format('d/m/Y') }}</div>
+                                    @endif
                                 </td>
                             </tr>
                         @empty

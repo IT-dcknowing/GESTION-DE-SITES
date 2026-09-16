@@ -58,6 +58,11 @@
         </div>
 
         <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
+            {{-- La ville regardée, comme dans la coquille du module. Elle manquait ici : le
+                 tableau de bord lisait bien la ville choisie ailleurs, mais n'offrait aucun
+                 moyen de la choisir — on ne pouvait ni la voir ni la changer depuis l'écran
+                 d'où l'on part. Le sélecteur ne s'affiche que s'il y a plusieurs villes. --}}
+            <livewire:commun.selecteur-ville />
             {{ $actions ?? '' }}
 
             @if ($retour)

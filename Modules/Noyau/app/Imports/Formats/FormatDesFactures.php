@@ -143,6 +143,10 @@ class FormatDesFactures extends Format
 
         $valeurs = [
             'site_id' => $rattachement['site_id'],
+            // Connue même quand l'atelier ne l'est pas — par la colonne SITE ou le code agent.
+            // Jamais par la seule ville déclarée au dépôt : c'est une présomption, et elle
+            // rangerait une facture de San Pedro à Abidjan, où le filtre par ville la cacherait.
+            'ville_id' => $rattachement['presumee'] ? null : $rattachement['ville_id'],
             'lot_import_id' => $lotId,
             'date' => self::date($ligne['date'] ?? null),
             'reference_devis' => self::texte($ligne['fiche'] ?? null, 60),
@@ -197,6 +201,10 @@ class FormatDesFactures extends Format
         // Un site déjà établi par la donnée ne se laisse pas écraser par une présomption.
         if ($rattachement['presumee'] && $existante->site_id !== null) {
             unset($valeurs['site_id']);
+        }
+
+        if ($rattachement['presumee']) {
+            unset($valeurs['ville_id']);
         }
 
         $existante->fill($valeurs);

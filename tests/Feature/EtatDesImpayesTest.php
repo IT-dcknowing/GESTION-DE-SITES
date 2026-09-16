@@ -132,6 +132,7 @@ class EtatDesImpayesTest extends TestCase
 
         Volt::test('pilotage.impayes')
             ->set('fDate', '2026-03-10')
+            ->set('fDateReception', '2026-03-12')
             ->set('fNumero', '4417')
             ->set('fClient', 'LOXEA CI')
             ->set('fAssureur', 'ALLIANZ')
@@ -257,6 +258,7 @@ class EtatDesImpayesTest extends TestCase
 
         $saisie = fn () => Volt::test('pilotage.impayes')
             ->set('fDate', '2026-05-04')
+            ->set('fDateReception', '2026-05-06')
             ->set('fNumero', '17')
             ->set('fClient', 'ALLIANZ')
             ->set('fSiteId', (string) $this->site->id)

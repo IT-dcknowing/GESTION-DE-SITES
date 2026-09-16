@@ -126,6 +126,34 @@ d'ancienneté annoncée par le classeur : elles n'existaient pas en base, donc l
 précédent ne les avait pas lues. Redéposer le fichier des impayés depuis **Import** les
 remplit. Rien ne l'exige, et l'écran fonctionne sans.
 
+### Une seule fois, après la mise à jour du 16 septembre 2026
+
+Les factures ont une colonne **ville** (migration `2026_09_16_000001`, additive). Elle sert
+au sélecteur de ville du recouvrement et à l'état des impayés : une créance dont on connaît
+la ville mais pas l'atelier — le cas d'Abidjan, qui en a deux — ne s'affiche plus dans les
+autres villes. Les factures écrites avant la migration ont une ville vide ; la commande la
+pose **d'après leur atelier**, et seulement d'après lui.
+
+```bash
+php artisan factures:poser-la-ville              # constat : n'écrit rien
+php artisan factures:poser-la-ville --appliquer  # écrit
+```
+
+Elle ne remplit que ce qui est vide et ne devine rien : une facture sans atelier garde une
+ville vide, et reste visible dans toutes les villes. Pour les factures reprises d'un fichier,
+**redéposer le fichier** depuis **Import** écrit la ville que sa colonne SITE désigne. Éprouvé
+sur la base locale : 1 937 factures reçoivent la ville de leur atelier ; après relecture des
+deux fichiers, 5 077 créances de l'état sont situées à Abidjan et 4 à San Pedro, et 3 771 —
+colonne SITE vide dans le classeur — restent « à préciser ».
+
+Deux changements de règle arrivent avec cette mise à jour, sans commande à lancer :
+
+- **l'ancienneté d'une créance se compte depuis son dépôt chez le client** (date de
+  réception), et depuis l'édition quand le dépôt n'est pas connu. Tant que le fichier des
+  impayés n'a pas été redéposé, les dates de réception sont vides et rien ne bouge ; après
+  relecture en local, 8 factures ouvertes sur 1 341 changent de niveau de relance ;
+- **la date de réception est obligatoire** à la saisie de l'état des impayés.
+
 ## 2. Ce qu'un envoi ne doit jamais emporter
 
 Le 14 septembre 2026, le projet a été mis en ligne par un zip du dossier local. La
