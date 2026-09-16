@@ -119,6 +119,8 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 15/09 | `517416e` | **impayes** | formulaire en deux rangées, `ETAT-DES-IMPAYES.md` |
 | 16/09 | `e1e3782` | **impayes** | FICORE retiré ; définition « facture déposée » ; ce fichier |
 | 16/09 | `686810b` | **impayes** | âge depuis le dépôt ; ville des factures ; Détail, Modifier, Porter ; date de réception obligatoire |
+| 16/09 | `5064774` | **impayes** | le détail d'une créance a sa page (`/impayes/creance/{id}`) |
+| 16/09 | `eaf14b2` | **import** (depuis `main`) | la lecture démarre au dépôt ; barre de progression réelle ; « Traiter maintenant » / « Tout traiter » retirés ; « Annuler l'import » |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -197,6 +199,28 @@ villes. Âge depuis le dépôt : 8 factures ouvertes sur 1 341 changent de nivea
 
 ---
 
+## 5 bis. Branche `import` — la lecture démarre au dépôt
+
+**Branche `import`, partie de `main`**, non fusionnée, non poussée (`git push -u origin import`).
+Elle ne contient pas le travail de `impayes`, et inversement : en local, on ne voit que la
+branche extraite (`git checkout import` / `git checkout impayes`).
+
+- **Défaut signalé** : après « Lancer l'import », il fallait cliquer « Traiter maintenant » ou
+  « Tout traiter », et la barre restait figée.
+- **Fait** : `LanceurDeTraitement` lance `php artisan import:traiter-lot {id}` détaché au dépôt
+  (file d'attente gardée comme filet ; repli après réponse) ; `SuiviDuTraitement` — prise
+  atomique du lot, avancée et demande d'arrêt dans le **cache fichier** (la ligne du lot est
+  verrouillée par la transaction : 10 clés étrangères y pointent) ; `lignes_estimees` lu dans
+  `<dimension>` du `.xlsx` (migration `2026_09_16_000002`) ; composant
+  `x-import::progression` sur dépôt, traitements et détail du lot ; bouton **Annuler l'import**
+  (geste `arreter`) ; route `POST /import/traitements` supprimée ; les corrections relancent
+  par le même chemin.
+- **Serveur** : `IMPORT_PHP_CLI` si le PHP ligne de commande n'est pas `/usr/local/bin/php` ;
+  le cron `queue:work` reste. Voir MISE-A-JOUR-SERVEUR.md (sur la branche `import`).
+- **Vérifié en local** par le vrai chemin détaché (0 → 37 % → 76 % → fin). Tests :
+  `LectureImmediateDesImportsTest` (10) ; suite de la branche 535 / 528 / 0 échec.
+- **À vérifier sur le serveur de dev** : que `exec` est permis et que la barre avance.
+
 ## 6. Ce qui attend, hors du chantier en cours
 
 - **Rotation des secrets** (le `.env` de production a circulé en clair) : mot de passe du
@@ -235,6 +259,7 @@ php artisan test
 | `x-champ` attend `[valeur => libellé]` ; `PerimetreSites::optionsVilles/Sites` rendent des modèles **ou null** | `?->pluck('nom', 'id')->all() ?? []` |
 | `$this->reset([...])` dans un composant Volt remet à **null**, pas à la valeur de `state()` | vider par affectation (`$this->champ = ''`) — sinon `exclude_if:champ,` ne reconnaît plus le vide |
 | Un script qui rejoue un lot d'import le fait passer « en cours » puis « échec » si le fichier stocké manque | appeler le format directement sur le fichier d'origine (empreinte vérifiée), sans passer par `Executeur` |
+| Écrire l'avancée d'un import sur `lots_import` depuis une autre connexion | bloque : la transaction de l'import verrouille la ligne (clés étrangères) — passer par le cache fichier |
 | `Handler::render()` passe les callbacks avant `AuthenticationException` | toute page de panne doit exclure explicitement authentification et validation |
 
 ### Où regarder
