@@ -28,6 +28,7 @@ class NoyauServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 \Modules\Noyau\Console\RattacherLesCodes::class,
+                \Modules\Noyau\Console\TraiterUnLotImporte::class,
             ]);
         }
     }

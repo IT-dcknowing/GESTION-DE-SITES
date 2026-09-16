@@ -36,11 +36,10 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
         // Une notice, pas un écran de chiffres : quel fichier alimente quelle page.
         Volt::route('/informations', 'import.informations')
             ->name('informations')->middleware(VerifiePageImport::class.':informations');
-        // Ce qui tourne, et le moyen de le lancer quand aucun exécuteur de file ne vient.
+        // Ce qui tourne. La lecture démarre d'elle-même au dépôt : il n'y a plus de geste
+        // « tout traiter », donc plus d'adresse qui le reçoive.
         Volt::route('/traitements', 'import.traitements')
             ->name('traitements')->middleware(VerifiePageImport::class.':traitements');
-        Route::post('/traitements', [TraitementsController::class, 'tout'])
-            ->name('traitements.tout')->middleware(VerifiePageImport::class.':traitements');
         /*
          * L'état des traitements, en JSON. Il sert la veille posée dans la mise en page :
          * un import se termine pendant qu'on travaille ailleurs, et c'est à ce moment-là
@@ -55,7 +54,7 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
         Volt::route('/journal/{lot}', 'import.lot')
             ->name('lot')->middleware(VerifiePageImport::class.':lots');
         /*
-         * Les gestes qu'on pose sur un dépôt — recontrôler, réimporter, traiter, annuler —
+         * Les gestes qu'on pose sur un dépôt — réimporter, arrêter la lecture, annuler —
          * passent par un vrai POST. Ils étaient posés sur la couche interactive et ne
          * partaient donc jamais dans un navigateur où celle-ci ne démarre pas : le clic
          * n'allait nulle part, sans erreur ni trace.

@@ -10,6 +10,8 @@ use Illuminate\Queue\SerializesModels;
 use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Services\Executeur;
+use Modules\Noyau\Imports\Services\ImportArrete;
+use Modules\Noyau\Imports\Services\SuiviDuTraitement;
 use Throwable;
 
 /**
@@ -51,26 +53,28 @@ class TraiterUnLot implements ShouldQueue
     {
         $lot = $this->lot->fresh();
 
-        if ($lot === null) {
+        // Le lot peut être lancé par deux chemins — le processus détaché démarré au dépôt, et
+        // la file d'attente qui sert de filet. Un seul le prend ; l'autre trouve le travail
+        // commencé, ou fini, et s'en va sans rien faire. C'est aussi ce qui empêche un message
+        // livré deux fois de lire deux fois le même fichier.
+        if ($lot === null || ! SuiviDuTraitement::prendre($lot)) {
             return;
         }
 
-        // Un lot déjà traité ne se retraite pas parce qu'un message a été livré deux fois.
-        if (in_array($lot->etat, ['termine', 'en_cours'], true) && $this->ecrire) {
-            return;
+        try {
+            (new Executeur((int) $lot->entreprise_id))->traiter(
+                $lot->fresh(),
+                Registre::classe($lot->format),
+                $this->ecrire,
+                // L'avancée part dans le cache et non sur la ligne du lot : celle-ci est
+                // verrouillée par la transaction de l'import. Voir SuiviDuTraitement.
+                fn (int $lues) => SuiviDuTraitement::avancer($lot->id, $lues),
+            );
+        } catch (ImportArrete) {
+            // Voulu, et déjà écrit sur le lot par l'exécuteur : ce n'est pas une panne.
+        } finally {
+            SuiviDuTraitement::oublier($lot->id);
         }
-
-        (new Executeur((int) $lot->entreprise_id))->traiter(
-            $lot,
-            Registre::classe($lot->format),
-            $this->ecrire,
-            // La progression est écrite sans repasser par Eloquent : c'est une requête
-            // toutes les cent lignes, et elle ne doit rien coûter au traitement qu'elle
-            // observe.
-            fn (int $lues) => LotImport::withoutGlobalScopes()
-                ->whereKey($lot->id)
-                ->update(['lignes_lues' => $lues]),
-        );
     }
 
     /**

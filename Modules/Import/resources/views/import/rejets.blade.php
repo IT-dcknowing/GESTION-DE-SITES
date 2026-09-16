@@ -195,8 +195,8 @@ $corrections = computed(fn () => $this->service()->histoire($this->leLot));
                         Enregistrer et relancer l'import
                     </button>
                     <span style="font-size:12px; color:#6B6E76; max-width:400px; line-height:1.5;">
-                        La relance travaille dans cette page&nbsp;: vous voyez tout de suite si les lignes
-                        corrigées passent. Ce qui est déjà en base n'est pas recréé.
+                        La lecture redémarre aussitôt et son avancée s'affiche&nbsp;: vous voyez vite si les
+                        lignes corrigées passent. Ce qui est déjà en base n'est pas recréé.
                     </span>
                 </div>
             </form>

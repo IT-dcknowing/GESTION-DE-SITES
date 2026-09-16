@@ -270,6 +270,41 @@ class LecteurXlsx implements Lecteur
         return (bool) preg_match('/[yamjdhs]/i', (string) $nettoye);
     }
 
+    /**
+     * Combien de lignes compte la plus longue feuille, lu dans l'en-tête et non en parcourant.
+     *
+     * Chaque feuille annonce son étendue dès ses premiers octets : `<dimension ref="A1:T9108"/>`.
+     * On ne lit donc que le début de chaque entrée — quelques kilo-octets, là où la feuille des
+     * impayés en pèse plusieurs mégas. C'est ce qui donne à la barre de progression une
+     * longueur vers laquelle avancer.
+     *
+     * **Une estimation, et rien de plus.** Le format choisit sa feuille après coup, et
+     * certains logiciels écrivent une étendue approximative ou « A1 » tout court. On retient la
+     * plus longue, et null quand rien d'exploitable n'est annoncé : une barre sans longueur
+     * vaut mieux qu'une barre qui ment.
+     */
+    public function estimerLignes(): ?int
+    {
+        $plusLongue = 0;
+
+        foreach ($this->feuilles as $entree) {
+            $flux = $this->archive->getStream($entree);
+
+            if ($flux === false) {
+                continue;
+            }
+
+            $debut = (string) fread($flux, 4096);
+            fclose($flux);
+
+            if (preg_match('/<dimension\s+ref="[A-Z]+\d+:[A-Z]+(\d+)"/', $debut, $trouve)) {
+                $plusLongue = max($plusLongue, (int) $trouve[1]);
+            }
+        }
+
+        return $plusLongue > 1 ? $plusLongue : null;
+    }
+
     private function lireLesFeuilles(): void
     {
         $workbook = $this->archive->getFromName('xl/workbook.xml');

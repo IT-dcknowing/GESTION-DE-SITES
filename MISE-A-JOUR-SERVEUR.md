@@ -89,8 +89,29 @@ se retrouve marqué en échec alors qu'il a parfaitement abouti.
 
 ### Les tâches planifiées
 
-Une paire par serveur, dans cPanel → *Tâches Cron*, toutes les minutes. Sans la première,
-un fichier déposé à l'import monte, s'inscrit en base, et n'est **jamais** traité.
+Une paire par serveur, dans cPanel → *Tâches Cron*, toutes les minutes.
+
+**Depuis la mise à jour de la branche `import` (16/09/2026), la lecture d'un fichier ne
+dépend plus de la première.** Elle démarre au dépôt dans un processus à part
+(`php artisan import:traiter-lot`), et la barre de progression la montre avancer. La tâche
+`queue:work` reste en place comme **filet** : si l'hébergement refuse de lancer ce processus,
+c'est elle qui prend le fichier, dans la minute. Un fichier n'est jamais lu deux fois.
+
+Le processus a besoin du PHP « ligne de commande », qui n'est pas celui qui sert les pages. Il
+est cherché à `/usr/local/bin/php` — le même que ces tâches — puis `/usr/bin/php`. S'il est
+ailleurs, l'indiquer dans le `.env` :
+
+```
+IMPORT_PHP_CLI=/usr/local/bin/php
+```
+
+Vérifier après la mise à jour : déposer un petit fichier et regarder la barre avancer. Si
+l'écran annonce « Le fichier attend depuis … minute(s) », le lancement immédiat a échoué et
+c'est le cron qui a pris le relais : régler `IMPORT_PHP_CLI`, ou vérifier que `exec` n'est pas
+dans `disable_functions`.
+
+La migration `2026_09_16_000002` (colonne `lignes_estimees`, additive) passe avec
+`app:deployer`. Aucune commande de données n'est à lancer.
 
 ```
 /usr/local/bin/php /home/cp2255957p00/public_html/GESTION-DE-SITES/artisan queue:work --stop-when-empty --timeout=3600 --tries=1 >> /dev/null 2>&1

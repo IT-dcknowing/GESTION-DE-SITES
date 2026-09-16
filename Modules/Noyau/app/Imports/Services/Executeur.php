@@ -61,8 +61,16 @@ class Executeur
             // empreinte le prouve. Les corrections faites depuis se posent par-dessus au
             // moment de la lecture — l'import voit les valeurs corrigées, le disque garde
             // celles du fichier, et l'écart entre les deux reste consultable.
+            $classeur = Classeur::ouvrir($lot->chemin());
+
+            // La longueur annoncée par le classeur, écrite avant la transaction pour que
+            // l'écran la voie tout de suite : c'est elle qui donne une fin à la barre.
+            if (method_exists($classeur, 'estimerLignes')) {
+                $lot->forceFill(['lignes_estimees' => $classeur->estimerLignes()])->save();
+            }
+
             $lecteur = LecteurCorrige::envelopper(
-                Classeur::ouvrir($lot->chemin()),
+                $classeur,
                 (new CorrectionsDUnLot($this->entrepriseId))->carte($lot),
             );
 
@@ -77,6 +85,24 @@ class Executeur
                     $lot->site_id,
                 ),
             );
+        } catch (ImportArrete $arret) {
+            // La transaction a déjà tout défait : on le dit, avec qui l'a voulu et où l'on en était.
+            $lot->forceFill([
+                'etat' => 'annule',
+                'termine_le' => now(),
+                'annule_le' => now(),
+                'annule_par' => $arret->parUserId ?: null,
+                'lignes_lues' => $arret->lignesLues,
+                'message' => sprintf(
+                    "Import arrêté%s après %s ligne(s) lue(s) : rien n'a été écrit, la base est revenue à son état d'avant le dépôt.",
+                    $arret->parNom !== '' ? ' par '.$arret->parNom : '',
+                    number_format($arret->lignesLues, 0, ',', ' '),
+                ),
+            ])->save();
+
+            $this->fermer($lecteur);
+
+            throw $arret;
         } catch (Throwable $panne) {
             $lot->forceFill([
                 'etat' => 'echec',

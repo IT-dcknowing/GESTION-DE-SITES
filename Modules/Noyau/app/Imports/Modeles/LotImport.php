@@ -29,7 +29,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 #[Fillable([
     'entreprise_id', 'ville_id', 'site_id', 'user_id', 'deposant',
     'format', 'nom_fichier', 'empreinte', 'taille', 'periode',
-    'lignes_lues', 'lignes_creees', 'lignes_majs', 'lignes_ignorees', 'lignes_rejetees',
+    'lignes_lues', 'lignes_estimees', 'lignes_creees', 'lignes_majs', 'lignes_ignorees', 'lignes_rejetees',
     'etat', 'message', 'demarre_le', 'termine_le', 'annule_le', 'annule_par',
 ])]
 class LotImport extends Model
@@ -62,6 +62,7 @@ class LotImport extends Model
             'annule_le' => 'datetime',
             'taille' => 'integer',
             'lignes_lues' => 'integer',
+            'lignes_estimees' => 'integer',
             'lignes_creees' => 'integer',
             'lignes_majs' => 'integer',
             'lignes_ignorees' => 'integer',
@@ -93,6 +94,14 @@ class LotImport extends Model
     public function etatLisible(): string
     {
         return self::ETATS[$this->etat] ?? $this->etat;
+    }
+
+    /** Les états d'un lot dont le traitement n'est pas fini : c'est ce qu'on suit, et ce qu'on peut arrêter. */
+    public const ETATS_EN_TRAVAIL = ['depose', 'en_cours'];
+
+    public function estEnTravail(): bool
+    {
+        return in_array($this->etat, self::ETATS_EN_TRAVAIL, true);
     }
 
     /**

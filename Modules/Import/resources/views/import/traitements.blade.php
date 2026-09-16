@@ -17,24 +17,25 @@ use function Livewire\Volt\computed;
 | l'écran affiche « Déposé », le compteur reste à zéro — et rien ne dit que personne
 | ne viendra jamais. On attend devant une progression qui n'a pas commencé.
 |
-| Deux gestes, donc : **suivre** ce qui tourne, et **prendre le travail en main** si
-| rien ne le prend. Le bouton « Tout traiter » fait le travail dans la page.
+| **Ce manque est comblé à la source.** La lecture démarre désormais d'elle-même au
+| dépôt (voir LanceurDeTraitement) ; les boutons « Traiter celui-ci maintenant » et
+| « Tout traiter maintenant » ont disparu avec le défaut qui les rendait nécessaires.
+| Cette page ne fait plus que **suivre** — et permettre d'**arrêter** une lecture.
 |
-| **Sur la barre de progression.** Elle ne vise rien, et c'est assumé : la longueur
-| d'un fichier n'est connue qu'une fois lu. Elle montre donc l'avancée réelle — le
-| nombre de lignes lues, qui monte — plutôt qu'un pourcentage inventé. Un pourcentage
-| faux est pire qu'une absence de pourcentage : on l'attend, puis on n'y croit plus.
+| **Sur la barre de progression.** Elle avance vers la longueur que le classeur annonce
+| dans son en-tête. Quand elle est inconnue, elle bouge sans afficher de proportion :
+| un pourcentage inventé est pire qu'une absence de pourcentage.
 */
 
 $file = computed(fn () => (new EtatDeLaFile((int) auth()->user()->entreprise_id))->mesurer());
 
 /** Ce qui tourne ou attend : c'est le sujet de la page. */
-$enVol = computed(fn () => LotImport::whereIn('etat', ['depose', 'en_cours'])
+$enVol = computed(fn () => LotImport::whereIn('etat', LotImport::ETATS_EN_TRAVAIL)
     ->orderBy('created_at')
     ->get());
 
 /** Ce qui vient de finir — une fenêtre courte, parce qu'on annonce un événement. */
-$recents = computed(fn () => LotImport::whereIn('etat', ['termine', 'echec', 'controle'])
+$recents = computed(fn () => LotImport::whereIn('etat', ['termine', 'echec', 'controle', 'annule'])
     ->where('termine_le', '>=', now()->subHours(6))
     ->orderByDesc('termine_le')
     ->limit(12)
@@ -46,7 +47,7 @@ $pastille = fn (string $etat) => match ($etat) {
     'termine' => 'pTermine',
     'controle' => 'pControle',
     'en_cours' => 'pEnCours',
-    'echec' => 'pEchec',
+    'echec', 'annule' => 'pEchec',
     default => 'pDepose',
 };
 
@@ -57,22 +58,15 @@ $pastille = fn (string $etat) => match ($etat) {
      personne. Le rafraîchissement est un confort — la page est complète sans lui, et la
      veille posée dans la mise en page annonce la fin où que l'on soit. --}}
 <x-import::coquille page="traitements">
-    <div @if ($this->enVol->isNotEmpty()) wire:poll.3s @endif>
+    <div @if ($this->enVol->isNotEmpty()) wire:poll.2s @endif>
 
         @php $f = $this->file; @endphp
 
-        {{-- ------------------------------------------------- l'exécuteur, dit franchement --}}
-        @if ($f['executeur_douteux'])
-            <div class="imp-hint">
-                Aucun exécuteur de file ne tourne&nbsp;: les fichiers déposés attendent d'être pris.
-                Le bouton <strong>Tout traiter maintenant</strong> fait la lecture dans cette page.
-            </div>
-        @elseif ($this->enVol->isEmpty())
+        @if ($this->enVol->isEmpty())
             <div class="imp-carte">
                 <h2>Aucun traitement en cours</h2>
                 <div class="imp-hint ok">
-                    La file est vide et tout ce qui a été déposé a été lu. Les derniers traitements
-                    terminés sont listés plus bas.
+                    Tout ce qui a été déposé a été lu. Les derniers traitements terminés sont listés plus bas.
                 </div>
             </div>
         @endif
@@ -101,52 +95,16 @@ $pastille = fn (string $etat) => match ($etat) {
                             {{ $lot->created_at?->diffForHumans() }}
                         </div>
 
-                        <div style="font-family:'Barlow Condensed',sans-serif; font-size:24px; font-weight:700; margin-top:8px;">
-                            {{ number_format((int) $lot->lignes_lues, 0, ',', ' ') }} ligne(s) lue(s)
-                        </div>
-
-                        {{-- La barre ne vise rien : la longueur du fichier n'est connue qu'une
-                             fois lu. Elle dit « ça travaille », pas « il reste tant ». --}}
-                        <div class="imp-jauge">
-                            <i style="width:{{ $lot->etat === 'en_cours' ? '66%' : '10%' }}"></i>
+                        <div style="margin-top:8px;">
+                            <x-import::progression :lot="$lot" :peut-arreter="$this->peutLancer" />
                         </div>
 
                         <div class="imp-actions">
                             <a href="{{ route('import.lot', $lot->id) }}" class="imp-btn p"
                                style="text-decoration:none; display:inline-block;">Voir le détail</a>
-
-                            @if ($this->peutLancer && $lot->etat === 'depose')
-                                <form method="POST" action="{{ route('import.lot.agir', $lot->id) }}" style="display:inline;">
-                                    @csrf
-                                    <button type="submit" name="geste" value="traiter" class="imp-btn n">
-                                        Traiter celui-ci maintenant
-                                    </button>
-                                </form>
-                            @endif
                         </div>
                     </div>
                 @endforeach
-
-                @if ($this->peutLancer)
-                    <form method="POST" action="{{ route('import.traitements.tout') }}">
-                        @csrf
-                        <div class="imp-actions">
-                            <button type="submit" class="imp-btn r"
-                                    data-confirmer-titre="Traiter les fichiers en attente"
-                                    data-confirmer="Le travail sera fait dans cette page, fichier après fichier."
-                                    data-confirmer-detail="Gardez l'onglet ouvert le temps de la lecture. Rien n'est écrit à moitié : chaque fichier est lu dans une transaction."
-                                    data-confirmer-libelle="Tout traiter">
-                                Tout traiter maintenant
-                            </button>
-                            <span style="font-size:12px; color:#6B6E76; max-width:420px; line-height:1.5;">
-                                Le travail se fait dans cette page, jusqu'à
-                                {{ \Modules\Import\Http\Controllers\TraitementsController::LOTS_PAR_PASSAGE }} fichiers
-                                par passage&nbsp;: une requête web a un temps limité, et un fichier coupé en plein
-                                traitement est exactement ce qu'on évite. Relancez pour prendre les suivants.
-                            </span>
-                        </div>
-                    </form>
-                @endif
             </div>
         @endif
 

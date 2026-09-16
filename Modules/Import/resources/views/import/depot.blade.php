@@ -132,8 +132,8 @@ $abandonner = function () {
             <x-boite-message titre="Fichier reçu" ton="succes">
                 {{ session('annonce-import') }}
                 <p style="margin:10px 0 0;">
-                    Vous pouvez quitter cette page ou déposer un autre fichier&nbsp;: le traitement continue
-                    de son côté. Son avancée s'affiche ci-dessous.
+                    La lecture a démarré&nbsp;: son avancée s'affiche ci-dessous. Vous pouvez quitter cette
+                    page ou déposer un autre fichier, elle continue de son côté.
                 </p>
             </x-boite-message>
         @endif
@@ -142,32 +142,18 @@ $abandonner = function () {
             <x-boite-message titre="Dépôt refusé" ton="alerte">{{ session('refus-import') }}</x-boite-message>
         @endif
 
-        {{-- ------------------------------------------------- le travail de fond, en clair
+        {{-- ------------------------------------------------- ce qui tourne déjà
 
-             « Lu en arrière-plan » supposait qu'on sache par qui. Si aucun exécuteur de
-             file ne tourne, le dépôt réussit, l'écran dit « Déposé », le compteur reste à
-             zéro — et rien ne dit que personne ne viendra jamais. On attend devant une
-             progression qui n'a pas commencé. Ce bandeau ne s'affiche que quand il a
-             quelque chose à dire. --}}
+             Il y avait ici un bandeau « aucun exécuteur ne prend le travail », qui renvoyait vers
+             la page Traitement pour lancer la lecture à la main. La lecture démarre désormais
+             d'elle-même au dépôt : le bandeau n'avait plus rien à dire, et son lien menait à un
+             bouton qui n'existe plus. Il reste l'information utile — d'autres imports tournent. --}}
         @php $f = $this->file; @endphp
-        @if ($f['executeur_douteux'])
-            <div class="imp-hint warn" style="margin-bottom:14px;">
-                <strong>Un traitement attend depuis {{ (int) round($f['plus_ancien'] / 60) }} minute(s) sans démarrer.</strong>
-                Le fichier est bien arrivé et il est rangé&nbsp;: il manque l'ouvrier qui vide la file
-                d'attente en arrière-plan. Vous pouvez faire le travail vous-même —
-                <a href="{{ route('import.traitements') }}" style="font-weight:700; color:#C8102E;">page Traitement</a>
-                — ou lancer l'ouvrier une fois pour toutes sur le serveur&nbsp;:
-                <code>php artisan queue:work</code>.
-            </div>
-        @elseif ($f['en_file'] + $f['en_cours'] + $f['en_attente'] > 0)
+        @if ($f['en_cours'] + $f['en_attente'] > 0 && ! $this->lot)
             <div class="imp-hint" style="margin-bottom:14px;">
-                <strong>{{ $f['en_cours'] + $f['en_attente'] }} import(s) en cours de traitement.</strong>
-                Vous pouvez en déposer d'autres sans attendre&nbsp;: chaque dépôt est un travail
-                séparé, ils se suivent dans la file et ne se gênent pas.
-                @if ($f['echecs'] > 0)
-                    <br><strong style="color:#C8102E;">{{ $f['echecs'] }} travail(aux) en échec</strong>
-                    dans la file — le journal des imports dit lesquels.
-                @endif
+                <strong>{{ $f['en_cours'] + $f['en_attente'] }} import(s) en cours de lecture.</strong>
+                Vous pouvez en déposer d'autres sans attendre : chacun est lu de son côté.
+                <a href="{{ route('import.traitements') }}" style="color:#C8102E; font-weight:700;">Voir leur avancée</a>.
             </div>
         @endif
 
@@ -426,32 +412,29 @@ $abandonner = function () {
             })();
         </script>
 
-        {{-- ============================================ le suivi du traitement en cours --}}
+        {{-- ============================================ le suivi du traitement en cours
+
+             La lecture a démarré au moment du dépôt : cette carte la montre avancer, ligne après
+             ligne, vers la longueur que le classeur annonce. Le seul geste proposé pendant ce
+             temps est de l'arrêter. --}}
         @if ($this->lot)
             @php $lot = $this->lot; @endphp
             <div class="imp-carte" style="border-left:4px solid #C8102E;"
-                 @if (in_array($lot->etat, ['depose', 'en_cours'], true)) wire:poll.2s @endif>
+                 @if ($lot->estEnTravail()) wire:poll.1s @endif>
                 <h2>{{ $lot->nom_fichier }} <span class="chip">{{ $lot->etatLisible() }}</span></h2>
 
-                @if (in_array($lot->etat, ['depose', 'en_cours'], true))
-                    <div style="font-family:'Barlow Condensed',sans-serif; font-size:26px; font-weight:700;">
-                        {{ number_format((int) $lot->lignes_lues, 0, ',', ' ') }} ligne(s) lue(s)
-                    </div>
-                    <div class="imp-jauge"><i style="width:{{ $lot->etat === 'en_cours' ? '66%' : '12%' }}"></i></div>
-                    <div class="imp-hint">
-                        La longueur du fichier n'est connue qu'une fois lu : le compteur monte, il ne vise rien.
-                        <strong>Vous pouvez quitter la page</strong>, le traitement continue — et vous pouvez
-                        en déposer un autre pendant ce temps.
-                        @if ($lot->etat === 'depose')
-                            <br>Si le compteur ne bouge pas, personne ne prend le travail :
-                            <a href="{{ route('import.traitements') }}" style="color:#C8102E; font-weight:700;">
-                                lancez-le depuis la page Traitement</a>.
-                        @endif
-                        <br><a href="{{ route('import.lot', $lot->id) }}" style="color:#C8102E; font-weight:700;">
-                            Rafraîchir à la main</a> si le compteur reste figé.
+                @if ($lot->estEnTravail())
+                    <x-import::progression :lot="$lot" :peut-arreter="$this->peutDeposer" />
+                @elseif ($lot->etat === 'annule')
+                    <div class="imp-hint warn">{{ $lot->message }}</div>
+                    <div class="imp-actions">
+                        <a href="{{ route('import.lot', $lot->id) }}" class="imp-btn n"
+                           style="text-decoration:none; display:inline-block;">Voir le détail</a>
                     </div>
                 @else
-                    <div class="imp-kpis cinq">
+                    <div class="imp-jauge grande"><i style="width:{{ $lot->etat === 'termine' ? 100 : 0 }}%;"></i></div>
+
+                    <div class="imp-kpis cinq" style="margin-top:12px;">
                         <div class="imp-kpi"><div class="lab">Lues</div>
                             <div class="val">{{ number_format((int) $lot->lignes_lues, 0, ',', ' ') }}</div>
                             <div class="sub">dans le fichier</div></div>
