@@ -8,6 +8,7 @@ use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Services\Depot;
 use Modules\Noyau\Imports\Services\EtatDeLaFile;
 use Modules\Noyau\Imports\Services\NomDeFichier;
+use Modules\Noyau\Imports\Services\SuiviDuTraitement;
 use Modules\Noyau\Imports\Services\TableauDesImports;
 
 use function Livewire\Volt\{computed, mount, state};
@@ -80,7 +81,21 @@ $peutDeposer = computed(fn () => AccesImport::peutDeposer(auth()->user()));
 
 $tableau = computed(fn () => (new TableauDesImports((int) auth()->user()->entreprise_id))->lignes());
 
-$lot = computed(fn () => $this->lotSuivi ? LotImport::find($this->lotSuivi) : null);
+/*
+ * Un dépôt que rien n'a démarré repart de lui-même quand on regarde cet écran — voir
+ * SuiviDuTraitement::reveiller(). Une tentative par minute au plus, et un contrôle reste un
+ * contrôle. Sans cela, un fichier déposé avant que le lancement immédiat n'existe attend
+ * indéfiniment, sans qu'aucun geste ne puisse le reprendre.
+ */
+$lot = computed(function () {
+    $lot = $this->lotSuivi ? LotImport::find($this->lotSuivi) : null;
+
+    if ($lot !== null) {
+        SuiviDuTraitement::reveiller($lot);
+    }
+
+    return $lot;
+});
 
 /**
  * Ce que la ventilation par les codes vaut aujourd'hui.

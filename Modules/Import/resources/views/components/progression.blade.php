@@ -24,13 +24,16 @@
 
         @if ($suivi['attente'] > 90)
             {{-- Le lancement immédiat a échoué sur ce serveur (processus interdit, PHP en ligne
-                 de commande introuvable) : c'est la tâche planifiée qui prendra le fichier. On le
-                 dit, sans offrir de bouton qui ferait semblant de régler le problème. --}}
+                 de commande introuvable). Deux secours s'en occupent sans qu'on ait rien à faire :
+                 la tâche planifiée, et la relance que cet écran vient de tenter lui-même — voir
+                 SuiviDuTraitement::reveiller(). On le dit plutôt que d'offrir un bouton qui ferait
+                 semblant de régler le problème. --}}
             <div class="imp-hint warn">
-                Le fichier attend depuis {{ (int) ceil($suivi['attente'] / 60) }} minute(s). La lecture n'a pas pu
-                démarrer d'elle-même sur ce serveur : elle sera prise par la tâche planifiée, qui passe
-                chaque minute. Si rien ne bouge d'ici quelques minutes, prévenez l'administrateur —
-                le réglage <code>IMPORT_PHP_CLI</code> est décrit dans MISE-A-JOUR-SERVEUR.md.
+                Le fichier attend depuis {{ (int) ceil($suivi['attente'] / 60) }} minute(s). La lecture n'a pas
+                démarré d'elle-même : cet écran vient de la relancer, et la tâche planifiée du serveur
+                passe de son côté chaque minute. Laissez la page ouverte quelques instants. Si rien ne
+                bouge, prévenez l'administrateur — le réglage <code>IMPORT_PHP_CLI</code> est décrit dans
+                MISE-A-JOUR-SERVEUR.md — ou annulez ce dépôt et redéposez le fichier.
             </div>
         @endif
     @elseif ($lot->etat === 'en_cours')

@@ -6,6 +6,7 @@ use Modules\Noyau\Imports\Modeles\LigneRejeteeImport;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Services\AnnulationDUnLot;
 use Modules\Noyau\Imports\Services\CorrectionsDUnLot;
+use Modules\Noyau\Imports\Services\SuiviDuTraitement;
 
 use function Livewire\Volt\{computed, mount, state};
 
@@ -43,7 +44,19 @@ mount(function (LotImport $lot) {
 
 $parPage = computed(fn () => 25);
 
-$leLot = computed(fn () => LotImport::with(['ville', 'site'])->findOrFail($this->lotId));
+/*
+ * Un dépôt que rien n'a démarré repart de lui-même quand on regarde cet écran — voir
+ * SuiviDuTraitement::reveiller(). Une tentative par minute au plus, et un contrôle reste un
+ * contrôle. Sans cela, un fichier déposé avant que le lancement immédiat n'existe attend
+ * indéfiniment, sans qu'aucun geste ne puisse le reprendre.
+ */
+$leLot = computed(function () {
+    $lot = LotImport::with(['ville', 'site'])->findOrFail($this->lotId);
+
+    SuiviDuTraitement::reveiller($lot);
+
+    return $lot;
+});
 
 $rejets = computed(fn () => LigneRejeteeImport::where('lot_import_id', $this->lotId)
     ->orderBy('numero_ligne')

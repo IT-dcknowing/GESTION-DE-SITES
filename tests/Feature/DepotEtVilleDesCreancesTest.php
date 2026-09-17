@@ -410,6 +410,66 @@ class DepotEtVilleDesCreancesTest extends TestCase
         $this->assertContains($cattc->id, Recouvrement::requete()->pluck('id')->all());
     }
 
+    public function test_porter_montre_toutes_les_cases_remplies_et_deduit_l_avance(): void
+    {
+        /*
+         * Le panneau est le formulaire de saisie, rempli d'avance : mêmes cases, mêmes mots. Ce
+         * qui a déjà été payé sur la facture est montré (« Avance déjà encaissée ») et déduit du
+         * reste — porter une créance de 400 000 dont 150 000 sont en caisse ne réclame que 250 000.
+         */
+        $this->actingAs($this->compte('gerant'));
+
+        $cattc = $this->factureDuCattc('FA -5718', 400_000, '1179JF02');
+        $cattc->update(['assureur' => 'NSIA ASSURANCES', 'courtier' => 'ASCOMA', 'vehicule' => 'TOYOTA HILUX']);
+        $this->encaisser($cattc, 150_000);
+
+        $composant = Volt::test('pilotage.impayes-porter', ['facture' => $cattc->id])
+            ->assertSet('pClient', 'ALLIANZ')
+            ->assertSet('pAssureur', 'NSIA ASSURANCES')
+            ->assertSet('pCourtier', 'ASCOMA')
+            ->assertSet('pVehicule', 'TOYOTA HILUX')
+            ->assertSet('pImmatriculation', '1179JF02')
+            ->assertSee('Avance déjà encaissée')
+            ->assertSee(ae(150_000))
+            ->assertSee(ae(250_000));
+
+        // Au-delà du reste, le règlement est refusé avant toute écriture.
+        $composant->set('pDateReception', now()->subDay()->toDateString())
+            ->set('pRegle', '300000')
+            ->set('pModeReglement', 'ESPÈCE')
+            ->set('pDateReglement', now()->toDateString())
+            ->call('porter')
+            ->assertHasErrors('pRegle');
+
+        $this->assertNull($cattc->fresh()->exercice_impayes);
+
+        // Et le reste exact passe : la créance entre soldée de son avance.
+        $composant->set('pRegle', '250000')->call('porter')->assertHasNoErrors();
+
+        $this->assertSame(0, $cattc->fresh()->resteAEncaisser());
+    }
+
+    public function test_porter_ne_laisse_pas_reecrire_la_cle_d_import(): void
+    {
+        $this->actingAs($this->compte('gerant'));
+
+        $cattc = $this->factureDuCattc('FA -5719', 400_000, '1179JF03');
+
+        Volt::test('pilotage.impayes-porter', ['facture' => $cattc->id])
+            // La plaque est la clé par laquelle l'import reconnaît la ligne : elle reprend sa
+            // valeur en base, quoi qu'envoie le navigateur.
+            ->set('pImmatriculation', 'PIRATE')
+            ->set('pDateReception', now()->subDay()->toDateString())
+            ->call('porter')
+            ->assertHasNoErrors();
+
+        $cattc->refresh();
+
+        $this->assertSame('1179JF03', $cattc->immatriculation);
+        $this->assertSame(400_000, (int) $cattc->montant, 'Porter ne change ni le montant ni le numéro.');
+        $this->assertSame('FA -5719', $cattc->n_facture);
+    }
+
     public function test_porter_exige_la_date_de_depot(): void
     {
         $this->actingAs($this->compte('gerant'));
@@ -443,6 +503,22 @@ class DepotEtVilleDesCreancesTest extends TestCase
             ->assertSet('porterOuvert', false)
             ->assertSet('exercice', 2025)
             ->assertDispatched('annonce');
+    }
+
+    public function test_le_formulaire_de_saisie_est_deja_la_et_s_ouvre_sans_le_serveur(): void
+    {
+        /*
+         * « + Ajouter une créance » faisait un aller-retour complet pour montrer un bloc :
+         * le serveur relisait les totaux et la page du tableau. Le formulaire est désormais
+         * rendu replié, prêt, et le clic ne fait que le déplier.
+         */
+        $this->actingAs($this->compte('gerant'));
+
+        Volt::test('pilotage.impayes')
+            ->assertSee('wire:model="fNumero"', false)
+            ->assertSee('style="display:none;"', false)
+            // La date d'édition est posée au montage, puisque l'ouverture ne passe plus par le serveur.
+            ->assertSet('fDate', now()->toDateString());
     }
 
     public function test_le_chiffre_d_affaires_envoie_une_facture_a_l_etat(): void

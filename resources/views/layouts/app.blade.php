@@ -50,6 +50,11 @@
                         <span style="color:#fff; font-weight:800; font-size:17px;">{{ config('app.name') }}</span>
                     @endif
                 </a>
+                {{-- `wire:navigate.hover` va chercher la page pendant que la souris s'approche du
+                     lien : au clic, elle est déjà là. C'est du temps qu'on prend à l'avance plutôt
+                     que du temps qu'on économise — mais c'est celui que l'on attendait devant un
+                     écran vide. Posé sur le menu seul : ce sont les liens qu'on vise avant de
+                     cliquer, et les seuls dont la page vaut d'être préparée pour rien. --}}
                 <nav style="display:flex; gap:4px; flex-wrap:wrap;">
                     @foreach ($navigation as $item)
                         @if (isset($item['groupe']))
@@ -60,7 +65,7 @@
                                 </summary>
                                 <div class="nav-groupe-panneau">
                                     @foreach ($item['groupe'] as $sousItem)
-                                        <a href="{{ $sousItem['route'] }}" wire:navigate class="{{ $sousItem['actif'] ? 'nav-actif' : '' }}"
+                                        <a href="{{ $sousItem['route'] }}" wire:navigate.hover class="{{ $sousItem['actif'] ? 'nav-actif' : '' }}"
                                            style="display:block; padding:9px 14px; font-size:14px; font-weight:600; text-decoration:none; white-space:nowrap;
                                                   color:{{ $sousItem['actif'] ? 'var(--th-accent, #C8102E)' : 'var(--th-ink, #191B20)' }};">
                                             {{ $sousItem['label'] }}
@@ -69,7 +74,7 @@
                                 </div>
                             </details>
                         @else
-                            <a href="{{ $item['route'] }}" wire:navigate class="{{ $item['actif'] ? 'nav-actif' : '' }}"
+                            <a href="{{ $item['route'] }}" wire:navigate.hover class="{{ $item['actif'] ? 'nav-actif' : '' }}"
                                style="display:flex; align-items:center; gap:6px; padding:9px 14px; border-radius:7px; font-size:14.5px; font-weight:600; text-decoration:none; white-space:nowrap;
                                       color:{{ $item['actif'] ? '#fff' : '#C7C9CF' }};
                                       background:{{ $item['actif'] ? 'var(--th-accent, #C8102E)' : 'transparent' }};">

@@ -110,8 +110,9 @@ IMPORT_PHP_CLI=/usr/local/bin/php
 
 Vérifier après la mise à jour : déposer un petit fichier et regarder la barre avancer. Si
 l'écran annonce « Le fichier attend depuis … minute(s) », le lancement immédiat a échoué et
-c'est le cron qui a pris le relais : régler `IMPORT_PHP_CLI`, ou vérifier que `exec` n'est pas
-dans `disable_functions`.
+deux secours prennent le relais sans qu'on ait rien à faire : le cron, et l'écran lui-même, qui
+retente le lancement une fois par minute tant qu'on le regarde (17/09). Si rien ne bouge malgré
+tout : régler `IMPORT_PHP_CLI`, ou vérifier que `exec` n'est pas dans `disable_functions`.
 
 La migration `2026_09_16_000002` (colonne `lignes_estimees`, additive) passe avec
 `app:deployer`. Aucune commande de données n'est à lancer.
@@ -208,20 +209,66 @@ php artisan factures:poser-la-ville --appliquer
 ```
 
 Les deux commandes de données sont celles des mises à jour du 15 et du 16 septembre, qui
-n'avaient pas encore été lancées faute d'écran. La migration `2026_09_17_000001` pose **un
-index** sur `encaissements (facture_id, montant)` — aucune ligne lue ni écrite. Son retour
-arrière repose d'abord l'index de la clé étrangère, que MySQL retire de lui-même quand un
-index commence par la même colonne.
+n'avaient pas encore été lancées faute d'écran. Deux migrations passent avec `app:deployer`, et
+ni l'une ni l'autre ne lit ou n'écrit une ligne :
 
-**Deux réglages d'hébergement, facultatifs, qui accélèrent tout** — à décider par le
-propriétaire, car ils ne se testent qu'en ligne :
+- `2026_09_17_000001` pose **un index** sur `encaissements (facture_id, montant)`. Son retour
+  arrière repose d'abord l'index de la clé étrangère, que MySQL retire de lui-même quand un
+  index commence par la même colonne ;
+- `2026_09_17_000002` ajoute `lots_import.controle` — un dépôt se souvient d'avoir été demandé
+  « pour vérifier », afin qu'une relance tardive ne se mette pas à écrire.
 
-- **OPcache** activé pour le PHP qui sert les pages (cPanel → *Select PHP Version* →
-  *Extensions* → `opcache`). Sans lui, PHP relit et recompile chaque fichier à chaque requête.
-- **`CACHE_STORE=file`** au lieu de `database` dans le `.env`. Le cache sert à chaque requête
-  (droits des rôles, notamment) ; en base, chaque lecture est un aller-retour MySQL de plus.
-  Sans risque pour les données. **Ne pas** changer `SESSION_DRIVER` sans prévenir : tout le
-  monde serait déconnecté une fois.
+### Les deux réglages qui font le plus pour la vitesse
+
+Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan
+app:diagnostic` affiche désormais une rubrique **Vitesse** qui dit où l'on en est.
+
+**1. OPcache — le premier poste, et de loin.**
+
+Sans lui, PHP relit et recompile les milliers de fichiers du cadre à *chaque* page demandée.
+Mesuré sur le poste : un démarrage à froid coûte environ deux secondes, un démarrage à chaud un
+demi-seconde. C'est exactement cet écart que l'on paie à chaque clic quand OPcache est absent.
+
+Dans cPanel :
+
+1. *Select PHP Version* (ou *MultiPHP INI Editor* selon l'hébergeur) ;
+2. onglet **Extensions**, cocher **`opcache`**, enregistrer ;
+3. onglet **Options** (ou *MultiPHP INI Editor* → mode éditeur), vérifier ou poser :
+
+```
+opcache.enable = 1
+opcache.memory_consumption = 128
+opcache.max_accelerated_files = 20000
+opcache.validate_timestamps = 1
+opcache.revalidate_freq = 2
+```
+
+`validate_timestamps = 1` avec `revalidate_freq = 2` veut dire : PHP regarde toutes les deux
+secondes si un fichier a changé. C'est ce qu'il faut ici — sinon, après un `git pull`, le
+serveur continuerait de servir l'ancien code jusqu'au redémarrage de PHP.
+
+Attention : c'est le PHP **qui sert les pages** qu'il faut régler, pas celui de la ligne de
+commande. Les deux sont distincts sur un mutualisé, et `app:diagnostic` ne voit que le second —
+il le dit.
+
+Pour vérifier depuis le site : la rubrique *Vitesse* du diagnostic, ou, plus simplement, la
+sensation au clic après avoir vidé et refait les caches.
+
+**2. `CACHE_STORE=file` dans le `.env`.**
+
+À la place de `CACHE_STORE=database`. Le cache est lu à chaque requête — les droits de chaque
+rôle y vivent — et, en base, chaque lecture est un aller-retour MySQL de plus. En fichier, c'est
+un `include` local. Rien n'est perdu : un cache se reconstruit tout seul.
+
+```
+CACHE_STORE=file
+```
+
+Puis `php artisan app:deployer` (ou `php artisan config:clear`). L'avancée des imports, elle,
+est déjà écrite en fichier quel que soit ce réglage.
+
+**Ne pas** toucher à `SESSION_DRIVER` en même temps : le passer de `database` à `file`
+déconnecterait tout le monde une fois, sans rien accélérer de sensible.
 
 ## 2. Ce qu'un envoi ne doit jamais emporter
 

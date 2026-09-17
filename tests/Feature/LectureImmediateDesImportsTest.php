@@ -206,6 +206,68 @@ class LectureImmediateDesImportsTest extends TestCase
         $this->actingAs($gerant)->post('/import/traitements')->assertStatus(405);
     }
 
+    public function test_un_depot_endormi_repart_quand_on_regarde_son_ecran(): void
+    {
+        /*
+         * Le cas vu le 17/09 : un fichier déposé la veille, avant que la lecture ne démarre au
+         * dépôt, attendait toujours — aucune file ne tournait sur le poste, et aucun bouton ne
+         * pouvait le reprendre. L'écran qui l'affiche le relance désormais lui-même.
+         */
+        Queue::fake();
+
+        $lot = $this->deposer(3, fn () => Queue::fake());
+        $lot->forceFill(['etat' => 'depose', 'created_at' => now()->subDay()])->save();
+        Queue::fake();
+
+        $this->assertTrue(SuiviDuTraitement::reveiller($lot->fresh()));
+
+        Queue::assertPushed(TraiterUnLot::class, fn (TraiterUnLot $tache) => $tache->ecrire === true);
+
+        // Une tentative par minute : l'écran qui se rafraîchit toutes les deux secondes ne
+        // relance pas quarante fois.
+        $this->assertFalse(SuiviDuTraitement::reveiller($lot->fresh()));
+    }
+
+    public function test_la_relance_d_un_depot_de_controle_reste_un_controle(): void
+    {
+        Queue::fake();
+
+        $lot = $this->deposer(3, fn () => Queue::fake());
+        $lot->forceFill(['etat' => 'depose', 'controle' => true, 'created_at' => now()->subDay()])->save();
+        Queue::fake();
+
+        SuiviDuTraitement::reveiller($lot->fresh());
+
+        // Ce qui avait été demandé comme une vérification ne devient pas une écriture.
+        Queue::assertPushed(TraiterUnLot::class, fn (TraiterUnLot $tache) => $tache->ecrire === false);
+    }
+
+    public function test_un_depot_tout_frais_n_est_pas_relance(): void
+    {
+        Queue::fake();
+
+        $lot = $this->lot();
+
+        // Le processus lancé au dépôt a le temps de démarrer : on ne double pas la tentative.
+        $this->assertFalse(SuiviDuTraitement::reveiller($lot));
+        Queue::assertNothingPushed();
+    }
+
+    public function test_le_depot_retient_qu_il_etait_une_simulation(): void
+    {
+        $lot = (new Depot($this->entreprise->id))->recevoir(
+            $this->compte('gerant', 'controle@alpha.test'),
+            new UploadedFile($this->classeurXlsx(['A' => [self::EN_TETE, $this->fiche(1)]]),
+                'Abidjan_Situation du parc.xlsx', 'application/vnd.ms-excel', null, true),
+            'parc',
+            $this->abidjan->id,
+            simuler: true,
+        );
+
+        $this->assertTrue($lot->fresh()->controle);
+        $this->assertSame(0, DossierVehicule::withoutGlobalScopes()->count(), 'Un contrôle n\'écrit rien.');
+    }
+
     public function test_le_classeur_annonce_sa_longueur_sans_etre_parcouru(): void
     {
         $chemin = $this->classeurXlsx(['A' => [self::EN_TETE, $this->fiche(1)]]);

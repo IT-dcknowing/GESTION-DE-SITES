@@ -124,6 +124,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 16/09 | `eaf14b2` | **main** | le propriétaire fusionne `import` seul dans `main` et déploie : le menu perd *État des impayés* et *Rapprochement*, restés sur `impayes` |
 | 17/09 | `4c80ffc` | **impayes** | `main` (donc `import`) fusionné dans `impayes` ; seul conflit : la liste des commandes du NoyauServiceProvider |
 | 17/09 | voir `git log` | **impayes** | Porter : listes client → facture (numéro de saisie) cherchables, champs préremplis, composant à part ; bouton « Porter à l'état » sur le chiffre d'affaires ; état et chiffre d'affaires calculés en base ; index `encaissements (facture_id, montant)` ; caches reconstruits au déploiement |
+| 17/09 | voir `git log` | **impayes** | Porter = le formulaire de saisie prérempli (avance montrée et déduite) ; « + Ajouter une créance » s'ouvre sans le serveur ; menu préchargé au survol ; un dépôt endormi repart seul (`lots_import.controle`) ; rubrique *Vitesse* du diagnostic |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -207,6 +208,27 @@ après la fusion de `import` seul, le menu *Indicateurs* du serveur n'a ni *Éta
   échange Livewire (crochet `commit`). Vérifié dans Chrome sans tête (hors Livewire).
 - Tests : `DepotEtVilleDesCreancesTest` (24) ; suite complète 576 tests, 569 réussis, 7 erreurs
   WebPush connues (clé P-256 locale), 0 échec.
+
+### Fait le 17/09 (deuxième passe — retours d'usage)
+
+- **Porter est devenu le formulaire de saisie, rempli d'avance** : mêmes deux rangées, mêmes
+  mots que « Nouvelle créance ». Quatre cases sont figées — date d'édition, numéro, montant
+  (ils appartiennent à l'écran qui a créé la facture) et, sur une ligne reprise d'un fichier,
+  l'immatriculation (clé d'import). Deux cases nouvelles : **Avance déjà encaissée** et
+  **Reste à payer**, et le règlement saisi ne peut pas dépasser ce reste.
+- **« + Ajouter une créance » n'appelle plus le serveur** : le formulaire est rendu replié et le
+  clic le déplie (`x-show` sur `$wire`, `$set(..., false)`). Le serveur n'est appelé que pour
+  sortir d'une modification en cours. La date d'édition est posée au montage.
+- **Menu préchargé au survol** (`wire:navigate.hover`) : la page est là avant le clic.
+- **Import — un dépôt endormi repart seul.** Un fichier déposé le 16/09 attendait encore le
+  lendemain : déposé par l'ancien chemin, sur un poste sans ouvrier de file, plus rien ne
+  pouvait le prendre. `SuiviDuTraitement::reveiller()` le relance quand on regarde son écran,
+  une fois par minute au plus. Migration `2026_09_17_000002` : `lots_import.controle`, pour
+  qu'une relance tardive n'écrive pas ce qui avait été demandé comme une simulation.
+- **`app:diagnostic` a une rubrique *Vitesse*** : OPcache, caches de routes et d'évènements,
+  gabarits compilés, magasin de cache.
+- Reste à faire côté hébergement, et c'est le premier poste : **OPcache** sur le PHP qui sert
+  les pages, et `CACHE_STORE=file`. Voir MISE-A-JOUR-SERVEUR.md.
 
 ### Ce qui attend une décision
 
@@ -297,6 +319,9 @@ php artisan test
 | Livewire n'exécute pas un `<script>` qu'il insère en redessinant (un `@once` dans un panneau ouvert par clic) | inclure les ressources dès le premier affichage de l'écran ; garder le script contre la double inclusion |
 | `php artisan optimize:clear` vide aussi le cache applicatif | sur un serveur, préférer `app:deployer` |
 | `$this->unCalcul()` défini par `$x = function` dans Volt est une action publique | `protect(...)` pour une aide interne |
+| Un `@if` autour d'un formulaire rend son ouverture aussi lente qu'une requête | le rendre replié et le déplier par `x-show` sur `$wire` ; `$wire.$set(prop, valeur, false)` ne va pas au serveur |
+| `x-cloak` suppose une règle CSS compilée par Vite | écrire le repli initial côté serveur (`style="display:none"`) plutôt que dépendre d'une reconstruction des fichiers |
+| Un lot déposé avant que la lecture immédiate n'existe n'a plus aucun moyen de démarrer | `SuiviDuTraitement::reveiller()` depuis l'écran qui l'affiche ; la prise du lot reste atomique |
 | `Handler::render()` passe les callbacks avant `AuthenticationException` | toute page de panne doit exclure explicitement authentification et validation |
 
 ### Où regarder

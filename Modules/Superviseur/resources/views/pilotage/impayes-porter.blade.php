@@ -32,15 +32,29 @@ use function Livewire\Volt\{computed, mount, protect, state};
 state([
     'client' => '',
     'factureId' => '',
-    'pDateReception' => '',
+
+    /*
+     * Les colonnes du classeur, dans l'ordre et sous les mots de l'écran de saisie — c'est
+     * volontairement le **même formulaire** que « Nouvelle créance ». Ce qui change, c'est
+     * qu'ici les cases arrivent remplies par la facture, et que quatre d'entre elles ne se
+     * touchent pas : la date d'édition, le numéro, le montant (ils appartiennent à l'écran
+     * qui a fait naître la facture) et, sur une ligne reprise d'un fichier, l'immatriculation
+     * — voir EtatDesImpayes::champsVerrouilles().
+     */
+    'pAssureur' => '',
+    'pClient' => '',
     'pSiteId' => '',
     'pVilleId' => '',
+    'pCourtier' => '',
+    'pDateReception' => '',
     'pSinistre' => '',
-    'pBanque' => '',
-    'pCommentaires' => '',
+    'pVehicule' => '',
+    'pImmatriculation' => '',
     'pRegle' => '',
     'pModeReglement' => '',
     'pDateReglement' => '',
+    'pBanque' => '',
+    'pCommentaires' => '',
     'pPasLeMemeDossier' => false,
 ]);
 
@@ -138,6 +152,47 @@ $semblables = computed(function () {
         ->values();
 });
 
+/**
+ * L'avance déjà encaissée sur la facture, et ce qu'il reste à réclamer.
+ *
+ * Une facture du CATTC n'apporte aucun règlement, mais une facture de la saisie du jour ou du
+ * recouvrement peut déjà avoir été payée en partie : l'écran le montre et le **déduit**, plutôt
+ * que de laisser porter une créance de cinq millions dont trois sont déjà en caisse.
+ *
+ * @return array{avance: int, reste: int}
+ */
+$avance = computed(function () {
+    $facture = $this->facture;
+
+    if ($facture === null) {
+        return ['avance' => 0, 'reste' => 0];
+    }
+
+    $avance = (int) ($facture->encaissements_sum_montant ?? 0);
+
+    return ['avance' => $avance, 'reste' => max(0, (int) $facture->montant - $avance)];
+});
+
+/** Les colonnes que la facture impose — mêmes règles que « Modifier ». */
+$verrouilles = computed(function () {
+    $facture = $this->facture;
+
+    if ($facture === null) {
+        return [];
+    }
+
+    /*
+     * La date d'édition, le numéro et le montant ne se changent jamais ici : ils appartiennent
+     * à l'écran qui a fait naître la facture, et les réécrire au passage à l'état ferait deux
+     * vérités pour une seule pièce. L'immatriculation s'y ajoute sur une ligne reprise d'un
+     * fichier : elle fait partie de la clé par laquelle l'import la reconnaît.
+     */
+    return array_values(array_unique(array_merge(
+        ['date', 'n_facture', 'montant'],
+        EtatDesImpayes::champsVerrouilles($facture),
+    )));
+});
+
 $sitesSaisissables = computed(fn () => Site::visiblesPour(auth()->user())->sortBy('nom')->pluck('nom', 'id')->all());
 
 $villesSaisissables = computed(fn () => Ville::query()
@@ -153,8 +208,9 @@ $modes = computed(fn () => Referentiel::options(Referentiel::MODE_RECOUVREMENT))
  * règlement vide n'exige ni mode ni date » compare à la chaîne vide.
  */
 $prendreLaFacture = protect(function () {
-    foreach (['pDateReception', 'pSiteId', 'pVilleId', 'pSinistre', 'pBanque', 'pCommentaires',
-        'pRegle', 'pModeReglement', 'pDateReglement'] as $champ) {
+    foreach (['pAssureur', 'pClient', 'pSiteId', 'pVilleId', 'pCourtier', 'pDateReception', 'pSinistre',
+        'pVehicule', 'pImmatriculation', 'pRegle', 'pModeReglement', 'pDateReglement', 'pBanque',
+        'pCommentaires'] as $champ) {
         $this->{$champ} = '';
     }
 
@@ -173,10 +229,17 @@ $prendreLaFacture = protect(function () {
     // Arrivée directe sur une facture : le client se pose de lui-même, pour que la liste
     // montre la facture choisie et ses voisines.
     $this->client = (string) $facture->client;
+    // Chaque case du formulaire reçoit ce que la facture sait déjà : on ne retape rien.
+    $this->pAssureur = (string) $facture->assureur;
+    $this->pClient = (string) $facture->client;
     $this->pSiteId = (string) ($facture->site_id ?? '');
     $this->pVilleId = (string) ($facture->ville_id ?? '');
+    $this->pCourtier = (string) $facture->courtier;
     $this->pSinistre = (string) $facture->n_sinistre;
+    $this->pVehicule = (string) $facture->vehicule;
+    $this->pImmatriculation = (string) $facture->immatriculation;
     $this->pBanque = (string) $facture->banque;
+    $this->pCommentaires = (string) $facture->observations;
     $this->pDateReception = $facture->date_reception?->toDateString() ?? '';
 });
 
@@ -213,24 +276,42 @@ $porter = function () {
         $sitesPermis[] = $facture->site_id;
     }
 
+    /*
+     * Les colonnes verrouillées reprennent leur valeur en base, quoi qu'envoie le navigateur :
+     * un champ désactivé à l'écran n'est pas une protection.
+     */
+    if (in_array('immatriculation', $this->verrouilles, true)) {
+        $this->pImmatriculation = (string) $facture->immatriculation;
+    }
+
     $donnees = $this->validate([
         // Obligatoire : c'est la date du dépôt chez le client, qui fait d'une facture une
         // créance de l'état et d'où part son ancienneté (décision du 16/09/2026).
         'pDateReception' => ['required', 'date', 'after_or_equal:'.$facture->date?->toDateString(), 'before_or_equal:today'],
+        'pClient' => ['required', 'string', 'max:255'],
+        'pAssureur' => ['nullable', 'string', 'max:160'],
+        'pCourtier' => ['nullable', 'string', 'max:160'],
+        'pVehicule' => ['nullable', 'string', 'max:120'],
+        'pImmatriculation' => ['nullable', 'string', 'max:30'],
         'pSiteId' => ['nullable', Rule::in($sitesPermis)],
         'pVilleId' => ['nullable', Rule::in(array_keys($this->villesSaisissables))],
         'pSinistre' => ['nullable', 'string', 'max:60'],
         'pBanque' => ['nullable', 'string', 'max:120'],
         'pCommentaires' => ['nullable', 'string', 'max:255'],
-        'pRegle' => ['nullable', 'integer', 'min:0'],
+        // Le règlement saisi vient s'ajouter à l'avance : les deux réunis ne peuvent pas
+        // dépasser le montant facturé.
+        'pRegle' => ['nullable', 'integer', 'min:0', 'max:'.$this->avance['reste']],
         'pModeReglement' => ['exclude_if:pRegle,', 'required_unless:pRegle,0', Rule::in(array_keys($this->modes))],
         'pDateReglement' => ['exclude_if:pRegle,', 'required_unless:pRegle,0', 'date', 'before_or_equal:today'],
     ], [
         'pDateReception.required' => "La date de réception est obligatoire : c'est la date du dépôt chez le client.",
         'pDateReception.after_or_equal' => "Une facture ne se dépose pas avant d'avoir été éditée (le ".$facture->date?->format('d/m/Y').').',
+        'pRegle.max' => 'Le règlement dépasse le reste à payer ('.ae($this->avance['reste']).', avance déduite).',
     ], [
         'pDateReception' => 'date de réception', 'pSiteId' => 'site', 'pVilleId' => 'ville',
-        'pRegle' => 'montant déjà réglé', 'pModeReglement' => 'mode de règlement', 'pDateReglement' => 'date de règlement',
+        'pClient' => 'client', 'pAssureur' => 'assureur', 'pCourtier' => 'courtier',
+        'pVehicule' => 'véhicule', 'pImmatriculation' => 'immatriculation',
+        'pRegle' => 'montant réglé', 'pModeReglement' => 'mode de règlement', 'pDateReglement' => 'date de règlement',
     ]);
 
     if ($this->semblables->isNotEmpty() && ! $this->pPasLeMemeDossier) {
@@ -257,8 +338,9 @@ $porter = function () {
         }
 
         $siteId = $donnees['pSiteId'] ? (int) $donnees['pSiteId'] : $verrouillee->site_id;
-        $commentaire = trim((string) ($donnees['pCommentaires'] ?? ''));
-        $observations = trim((string) $verrouillee->observations);
+        $commentaire = mb_substr(trim((string) ($donnees['pCommentaires'] ?? '')), 0, 255);
+
+        $immatriculation = mb_strtoupper(trim((string) ($donnees['pImmatriculation'] ?? '')));
 
         $verrouillee->fill([
             'exercice_impayes' => (int) $verrouillee->date->format('Y'),
@@ -266,11 +348,22 @@ $porter = function () {
             'date_reception' => $donnees['pDateReception'],
             'site_id' => $siteId,
             'ville_id' => $siteId === null && $donnees['pVilleId'] ? (int) $donnees['pVilleId'] : $verrouillee->ville_id,
-            'n_sinistre' => $donnees['pSinistre'] ?: $verrouillee->n_sinistre,
-            'banque' => $donnees['pBanque'] ?: $verrouillee->banque,
-            // Une note déjà posée sur la facture ne s'efface pas : on écrit à la suite.
-            'observations' => $commentaire === '' ? ($observations ?: null)
-                : mb_substr($observations === '' ? $commentaire : $observations.' — '.$commentaire, 0, 255),
+            'client' => trim($donnees['pClient']),
+            'assureur' => $donnees['pAssureur'] ?: null,
+            'courtier' => $donnees['pCourtier'] ?: null,
+            'vehicule' => $donnees['pVehicule'] ?: null,
+            // L'immatriculation verrouillée a déjà été relue en base plus haut.
+            'immatriculation' => $immatriculation ?: null,
+            'n_sinistre' => $donnees['pSinistre'] ?: null,
+            'banque' => $donnees['pBanque'] ?: null,
+            /*
+             * Le commentaire remplace : la case arrive remplie de ce que la facture portait,
+             * et l'effacer doit vouloir dire l'effacer. C'est la différence avec la version
+             * précédente, où l'on tapait une note en plus sans voir l'ancienne.
+             */
+            'observations' => $commentaire ?: null,
+            // Un numéro de sinistre range la créance en Sinistre, comme à la saisie.
+            'activite' => EtatDesImpayes::activiteDeduite($donnees['pSinistre'] ?? null),
         ])->save();
 
         if ($regle > 0) {
@@ -351,15 +444,17 @@ $porter = function () {
     </div>
 
     @if ($aPorter = $this->facture)
-        {{-- Ce que la facture sait déjà, et qui ne se retape pas. --}}
-        <div style="margin:14px 0 12px; padding:10px 12px; background:#FBF7EC; border-radius:8px; font-size:13px; line-height:1.7;">
-            <strong>{{ $aPorter->numero }}</strong> — N° {{ $aPorter->n_facture ?? '—' }} du {{ $aPorter->date?->format('d/m/Y') ?? '—' }}
-            · Assureur : {{ $aPorter->assureur ?? '—' }} · Client : {{ $aPorter->client }} · Courtier : {{ $aPorter->courtier ?? '—' }}
-            <br>Véhicule : {{ $aPorter->vehicule ?? '—' }} · Immatriculation : {{ $aPorter->immatriculation ?? '—' }}
-            · Montant TTC : <strong>{{ ae($aPorter->montant) }}</strong>, dont {{ ae((int) ($aPorter->encaissements_sum_montant ?? 0)) }} déjà encaissés
-            <br>Provenance : {{ EtatDesImpayes::provenance($aPorter) }} · Entrera dans l'état {{ $aPorter->date?->format('Y') }}
-            @if ($aPorter->observations)
-                <br>Note existante : {{ $aPorter->observations }}
+        @php $verrou = $this->verrouilles; $compte = $this->avance; @endphp
+
+        {{-- D'où vient la facture, et où elle va. Le reste se lit dans les cases, comme à la
+             saisie : c'est le même formulaire, rempli d'avance. --}}
+        <div style="margin:14px 0 10px; padding:9px 12px; background:#FBF7EC; border-radius:8px; font-size:12.5px; line-height:1.6;">
+            Référence <strong>{{ $aPorter->numero }}</strong> · Provenance : {{ EtatDesImpayes::provenance($aPorter) }}
+            · Entrera dans l'état <strong>{{ $aPorter->date?->format('Y') }}</strong>.
+            La <strong>date d'édition</strong>, le <strong>numéro</strong> et le <strong>montant</strong> ne se
+            changent pas ici : ils appartiennent à l'écran qui a créé la facture.
+            @if (in_array('immatriculation', $verrou, true))
+                L'<strong>immatriculation</strong> non plus : c'est par elle que l'import reconnaît cette ligne.
             @endif
         </div>
 
@@ -377,18 +472,36 @@ $porter = function () {
             </div>
         @endif
 
+        {{-- Les deux rangées de « Nouvelle créance », dans le même ordre et sous les mêmes mots :
+             on ne change pas de formulaire parce qu'on change de porte d'entrée. --}}
         <form wire:submit.prevent="porter">
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:flex-start;">
-                <x-champ label="Date de réception (dépôt)" model="pDateReception" type="date" :requis="true" width="170" />
-                <x-champ label="SITE" model="pSiteId" type="select" :options="$this->sitesSaisissables" vide="— inchangé —" width="155" />
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:flex-start;">
+                <x-champ label="ASSUREUR" model="pAssureur" width="150" />
+                <x-champ label="Client" model="pClient" :requis="true" width="175" />
+                <x-champ label="SITE" model="pSiteId" type="select" :options="$this->sitesSaisissables" vide="— à préciser —" width="155" />
                 @if ($pSiteId === '')
                     <x-champ label="Ville (sans atelier)" model="pVilleId" type="select" :options="$this->villesSaisissables" vide="— à préciser —" width="150" />
                 @endif
+                <x-champ label="Courtier" model="pCourtier" width="150" />
+                <x-champ-fige label="Date d'édition" :valeur="$aPorter->date?->format('d/m/Y')" width="140" />
+                <x-champ label="Date de réception" model="pDateReception" type="date" :requis="true" width="140" />
+                <x-champ-fige label="N° de la facture" :valeur="$aPorter->n_facture" width="135" />
                 <x-champ label="Numéro Sinistre" model="pSinistre" width="145" />
-                <x-champ label="Déjà réglé" model="pRegle" type="number" width="120" />
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:flex-start;">
+                <x-champ label="Vehicule" model="pVehicule" width="150" />
+                <x-champ label="Immatriculation" model="pImmatriculation" width="140" :disabled="in_array('immatriculation', $verrou, true)" />
+                <x-champ-fige label="montantTTC" :valeur="ae($aPorter->montant)" width="130" />
+                {{-- L'avance et le reste : ce qui a déjà été payé sur cette facture est montré et
+                     déduit, au lieu de porter une créance dont une partie est déjà en caisse. --}}
+                <x-champ-fige label="Avance déjà encaissée" :valeur="ae($compte['avance'])" width="150"
+                    :aide="$compte['avance'] > 0 ? 'déjà en caisse' : 'aucun règlement'" />
+                <x-champ-fige label="Reste à payer" :valeur="ae($compte['reste'])" width="140" aide="montant TTC − avance" />
+                <x-champ label="Nouveau règlement" model="pRegle" type="number" width="140" />
                 <x-champ label="Modederèglement" model="pModeReglement" type="select" :options="$this->modes" vide="— aucun —" width="160" />
                 <x-champ label="Datederèglement" model="pDateReglement" type="date" width="140" />
-                <x-champ label="banque" model="pBanque" width="130" />
+                <x-champ label="banque" model="pBanque" width="140" />
                 <x-champ label="Commentaires" model="pCommentaires" width="185" />
             </div>
 
@@ -399,3 +512,4 @@ $porter = function () {
         </form>
     @endif
 </div>
+

@@ -346,6 +346,9 @@ Colonne SITE du classeur, mesurée par l'import lui-même : ABIDJAN 5 097 lignes
 - [x] 17/09 — Porter : listes client → facture (numéro de saisie) avec recherche intégrée,
       champs préremplis ; bouton « Porter à l'état » sur le chiffre d'affaires
 - [x] 17/09 — vitesse : solde, report, totaux et pagination de l'état calculés en base
+- [x] 17/09 — Porter = le formulaire de saisie prérempli ; **Avance déjà encaissée** et
+      **Reste à payer** affichés, le règlement saisi ne peut pas dépasser le reste
+- [x] 17/09 — « + Ajouter une créance » s'ouvre sans aller-retour serveur
 - [x] 16/09 — date de réception **obligatoire** ; ancienneté **depuis le dépôt**
 - [x] 16/09 — `factures.ville_id`, commande `factures:poser-la-ville` ; sélecteur de ville sur
       le tableau de bord du recouvrement ; encaissements filtrés par ville

@@ -106,6 +106,9 @@ class Depot
             // reste, et le journal doit rester lisible.
             'deposant' => mb_substr($deposant->name, 0, 120),
             'format' => $format,
+            // Ce qu'on a demandé — lire pour vérifier, ou importer — appartient au lot : une
+            // relance faite plus tard, par la tâche planifiée ou par l'écran, doit s'y tenir.
+            'controle' => $simuler,
             'nom_fichier' => mb_substr($fichier->getClientOriginalName(), 0, 255),
             'empreinte' => $empreinte,
             'taille' => (int) $fichier->getSize(),
@@ -131,7 +134,7 @@ class Depot
     }
 
     /** Relance un lot déjà déposé — après correction du fichier, ou après un échec. */
-    public function relancer(LotImport $lot, bool $simuler = false): void
+    public function relancer(LotImport $lot, ?bool $simuler = null): void
     {
         if (! $lot->fichierPresent()) {
             throw new RuntimeException('Le fichier de ce dépôt n\'est plus disponible. Redéposez-le.');
@@ -143,7 +146,10 @@ class Depot
             throw new RuntimeException("Une lecture de ce fichier est déjà en cours : attendez qu'elle finisse, ou arrêtez-la.");
         }
 
-        $lot->forceFill(['etat' => 'depose', 'message' => null, 'lignes_lues' => 0])->save();
+        // Sans consigne, on relance comme le dépôt l'avait demandé.
+        $simuler ??= (bool) $lot->controle;
+
+        $lot->forceFill(['etat' => 'depose', 'message' => null, 'lignes_lues' => 0, 'controle' => $simuler])->save();
 
         LanceurDeTraitement::lancer($lot, ! $simuler);
     }

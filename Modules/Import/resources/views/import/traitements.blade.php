@@ -4,6 +4,7 @@ use Modules\Import\Support\AccesImport;
 use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Services\EtatDeLaFile;
+use Modules\Noyau\Imports\Services\SuiviDuTraitement;
 
 use function Livewire\Volt\computed;
 
@@ -30,9 +31,19 @@ use function Livewire\Volt\computed;
 $file = computed(fn () => (new EtatDeLaFile((int) auth()->user()->entreprise_id))->mesurer());
 
 /** Ce qui tourne ou attend : c'est le sujet de la page. */
-$enVol = computed(fn () => LotImport::whereIn('etat', LotImport::ETATS_EN_TRAVAIL)
-    ->orderBy('created_at')
-    ->get());
+$enVol = computed(function () {
+    $lots = LotImport::whereIn('etat', LotImport::ETATS_EN_TRAVAIL)->orderBy('created_at')->get();
+
+    /*
+     * Un dépôt que rien n'a démarré repart de lui-même quand on regarde cet écran — voir
+     * SuiviDuTraitement::reveiller(). Une tentative par minute au plus, et un contrôle reste un
+     * contrôle. Sans cela, un fichier déposé avant que le lancement immédiat n'existe attend
+     * indéfiniment, sans qu'aucun geste ne puisse le reprendre.
+     */
+    $lots->each(fn (LotImport $lot) => SuiviDuTraitement::reveiller($lot));
+
+    return $lots;
+});
 
 /** Ce qui vient de finir — une fenêtre courte, parce qu'on annonce un événement. */
 $recents = computed(fn () => LotImport::whereIn('etat', ['termine', 'echec', 'controle', 'annule'])

@@ -126,6 +126,12 @@ mount(function () {
         $this->porterOuvert = true;
         $this->porterFacture = $aPorter;
     }
+
+    // La date d'édition est posée dès le montage, et non à l'ouverture du formulaire : c'est
+    // ce qui permet d'ouvrir celui-ci sans rien demander au serveur.
+    if ($this->fDate === '' && $this->enModification === null) {
+        $this->fDate = now()->toDateString();
+    }
 });
 
 on(['facture-portee' => function (int $exercice, string $texte) {
@@ -591,7 +597,10 @@ $basculerPortage = function () {
 
 ?>
 
-<div>
+{{-- `x-data` vide, et il sert : il déclare la page comme un morceau d'Alpine, ce qui garantit
+     que `$wire` est lisible dans les expressions ci-dessous — c'est lui qui permet d'ouvrir un
+     formulaire sans rien demander au serveur. --}}
+<div x-data>
     {{-- Les listes du panneau « Porter » se fouillent par l'intérieur ; leur script doit être
          là dès l'affichage, puisque le panneau s'ouvre plus tard, par un clic. --}}
     @include('components.select-cherchable-ressources')
@@ -621,14 +630,26 @@ $basculerPortage = function () {
             <x-champ label="Recherche" model="recherche" :live="true"
                 placeholder="Client, assureur, n° facture, immatriculation, commentaire…" />
 
-            <button type="button" wire:click="basculerFormulaire" class="bouton"
-                style="padding:9px 16px; white-space:nowrap;">
+            {{-- Ouvrir un formulaire ne demande rien au serveur.
+                 Le bouton faisait un aller-retour complet : le serveur relisait les totaux et la
+                 page du tableau — un demi-seconde mesurée — pour n'afficher qu'un bloc déjà
+                 présent. Le formulaire est maintenant toujours rendu, replié, et le clic ne fait
+                 que le déplier. Le serveur n'est appelé que lorsqu'il a quelque chose à faire :
+                 quitter une modification en cours, qui doit vider les cases de la ligne. --}}
+            <button type="button" class="bouton" style="padding:9px 16px; white-space:nowrap;"
+                x-on:click="$wire.enModification
+                    ? $wire.basculerFormulaire()
+                    : ($wire.$set('formulaireOuvert', ! $wire.formulaireOuvert, false), $wire.$set('porterOuvert', false, false))"
+                x-text="$wire.formulaireOuvert && ! $wire.enModification ? 'Fermer le formulaire' : '+ Ajouter une créance'">
                 {{ $formulaireOuvert && $enModification === null ? 'Fermer le formulaire' : '+ Ajouter une créance' }}
             </button>
 
+            {{-- Le panneau « Porter », lui, doit être fabriqué par le serveur (il va chercher les
+                 clients) : on le dit pendant qu'il arrive plutôt que de laisser le clic sans écho. --}}
             <button type="button" wire:click="basculerPortage" class="bouton bouton-secondaire"
-                style="padding:9px 16px; white-space:nowrap;">
-                {{ $porterOuvert ? 'Fermer' : 'Porter une facture existante' }}
+                style="padding:9px 16px; white-space:nowrap;" wire:loading.attr="disabled" wire:target="basculerPortage">
+                <span wire:loading.remove wire:target="basculerPortage">{{ $porterOuvert ? 'Fermer' : 'Porter une facture existante' }}</span>
+                <span wire:loading wire:target="basculerPortage">Ouverture…</span>
             </button>
 
             <a href="{{ route('impayes.etat-initial') }}" class="bouton bouton-secondaire"
@@ -636,10 +657,14 @@ $basculerPortage = function () {
         </div>
     </div>
 
-    {{-- Le formulaire : les colonnes du classeur, dans son ordre et sous ses mots. --}}
-    @if ($formulaireOuvert)
-        @php $modif = $this->ligneModifiee; $verrou = $this->verrouilles; @endphp
+    {{-- Le formulaire : les colonnes du classeur, dans son ordre et sous ses mots.
+         Toujours rendu, montré ou replié par `x-show` : c'est ce qui rend son ouverture
+         instantanée. Le repli initial est écrit par le serveur (`display:none`) plutôt que confié
+         à `x-cloak` : la feuille de style est compilée par Vite, et une page ne doit pas dépendre
+         d'une reconstruction des fichiers pour ne pas montrer un formulaire fermé. --}}
+    @php $modif = $this->ligneModifiee; $verrou = $this->verrouilles; @endphp
 
+    <div x-show="$wire.formulaireOuvert" @if (! $formulaireOuvert) style="display:none;" @endif>
         <div class="carte" style="margin-bottom:16px; border-left:3px solid var(--th-accent,#C8102E);">
             @if ($modif)
                 <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Modifier la créance {{ $modif->numero }}</h3>
@@ -708,7 +733,7 @@ $basculerPortage = function () {
                 </div>
             </form>
         </div>
-    @endif
+    </div>
 
     {{-- Porter une facture existante : la communication du reste de l'application vers l'état.
          Un composant à part : ses listes déroulantes ne redessinent pas le tableau à chaque choix. --}}

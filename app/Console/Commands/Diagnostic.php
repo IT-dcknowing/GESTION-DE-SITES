@@ -69,6 +69,10 @@ class Diagnostic extends Command
         );
 
         $this->newLine();
+        $this->info('=== Vitesse ===');
+        $this->controlerLaVitesse();
+
+        $this->newLine();
         $this->info('=== Logos des entreprises ===');
         $this->controlerLesLogos();
 
@@ -197,6 +201,55 @@ class Diagnostic extends Command
             is_writable(storage_path('logs')) && is_writable(storage_path('framework/views')),
             'Donnez les droits d’écriture : chmod -R 775 storage bootstrap/cache',
         );
+    }
+
+    /**
+     * Ce qui fait qu'une page arrive vite, ou lentement.
+     *
+     * Trois choses, dans l'ordre de ce qu'elles coûtent :
+     *
+     * - **OPcache** : sans lui, PHP relit et recompile les milliers de fichiers du cadre à
+     *   *chaque* requête. C'est, de loin, le premier poste — mesuré en local, la différence
+     *   entre un démarrage à froid et un démarrage à chaud est de l'ordre de deux secondes ;
+     * - les **caches de routes, d'évènements et de gabarits**, refaits par `app:deployer` ;
+     * - le **magasin de cache** : en base, chaque lecture — dont les droits des rôles, à chaque
+     *   page — est un aller-retour MySQL de plus qu'en fichier.
+     *
+     * **Ce que cette commande ne peut pas voir.** Elle s'exécute dans le PHP « ligne de
+     * commande », qui n'est pas celui qui sert les pages : son OPcache à lui est presque
+     * toujours éteint, et ne dit rien de l'autre. Elle affiche donc ce qu'elle voit en le
+     * disant, et rappelle où se règle celui du web.
+     */
+    private function controlerLaVitesse(): void
+    {
+        $opcache = function_exists('opcache_get_status') ? @opcache_get_status(false) : false;
+
+        $this->ligne(
+            'OPcache (ligne de commande)',
+            is_array($opcache) && ($opcache['opcache_enabled'] ?? false) ? 'actif' : 'inactif — normal',
+        );
+        $this->line('      → Celui qui compte est celui du PHP <fg=yellow>qui sert les pages</> : cPanel →');
+        $this->line('        « Select PHP Version » → Extensions → cocher <fg=yellow>opcache</>.');
+
+        foreach ([
+            'Cache des routes' => app()->getCachedRoutesPath(),
+            'Cache des évènements' => app()->getCachedEventsPath(),
+        ] as $intitule => $chemin) {
+            $this->verifier($intitule, file_exists($chemin), 'Lancez : php artisan app:deployer');
+        }
+
+        $gabarits = is_dir(config('view.compiled'))
+            ? count(glob(rtrim((string) config('view.compiled'), '/\\').'/*.php') ?: [])
+            : 0;
+
+        $this->ligne('Gabarits compilés', $gabarits > 0 ? $gabarits.' fichier(s)' : 'aucun — première visite lente');
+
+        $magasin = (string) config('cache.default');
+        $this->ligne('Magasin de cache', $magasin);
+
+        if ($magasin === 'database') {
+            $this->line('      → <fg=yellow>CACHE_STORE=file</> dans le .env évite un aller-retour MySQL par lecture.');
+        }
     }
 
     /**

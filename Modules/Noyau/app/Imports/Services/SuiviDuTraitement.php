@@ -188,6 +188,46 @@ final class SuiviDuTraitement
             .'commencé d\'écrire est défait : la base revient à son état d\'avant le dépôt.';
     }
 
+    /**
+     * Un dépôt qui n'a jamais démarré est relancé, de lui-même, quand on regarde son écran.
+     *
+     * **Le cas mesuré.** Un fichier déposé le 16/09 à 9 h 38 attendait encore le lendemain : il
+     * avait été déposé par l'ancien chemin, qui se contentait de le mettre en file, sur un poste
+     * où aucun ouvrier ne tourne. Rien ne pouvait plus le prendre, et aucun bouton ne le
+     * proposait — « Traiter maintenant » avait disparu, à juste titre.
+     *
+     * **Pourquoi ici et pas un bouton.** Le bouton demandait à quelqu'un de réparer à la main une
+     * panne qu'il n'avait pas causée. L'écran qui affiche le lot sait déjà qu'il dort ; il le
+     * relance. Une seule tentative par minute — la prise du lot est atomique de toute façon, et
+     * la tentative ne coûte rien quand elle échoue.
+     *
+     * **Le contrôle reste un contrôle.** Le lot se souvient d'avoir été déposé « pour vérifier »
+     * (`controle`), et la relance le respecte : on ne transforme pas en écriture ce qui avait été
+     * demandé comme une lecture à blanc.
+     *
+     * @param  int  $seuil  secondes d'attente au-delà desquelles on considère le lancement manqué
+     */
+    public static function reveiller(LotImport $lot, int $seuil = 60): bool
+    {
+        if ($lot->etat !== 'depose' || self::etat($lot)['attente'] < $seuil) {
+            return false;
+        }
+
+        if (Cache::store(self::MAGASIN)->has(self::cleReveil($lot->id))) {
+            return false;
+        }
+
+        Cache::store(self::MAGASIN)->put(self::cleReveil($lot->id), time(), 60);
+
+        if (! $lot->fichierPresent()) {
+            return false;
+        }
+
+        LanceurDeTraitement::lancer($lot, ! $lot->controle);
+
+        return true;
+    }
+
     /** Le traitement est fini, d'une façon ou d'une autre : on efface ce qu'il laissait derrière lui. */
     public static function oublier(int $lotId): void
     {
@@ -203,5 +243,10 @@ final class SuiviDuTraitement
     private static function cleArret(int $lotId): string
     {
         return 'import.arret.'.$lotId;
+    }
+
+    private static function cleReveil(int $lotId): string
+    {
+        return 'import.reveil.'.$lotId;
     }
 }
