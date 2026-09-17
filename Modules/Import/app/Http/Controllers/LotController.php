@@ -7,10 +7,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Modules\Import\Support\AccesImport;
-use Modules\Noyau\Imports\Jobs\TraiterUnLot;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Services\AnnulationDUnLot;
 use Modules\Noyau\Imports\Services\Depot;
+use Modules\Noyau\Imports\Services\SuiviDuTraitement;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -23,15 +23,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * clic ne va nulle part. Ce sont maintenant des formulaires qui postent, et le pire qui
  * puisse leur arriver est un message d'erreur à l'écran.
  *
- * **Ce que « Traiter maintenant » veut dire, puisque la question a été posée.** Un import
- * part normalement en file d'attente : le fichier est rangé, la page rend la main, un
- * exécuteur travaille de son côté. Encore faut-il qu'un exécuteur tourne. S'il n'y en a pas
- * — poste de développement, hébergement mutualisé — le dépôt reste « Déposé » indéfiniment,
- * sans que rien ne l'explique. L'échappatoire — traiter dans la requête elle-même, la page
- * attendant le résultat — existe toujours, mais à l'endroit où elle sert vraiment :
- * {@see RejetsController}, quand on vient de corriger trois lignes et qu'on veut voir tout
- * de suite si elles passent. Elle n'a plus de bouton sur cet écran-ci, où elle ne faisait
- * que doubler « Réimporter » en exposant un détail de plomberie.
+ * **Il n'y a pas de geste « traiter ».** La lecture démarre d'elle-même au dépôt comme à la
+ * relance — voir LanceurDeTraitement. Les boutons « Traiter maintenant » et « Tout traiter »
+ * existaient parce qu'elle ne démarrait pas toujours ; ils ont disparu avec ce défaut. Le seul
+ * geste posé sur une lecture en cours est de l'**arrêter**.
  */
 class LotController
 {
@@ -44,7 +39,7 @@ class LotController
      * neuf mille lignes. La relance immédiate après correction, elle, n'est pas perdue —
      * elle vit dans {@see RejetsController}, à l'endroit où elle a un sens.
      */
-    public const GESTES = ['reimporter', 'annuler'];
+    public const GESTES = ['reimporter', 'annuler', 'arreter'];
 
     public function agir(Request $requete, LotImport $lot): RedirectResponse
     {
@@ -63,6 +58,11 @@ class LotController
             $message = match ($geste) {
                 'reimporter' => $this->relancer($lot),
                 'annuler' => $this->annuler($requete, $lot),
+                // Arrêter une lecture en cours, ou un dépôt qui n'a pas encore commencé.
+                // « annuler », lui, défait un import terminé.
+                'arreter' => SuiviDuTraitement::demanderLArret(
+                    $lot, (int) $requete->user()->id, (string) $requete->user()->name,
+                ),
             };
         } catch (RuntimeException $panne) {
             return back()->with('refus-import', $panne->getMessage());
@@ -97,7 +97,7 @@ class LotController
     {
         (new Depot((int) $lot->entreprise_id))->relancer($lot, simuler: false);
 
-        return "Traitement relancé. Il se poursuit en arrière-plan.";
+        return "Lecture relancée : elle a démarré, son avancée s'affiche ci-dessous.";
     }
 
 

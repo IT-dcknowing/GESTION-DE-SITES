@@ -13,7 +13,7 @@ use function Livewire\Volt\{computed, mount, state};
 |--------------------------------------------------------------------------
 | Le détail d'un dépôt
 |--------------------------------------------------------------------------
-| **Tous les gestes de cette page postent.** Recontrôler, réimporter, traiter,
+| **Tous les gestes de cette page postent.** Réimporter, arrêter une lecture,
 | annuler : c'étaient quatre `wire:click`, et dans un navigateur où la couche
 | interactive ne démarre pas, un `wire:click` est un bouton peint. Le clic n'allait
 | nulle part — sans erreur, sans trace dans le journal du serveur, sans rien qui
@@ -67,7 +67,10 @@ $causes = computed(fn () => $this->rejets
 
 $peutRelancer = computed(fn () => AccesImport::peutDeposer(auth()->user()));
 
-$enTravail = computed(fn () => in_array($this->leLot->etat, ['depose', 'en_cours'], true));
+$enTravail = computed(fn () => $this->leLot->estEnTravail());
+
+/** Une lecture coupée par le serveur ne finira jamais : elle se relance comme une autre. */
+$interrompu = computed(fn () => \Modules\Noyau\Imports\Services\SuiviDuTraitement::etat($this->leLot)['interrompu']);
 
 /** Combien de corrections ont déjà été portées sur ce dépôt. */
 $corrections = computed(fn () => (new CorrectionsDUnLot((int) auth()->user()->entreprise_id))
@@ -85,7 +88,7 @@ $apercuAnnulation = computed(fn () => $this->leLot->etat === 'termine'
 <x-import::coquille page="lots">
     @php $lot = $this->leLot; @endphp
 
-    <div @if ($this->enTravail) wire:poll.2s @endif>
+    <div @if ($this->enTravail) wire:poll.1s @endif>
 
         <div class="imp-carte">
             <h2>
@@ -122,10 +125,7 @@ $apercuAnnulation = computed(fn () => $this->leLot->etat === 'termine'
             </div>
 
             @if ($this->enTravail)
-                <div style="font-family:'Barlow Condensed',sans-serif; font-size:24px; font-weight:700;">
-                    {{ number_format((int) $lot->lignes_lues, 0, ',', ' ') }} ligne(s) lue(s)
-                </div>
-                <div class="imp-jauge"><i style="width:{{ $lot->etat === 'en_cours' ? '66%' : '12%' }}"></i></div>
+                <x-import::progression :lot="$lot" :peut-arreter="$this->peutRelancer" />
             @else
                 <div class="imp-kpis cinq" style="margin-bottom:0;">
                     <div class="imp-kpi"><div class="lab">Lues</div>
@@ -163,7 +163,7 @@ $apercuAnnulation = computed(fn () => $this->leLot->etat === 'termine'
                  passage par la file — un réglage technique qui n'a rien à faire sous les yeux
                  de qui consulte un dépôt. Relancer tout de suite après une correction reste
                  possible : c'est le bouton de l'écran des lignes refusées, là où il sert. --}}
-            @if ($this->peutRelancer && ! $this->enTravail)
+            @if ($this->peutRelancer && (! $this->enTravail || $this->interrompu))
                 <div class="imp-actions">
                     <form method="POST" action="{{ route('import.lot.agir', $lot->id) }}" style="display:inline;">
                         @csrf
@@ -182,8 +182,8 @@ $apercuAnnulation = computed(fn () => $this->leLot->etat === 'termine'
                 <div class="imp-hint">
                     <strong>Ce que font ces deux boutons.</strong>
                     <em>Réimporter</em> rejoue le dépôt : le fichier est relu et ce qui existe déjà
-                    n'est pas recréé, chaque format retrouvant ses fiches par leur clé. Le travail se
-                    poursuit en arrière-plan, et le compteur ci-dessus avance au fil de la lecture.
+                    n'est pas recréé, chaque format retrouvant ses fiches par leur clé. La lecture
+                    démarre aussitôt, et la barre ci-dessus avance au fil des lignes.
                     <em>Télécharger</em> rend le classeur tel qu'il a été déposé, pour un audit.
                 </div>
             @endif

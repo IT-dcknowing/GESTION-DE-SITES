@@ -30,6 +30,7 @@ class NoyauServiceProvider extends ServiceProvider
                 \Modules\Noyau\Console\RattacherLesCodes::class,
                 \Modules\Noyau\Console\RangerLesColonnesDesFactures::class,
                 \Modules\Noyau\Console\PoserLaVilleDesFactures::class,
+                \Modules\Noyau\Console\TraiterUnLotImporte::class,
             ]);
         }
     }

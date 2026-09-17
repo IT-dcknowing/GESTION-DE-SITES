@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Imports\Formats\Registre;
-use Modules\Noyau\Imports\Jobs\TraiterUnLot;
 use Modules\Noyau\Imports\Lecteurs\Classeur;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use RuntimeException;
@@ -18,7 +17,8 @@ use RuntimeException;
  *
  * L'ordre des trois gestes est le sujet de cette classe. On **range d'abord**, on répond
  * ensuite, on traite après. La requête qui reçoit le téléversement ne lit pas une ligne :
- * elle vérifie, copie, crée le lot et rend la main. Le reste part en file d'attente.
+ * elle vérifie, copie, crée le lot et rend la main. La lecture démarre aussitôt à part —
+ * voir LanceurDeTraitement.
  *
  * **Le doublon est refusé sur le contenu, pas sur le nom.** L'empreinte est un SHA-256 du
  * fichier lui-même : deux extractions renommées différemment mais identiques donnent la
@@ -36,7 +36,7 @@ class Depot
     public function __construct(private int $entrepriseId) {}
 
     /**
-     * Range un fichier déposé et met le traitement en file d'attente.
+     * Range un fichier déposé et lance aussitôt sa lecture.
      *
      * @param  bool  $simuler  demander un contrôle plutôt qu'un import : tout est lu et
      *                         analysé, rien n'est écrit
@@ -125,7 +125,7 @@ class Depot
 
         Storage::disk(LotImport::DISQUE)->put($lot->cheminRelatif(), file_get_contents($chemin));
 
-        TraiterUnLot::dispatch($lot, ! $simuler);
+        LanceurDeTraitement::lancer($lot, ! $simuler);
 
         return $lot;
     }
@@ -137,9 +137,15 @@ class Depot
             throw new RuntimeException('Le fichier de ce dépôt n\'est plus disponible. Redéposez-le.');
         }
 
+        // Relancer une lecture qui tourne encore en ferait deux sur le même fichier, et chacune
+        // créerait ses lignes. Seule une lecture coupée par le serveur se relance en cours.
+        if ($lot->etat === 'en_cours' && ! SuiviDuTraitement::etat($lot)['interrompu']) {
+            throw new RuntimeException("Une lecture de ce fichier est déjà en cours : attendez qu'elle finisse, ou arrêtez-la.");
+        }
+
         $lot->forceFill(['etat' => 'depose', 'message' => null, 'lignes_lues' => 0])->save();
 
-        TraiterUnLot::dispatch($lot, ! $simuler);
+        LanceurDeTraitement::lancer($lot, ! $simuler);
     }
 
     /**

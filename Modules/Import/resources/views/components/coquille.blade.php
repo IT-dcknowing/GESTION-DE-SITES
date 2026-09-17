@@ -206,6 +206,11 @@
 
     .imp-jauge { height:8px; background:#E3E0D8; border-radius:20px; overflow:hidden; margin-top:7px; }
     .imp-jauge > i { display:block; height:100%; background:#C8102E; transition:width .4s ease; }
+    /* Longueur inconnue (un .xls, ou la lecture qui n'a pas encore ouvert le fichier) : la
+       jauge dit « ça travaille » par son mouvement, sans afficher une proportion inventée. */
+    .imp-jauge.sans-fin > i { width:30%; animation:imp-va-et-vient 1.4s ease-in-out infinite; }
+    @keyframes imp-va-et-vient { 0% { margin-left:-30%; } 100% { margin-left:100%; } }
+    .imp-jauge.grande { height:14px; }
 
     @media (max-width: 900px) {
         .imp { grid-template-columns:1fr; }

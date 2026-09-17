@@ -5,8 +5,8 @@ namespace Modules\Import\Http\Controllers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Modules\Import\Support\AccesImport;
-use Modules\Noyau\Imports\Jobs\TraiterUnLot;
 use Modules\Noyau\Imports\Modeles\LotImport;
+use Modules\Noyau\Imports\Services\Depot;
 use Modules\Noyau\Imports\Services\CorrectionsDUnLot;
 use RuntimeException;
 
@@ -92,24 +92,17 @@ class RejetsController
             return back()->with('annonce-import', $message.' Relancez l\'import quand vous serez prêt.');
         }
 
-        // On traite dans la requête plutôt qu'en file : celui qui vient de corriger trois
-        // lignes veut savoir tout de suite si elles passent. C'est aussi ce que « Traiter
-        // maintenant » faisait de mieux, et sa vraie place est ici.
+        // La relance démarre à part, comme un dépôt, et l'on suit son avancée sur la page du
+        // dépôt. Elle se faisait dans la requête : la page restait blanche le temps de relire
+        // neuf mille lignes, sans rien montrer, et pouvait être coupée par le délai du serveur.
         try {
-            $lot->forceFill(['etat' => 'depose', 'message' => null, 'lignes_lues' => 0])->save();
-            (new TraiterUnLot($lot, true))->handle();
-        } catch (\Throwable) {
-            return back()->with(
-                'refus-import',
-                $message.' En revanche le traitement s\'est interrompu : '
-                    .($lot->fresh()?->message ?: "rien n'a été importé, la base n'a pas changé.")
-            );
+            (new Depot((int) $lot->entreprise_id))->relancer($lot, simuler: false);
+        } catch (\RuntimeException $panne) {
+            return back()->with('refus-import', $message.' La relance est impossible : '.$panne->getMessage());
         }
 
-        $frais = $lot->fresh();
-
         return redirect()
-            ->route('import.lot', $lot->id)
-            ->with('annonce-import', $message.' Import rejoué : '.($frais?->message ?? ''));
+            ->route('import.depot', ['lot' => $lot->id])
+            ->with('annonce-import', $message.' La lecture a redémarré : son avancée s\'affiche ci-dessous.');
     }
 }
