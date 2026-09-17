@@ -258,9 +258,16 @@ Ces 103 factures ne sont donc pas un « trou » : ce sont des créances poursuiv
 
 - **État → Recouvrement : fait.** Une facture saisie à l'état entre aussitôt dans la balance
   âgée, l'extrait de compte, les relances et la trésorerie. Rien à rapprocher.
-- **Reste de l'application → État : fait le 16/09.** Le bouton **« Porter une facture
-  existante »** cherche une facture qui n'est pas encore à l'état, où qu'elle soit née, et l'y
-  fait entrer en saisissant sa **date de dépôt** — sans la retaper, sans la renuméroter.
+- **Reste de l'application → État : fait le 16/09, refait le 17/09.** Deux portes :
+  - sur **l'état des impayés**, le bouton **« Porter une facture existante »** ouvre deux listes
+    qu'on fouille par l'intérieur — le **client**, puis **ses factures** par **numéro de
+    saisie** ;
+  - sur **le chiffre d'affaires**, chaque facture hors de l'état porte un bouton **« Porter à
+    l'état »** qui ouvre ce même panneau, facture déjà choisie.
+
+  Ce que la facture connaît se remplit seul (atelier, ville, n° de sinistre, banque, date de
+  réception si elle en a une) ; le reste s'affiche en lecture. On ne saisit que la **date de
+  dépôt**, obligatoire, et ce qui a déjà été payé — sans retaper, sans renuméroter.
 
 ### D'où vient une facture qu'on porte
 
@@ -336,6 +343,9 @@ Colonne SITE du classeur, mesurée par l'import lui-même : ABIDJAN 5 097 lignes
       véhicule, mode et date de règlement, banque) ; boutons **Détail** (page propre,
       `/impayes/creance/{id}`, avec « Modifier » en tête) et **Modifier**
 - [x] 16/09 — **Porter une facture existante**
+- [x] 17/09 — Porter : listes client → facture (numéro de saisie) avec recherche intégrée,
+      champs préremplis ; bouton « Porter à l'état » sur le chiffre d'affaires
+- [x] 17/09 — vitesse : solde, report, totaux et pagination de l'état calculés en base
 - [x] 16/09 — date de réception **obligatoire** ; ancienneté **depuis le dépôt**
 - [x] 16/09 — `factures.ville_id`, commande `factures:poser-la-ville` ; sélecteur de ville sur
       le tableau de bord du recouvrement ; encaissements filtrés par ville
@@ -354,7 +364,7 @@ créance hors du périmètre du compte ne s'ouvre pas, même en forgeant son ide
 ### À faire sur chaque serveur
 
 ```bash
-git pull origin impayes        # ou main, après fusion
+git pull origin main           # après fusion de impayes dans main, faite sur le poste
 php artisan app:deployer
 php artisan impayes:ranger-les-colonnes              # constat, n'écrit rien
 php artisan impayes:ranger-les-colonnes --appliquer

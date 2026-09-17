@@ -41,6 +41,8 @@ class Deployer extends Command
         $this->call('view:clear');
         $this->supprimerGabaritsCompiles();
 
+        $this->reconstruireLesCaches();
+
         // Le lien existe déjà dans la plupart des cas : inutile d'afficher une erreur.
         if (! file_exists(public_path('storage'))) {
             $this->info('→ Lien des fichiers publics');
@@ -52,6 +54,37 @@ class Deployer extends Command
         $this->newLine();
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Refait, à neuf, les caches qu'on vient de vider — pour la vitesse.
+     *
+     * Vidés sans être refaits, ils laissaient chaque requête relire les fichiers de routes de
+     * tous les modules et recompiler à la première visite chaque gabarit. Refaits juste après
+     * le vidage, ils partent des fichiers qui viennent d'arriver : la panne de la classe Volt
+     * périmée, qui justifie le vidage, ne peut pas revenir par là.
+     *
+     * **Pas `config:cache`**, délibérément : `bootstrap/app.php` lit `PROXYS_DE_CONFIANCE` par
+     * `env()`, et une configuration en cache ne charge plus le `.env` — la valeur retomberait en
+     * silence sur « * ».
+     *
+     * Un cache qui refuse de se construire ne bloque pas la mise à jour : il est revidé, et
+     * l'application tourne comme avant, seulement moins vite.
+     */
+    private function reconstruireLesCaches(): void
+    {
+        $this->info('→ Reconstruction des caches (routes, évènements, gabarits)');
+
+        foreach (['route' => 'route:clear', 'event' => 'event:clear', 'view' => 'view:clear'] as $cache => $vider) {
+            try {
+                if ($this->callSilently($cache.':cache') !== self::SUCCESS) {
+                    throw new \RuntimeException('code de sortie non nul');
+                }
+            } catch (\Throwable $e) {
+                $this->callSilently($vider);
+                $this->warn("  Cache « {$cache} » non reconstruit ({$e->getMessage()}) : l'application fonctionne sans.");
+            }
+        }
     }
 
     private function supprimerGabaritsCompiles(): void

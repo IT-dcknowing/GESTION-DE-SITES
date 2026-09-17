@@ -13,6 +13,7 @@ use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Entreprises\Services\VilleDeTravail;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Noyau\Imports\Formats\FormatDesImpayes;
 use Modules\Noyau\Imports\Modeles\LotImport;
@@ -383,17 +384,22 @@ class DepotEtVilleDesCreancesTest extends TestCase
         // Avant : hors de l'état, et hors du recouvrement — elle n'apporte aucun règlement.
         $this->assertNotContains($cattc->id, Recouvrement::requete()->pluck('id')->all());
 
-        Volt::test('pilotage.impayes')
-            ->call('basculerPortage')
-            ->set('porterRecherche', '5713')
+        // Le client d'abord, puis la facture parmi les siennes, par son numéro de saisie.
+        Volt::test('pilotage.impayes-porter')
+            ->assertSee('ALLIANZ (1)')
+            ->set('client', 'ALLIANZ')
+            ->assertSee($cattc->numero.' · N° FA -5713')
+            ->set('factureId', (string) $cattc->id)
             ->assertSee('CATTC importé')
-            ->call('choisirAPorter', $cattc->id)
+            // Ce que la facture sait déjà se remplit tout seul.
+            ->assertSet('pSiteId', (string) $this->site->id)
             ->set('pDateReception', now()->subDays(2)->toDateString())
             ->set('pRegle', '150000')
             ->set('pModeReglement', 'VIREMENT — BGFI')
             ->set('pDateReglement', now()->toDateString())
             ->call('porter')
-            ->assertHasNoErrors();
+            ->assertHasNoErrors()
+            ->assertDispatched('facture-portee');
 
         $cattc->refresh();
 
@@ -410,12 +416,101 @@ class DepotEtVilleDesCreancesTest extends TestCase
 
         $cattc = $this->factureDuCattc('FA -5714', 400_000, null);
 
-        Volt::test('pilotage.impayes')
-            ->call('choisirAPorter', $cattc->id)
+        Volt::test('pilotage.impayes-porter', ['facture' => $cattc->id])
+            ->assertSet('client', 'ALLIANZ')
             ->call('porter')
             ->assertHasErrors('pDateReception');
 
         $this->assertNull($cattc->fresh()->exercice_impayes);
+    }
+
+    public function test_porter_depuis_une_autre_page_ouvre_le_panneau_sur_la_facture(): void
+    {
+        $this->actingAs($this->compte('gerant'));
+
+        $cattc = $this->factureDuCattc('FA -5716', 400_000, null);
+
+        $this->get(route('impayes', ['porter' => $cattc->id]))
+            ->assertOk()
+            ->assertSee("Porter une facture existante à l'état", false)
+            ->assertSee('FA -5716');
+
+        // Une fois portée, l'écran referme le panneau et montre l'année où elle est entrée.
+        Volt::test('pilotage.impayes')
+            ->call('basculerPortage')
+            ->assertSet('porterOuvert', true)
+            ->dispatch('facture-portee', exercice: 2025, texte: 'Facture portée.')
+            ->assertSet('porterOuvert', false)
+            ->assertSet('exercice', 2025)
+            ->assertDispatched('annonce');
+    }
+
+    public function test_le_chiffre_d_affaires_envoie_une_facture_a_l_etat(): void
+    {
+        $this->actingAs($this->compte('gerant'));
+
+        $cattc = $this->factureDuCattc('FA -5717', 400_000, null);
+        $cattc->update(['date' => now()->startOfMonth()]);
+
+        Volt::test('pilotage.chiffre-affaires')
+            ->assertSee(route('impayes', ['porter' => $cattc->id]), false)
+            ->assertSee("Porter à l'état", false);
+
+        // Le responsable commercial lit le chiffre d'affaires, pas l'état des impayés : pas de
+        // bouton qui le mènerait à un refus.
+        $this->actingAs($this->compte('responsable_commercial'));
+
+        Volt::test('pilotage.chiffre-affaires')
+            ->assertDontSee(route('impayes', ['porter' => $cattc->id]), false);
+    }
+
+    public function test_porter_ne_montre_pas_une_facture_hors_du_perimetre(): void
+    {
+        $horsPerimetre = $this->factureDuCattc('FA -9999', 400_000, null);
+        $horsPerimetre->update(['site_id' => $this->siteBouake->id, 'client' => 'CLIENT DE BOUAKE']);
+
+        $responsable = $this->compte('responsable_site');
+        $this->site->update(['responsable_id' => $responsable->id]);
+        $this->actingAs($responsable);
+
+        Volt::test('pilotage.impayes-porter', ['facture' => $horsPerimetre->id])
+            ->assertSet('factureId', '')
+            ->assertDontSee('CLIENT DE BOUAKE')
+            ->set('factureId', (string) $horsPerimetre->id)
+            ->set('pDateReception', now()->toDateString())
+            ->call('porter')
+            ->assertHasErrors('factureId');
+
+        $this->assertNull($horsPerimetre->fresh()->exercice_impayes);
+    }
+
+    public function test_les_totaux_calcules_en_base_sont_ceux_de_la_regle(): void
+    {
+        $this->actingAs($this->compte('gerant'));
+
+        $annee = (int) now()->format('Y');
+        $ouverte = $this->creance('OUV', 300_000);
+        $tropPercue = $this->creance('TROP', 100_000);
+        $soldee = $this->creance('SOLDEE', 50_000);
+        $this->encaisser($ouverte, 100_000);
+        $this->encaisser($tropPercue, 130_000);
+        $this->encaisser($soldee, 50_000);
+        $ancienne = Facture::create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->site->id, 'numero' => 'IMP-ANCIENNE',
+            'n_facture' => 'ANC', 'date' => now()->subYear(), 'exercice_impayes' => $annee - 1,
+            'client' => 'Ancien', 'montant' => 70_000, 'activite' => 'Mécanique', 'type' => 'FNE',
+        ]);
+
+        $requete = EtatDesImpayes::requete($annee);
+        $enMemoire = EtatDesImpayes::totaux((clone $requete)->withSum('encaissements', 'montant')->get(), $annee);
+
+        $this->assertSame($enMemoire, EtatDesImpayes::totauxEnBase($requete, $annee));
+        $this->assertSame(270_000, $enMemoire['reste'], 'Le trop-perçu ne rembourse pas la dette des autres.');
+
+        $ouvertes = EtatDesImpayes::filtrerLeSolde(EtatDesImpayes::requete($annee), 'ouvertes')->pluck('id')->sort()->values()->all();
+        $this->assertSame([$ouverte->id, $ancienne->id], $ouvertes);
+        $soldees = EtatDesImpayes::filtrerLeSolde(EtatDesImpayes::requete($annee), 'soldees')->pluck('id')->sort()->values()->all();
+        $this->assertSame([$tropPercue->id, $soldee->id], $soldees);
     }
 
     public function test_porter_une_facture_deja_suivie_sous_un_autre_numero_demande_confirmation(): void
@@ -426,8 +521,7 @@ class DepotEtVilleDesCreancesTest extends TestCase
         $this->creance('17', 400_000, immatriculation: '1179 JF 01', dateDepot: now()->subDays(3));
         $cattc = $this->factureDuCattc('FA -5715', 400_000, '1179JF01');
 
-        $composant = Volt::test('pilotage.impayes')
-            ->call('choisirAPorter', $cattc->id)
+        $composant = Volt::test('pilotage.impayes-porter', ['facture' => $cattc->id])
             ->set('pDateReception', now()->subDays(2)->toDateString())
             ->call('porter')
             ->assertHasErrors('pPasLeMemeDossier');

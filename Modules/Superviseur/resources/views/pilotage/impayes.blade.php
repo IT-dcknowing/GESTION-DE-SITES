@@ -12,7 +12,7 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
-use function Livewire\Volt\{computed, mount, state};
+use function Livewire\Volt\{computed, mount, on, protect, state};
 
 /*
 |--------------------------------------------------------------------------
@@ -100,20 +100,11 @@ state([
     'fBanque' => '',
     'fCommentaires' => '',
 
-    // Porter une facture existante.
+    // Porter une facture existante — le panneau est un composant à part, voir
+    // pilotage.impayes-porter. On ne garde ici que son ouverture, et la facture avec
+    // laquelle il s'ouvre quand on arrive d'une autre page.
     'porterOuvert' => false,
-    'porterRecherche' => '',
-    'porterFactureId' => null,
-    'pDateReception' => '',
-    'pSiteId' => '',
-    'pVilleId' => '',
-    'pSinistre' => '',
-    'pBanque' => '',
-    'pCommentaires' => '',
-    'pRegle' => '',
-    'pModeReglement' => '',
-    'pDateReglement' => '',
-    'pPasLeMemeDossier' => false,
+    'porterFacture' => null,
 ]);
 
 mount(function () {
@@ -126,7 +117,26 @@ mount(function () {
     if ($aModifier > 0) {
         $this->modifier($aModifier);
     }
+
+    // « Porter à l'état » depuis le chiffre d'affaires arrive ici, panneau ouvert sur la
+    // facture. Le composant la relit dans le périmètre avant de la montrer.
+    $aPorter = request()->integer('porter');
+
+    if ($aPorter > 0) {
+        $this->porterOuvert = true;
+        $this->porterFacture = $aPorter;
+    }
 });
+
+on(['facture-portee' => function (int $exercice, string $texte) {
+    $this->porterOuvert = false;
+    $this->porterFacture = null;
+    // L'état qu'on regarde doit montrer la facture qu'on vient d'y porter.
+    $this->exercice = $exercice;
+    $this->page = 1;
+    unset($this->pageLignes, $this->totaux, $this->exercices);
+    $this->dispatch('annonce', texte: $texte);
+}]);
 
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; $this->page = 1; };
 $updatedSiteFiltre = function () { $this->page = 1; };
@@ -134,7 +144,6 @@ $updatedExercice = function () { $this->page = 1; };
 $updatedStatutFiltre = function () { $this->page = 1; };
 $updatedReportFiltre = function () { $this->page = 1; };
 $updatedRecherche = function () { $this->page = 1; };
-$updatedPorterRecherche = function () { $this->porterFactureId = null; };
 
 $annee = computed(fn () => (int) ($this->exercice ?: now()->year));
 
@@ -188,17 +197,20 @@ $villesSaisissables = computed(fn () => Ville::query()
 $modes = computed(fn () => Referentiel::options(Referentiel::MODE_RECOUVREMENT));
 
 /**
- * Les lignes de l'état de l'année regardée.
+ * Les lignes de l'état de l'année regardée — la requête, pas les lignes.
  *
  * Le filtre par lieu laisse passer les créances dont on ignore jusqu'à la ville : les cacher
  * reviendrait à cacher précisément celles qu'il faut situer. Celles dont la ville est connue
  * ne s'affichent, elles, que dans leur ville — voir EtatDesImpayes::dansLePerimetre().
+ *
+ * **Tout se filtre dans la base, rien en mémoire.** L'écran chargeait les neuf mille lignes
+ * de l'état à chaque clic pour n'en montrer que quinze : 750 ms mesurées en local par
+ * interaction. Le solde et le report se jugent désormais en SQL, par les règles écrites dans
+ * EtatDesImpayes à côté de leur version PHP, et seule la page affichée se charge.
  */
-$lignes = computed(function () {
+$requeteDesLignes = protect(function () {
     $requete = EtatDesImpayes::dansLePerimetre(
-        EtatDesImpayes::requete($this->annee)
-            ->withSum('encaissements', 'montant')
-            ->with(['site.ville', 'ville']),
+        EtatDesImpayes::requete($this->annee),
         $this->idsSites,
         $this->idsVilles,
     );
@@ -217,27 +229,32 @@ $lignes = computed(function () {
             ->orWhere('observations', 'like', $terme));
     }
 
-    $lignes = $requete->orderByDesc('date')->orderByDesc('id')->get();
+    EtatDesImpayes::filtrerLeSolde($requete, $this->statutFiltre);
 
-    // Le solde et le report se jugent en mémoire : tous deux reposent sur des règles qui
-    // vivent dans un service, et les récrire en SQL en ferait une seconde version à tenir
-    // d'accord avec la première.
-    if ($this->statutFiltre === 'ouvertes') {
-        $lignes = $lignes->filter(fn (Facture $f) => Recouvrement::reste($f) >= Recouvrement::SEUIL_SOLDE);
-    } elseif ($this->statutFiltre === 'soldees') {
-        $lignes = $lignes->filter(fn (Facture $f) => Recouvrement::reste($f) < Recouvrement::SEUIL_SOLDE);
-    }
-
+    // Même règle que EtatDesImpayes::estReportee() : reportée = née une année d'avant.
     if ($this->reportFiltre === 'reportees') {
-        $lignes = $lignes->filter(fn (Facture $f) => EtatDesImpayes::estReportee($f, $this->annee));
+        $requete->where('factures.exercice_impayes', '<', $this->annee);
     } elseif ($this->reportFiltre === 'annee') {
-        $lignes = $lignes->reject(fn (Facture $f) => EtatDesImpayes::estReportee($f, $this->annee));
+        $requete->where('factures.exercice_impayes', '>=', $this->annee);
     }
 
-    return $lignes->values();
+    return $requete;
 });
 
-$totaux = computed(fn () => EtatDesImpayes::totaux($this->lignes, $this->annee));
+/** Les totaux de toutes les lignes retenues, additionnés par la base. */
+$totaux = computed(fn () => EtatDesImpayes::totauxEnBase($this->requeteDesLignes(), $this->annee));
+
+/** La page affichée, et elle seule, avec ses règlements. */
+$pageLignes = computed(function () {
+    $page = max(1, min((int) $this->page, (int) ceil(max(1, $this->totaux['lignes']) / 15)));
+
+    return $this->requeteDesLignes()
+        ->withSum('encaissements', 'montant')
+        ->with(['site.ville', 'ville', 'encaissements' => fn ($q) => $q->orderByDesc('date')->orderByDesc('id')])
+        ->orderByDesc('date')->orderByDesc('id')
+        ->forPage($page, 15)
+        ->get();
+});
 
 /** Le numéro que portera la prochaine créance — montré, pas consommé. */
 $apercuNumero = computed(fn () => EtatDesImpayes::apercuDuNumero(
@@ -253,71 +270,6 @@ $ligneModifiee = computed(fn () => $this->enModification === null ? null : EtatD
 )->find((int) $this->enModification));
 
 $verrouilles = computed(fn () => $this->ligneModifiee ? EtatDesImpayes::champsVerrouilles($this->ligneModifiee) : []);
-
-/**
- * Les factures qu'on peut porter à l'état : connues de l'application, pas encore déposées.
- *
- * On ne cherche qu'à partir de deux caractères, et vingt résultats au plus : l'application
- * compte plus de onze mille factures, et une liste qui les déroulerait toutes ne servirait à
- * personne.
- */
-$candidatsAPorter = computed(function () {
-    $terme = trim($this->porterRecherche);
-
-    if (mb_strlen($terme) < 2) {
-        return collect();
-    }
-
-    $motif = '%'.$terme.'%';
-
-    return EtatDesImpayes::dansLePerimetre(
-        Facture::query()->whereNull('exercice_impayes')->withSum('encaissements', 'montant')->with('site'),
-        $this->idsSitesDuCompte,
-        $this->idsVillesDuCompte,
-    )
-        ->where(fn ($q) => $q
-            ->where('n_facture', 'like', $motif)
-            ->orWhere('numero', 'like', $motif)
-            ->orWhere('client', 'like', $motif)
-            ->orWhere('assureur', 'like', $motif)
-            ->orWhere('courtier', 'like', $motif)
-            ->orWhere('immatriculation', 'like', $motif))
-        ->orderByDesc('date')->orderByDesc('id')
-        ->limit(20)
-        ->get();
-});
-
-$factureAPorter = computed(fn () => $this->porterFactureId === null ? null : EtatDesImpayes::dansLePerimetre(
-    Facture::query()->whereNull('exercice_impayes')->withSum('encaissements', 'montant')->with('site'),
-    $this->idsSitesDuCompte,
-    $this->idsVillesDuCompte,
-)->find((int) $this->porterFactureId));
-
-/**
- * Les lignes de l'état qui ressemblent à la facture qu'on s'apprête à porter.
- *
- * Le CATTC et le classeur parlent des mêmes affaires sans partager de numéro : la même facture
- * peut donc déjà figurer à l'état sous « 17 », reprise du classeur, pendant qu'on la cherche
- * sous « FA -5713 ». La porter une seconde fois compterait deux fois la même créance. Le pont
- * est celui du rapprochement — immatriculation et montant — et il n'est pas unique : on
- * montre les lignes qu'il trouve et on demande de confirmer, sans refuser d'office.
- */
-$semblables = computed(function () {
-    $facture = $this->factureAPorter;
-    $cle = $facture ? EtatDesImpayes::clePont($facture) : null;
-
-    if ($cle === null) {
-        return collect();
-    }
-
-    return Facture::query()
-        ->whereNotNull('exercice_impayes')
-        ->where('montant', (int) $facture->montant)
-        ->whereNotNull('immatriculation')
-        ->get(['id', 'numero', 'n_facture', 'date', 'client', 'immatriculation', 'montant', 'exercice_impayes'])
-        ->filter(fn (Facture $f) => EtatDesImpayes::clePont($f) === $cle)
-        ->values();
-});
 
 /*
  * Les champs se vident par affectation, et non par `reset()`.
@@ -622,7 +574,7 @@ $enregistrer = function () {
         $this->fCourtier = (string) $valeurs['courtier'];
     }
 
-    unset($this->lignes, $this->totaux, $this->apercuNumero, $this->exercices);
+    unset($this->pageLignes, $this->totaux, $this->apercuNumero, $this->exercices);
 
     $this->page = $modifiee ? $this->page : 1;
 
@@ -632,180 +584,18 @@ $enregistrer = function () {
 
 $basculerPortage = function () {
     $this->porterOuvert = ! $this->porterOuvert;
+    $this->porterFacture = null;
     $this->formulaireOuvert = false;
     $this->viderLeFormulaire();
-
-    // Par affectation, pour la raison dite plus haut.
-    foreach ([
-        'porterRecherche', 'pDateReception', 'pSiteId', 'pVilleId', 'pSinistre', 'pBanque',
-        'pCommentaires', 'pRegle', 'pModeReglement', 'pDateReglement',
-    ] as $champ) {
-        $this->{$champ} = '';
-    }
-
-    $this->porterFactureId = null;
-    $this->pPasLeMemeDossier = false;
-};
-
-$choisirAPorter = function (int $id) {
-    $this->porterFactureId = $id;
-    unset($this->factureAPorter, $this->semblables);
-
-    $facture = $this->factureAPorter;
-
-    if ($facture === null) {
-        $this->porterFactureId = null;
-
-        return;
-    }
-
-    $this->pSinistre = (string) $facture->n_sinistre;
-    $this->pSiteId = (string) ($facture->site_id ?? '');
-    $this->pVilleId = (string) ($facture->ville_id ?? '');
-    $this->pPasLeMemeDossier = false;
-    $this->resetErrorBag();
-};
-
-/**
- * Porte à l'état une facture que l'application connaît déjà.
- *
- * **Rien n'est créé, sauf le règlement déclaré.** La facture existe — importée du CATTC, saisie
- * par l'atelier, ou créée au recouvrement. La porter, c'est dire qu'elle a été déposée chez le
- * client, et quand : elle reçoit son année d'état et sa date de réception, et entre dès lors
- * dans l'état, la balance âgée et les relances. Sa référence, son numéro, son montant et sa
- * date d'édition ne bougent pas ; ils appartiennent à l'écran qui l'a fait naître.
- *
- * **Le règlement déjà reçu se déclare dans le même geste.** Une facture du CATTC arrive sans
- * un seul encaissement : la porter sans dire ce qui a été payé la ferait lire intégralement
- * due, et c'est exactement l'erreur que le recouvrement avait écartée en laissant le CATTC
- * dehors — 1 389 635 332 F comptés comme créance au lieu de 5 046 731 F.
- */
-$porter = function () {
-    unset($this->factureAPorter, $this->semblables);
-    $facture = $this->factureAPorter;
-
-    if ($facture === null) {
-        $this->addError('porterRecherche', "Choisissez d'abord une facture dans la liste.");
-
-        return;
-    }
-
-    $sitesPermis = array_keys($this->sitesSaisissables);
-
-    if ($facture->site_id !== null) {
-        $sitesPermis[] = $facture->site_id;
-    }
-
-    $donnees = $this->validate([
-        'pDateReception' => ['required', 'date', 'after_or_equal:'.$facture->date?->toDateString(), 'before_or_equal:today'],
-        'pSiteId' => ['nullable', Rule::in($sitesPermis)],
-        'pVilleId' => ['nullable', Rule::in(array_keys($this->villesSaisissables))],
-        'pSinistre' => ['nullable', 'string', 'max:60'],
-        'pBanque' => ['nullable', 'string', 'max:120'],
-        'pCommentaires' => ['nullable', 'string', 'max:255'],
-        'pRegle' => ['nullable', 'integer', 'min:0'],
-        'pModeReglement' => ['exclude_if:pRegle,', 'required_unless:pRegle,0', Rule::in(array_keys($this->modes))],
-        'pDateReglement' => ['exclude_if:pRegle,', 'required_unless:pRegle,0', 'date', 'before_or_equal:today'],
-    ], [
-        'pDateReception.required' => "La date de réception est obligatoire : c'est la date du dépôt chez le client.",
-        'pDateReception.after_or_equal' => "Une facture ne se dépose pas avant d'avoir été éditée (le ".$facture->date?->format('d/m/Y').').',
-    ], [
-        'pDateReception' => 'date de réception', 'pSiteId' => 'site', 'pVilleId' => 'ville',
-        'pRegle' => 'montant déjà réglé', 'pModeReglement' => 'mode de règlement', 'pDateReglement' => 'date de règlement',
-    ]);
-
-    if ($this->semblables->isNotEmpty() && ! $this->pPasLeMemeDossier) {
-        $this->addError('pPasLeMemeDossier', "Une ligne de l'état porte déjà la même immatriculation et le même montant. "
-            .'Vérifiez qu\'il ne s\'agit pas de la même facture, puis cochez la case pour confirmer.');
-
-        return;
-    }
-
-    $regle = (int) ($donnees['pRegle'] ?? 0);
-
-    $refus = DB::transaction(function () use ($facture, $donnees, $regle) {
-        $verrouillee = Facture::whereKey($facture->id)->lockForUpdate()->first();
-
-        // Deux personnes peuvent porter la même facture au même moment : la seconde échoue.
-        if ($verrouillee === null || $verrouillee->exercice_impayes !== null) {
-            return ['porterRecherche', "Cette facture vient d'être portée à l'état par quelqu'un d'autre."];
-        }
-
-        $reste = max(0, (int) $verrouillee->montant - (int) $verrouillee->encaissements()->sum('montant'));
-
-        if ($regle > $reste) {
-            return ['pRegle', 'Le règlement dépasse le reste à payer ('.ae($reste).').'];
-        }
-
-        $siteId = $donnees['pSiteId'] ? (int) $donnees['pSiteId'] : $verrouillee->site_id;
-        $commentaire = trim((string) ($donnees['pCommentaires'] ?? ''));
-        $observations = trim((string) $verrouillee->observations);
-
-        $verrouillee->fill([
-            'exercice_impayes' => (int) $verrouillee->date->format('Y'),
-            'est_etat_initial' => false,
-            'date_reception' => $donnees['pDateReception'],
-            'site_id' => $siteId,
-            'ville_id' => $siteId === null && $donnees['pVilleId'] ? (int) $donnees['pVilleId'] : $verrouillee->ville_id,
-            'n_sinistre' => $donnees['pSinistre'] ?: $verrouillee->n_sinistre,
-            'banque' => $donnees['pBanque'] ?: $verrouillee->banque,
-            // Une note déjà posée sur la facture ne s'efface pas : on écrit à la suite.
-            'observations' => $commentaire === '' ? ($observations ?: null)
-                : mb_substr($observations === '' ? $commentaire : $observations.' — '.$commentaire, 0, 255),
-        ])->save();
-
-        if ($regle > 0) {
-            Encaissement::create([
-                'entreprise_id' => $verrouillee->entreprise_id,
-                'site_id' => $verrouillee->site_id,
-                'facture_id' => $verrouillee->id,
-                'date' => $donnees['pDateReglement'],
-                'montant' => $regle,
-                'type' => 'Client',
-                'moyen' => $donnees['pModeReglement'],
-                'client' => $verrouillee->tiersPayant(),
-                'activite' => $verrouillee->activite,
-                'reference_origine' => $verrouillee->n_facture,
-                'cree_par' => auth()->id(),
-            ]);
-        }
-
-        activity()->causedBy(auth()->user())
-            ->performedOn($verrouillee)
-            ->withProperties([
-                'reference' => $verrouillee->numero,
-                'n_facture' => $verrouillee->n_facture,
-                'provenance' => EtatDesImpayes::provenance($verrouillee),
-                'date_reception' => $donnees['pDateReception'],
-                'regle_declare' => $regle,
-                'confirme_pas_un_doublon' => (bool) $this->pPasLeMemeDossier,
-            ])
-            ->log('État des impayés — facture portée');
-
-        return $verrouillee;
-    });
-
-    if (is_array($refus)) {
-        $this->addError($refus[0], $refus[1]);
-
-        return;
-    }
-
-    $this->basculerPortage();
-    $this->porterOuvert = false;
-
-    // L'état qu'on regarde doit montrer la facture qu'on vient d'y porter.
-    $this->exercice = (int) $refus->exercice_impayes;
-
-    unset($this->lignes, $this->totaux, $this->exercices, $this->candidatsAPorter);
-
-    $this->dispatch('annonce', texte: 'Facture n° '.$refus->n_facture.' portée à l\'état '.$refus->exercice_impayes
-        .($regle > 0 ? ' — le règlement de '.ae($regle).' entre aussitôt en trésorerie.' : '.'));
 };
 
 ?>
 
 <div>
+    {{-- Les listes du panneau « Porter » se fouillent par l'intérieur ; leur script doit être
+         là dès l'affichage, puisque le panneau s'ouvre plus tard, par un clic. --}}
+    @include('components.select-cherchable-ressources')
+
     <x-titre-ecran titre="État des impayés"
         sous-titre="Les factures déposées chez le client et leurs règlements, année par année. Ce qui n'est pas soldé se reporte de lui-même sur l'année suivante." />
 
@@ -920,105 +710,10 @@ $porter = function () {
         </div>
     @endif
 
-    {{-- Porter une facture existante : la communication du reste de l'application vers l'état. --}}
+    {{-- Porter une facture existante : la communication du reste de l'application vers l'état.
+         Un composant à part : ses listes déroulantes ne redessinent pas le tableau à chaque choix. --}}
     @if ($porterOuvert)
-        <div class="carte" style="margin-bottom:16px; border-left:3px solid #B87A00;">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Porter une facture existante à l'état</h3>
-            <p style="font-size:12.5px; color:#6B6E76; margin:0 0 12px; line-height:1.55;">
-                Pour une facture que l'application connaît déjà — <strong>importée du CATTC</strong>, saisie
-                par l'atelier dans la <strong>saisie du jour</strong>, ou créée au <strong>recouvrement</strong>
-                (bloc « Facture »). Rien n'est retapé : on dit quand elle a été déposée chez le client et
-                ce qui a déjà été payé. Son numéro, sa date d'édition et son montant ne changent pas.
-                Une facture du CATTC n'apporte <strong>aucun règlement</strong> : si elle a été payée en
-                partie, indiquez-le, sinon elle se lira intégralement due.
-            </p>
-
-            <x-champ label="Chercher la facture" model="porterRecherche" :live="true"
-                placeholder="N° de facture, client, assureur, courtier, immatriculation… (2 caractères au moins)" />
-
-            @if ($this->factureAPorter === null)
-                @if (mb_strlen(trim($porterRecherche)) >= 2)
-                    <div class="tableau-conteneur" style="margin-top:10px;">
-                        <table class="tableau">
-                            <thead>
-                                <tr>
-                                    <th>N° facture</th><th>Date d'édition</th><th>Client</th><th>Immatriculation</th>
-                                    <th>Atelier</th><th>Provenance</th>
-                                    <th style="text-align:right;">Montant TTC</th><th style="text-align:right;">Déjà encaissé</th><th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @forelse ($this->candidatsAPorter as $candidat)
-                                    <tr wire:key="porter-{{ $candidat->id }}">
-                                        <td style="font-weight:700;">{{ $candidat->n_facture ?? '—' }}</td>
-                                        <td>{{ $candidat->date?->format('d/m/Y') ?? '—' }}</td>
-                                        <td>{{ $candidat->tiersPayant() }}</td>
-                                        <td>{{ $candidat->immatriculation ?? '—' }}</td>
-                                        <td>{{ $candidat->site?->nom ?? '—' }}</td>
-                                        <td style="font-size:12px;">{{ EtatDesImpayes::provenance($candidat) }}</td>
-                                        <td style="text-align:right;">{{ ae($candidat->montant) }}</td>
-                                        <td style="text-align:right;">{{ ae((int) ($candidat->encaissements_sum_montant ?? 0)) }}</td>
-                                        <td>
-                                            <button type="button" wire:click="choisirAPorter({{ $candidat->id }})" class="bouton"
-                                                style="padding:5px 12px; font-size:12px;">Choisir</button>
-                                        </td>
-                                    </tr>
-                                @empty
-                                    <x-table-vide :colspan="9" texte="Aucune facture hors de l'état ne correspond à cette recherche." />
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-                @error('porterRecherche') <span class="champ-erreur">{{ $message }}</span> @enderror
-            @else
-                @php $aPorter = $this->factureAPorter; @endphp
-
-                <div style="margin:12px 0; padding:10px 12px; background:#FBF7EC; border-radius:8px; font-size:13px; line-height:1.6;">
-                    <strong>N° {{ $aPorter->n_facture }}</strong> du {{ $aPorter->date?->format('d/m/Y') }}
-                    — {{ $aPorter->tiersPayant() }} — {{ $aPorter->immatriculation ?? 'sans immatriculation' }}
-                    — <strong>{{ ae($aPorter->montant) }}</strong>, dont {{ ae((int) ($aPorter->encaissements_sum_montant ?? 0)) }} déjà encaissés.
-                    <br>Provenance : {{ EtatDesImpayes::provenance($aPorter) }}. Entrera dans l'état {{ $aPorter->date?->format('Y') }}.
-                    <button type="button" wire:click="$set('porterFactureId', null)" class="bouton bouton-secondaire"
-                        style="padding:3px 10px; font-size:12px; margin-left:8px;">Changer de facture</button>
-                </div>
-
-                @if ($this->semblables->isNotEmpty())
-                    <div style="margin-bottom:12px; padding:10px 12px; border:1px solid #E7B85C; background:#FFF6E0; border-radius:8px; font-size:12.5px; line-height:1.55;">
-                        <strong>Attention — {{ $this->semblables->count() }} ligne(s) de l'état portent la même immatriculation et le même montant</strong>,
-                        peut-être la même facture reprise du classeur sous un autre numéro :
-                        @foreach ($this->semblables as $s)
-                            <div>· {{ $s->numero }} — n° {{ $s->n_facture }} du {{ $s->date?->format('d/m/Y') }}, {{ $s->client }} (état {{ $s->exercice_impayes }})</div>
-                        @endforeach
-                        <div style="margin-top:6px;">
-                            <x-champ type="checkbox" label="J'ai vérifié : ce n'est pas la même facture" model="pPasLeMemeDossier" />
-                            @error('pPasLeMemeDossier') <span class="champ-erreur">{{ $message }}</span> @enderror
-                        </div>
-                    </div>
-                @endif
-
-                <form wire:submit.prevent="porter">
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:flex-start;">
-                        <x-champ label="Date de réception (dépôt)" model="pDateReception" type="date" :requis="true" width="170" />
-                        <x-champ label="SITE" model="pSiteId" type="select" :options="$this->sitesSaisissables" vide="— inchangé —" width="155" />
-                        @if ($pSiteId === '')
-                            <x-champ label="Ville (sans atelier)" model="pVilleId" type="select" :options="$this->villesSaisissables" vide="— à préciser —" width="150" />
-                        @endif
-                        <x-champ label="Numéro Sinistre" model="pSinistre" width="145" />
-                        <x-champ label="Déjà réglé" model="pRegle" type="number" width="120" />
-                        <x-champ label="Modederèglement" model="pModeReglement" type="select" :options="$this->modes" vide="— aucun —" width="160" />
-                        <x-champ label="Datederèglement" model="pDateReglement" type="date" width="140" />
-                        <x-champ label="banque" model="pBanque" width="130" />
-                        <x-champ label="Commentaires" model="pCommentaires" width="185" />
-                    </div>
-
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        <button type="submit" class="bouton" style="padding:9px 18px;">Porter à l'état</button>
-                        <button type="button" wire:click="basculerPortage" class="bouton bouton-secondaire" style="padding:9px 18px;">Annuler</button>
-                    </div>
-                </form>
-            @endif
-        </div>
+        <livewire:pilotage.impayes-porter :facture="$porterFacture" :wire:key="'porter-'.($porterFacture ?? 'neuf')" />
     @endif
 
     {{-- Les totaux. Le reste se somme ligne à ligne, à plancher zéro : c'est précisément ce
@@ -1036,7 +731,7 @@ $porter = function () {
 
     <div class="carte">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">
-            État {{ $this->annee }} — {{ $this->lignes->count() }} ligne(s)
+            État {{ $this->annee }} — {{ $this->totaux['lignes'] }} ligne(s)
         </h3>
         <p style="font-size:12.5px; color:#6B6E76; margin:0 0 14px; line-height:1.55;">
             Une créance non soldée reste affichée les années suivantes sans être recopiée : elle garde
@@ -1081,12 +776,9 @@ $porter = function () {
                     </tr>
                 </thead>
                 <tbody>
-                    @php
-                        // Les règlements ne se chargent que pour la page affichée : quinze lignes, et
-                        // non les mille trois cents de l'état.
-                        $pageLignes = $this->lignes->forPage($page, 15);
-                        $pageLignes->load(['encaissements' => fn ($q) => $q->orderByDesc('date')->orderByDesc('id')]);
-                    @endphp
+                    {{-- Seule la page affichée se charge, règlements compris : quinze lignes, et
+                         non les neuf mille de l'état. --}}
+                    @php $pageLignes = $this->pageLignes; @endphp
 
                     @forelse ($pageLignes as $ligne)
                         @php
@@ -1170,6 +862,6 @@ $porter = function () {
             </table>
         </div>
 
-        <x-pagination :page="$page" :total="$this->lignes->count()" prop="page" :par-page="15" />
+        <x-pagination :page="$page" :total="$this->totaux['lignes']" prop="page" :par-page="15" />
     </div>
 </div>

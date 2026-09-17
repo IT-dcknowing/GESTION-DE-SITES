@@ -43,6 +43,8 @@ $updatedSemaineFiltre = function () { $this->jourFiltre = ''; };
 /** Changer de ville rend caduc le lieu choisi dans la précédente. */
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; };
 $updatedOrigineFiltre = function () { $this->pageDetail = 1; };
+$updatedRecherche = function () { $this->pageDetail = 1; };
+$updatedCommercialFiltre = function () { $this->pageDetail = 1; };
 
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin, $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null
@@ -98,13 +100,18 @@ $requeteCharges = computed(function () {
 
 $chargesPeriode = computed(fn () => (int) (clone $this->requeteCharges)->sum('montant'));
 
+/*
+ * Les totaux et le graphique sont additionnés par la base, ou sur trois colonnes seulement.
+ *
+ * Mesuré en local : l'écran chargeait toutes les factures de la période quatorze fois par
+ * affichage — une pour les totaux, une par point du graphique, une pour le tableau — soit
+ * 42 requêtes et 1,4 s. Une somme n'a pas besoin des trente colonnes de chaque facture.
+ */
 $kpis = computed(function () {
-    $lignes = (clone $this->requeteBase)->get();
-    $ca = (int) $lignes->sum('montant');
-
     // Une facture porte toujours son activité ; une charge, seulement si celui qui l'a
     // saisie la connaissait. Le résultat net hérite donc du « non ventilé » des charges.
-    $caVentile = VentilationActivite::repartirCollection($lignes);
+    $caVentile = VentilationActivite::repartir($this->requeteBase);
+    $ca = $caVentile['mecanique'] + $caVentile['sinistre'] + $caVentile['nonVentile'];
     $chargesVentilees = VentilationActivite::repartir($this->requeteCharges);
 
     return [
@@ -126,20 +133,27 @@ $graphique = computed(function () {
     $sinistre = [];
     $resultat = [];
 
+    // Deux lectures pour tout le graphique, au lieu de deux par point : les montants du jour,
+    // regroupés par la base, puis rangés dans leurs points ici.
+    $factures = (clone $this->requeteBase)->reorder()->toBase()
+        ->selectRaw('date as jour, activite, sum(montant) as total')
+        ->groupBy('date', 'activite')->get();
+    $charges = (clone $this->requeteCharges)->reorder()->toBase()
+        ->selectRaw('date as jour, sum(montant) as total')
+        ->groupBy('date')->get();
+
     foreach ($points as $point) {
-        $lignes = (clone $this->requeteBase)->whereBetween('date', [$point['debut'], $point['fin']])->get();
-        $ca = (int) $lignes->sum('montant');
-        $charges = (int) \Modules\Noyau\Exploitation\Modeles\Charge::query()
-            ->where('type_operation', 'Charges')
-            ->whereIn('site_id', $this->idsSites)
-            ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
-            ->whereBetween('date', [$point['debut'], $point['fin']])
-            ->sum('montant');
+        $debut = $point['debut']->toDateString();
+        $fin = $point['fin']->toDateString();
+        $dansLePoint = fn ($l) => substr((string) $l->jour, 0, 10) >= $debut && substr((string) $l->jour, 0, 10) <= $fin;
+
+        $lignes = $factures->filter($dansLePoint);
+        $ca = (int) $lignes->sum('total');
 
         $labels[] = $point['label'];
-        $mecanique[] = (int) $lignes->where('activite', 'Mécanique')->sum('montant');
-        $sinistre[] = (int) $lignes->where('activite', 'Sinistre')->sum('montant');
-        $resultat[] = $ca - $charges;
+        $mecanique[] = (int) $lignes->where('activite', 'Mécanique')->sum('total');
+        $sinistre[] = (int) $lignes->where('activite', 'Sinistre')->sum('total');
+        $resultat[] = $ca - (int) $charges->filter($dansLePoint)->sum('total');
     }
 
     return [
@@ -164,8 +178,8 @@ $graphique = computed(function () {
  * `whereNull('lot_import_id')` écrit ici : la même question se pose sur cinq écrans, et une
  * condition recopiée finit par diverger de celle qui décide ailleurs si une ligne est reprise.
  */
-$detail = computed(function () {
-    $q = (clone $this->requeteBase)->with(['commercial', 'site']);
+$requeteDetail = computed(function () {
+    $q = clone $this->requeteBase;
 
     if ($this->origineFiltre === 'import') {
         $q->importee();
@@ -173,8 +187,23 @@ $detail = computed(function () {
         $q->saisieManuelle();
     }
 
-    return $q->latest('date')->latest('id')->get();
+    return $q;
 });
+
+/*
+ * « Porter à l'état » n'est offert qu'à qui ouvre l'état des impayés : sa route est fermée au
+ * responsable commercial, et un bouton qui mène à un refus n'est pas un bouton.
+ */
+$peutPorter = computed(fn () => auth()->user()->hasAnyRole(['gerant', 'responsable_ville', 'responsable_site']));
+
+$nombreDetail = computed(fn () => (clone $this->requeteDetail)->count());
+
+/** Seule la page affichée se charge : dix factures, et non toutes celles de la période. */
+$detail = computed(fn () => (clone $this->requeteDetail)
+    ->with(['commercial', 'site'])
+    ->latest('date')->latest('id')
+    ->forPage(max(1, (int) $this->pageDetail), 10)
+    ->get());
 
 /** Combien de lignes de chaque origine, pour que le filtre annonce ce qu'il va trouver. */
 $comptesParOrigine = computed(fn () => [
@@ -194,7 +223,7 @@ $comptesParOrigine = computed(fn () => [
 
     <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp
-        <x-kpi-card label="CA — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" :sub="$this->detail->count().' facture(s)'"
+        <x-kpi-card label="CA — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" :sub="$this->nombreDetail.' facture(s)'"
             :mecanique="$ventile ? ae($this->kpis['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['sinistre']) : null" />
         <x-kpi-card label="Charges — {{ $this->libellePerimetre }}" :value="ae($this->chargesPeriode)"
@@ -219,7 +248,7 @@ $comptesParOrigine = computed(fn () => [
          seule valeur. Une donnée dans une phrase ne se trie pas, ne se filtre pas et ne
          s'affiche pas en colonne : elle était conservée sans être consultable. --}}
     <div class="carte">
-        <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Détail des factures ({{ $this->detail->count() }})</h3>
+        <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Détail des factures ({{ $this->nombreDetail }})</h3>
         <p style="font-size:12.5px; color:#6B6E76; margin:0 0 14px;">
             Les colonnes sont celles du fichier CATTC. Le filtre d'origine ne touche que ce tableau :
             les totaux et le graphique ci-dessus comptent tout, sans quoi ce ne serait plus le chiffre
@@ -269,10 +298,13 @@ $comptesParOrigine = computed(fn () => [
                         @endif
                         <th>Activité</th>
                         <th>Commercial</th>
+                        @if ($this->peutPorter)
+                            <th>État des impayés</th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse ($this->detail->forPage($pageDetail, 10) as $ligne)
+                    @forelse ($this->detail as $ligne)
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td><x-numero-ligne :ligne="$ligne" /></td>
                             <td>
@@ -306,13 +338,26 @@ $comptesParOrigine = computed(fn () => [
                             @endif
                             <td>{{ $ligne->activite }}</td>
                             <td>{{ $ligne->commercial?->nom ?? '—' }}</td>
+                            @if ($this->peutPorter)
+                                <td style="white-space:nowrap;">
+                                    {{-- Envoyer la facture à l'état : le panneau « Porter » s'y ouvre dessus,
+                                         les champs connus déjà remplis. --}}
+                                    @if ($ligne->exercice_impayes === null)
+                                        <a href="{{ route('impayes', ['porter' => $ligne->id]) }}" wire:navigate class="bouton bouton-secondaire"
+                                            style="padding:4px 10px; font-size:12px; text-decoration:none;">Porter à l'état</a>
+                                    @else
+                                        <a href="{{ route('impayes.detail', $ligne->id) }}" wire:navigate
+                                            style="font-size:12px; color:#0E9F6E; font-weight:600;">À l'état {{ $ligne->exercice_impayes }}</a>
+                                    @endif
+                                </td>
+                            @endif
                         </tr>
                     @empty
-                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 16 : 15" texte="Aucune facture enregistrée sur cette période." />
+                        <x-table-vide :colspan="(count($this->idsSites) > 1 ? 16 : 15) + ($this->peutPorter ? 1 : 0)" texte="Aucune facture enregistrée sur cette période." />
                     @endforelse
                 </tbody>
             </table>
         </div>
-        <x-pagination :page="$pageDetail" :total="$this->detail->count()" prop="pageDetail" />
+        <x-pagination :page="$pageDetail" :total="$this->nombreDetail" prop="pageDetail" />
     </div>
 </div>

@@ -47,7 +47,10 @@ php artisan app:deployer
 ```
 
 `app:deployer` enchaîne `migrate --force` puis vide les caches de configuration, de routes,
-d'évènements, de données et de gabarits, et recrée le lien `public/storage` s'il manque.
+d'évènements, de données et de gabarits, **les reconstruit à neuf** (routes, évènements,
+gabarits — depuis le 17/09/2026, pour la vitesse), et recrée le lien `public/storage` s'il
+manque. La configuration n'est pas mise en cache, délibérément : `bootstrap/app.php` lit
+`PROXYS_DE_CONFIANCE` par `env()`, qu'un cache de configuration rendrait muet.
 La variante `--sans-migration` fait tout sauf les migrations, quand la base ne doit pas
 bouger.
 
@@ -174,6 +177,51 @@ Deux changements de règle arrivent avec cette mise à jour, sans commande à la
   impayés n'a pas été redéposé, les dates de réception sont vides et rien ne bouge ; après
   relecture en local, 8 factures ouvertes sur 1 341 changent de niveau de relance ;
 - **la date de réception est obligatoire** à la saisie de l'état des impayés.
+
+### Une seule fois, après la mise à jour du 17 septembre 2026
+
+**D'abord, que `main` contienne bien l'état des impayés.** Le 16/09, seule la branche `import`
+a été fusionnée dans `main` : le serveur a reçu la lecture immédiate des imports, mais ni
+l'écran *État des impayés* ni *Rapprochement CA / impayés* — d'où leur absence du menu
+*Indicateurs*. Rien n'a été perdu : tout est sur la branche `impayes`, qui contient désormais
+aussi `import`. La fusion se fait **sur le poste**, puis le poste pousse :
+
+```bash
+git checkout main
+git pull origin main
+git merge impayes          # avance simple, sans conflit
+git push origin main
+```
+
+**Le serveur ne pousse jamais.** Il tire (`git pull origin main`) et c'est tout ; un
+`git push` lancé depuis le serveur est refusé (403), et c'est très bien ainsi.
+
+Sur chaque serveur ensuite :
+
+```bash
+git pull origin main
+php artisan app:deployer
+php artisan impayes:ranger-les-colonnes              # constat, n'écrit rien
+php artisan impayes:ranger-les-colonnes --appliquer
+php artisan factures:poser-la-ville                  # constat, n'écrit rien
+php artisan factures:poser-la-ville --appliquer
+```
+
+Les deux commandes de données sont celles des mises à jour du 15 et du 16 septembre, qui
+n'avaient pas encore été lancées faute d'écran. La migration `2026_09_17_000001` pose **un
+index** sur `encaissements (facture_id, montant)` — aucune ligne lue ni écrite. Son retour
+arrière repose d'abord l'index de la clé étrangère, que MySQL retire de lui-même quand un
+index commence par la même colonne.
+
+**Deux réglages d'hébergement, facultatifs, qui accélèrent tout** — à décider par le
+propriétaire, car ils ne se testent qu'en ligne :
+
+- **OPcache** activé pour le PHP qui sert les pages (cPanel → *Select PHP Version* →
+  *Extensions* → `opcache`). Sans lui, PHP relit et recompile chaque fichier à chaque requête.
+- **`CACHE_STORE=file`** au lieu de `database` dans le `.env`. Le cache sert à chaque requête
+  (droits des rôles, notamment) ; en base, chaque lecture est un aller-retour MySQL de plus.
+  Sans risque pour les données. **Ne pas** changer `SESSION_DRIVER` sans prévenir : tout le
+  monde serait déconnecté une fois.
 
 ## 2. Ce qu'un envoi ne doit jamais emporter
 

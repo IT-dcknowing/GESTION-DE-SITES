@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **16 septembre 2026**.*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **17 septembre 2026**.*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -121,6 +121,9 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 16/09 | `686810b` | **impayes** | âge depuis le dépôt ; ville des factures ; Détail, Modifier, Porter ; date de réception obligatoire |
 | 16/09 | `5064774` | **impayes** | le détail d'une créance a sa page (`/impayes/creance/{id}`) |
 | 16/09 | `eaf14b2` | **import** (depuis `main`) | la lecture démarre au dépôt ; barre de progression réelle ; « Traiter maintenant » / « Tout traiter » retirés ; « Annuler l'import » |
+| 16/09 | `eaf14b2` | **main** | le propriétaire fusionne `import` seul dans `main` et déploie : le menu perd *État des impayés* et *Rapprochement*, restés sur `impayes` |
+| 17/09 | `4c80ffc` | **impayes** | `main` (donc `import`) fusionné dans `impayes` ; seul conflit : la liste des commandes du NoyauServiceProvider |
+| 17/09 | voir `git log` | **impayes** | Porter : listes client → facture (numéro de saisie) cherchables, champs préremplis, composant à part ; bouton « Porter à l'état » sur le chiffre d'affaires ; état et chiffre d'affaires calculés en base ; index `encaissements (facture_id, montant)` ; caches reconstruits au déploiement |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -129,8 +132,10 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
 
 ## 5. Le chantier en cours : l'état des impayés
 
-**Branche `impayes`**, non fusionnée dans `main`, **non poussée** (à pousser par le propriétaire :
-`git push -u origin impayes`). Détail complet : [ETAT-DES-IMPAYES.md](ETAT-DES-IMPAYES.md).
+**Branche `impayes`**, poussée le 16/09, **toujours pas fusionnée dans `main`** : c'est pourquoi,
+après la fusion de `import` seul, le menu *Indicateurs* du serveur n'a ni *État des impayés* ni
+*Rapprochement*. Depuis le 17/09 elle contient `main` (donc `import`) : `git merge impayes` sur
+`main` est une avance simple. Détail complet : [ETAT-DES-IMPAYES.md](ETAT-DES-IMPAYES.md).
 
 ### Ce qui est fait
 
@@ -178,13 +183,40 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
   « échec » (fichier stocké absent) et a été rétabli à partir de ses compteurs.
 - Tests : `DepotEtVilleDesCreancesTest` (18) ; suite complète 561 tests, 554 réussis, 0 échec.
 
+### Fait le 17/09
+
+- **Porter une facture existante** devient deux listes qu'on fouille par l'intérieur : le
+  **client** (425 en local, avec le nombre de factures), puis **ses factures**, désignées par
+  leur **numéro de saisie** (`F-…`, n° de facture, date, immatriculation, montant). La facture
+  choisie remplit atelier, ville, n° de sinistre, banque et date de réception connue, et affiche
+  le reste en lecture. Composant à part, `pilotage.impayes-porter` : un choix ne redessine plus
+  le tableau de l'état. Arrivée directe par `/impayes?porter={id}`.
+- **Chiffre d'affaires** : colonne « État des impayés » — **Porter à l'état** (ouvre le panneau
+  sur la facture) ou « À l'état 2026 » (lien vers le détail). Masquée au responsable commercial.
+- Date de réception : **déjà obligatoire** depuis le 16/09, à la saisie comme au portage —
+  vérifié, testé.
+- **Vitesse**, mesurée en local : l'état des impayés ne charge plus ses 8 852 lignes à chaque
+  clic (solde, report, totaux et page calculés en base — `EtatDesImpayes::totauxEnBase`,
+  `filtrerLeSolde`, confrontés par test à la règle PHP) : ~780 → ~530 ms par interaction. Le
+  chiffre d'affaires : 42 requêtes et 1,4 s → 19 requêtes et ~0,5 s (totaux groupés, graphique
+  en deux lectures au lieu de deux par point, tableau paginé en base). Migration
+  `2026_09_17_000001` (index). `app:deployer` reconstruit les caches de routes, évènements et
+  gabarits.
+- `x-select-cherchable` : ses ressources passent dans `select-cherchable-ressources`, incluses
+  par l'écran ; le script se garde contre une double inclusion et se rebranche après chaque
+  échange Livewire (crochet `commit`). Vérifié dans Chrome sans tête (hors Livewire).
+- Tests : `DepotEtVilleDesCreancesTest` (24) ; suite complète 576 tests, 569 réussis, 7 erreurs
+  WebPush connues (clé P-256 locale), 0 échec.
+
 ### Ce qui attend une décision
 
 1. Les arbitrages pris sans confirmation, listés au § 6 d'ETAT-DES-IMPAYES.md (année = année
    de la facture ; état initial en lecture seule ; fermé au responsable commercial ; série
    `IMP-` ; atelier facultatif en modification ; relances non filtrées par ville).
-2. Fusion de `impayes` dans `main`, puis déploiement (dev d'abord) et, sur chaque serveur :
-   `impayes:ranger-les-colonnes` puis `factures:poser-la-ville` (constat, puis `--appliquer`).
+2. **Fusion de `impayes` dans `main`** (`git checkout main && git merge impayes`, avance simple),
+   puis déploiement (dev d'abord) et, sur chaque serveur : `impayes:ranger-les-colonnes` puis
+   `factures:poser-la-ville` (constat, puis `--appliquer`). Voir MISE-A-JOUR-SERVEUR.md, 17/09.
+3. Côté hébergement, facultatif : OPcache, `CACHE_STORE=file`.
 
 ### Chiffres de référence (à ne pas remesurer)
 
@@ -201,9 +233,9 @@ villes. Âge depuis le dépôt : 8 factures ouvertes sur 1 341 changent de nivea
 
 ## 5 bis. Branche `import` — la lecture démarre au dépôt
 
-**Branche `import`, partie de `main`**, non fusionnée, non poussée (`git push -u origin import`).
-Elle ne contient pas le travail de `impayes`, et inversement : en local, on ne voit que la
-branche extraite (`git checkout import` / `git checkout impayes`).
+**Branche `import`, fusionnée dans `main` le 16/09 par le propriétaire et déployée** (la
+migration `2026_09_16_000002` est passée sur le serveur). Fusionnée aussi dans `impayes` le
+17/09.
 
 - **Défaut signalé** : après « Lancer l'import », il fallait cliquer « Traiter maintenant » ou
   « Tout traiter », et la barre restait figée.
@@ -260,6 +292,11 @@ php artisan test
 | `$this->reset([...])` dans un composant Volt remet à **null**, pas à la valeur de `state()` | vider par affectation (`$this->champ = ''`) — sinon `exclude_if:champ,` ne reconnaît plus le vide |
 | Un script qui rejoue un lot d'import le fait passer « en cours » puis « échec » si le fichier stocké manque | appeler le format directement sur le fichier d'origine (empreinte vérifiée), sans passer par `Executeur` |
 | Écrire l'avancée d'un import sur `lots_import` depuis une autre connexion | bloque : la transaction de l'import verrouille la ligne (clés étrangères) — passer par le cache fichier |
+| Fusionner une branche de module dans `main` sans les autres | le menu « perd » les écrans restés sur l'autre branche — fusionner chaque branche, ou fusionner `main` dans la branche en cours avant |
+| MySQL retire l'index d'une clé étrangère quand un nouvel index commence par la même colonne | le `down()` doit reposer l'ancien index avant de retirer le nouveau (erreur 1553 sinon) |
+| Livewire n'exécute pas un `<script>` qu'il insère en redessinant (un `@once` dans un panneau ouvert par clic) | inclure les ressources dès le premier affichage de l'écran ; garder le script contre la double inclusion |
+| `php artisan optimize:clear` vide aussi le cache applicatif | sur un serveur, préférer `app:deployer` |
+| `$this->unCalcul()` défini par `$x = function` dans Volt est une action publique | `protect(...)` pour une aide interne |
 | `Handler::render()` passe les callbacks avant `AuthenticationException` | toute page de panne doit exclure explicitement authentification et validation |
 
 ### Où regarder
