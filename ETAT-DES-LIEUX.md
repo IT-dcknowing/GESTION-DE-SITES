@@ -126,7 +126,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 17/09 | voir `git log` | **impayes** | Porter : listes client → facture (numéro de saisie) cherchables, champs préremplis, composant à part ; bouton « Porter à l'état » sur le chiffre d'affaires ; état et chiffre d'affaires calculés en base ; index `encaissements (facture_id, montant)` ; caches reconstruits au déploiement |
 | 17/09 | voir `git log` | **impayes** | Porter = le formulaire de saisie prérempli (avance montrée et déduite) ; « + Ajouter une créance » s'ouvre sans le serveur ; menu préchargé au survol ; un dépôt endormi repart seul (`lots_import.controle`) ; rubrique *Vitesse* du diagnostic |
 | 17/09 | `aa6332a` | **main** | le propriétaire fusionne et pousse : `main`, `impayes` et `origin` au même point |
-| 18/09 | — | **plan** | relevé des fichiers réels, plan de travail d'une semaine et courrier à l'éditeur du logiciel (deux PDF, § 6) |
+| 18/09 | — | **plan** | relevé des fichiers réels, plan de travail d'une semaine (PDF + classeur de suivi) et courrier à l'éditeur du logiciel (§ 6) ; `DocumentPdf` gagne l'en-tête à deux marques et les cellules qui reviennent à la ligne |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -277,28 +277,65 @@ migration `2026_09_16_000002` est passée sur le serveur). Fusionnée aussi dans
   `LectureImmediateDesImportsTest` (10) ; suite de la branche 535 / 528 / 0 échec.
 - **À vérifier sur le serveur de dev** : que `exec` est permis et que la barre avance.
 
-## 6. Le plan de la semaine — dix chantiers pour boucler L'Artisan
+## 6. Le plan de la semaine — onze chantiers pour boucler L'Artisan
 
-**Deux documents produits le 18/09**, hors du dépôt, dans `C:\BUREAU\GESTION-DE-SITES\` :
-`PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.pdf` (5 pages — ce qui est fait, les dix chantiers, les
-fichiers à reprendre, l'inventaire du dossier IMPORT, le barème proposé, le déroulé de la
-semaine) et `COURRIER-M-FOFANA-2026-09-18.pdf` (3 pages — filtres et exports manquants dans le
-logiciel d'atelier, API souhaitées champ par champ). Ils sont fabriqués par
-`Modules/Noyau/app/Commun/Services/DocumentPdf.php`, sans dépendance ajoutée ; les scripts qui
-les produisent vivent dans le dossier scratchpad de la séance et ne sont pas versionnés.
+**Trois documents produits le 18/09**, hors du dépôt, dans `C:\BUREAU\GESTION-DE-SITES\` :
+
+- `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.pdf` (7 pages) — ce qui est en service, les onze
+  chantiers, les fichiers tenus à la main, l'inventaire du dossier IMPORT, le barème et le
+  déroulé de la semaine.
+- `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` — le même plan pour le suivi : un chantier par
+  ligne, groupés par module avec une ligne vide entre deux modules, colonne **Statut** à liste
+  déroulante (À faire · En cours · Bloqué · À valider · Terminé · Abandonné) et colonnes
+  **Début** / **Fin** au format date.
+- `COURRIER-M-FOFANA-2026-09-18.pdf` (2 pages) — à l'en-tête du cabinet **DC-KNOWING** et de
+  L'Artisan, signé AGNIMEL : les états qui manquent en un tableau (module, état, ce qui manque,
+  notre demande) et les API en un second, champ par champ.
+
+Les deux PDF sont fabriqués par `Modules/Noyau/app/Commun/Services/DocumentPdf.php` et le
+classeur par la même mécanique OOXML que `Exportateur` — aucune dépendance ajoutée. Les scripts
+qui les produisent vivent dans le dossier scratchpad de la séance et ne sont pas versionnés ;
+le logo du cabinet est déposé à côté des documents (`logo-dc-knowing.png`).
+
+**Deux ajouts au générateur PDF** (`DocumentPdf`), tous deux facultatifs, rien de changé pour
+les documents existants : `enTeteADeuxMarques()` — un logo à chaque extrémité, le titre au
+milieu, le destinataire sous le cadre — et l'option `multiligne` de `tableau()`, qui replie une
+cellule au lieu de la tronquer. Sans elle, une colonne qui porte une phrase perdait justement
+ce qu'on voulait dire.
 
 | # | Chantier | Ce qu'il faut faire |
 |---|---|---|
 | 1 | **Le payeur** | Vérifier partout la règle courtier → assureur → client (`Facture::tiersPayant()`), et l'entourer d'un test |
-| 2 | **Facture déposée chez un tiers** | Colonne « déposée chez » (additive) ; le payeur devient ce déposant ; la créance n'est comptée que chez lui |
+| 2 | **Facture déposée chez un tiers** | Colonne « déposée chez » (additive) ; le payeur devient ce déposant ; la créance n'est comptée que chez lui — **et la colonne se lit dans le tableau de l'état des impayés**, c'est là qu'on constate le dépôt |
+| 2 bis | **Une facture réglée n'a rien à faire dans le recouvrement** | Voir l'encadré ci-dessous : le registre garde les soldées, le recouvrement ne les poursuit pas, mais « Porter à l'état » leur est encore proposé |
 | 3 | **Extrait de compte** | Trois colonnes de plus : n° de sinistre, date de facturation, date de dépôt (données déjà en base) + exports |
-| 4 | **Prospection → devis → facture** | `n_fiche_reception` sur la prospection ; rapprochement par ce numéro (repli : immatriculation + date) ; écran de confirmation ; le chiffre cesse d'être compté deux fois |
+| 4 | **Prospection → devis → facture** | **Rapprochement par immatriculation + date d'abord** (fenêtre proposée : 15 jours) — le devis suit la prospection de trois à cinq jours, personne ne reviendra écrire un n° de fiche. `n_fiche_reception` ajouté à la prospection mais facultatif : quand il est là, il emporte la décision. Écran de confirmation, jamais de rapprochement muet |
 | 5 | **Deux gestes** | Suppression réservée au gérant (tracée, refusée sur une pièce réglée ou importée) ; filtre « du … au … » sur tous les tableaux |
 | 6 | **N° de fiche de réception** | Relevé fait : présent partout sauf chez les fournisseurs — parc, entrées, sorties, fiches, devis, factures ; dans le libellé pour la caisse |
 | 7 | **Caisse par véhicule** | Page dédiée : recherche sur l'immatriculation, factures en cours du véhicule, champ de commentaire tracé |
 | 8 | **Trésorerie** | Bouton « Détail » par mouvement (pièce, import, auteur) et contenu réel de la ligne « Autres » |
 | 9 | **Fournisseurs** | Remonter « déjà payé » dans le tableau de tête et dans l'export |
 | 10 | **Commerciaux** | Barème de commission (paramètres), colonnes « Barème » et « Cumul », page du barème — réservé au gérant |
+| 11 | **Comptabilité** | Ouvrir au comptable le module de recouvrement et les indicateurs qui le regardent (caisse, trésorerie, charges, fournisseurs), dans son périmètre — sans suppression, ni objectifs, ni commerciaux, ni barème |
+
+### La question posée : les factures réglées sont-elles dans l'état des impayés ?
+
+**Oui, elles y sont — et il faut qu'elles y restent.** L'état des impayés est un registre annuel,
+comme le classeur dont il est né : il porte le facturé, l'encaissé et le reste, et le reste n'y
+est jamais une colonne saisie — il se recalcule depuis les encaissements (`Recouvrement::reste()`,
+plancher à zéro). Les retirer ferait perdre les totaux et le rapprochement avec le chiffre
+d'affaires.
+
+Ce qui est **déjà en place** : `statutFiltre` vaut `'ouvertes'` par défaut, donc à l'ouverture de
+l'écran on ne voit que les créances non soldées ; une soldée porte la mention « Soldée » en vert
+et son reste tombe à zéro ; `Recouvrement::niveau()` rend le niveau 0 « Soldée », et la balance
+âgée comme l'extrait de compte les écartent (`SEUIL_SOLDE`).
+
+Ce qui **manque vraiment**, et c'est le travail à faire : sur l'écran du chiffre d'affaires, le
+bouton « Porter à l'état » est offert dès que `exercice_impayes` est nul, **même pour une facture
+entièrement réglée** — il ne doit apparaître que s'il subsiste un reste, et afficher « Réglée »
+sinon. Et la mention « Soldée » doit être aussi visible qu'une pastille de relance quand le filtre
+est sur « Toutes ».
 
 ### Les fichiers tenus à la main, à reprendre comme les impayés
 
@@ -311,7 +348,10 @@ les produisent vivent dans le dossier scratchpad de la séance et ne sont pas ve
   solde annoncé. Règle à appliquer partout : **les colonnes d'une page listent d'abord celles du
   fichier d'origine**.
 - **Fiches de réception** : pas d'import propre à écrire — la situation du parc porte les mêmes
-  fiches avec plus de colonnes ; seul le code client lui manque.
+  fiches avec plus de colonnes ; seul le code client lui manque. **Décidé le 18/09 : on n'attend
+  pas le code client.** L'obtenir suppose que l'éditeur l'ajoute ou ouvre ses API ; d'ici là le
+  rapprochement se fait par le nom ramené à une forme comparable et, pour un véhicule, par
+  l'immatriculation. Le code client se posera par-dessus le jour venu, sans rien refaire.
 - **Balance et règlements fournisseurs** (exports du logiciel) : deux formats à écrire.
 
 ### Hors chantier, toujours en attente
@@ -326,8 +366,17 @@ les produisent vivent dans le dossier scratchpad de la séance et ne sont pas ve
   ville par ordre alphabétique. Il atterrit sur *Saisie du jour* (proposé : *Commerciaux*).
 - *Mes prospections* et *Mes notes* restent fermées au responsable de ville et de site.
 - Les branches `import` et `recouvrement` sont entièrement fusionnées dans `main` : supprimables.
-- **Le fichier de barème de commission** annoncé n'a pas été retrouvé sur le poste ; le PDF en
-  propose un, à valider.
+- **Le barème de commission a été retrouvé** : `Commission_Commerciaux_Artisan (1)_vf6.pdf`
+  (déposé à la racine du dépôt, non versionné). Deux grilles — commerciaux, puis responsable
+  commercial et adjoint — reprises telles quelles au § 6 du PDF. **Quatre points à trancher avant
+  de calculer** : le seuil d'entrée (le texte dit 25 M, la grille ouvre à 20 M) ; les trous entre
+  tranches (25–26 M, 30–31 M, 25–30 M chez le responsable) ; les bornes qui se chevauchent chez le
+  responsable (40, 50 et 60 M appartiennent à deux tranches) ; et l'assiette — les commissions
+  indicatives du document montrent que le taux porte sur **tout** le chiffre d'affaires, non sur
+  la seule part de la tranche.
+- **Deux règles ajoutées au barème**, absentes du document mais nécessaires : commission sur le
+  **facturé** du mois (non l'encaissé), et seulement sur les factures rattachées à une prospection
+  ou à un devis du commercial — ce qui fait dépendre le chantier 10 du chantier 4.
 
 ---
 
