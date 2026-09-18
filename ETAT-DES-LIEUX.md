@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **17 septembre 2026**.*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **18 septembre 2026**.*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -125,6 +125,8 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 17/09 | `4c80ffc` | **impayes** | `main` (donc `import`) fusionné dans `impayes` ; seul conflit : la liste des commandes du NoyauServiceProvider |
 | 17/09 | voir `git log` | **impayes** | Porter : listes client → facture (numéro de saisie) cherchables, champs préremplis, composant à part ; bouton « Porter à l'état » sur le chiffre d'affaires ; état et chiffre d'affaires calculés en base ; index `encaissements (facture_id, montant)` ; caches reconstruits au déploiement |
 | 17/09 | voir `git log` | **impayes** | Porter = le formulaire de saisie prérempli (avance montrée et déduite) ; « + Ajouter une créance » s'ouvre sans le serveur ; menu préchargé au survol ; un dépôt endormi repart seul (`lots_import.controle`) ; rubrique *Vitesse* du diagnostic |
+| 17/09 | `aa6332a` | **main** | le propriétaire fusionne et pousse : `main`, `impayes` et `origin` au même point |
+| 18/09 | — | **plan** | relevé des fichiers réels, plan de travail d'une semaine et courrier à l'éditeur du logiciel (deux PDF, § 6) |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -275,18 +277,57 @@ migration `2026_09_16_000002` est passée sur le serveur). Fusionnée aussi dans
   `LectureImmediateDesImportsTest` (10) ; suite de la branche 535 / 528 / 0 échec.
 - **À vérifier sur le serveur de dev** : que `exec` est permis et que la barre avance.
 
-## 6. Ce qui attend, hors du chantier en cours
+## 6. Le plan de la semaine — dix chantiers pour boucler L'Artisan
+
+**Deux documents produits le 18/09**, hors du dépôt, dans `C:\BUREAU\GESTION-DE-SITES\` :
+`PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.pdf` (5 pages — ce qui est fait, les dix chantiers, les
+fichiers à reprendre, l'inventaire du dossier IMPORT, le barème proposé, le déroulé de la
+semaine) et `COURRIER-M-FOFANA-2026-09-18.pdf` (3 pages — filtres et exports manquants dans le
+logiciel d'atelier, API souhaitées champ par champ). Ils sont fabriqués par
+`Modules/Noyau/app/Commun/Services/DocumentPdf.php`, sans dépendance ajoutée ; les scripts qui
+les produisent vivent dans le dossier scratchpad de la séance et ne sont pas versionnés.
+
+| # | Chantier | Ce qu'il faut faire |
+|---|---|---|
+| 1 | **Le payeur** | Vérifier partout la règle courtier → assureur → client (`Facture::tiersPayant()`), et l'entourer d'un test |
+| 2 | **Facture déposée chez un tiers** | Colonne « déposée chez » (additive) ; le payeur devient ce déposant ; la créance n'est comptée que chez lui |
+| 3 | **Extrait de compte** | Trois colonnes de plus : n° de sinistre, date de facturation, date de dépôt (données déjà en base) + exports |
+| 4 | **Prospection → devis → facture** | `n_fiche_reception` sur la prospection ; rapprochement par ce numéro (repli : immatriculation + date) ; écran de confirmation ; le chiffre cesse d'être compté deux fois |
+| 5 | **Deux gestes** | Suppression réservée au gérant (tracée, refusée sur une pièce réglée ou importée) ; filtre « du … au … » sur tous les tableaux |
+| 6 | **N° de fiche de réception** | Relevé fait : présent partout sauf chez les fournisseurs — parc, entrées, sorties, fiches, devis, factures ; dans le libellé pour la caisse |
+| 7 | **Caisse par véhicule** | Page dédiée : recherche sur l'immatriculation, factures en cours du véhicule, champ de commentaire tracé |
+| 8 | **Trésorerie** | Bouton « Détail » par mouvement (pièce, import, auteur) et contenu réel de la ligne « Autres » |
+| 9 | **Fournisseurs** | Remonter « déjà payé » dans le tableau de tête et dans l'export |
+| 10 | **Commerciaux** | Barème de commission (paramètres), colonnes « Barème » et « Cumul », page du barème — réservé au gérant |
+
+### Les fichiers tenus à la main, à reprendre comme les impayés
+
+- **Suivi fournisseur** : un fichier par lieu (Abidjan, San-Pédro), feuille `DETAIL` de 40
+  colonnes ; l'import actuel n'en lit que 18. Tableau unique proposé dans le PDF (identification,
+  pièce, montants, règlement, véhicule, refacturation FICORE, suivi). La feuille
+  `Liste fournisseurs` (délai de règlement, TVA) devient un référentiel.
+- **Caisse** : l'import existe (Date, Libellé, Entrées, sorties, Solde, Immatriculation,
+  Bénéficiaire) mais l'écran a été bâti sur un autre classeur — il manque l'atelier précis et le
+  solde annoncé. Règle à appliquer partout : **les colonnes d'une page listent d'abord celles du
+  fichier d'origine**.
+- **Fiches de réception** : pas d'import propre à écrire — la situation du parc porte les mêmes
+  fiches avec plus de colonnes ; seul le code client lui manque.
+- **Balance et règlements fournisseurs** (exports du logiciel) : deux formats à écrire.
+
+### Hors chantier, toujours en attente
 
 - **Rotation des secrets** (le `.env` de production a circulé en clair) : mot de passe du
   courriel `infos@dc-knowing.com`, secret Google OAuth, mot de passe MySQL, puis `APP_KEY` et
   clés VAPID. **Priorité la plus haute, côté propriétaire.**
+- **Hébergement** : activer OPcache sur le PHP qui sert les pages, et `CACHE_STORE=file` — c'est
+  le premier poste de lenteur. Voir MISE-A-JOUR-SERVEUR.md.
 - **Responsable commercial**, deux arbitrages pris sans confirmation : il ne gère pas les accès
   de ses commerciaux ; avec « Toutes les villes », sa fiche de vendeur se rattache à la première
   ville par ordre alphabétique. Il atterrit sur *Saisie du jour* (proposé : *Commerciaux*).
-- *Mes prospections* et *Mes notes* restent fermées au responsable de ville et de site
-  (ils saisissent par *Saisie du jour*).
-- La branche locale `recouvrement` est ancienne (`789a993`) et entièrement fusionnée : peut être
-  supprimée.
+- *Mes prospections* et *Mes notes* restent fermées au responsable de ville et de site.
+- Les branches `import` et `recouvrement` sont entièrement fusionnées dans `main` : supprimables.
+- **Le fichier de barème de commission** annoncé n'a pas été retrouvé sur le poste ; le PDF en
+  propose un, à valider.
 
 ---
 
