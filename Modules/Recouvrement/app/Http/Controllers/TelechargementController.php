@@ -133,7 +133,7 @@ class TelechargementController
     /** @return array{0: list<string>, 1: list<list<mixed>>, 2: ?list<mixed>, 3: array<int, array>} */
     private function courtiers($arrete): array
     {
-        $lignes = Recouvrement::parCourtier(Recouvrement::factures($arrete), $arrete);
+        $lignes = Recouvrement::parCourtier(Recouvrement::lignesDeCreance($arrete), $arrete);
 
         return [
             ['Courtier', 'Facturé', 'Réglé', 'Reste à payer', 'Factures ouvertes', 'Compagnies', 'Niveau'],
@@ -162,7 +162,7 @@ class TelechargementController
     /** @return array{0: list<string>, 1: list<list<mixed>>, 2: ?list<mixed>, 3: array<int, array>} */
     private function clients($arrete): array
     {
-        $lignes = Recouvrement::annuaireDesTiers(Recouvrement::factures($arrete), $arrete);
+        $lignes = Recouvrement::annuaireDesTiers($arrete);
 
         return [
             ['Tiers', 'Rôles', 'Factures', 'Facturé', 'Réglé', 'Reste à payer', 'Ouvertes', 'Dernière facture'],

@@ -1,6 +1,5 @@
 <?php
 
-use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
 use function Livewire\Volt\{computed, state};
@@ -47,8 +46,12 @@ $periode = computed(fn () => PeriodeDeTravail::depuis($this->moisFiltre, $this->
 
 $arrete = computed(fn () => Recouvrement::arrete($this->periode->arreteIso()));
 
-/** Toutes les factures, soldées comprises : un courtier à jour doit s'afficher à zéro, pas disparaître. */
-$toutes = computed(fn () => Recouvrement::factures($this->arrete));
+/**
+ * Toutes les créances, soldées comprises : un courtier à jour doit s'afficher à zéro, pas
+ * disparaître. Lues telles quelles, sans en faire des objets — l'écran ne montre aucune
+ * facture ligne à ligne, seulement leurs totaux. Voir `Recouvrement::lignesDeCreance()`.
+ */
+$toutes = computed(fn () => Recouvrement::lignesDeCreance($this->arrete));
 
 $courtiers = computed(fn () => Recouvrement::courtiers());
 
@@ -98,8 +101,8 @@ $recoupe = computed(function () {
 
 /** Ce que les factures sans courtier représentent : le reste de l'encours, pour situer. */
 $horsCourtage = computed(fn () => $this->toutes
-    ->filter(fn (Facture $f) => trim((string) $f->courtier) === '')
-    ->sum(fn (Facture $f) => Recouvrement::reste($f)));
+    ->filter(fn ($ligne) => trim((string) $ligne->courtier) === '')
+    ->sum(fn ($ligne) => Recouvrement::resteDe($ligne->montant, $ligne->encaissements_sum_montant)));
 
 ?>
 

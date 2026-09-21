@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 
@@ -14,18 +15,19 @@ use function Livewire\Volt\{computed, state};
  * Un compte d'exploitation qui ne voit qu'un côté de la balance n'est pas un compte
  * d'exploitation.
  *
- * **Le fichier ne porte aucune date d'échéance — mesuré : zéro ligne sur mille huit cent
- * quarante-huit.** L'écran ne peut donc pas dire ce qui est échu, et il ne fait pas semblant
- * de le savoir : l'ancienneté se compte depuis la date de facture, seule date toujours
- * présente. Une pièce ouverte depuis plus de quatre-vingt-dix jours est signalée comme
- * telle, ce qui est le renseignement utile même sans échéance contractuelle.
+ * **L'échéance existe désormais, et pour une partie des lignes seulement.** On avait écrit
+ * ici que le fichier n'en portait aucune — c'était vrai de l'onglet qu'on lisait alors, et
+ * faux du classeur. Depuis le 22/09, la feuille « DETAIL » est lue en entier : sur 7 350
+ * lignes reprises, **1 480 portent une date d'échéance**. L'écran l'affiche donc, en disant
+ * combien de lignes la connaissent — une pièce sans échéance n'est pas une pièce à jour.
  *
- * Afficher une colonne « échéance » vide, ou un compteur d'échu bloqué à zéro, aurait été
- * pire que de ne rien afficher : on aurait conclu que rien n'est en retard.
+ * L'ancienneté depuis la date de facture reste affichée à côté, et c'est elle qui trie :
+ * c'est la seule date que toutes les lignes portent. Remplacer l'une par l'autre aurait
+ * fait disparaître du haut de la liste les dettes les plus vieilles, faute d'échéance.
  *
- * **Le périmètre se lit par ville.** Seules 263 des 1 848 lignes portent un atelier ; les
- * autres n'ont que la ville. Filtrer par atelier aurait vidé l'écran de six lignes sur
- * sept, ce qui aurait ressemblé à une panne alors que c'est le fichier qui ne le dit pas.
+ * **Le périmètre se lit par ville.** Seule une ligne sur six porte un atelier ; les autres
+ * n'ont que la ville. Filtrer par atelier aurait vidé l'écran de cinq lignes sur six, ce
+ * qui aurait ressemblé à une panne alors que c'est le fichier qui ne le dit pas.
  *
  * Aucune période n'est proposée, et c'est délibéré : une dette ne s'arrête pas au
  * 31 décembre. On regarde ce qui reste dû aujourd'hui, quelle que soit la date de la
@@ -64,6 +66,11 @@ $requete = computed(function () {
         'ouvertes' => $requete->where('reste_a_payer', '>', 0),
         'anciennes' => $requete->where('reste_a_payer', '>', 0)
             ->whereDate('date_facture', '<', now()->subDays(90)),
+        // Échue veut dire : l'échéance est connue, et elle est passée. Une ligne sans
+        // échéance n'y figure pas — on ne la déclare ni à jour ni en retard.
+        'echues' => $requete->where('reste_a_payer', '>', 0)
+            ->whereNotNull('date_echeance')
+            ->whereDate('date_echeance', '<', now()),
         'soldees' => $requete->where('reste_a_payer', '<=', 0),
         default => $requete,
     };
@@ -92,6 +99,19 @@ $kpis = computed(fn () => [
         ->min('date_facture'),
     'ouvertes' => (clone $this->perimetre)->where('reste_a_payer', '>', 0)->count(),
     'fournisseurs' => (clone $this->perimetre)->distinct()->count('fournisseur'),
+
+    /*
+     * L'échu, et ce qu'on en sait.
+     *
+     * Les deux nombres vont ensemble : « 12 M échus » ne veut rien dire sans « sur les
+     * 1 480 pièces dont l'échéance est connue ». Annoncer le premier seul laisserait croire
+     * que le reste est à jour, alors qu'il est simplement sans date.
+     */
+    'echu' => (int) (clone $this->perimetre)->where('reste_a_payer', '>', 0)
+        ->whereNotNull('date_echeance')->whereDate('date_echeance', '<', now())
+        ->sum('reste_a_payer'),
+    'avecEcheance' => (clone $this->perimetre)->where('reste_a_payer', '>', 0)
+        ->whereNotNull('date_echeance')->count(),
 ]);
 
 /**
@@ -148,7 +168,7 @@ $detail = computed(fn () => (clone $this->requete)
         </div>
     </x-titre-ecran>
 
-    <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:16px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Reste à payer — {{ $this->libellePerimetre }}" :value="ae($this->kpis['reste'])"
             couleur="#C8102E" :sub="$this->kpis['ouvertes'].' facture(s) ouverte(s) · '.$this->kpis['fournisseurs'].' fournisseur(s)'
                 .($this->kpis['avoirs'] > 0 ? ' · '.ae($this->kpis['avoirs']).' de trop-payé à réclamer' : '')" />
@@ -157,6 +177,11 @@ $detail = computed(fn () => (clone $this->requete)
             :sub="$this->kpis['plusAncienne']
                 ? 'La plus ancienne date du '.\Illuminate\Support\Carbon::parse($this->kpis['plusAncienne'])->format('d/m/Y')
                 : 'Aucune pièce ouverte'" />
+        <x-kpi-card label="Échu" :value="ae($this->kpis['echu'])"
+            :accent="$this->kpis['echu'] > 0"
+            :sub="$this->kpis['avecEcheance'] > 0
+                ? 'Sur les '.$this->kpis['avecEcheance'].' pièce(s) ouverte(s) dont l\'échéance est connue'
+                : 'Aucune pièce ouverte ne porte d\'échéance'" />
         <x-kpi-card label="Total facturé" :value="ae($this->kpis['facture'])" sub="Toutes pièces reçues" />
         <x-kpi-card label="Déjà réglé" :value="ae($this->kpis['regle'])" couleur="#0E9F6E" />
     </div>
@@ -228,6 +253,7 @@ $detail = computed(fn () => (clone $this->requete)
                 <select wire:model.live="etatFiltre" class="champ">
                     <option value="ouvertes" @selected($etatFiltre === 'ouvertes')>Reste à payer</option>
                     <option value="anciennes" @selected($etatFiltre === 'anciennes')>Dues depuis plus de 90 jours</option>
+                    <option value="echues" @selected($etatFiltre === 'echues')>Échues</option>
                     <option value="soldees" @selected($etatFiltre === 'soldees')>Soldées</option>
                     <option value="toutes" @selected($etatFiltre === 'toutes')>Toutes</option>
                 </select>
@@ -246,7 +272,9 @@ $detail = computed(fn () => (clone $this->requete)
                         <th>Fournisseur</th>
                         <th>N° pièce</th>
                         <th>Facture</th>
+                        <th>Échéance</th>
                         <th>Ancienneté</th>
+                        <th>Section</th>
                         <th>Imputation</th>
                         <th style="text-align:right;">Montant</th>
                         <th style="text-align:right;">Réglé</th>
@@ -256,17 +284,30 @@ $detail = computed(fn () => (clone $this->requete)
                 <tbody>
                     @forelse ($this->detail as $ligne)
                         @php
-                            $jours = $ligne->date_facture?->diffInDays(now());
+                            $jours = $ligne->date_facture
+                                ? NombreDeJours::entre($ligne->date_facture, now())
+                                : null;
                             $vieille = $ligne->reste_a_payer > 0 && $jours !== null && $jours > 90;
+                            $echue = $ligne->reste_a_payer > 0 && $ligne->date_echeance?->isPast();
                         @endphp
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td>{{ $ligne->fournisseur ?: '—' }}</td>
                             <td style="color:#6B6E76;">{{ $ligne->numero_piece ?: '—' }}</td>
                             <td style="white-space:nowrap;">{{ $ligne->date_facture?->format('d/m/Y') ?? '—' }}</td>
+                            {{-- Un tiret dit « le fichier ne le sait pas », jamais « à jour ». --}}
+                            <td style="white-space:nowrap; {{ $echue ? 'color:#C8102E; font-weight:700;' : 'color:#6B6E76;' }}">
+                                {{ $ligne->date_echeance?->format('d/m/Y') ?? '—' }}
+                            </td>
                             <td style="white-space:nowrap; {{ $vieille ? 'color:#C8102E; font-weight:700;' : 'color:#6B6E76;' }}">
                                 {{ $jours === null ? '—' : number_format((int) $jours, 0, ',', ' ').' j' }}
                             </td>
-                            <td style="color:#6B6E76;">{{ $ligne->imputation ?: ($ligne->immatriculation ?: '—') }}</td>
+                            <td style="color:#6B6E76;">{{ $ligne->section ?: '—' }}</td>
+                            <td style="color:#6B6E76;">
+                                {{ $ligne->imputation ?: ($ligne->immatriculation ?: '—') }}
+                                @if ($ligne->vehicule)
+                                    <div style="font-size:11px;">{{ $ligne->vehicule }}{{ $ligne->immatriculation ? ' · '.$ligne->immatriculation : '' }}</div>
+                                @endif
+                            </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $ligne->montant) }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae((int) $ligne->montant_regle) }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
@@ -275,7 +316,7 @@ $detail = computed(fn () => (clone $this->requete)
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="8"
+                        <x-table-vide :colspan="10"
                             texte="Aucune facture fournisseur pour ce filtre. Le suivi fournisseurs se dépose depuis le module Import." />
                     @endforelse
                 </tbody>

@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
+use Modules\Noyau\Commun\Modeles\Referentiel;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
@@ -160,7 +161,7 @@ class RecouvrementTest extends TestCase
         $this->facture('NSIA ASSURANCES', 'F-001', 1_200_000, now()->subDays(120));
         $this->facture('GNA ASSURANCES', 'F-002', 300_000, now()->subDays(5));
 
-        foreach (array_keys(\Modules\Recouvrement\Support\AccesRecouvrement::PAGES) as $page) {
+        foreach (array_keys(AccesRecouvrement::PAGES) as $page) {
             $this->actingAs($gerant)->get(route('recouvrement.'.$page))->assertOk();
         }
 
@@ -271,7 +272,7 @@ class RecouvrementTest extends TestCase
         $agent = $this->compte('agent_recouvrement');
 
         $this->assertFalse(
-            \Modules\Recouvrement\Support\AccesRecouvrement::peutCreerUneFacture($agent),
+            AccesRecouvrement::peutCreerUneFacture($agent),
             "L'agent ne crée pas la créance qu'il encaisse, quel que soit son niveau de relance.",
         );
     }
@@ -510,7 +511,7 @@ class RecouvrementTest extends TestCase
         $this->facture('ASSURE B', 'F-002', 1_000_000, now()->subDays(10), 'GNA', 'WILLIS');
         $this->facture('ASSURE C', 'F-003', 2_000_000, now()->subDays(20), 'AXA', 'ASCOMA');
 
-        $toutes = Recouvrement::factures(now());
+        $toutes = Recouvrement::lignesDeCreance(now());
         $consolide = Recouvrement::parCourtier($toutes, now());
 
         // Le plus gros débiteur en tête, et le niveau du courtier est celui de sa
@@ -537,7 +538,7 @@ class RecouvrementTest extends TestCase
         $this->facture('ASSURE B', 'F-002', 1_000_000, now()->subDays(10), null, 'WILLIS');
         $this->facture('ASSURE C', 'F-003', 2_000_000, now()->subDays(20), 'AXA', 'ASCOMA');
 
-        $toutes = Recouvrement::factures(now());
+        $toutes = Recouvrement::lignesDeCreance(now());
 
         // C'est le contrôle affiché en haut du second tableau. S'il tombe, une facture
         // est comptée deux fois ou pas du tout — et la relance part sur un chiffre faux.
@@ -566,7 +567,7 @@ class RecouvrementTest extends TestCase
             'type' => 'Client', 'moyen' => 'CHÈQUE', 'montant' => 500_000, 'client' => 'FILHET-ALLARD',
         ]);
 
-        $consolide = Recouvrement::parCourtier(Recouvrement::factures(now()), now());
+        $consolide = Recouvrement::parCourtier(Recouvrement::lignesDeCreance(now()), now());
 
         // « Il ne doit rien » et « il n'existe pas » ne se disent pas de la même façon :
         // un courtier qui disparaît de la page est un apporteur d'affaires qu'on perd.
@@ -832,8 +833,8 @@ class RecouvrementTest extends TestCase
 
         // Les six modes livrés nomment la banque : un rapprochement bancaire se pointe
         // relevé par relevé, et « Virement » sans la banque n'aide personne.
-        $modes = array_keys(\Modules\Noyau\Commun\Modeles\Referentiel::options(
-            \Modules\Noyau\Commun\Modeles\Referentiel::MODE_RECOUVREMENT,
+        $modes = array_keys(Referentiel::options(
+            Referentiel::MODE_RECOUVREMENT,
             $this->entreprise->id,
         ));
 
@@ -843,9 +844,9 @@ class RecouvrementTest extends TestCase
 
         // La liste est ouverte : un mode ajouté depuis les Paramètres devient utilisable
         // le jour même, sans passer par une mise à jour du logiciel.
-        \Modules\Noyau\Commun\Modeles\Referentiel::withoutGlobalScopes()->create([
+        Referentiel::withoutGlobalScopes()->create([
             'entreprise_id' => $this->entreprise->id,
-            'type' => \Modules\Noyau\Commun\Modeles\Referentiel::MODE_RECOUVREMENT,
+            'type' => Referentiel::MODE_RECOUVREMENT,
             'valeur' => 'VIREMENT — ECOBANK',
             'est_actif' => true,
         ]);
@@ -895,9 +896,7 @@ class RecouvrementTest extends TestCase
         $this->facture('KOUAME YAO', 'F-002', 700_000, now()->subDays(30), 'AXA');
         $this->declarerLeTiers('JAMAIS FACTURE');
 
-        $annuaire = Recouvrement::annuaireDesTiers(
-            Recouvrement::factures(now()), now(), $this->entreprise->id,
-        )->keyBy('tiers');
+        $annuaire = Recouvrement::annuaireDesTiers(now(), $this->entreprise->id)->keyBy('tiers');
 
         // Les quatre provenances : les trois colonnes de la facture, plus le référentiel.
         $this->assertEqualsCanonicalizing(
@@ -1149,9 +1148,9 @@ class RecouvrementTest extends TestCase
      */
     private function declarerLeTiers(string $nom): void
     {
-        \Modules\Noyau\Commun\Modeles\Referentiel::withoutGlobalScopes()->create([
+        Referentiel::withoutGlobalScopes()->create([
             'entreprise_id' => $this->entreprise->id,
-            'type' => \Modules\Noyau\Commun\Modeles\Referentiel::TIERS_RECOUVREMENT,
+            'type' => Referentiel::TIERS_RECOUVREMENT,
             'valeur' => $nom,
             'est_actif' => true,
         ]);

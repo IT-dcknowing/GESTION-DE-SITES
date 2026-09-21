@@ -24,6 +24,14 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
     'montant', 'montant_regle', 'reste_a_payer', 'montant_refacture', 'marge',
     'mode_reglement', 'imputation', 'immatriculation', 'numero_fiche',
     'numero_facture_client', 'observations',
+    // Les colonnes du classeur tenu à la main, entrées le 22/09 : l'import n'en lisait
+    // que dix-huit sur quarante. Voir FormatDesFournisseurs.
+    'mois', 'section', 'type_transaction', 'vehicule', 'numero_cheque', 'numero_feb',
+    'code_piece', 'numero_facture_achat', 'numero_facture_vente',
+    'montant_ht', 'tva', 'tva_2', 'difference', 'montant_net_achat', 'montant_net_vente',
+    'quantite_totale', 'quantite_refacturee', 'taux', 'resultat_indicatif',
+    'delai_reglement', 'arrive_a_echeance',
+    'observations_facturation', 'commentaires', 'actions_a_mener',
     'code_agent', 'source_rattachement', 'rattachement_presume',
 ])]
 class FactureFournisseur extends Model
@@ -45,6 +53,18 @@ class FactureFournisseur extends Model
             'reste_a_payer' => 'integer',
             'montant_refacture' => 'integer',
             'marge' => 'integer',
+            'mois' => 'integer',
+            'montant_ht' => 'integer',
+            'tva' => 'integer',
+            'tva_2' => 'integer',
+            'difference' => 'integer',
+            'montant_net_achat' => 'integer',
+            'montant_net_vente' => 'integer',
+            // Les deux quantités et le taux gardent leurs décimales : ce ne sont pas des
+            // francs, et arrondir une quantité de 2,5 litres à 3 fausserait la marge.
+            'quantite_totale' => 'decimal:3',
+            'quantite_refacturee' => 'decimal:3',
+            'taux' => 'decimal:4',
         ];
     }
 

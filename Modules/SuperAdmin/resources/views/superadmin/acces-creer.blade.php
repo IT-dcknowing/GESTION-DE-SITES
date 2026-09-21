@@ -58,6 +58,25 @@ state([
 
 mount(function (?int $utilisateur = null) {
     if (! $utilisateur) {
+        /*
+         * Ouverture d'un accès depuis la section « Code-import ».
+         *
+         * Ce qu'on y a déjà noté de la personne — son nom, sa fonction, son atelier, ses
+         * deux lettres — arrive par l'adresse et remplit le formulaire. Sans cela, on
+         * viendrait de saisir ces informations dans un écran pour les retaper mot pour mot
+         * dans le suivant, et la moitié des accès s'ouvriraient sans code faute de courage.
+         *
+         * Rien n'est appliqué au passage : ce sont des valeurs de départ, que l'on corrige
+         * et que l'on valide comme n'importe quelle création. Le code ne sera attribué qu'à
+         * l'enregistrement, par le chemin habituel.
+         */
+        $this->entrepriseId = (string) (request()->integer('entreprise') ?: '');
+        $this->nom = trim(request()->string('nom')->value());
+        $this->telephone = trim(request()->string('telephone')->value());
+        $this->codeAgent = mb_strtoupper(trim(request()->string('code')->value()));
+        $this->villeChoix = (string) (request()->integer('ville') ?: '');
+        $this->siteChoix = (string) (request()->integer('site') ?: '');
+
         return;
     }
 

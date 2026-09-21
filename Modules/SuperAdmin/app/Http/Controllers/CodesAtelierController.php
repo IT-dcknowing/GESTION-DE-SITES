@@ -3,9 +3,13 @@
 namespace Modules\SuperAdmin\Http\Controllers;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
+use Modules\Noyau\Entreprises\Modeles\Site;
+use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Imports\Modeles\CodeAgent;
 use Modules\Noyau\Imports\Services\CodeDeLAtelier;
 
 /**
@@ -65,6 +69,104 @@ class CodesAtelierController
 
         return redirect()->route('super-admin.codes', $retour)
             ->with('annonce', $this->raconter($personne, $resultat));
+    }
+
+    /**
+     * Nommer la personne derrière un code vu dans les imports, sans lui ouvrir de compte.
+     *
+     * **Pourquoi cela existe.** Une partie de ceux qui saisissent dans le logiciel
+     * d'atelier n'ont pas accès à cette application, et n'en auront peut-être jamais. Leur
+     * code arrive pourtant par chaque import, et restait une énigme de deux lettres : un
+     * volume de fiches, aucun nom, personne à appeler pour lever un doute. On note donc ce
+     * qu'on sait d'eux — nom, prénom, fonction s'il y a lieu, et l'atelier où ils
+     * travaillent — sans confondre cela avec l'ouverture d'un accès.
+     *
+     * **Le code reste rattaché à personne.** `user_id` n'est pas touché : ce que l'on
+     * écrit ici est un renseignement, pas une habilitation. Le jour où l'accès s'ouvre, le
+     * bouton « Créer le compte » reprend ces informations et c'est l'écran des accès qui
+     * attribue le code — là où cela se décide.
+     */
+    public function identifier(Request $requete): RedirectResponse
+    {
+        $donnees = $requete->validate([
+            'code_agent' => ['required', 'integer', 'exists:codes_agents,id'],
+            'nom' => ['nullable', 'string', 'max:120'],
+            'prenom' => ['nullable', 'string', 'max:120'],
+            'fonction' => ['nullable', 'string', 'max:120'],
+            'ville_id' => ['nullable', 'integer'],
+            'site_id' => ['nullable', 'integer'],
+        ]);
+
+        $code = CodeAgent::withoutGlobalScopes()->findOrFail($donnees['code_agent']);
+        $retour = ['entreprise' => $code->entreprise_id, 'vue' => 'import'];
+
+        // Un code déjà rattaché à un compte se corrige par la ligne de la personne, pas
+        // ici : deux écrans qui écrivent la même chose finiraient par se contredire.
+        if ($code->user_id !== null) {
+            return redirect()->route('super-admin.codes', $retour)->with(
+                'refus-code',
+                "Le code « {$code->code} » est déjà celui d'un compte : c'est sur sa ligne qu'il se corrige.",
+            );
+        }
+
+        // Le lieu n'est retenu que s'il appartient bien à l'entreprise du code : un
+        // identifiant recopié à la main ne doit pas rattacher des fiches à l'atelier
+        // d'une autre maison.
+        $villeId = $this->appartientALEntreprise(Ville::class, $donnees['ville_id'] ?? null, $code->entreprise_id);
+        $siteId = $this->appartientALEntreprise(Site::class, $donnees['site_id'] ?? null, $code->entreprise_id);
+
+        // Un atelier désigne sa ville : la laisser vide rendrait le rattachement muet.
+        if ($siteId !== null && $villeId === null) {
+            $villeId = Site::withoutGlobalScopes()->whereKey($siteId)->value('ville_id');
+        }
+
+        $code->forceFill([
+            'nom' => $this->propre($donnees['nom'] ?? null),
+            'prenom' => $this->propre($donnees['prenom'] ?? null),
+            'fonction' => $this->propre($donnees['fonction'] ?? null),
+            'ville_id' => $villeId,
+            'site_id' => $siteId,
+        ])->save();
+
+        activity()
+            ->causedBy($requete->user())
+            ->performedOn($code)
+            ->withProperties(array_filter([
+                'code' => $code->code,
+                'nom' => $code->nomComplet() ?: null,
+                'fonction' => $code->fonction,
+            ]))
+            ->log("Code d'import renseigné");
+
+        $nomme = $code->nomComplet();
+
+        return redirect()->route('super-admin.codes', $retour)->with(
+            'annonce',
+            $nomme !== ''
+                ? "Code {$code->code} : « {$nomme} ». Rien ne lui est ouvert — c'est un renseignement."
+                : "Code {$code->code} mis à jour.",
+        );
+    }
+
+    /** Une valeur vide vaut « on ne sait pas », et s'écrit null plutôt qu'une chaîne creuse. */
+    private function propre(?string $valeur): ?string
+    {
+        return trim((string) $valeur) !== '' ? trim((string) $valeur) : null;
+    }
+
+    /**
+     * L'identifiant, s'il désigne bien quelque chose de cette entreprise — sinon null.
+     *
+     * @param  class-string<Model>  $modele
+     */
+    private function appartientALEntreprise(string $modele, ?int $id, ?int $entrepriseId): ?int
+    {
+        if (! $id || ! $entrepriseId) {
+            return null;
+        }
+
+        return $modele::withoutGlobalScopes()
+            ->whereKey($id)->where('entreprise_id', $entrepriseId)->value('id');
     }
 
     /**

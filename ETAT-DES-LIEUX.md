@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **21 septembre 2026**.*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **23 septembre 2026**.*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 681 tests, 674 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 707 tests, 700 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -137,6 +137,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 21/09 | `16a60e2` | **creances** | correction : l'écran de rapprochement comparait tout à tout et bloquait le serveur (donc toute l'application) ; index par fiche, numéro, plaque et nom |
 | 21/09 | `b0f010c` | **creances** | jour 6 : la balance et les règlements fournisseurs exportés du logiciel comptable entrent (deux formats, deux tables, migration `2026_09_21_000006`) |
 | 22/09 | `5698290` | **creances** | retours du propriétaire : le n° de devis exigé au passage en devis ; barème refait et cloisonné par exercice ; balance et règlements ont leur page, avec l'écart entre solde annoncé et recalcul |
+| 23/09 | `RETOUR` | **creances** | vitesse : les jours ne se comptent plus par Carbon, et les consolidations ne construisent plus d'objets (« Clients & tiers » 4,8 s → 0,7 s) ; « Où vous joindre » demande son numéro à qui n'en a pas ; section **Code-import** sur l'écran des codes ; le suivi fournisseur entre en entier — feuille `DETAIL`, 40 colonnes, deux classeurs fondus sans doublon |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -351,14 +352,36 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
 
 ### Les fichiers tenus à la main, à reprendre comme les impayés
 
-- **Suivi fournisseur** : un fichier par lieu (Abidjan, San-Pédro), feuille `DETAIL` de 40
-  colonnes ; l'import actuel n'en lit que 18. **Toujours bloqué au 22/09 : les deux `.xlsm` ne
-  sont pas sur le poste.** `IMPORT/FICHIER-TENU A LA MAIN/FICHIER-SUIVI-FOURNISSEUR` ne contient que
-  deux raccourcis Windows dont la cible n'existe plus. Les 40 colonnes ne peuvent pas être
-  relevées sans les fichiers, et les deviner reviendrait à écrire un format contre un fichier
-  imaginaire. Tableau unique proposé dans le PDF (identification,
-  pièce, montants, règlement, véhicule, refacturation FICORE, suivi). La feuille
-  `Liste fournisseurs` (délai de règlement, TVA) devient un référentiel.
+- **Suivi fournisseur** : ✅ **Fait le 23/09.** Les deux classeurs ont été redéposés sur le
+  poste et s'ouvrent. Ce qu'ils ont appris, et qui démentait ce qu'on avait conclu d'un
+  échantillon :
+
+  - la feuille exploitable est **`DETAIL`**, pas « contrôle chq ». Son en-tête n'est
+    simplement pas en première ligne — ligne 10 à Abidjan, ligne 9 à San Pedro, sous les
+    règles d'usage du classeur et une ligne de totaux ;
+  - **les deux classeurs n'ont pas les mêmes colonnes** : 39 à Abidjan, 31 à San Pedro.
+    Onze n'existent qu'au premier (refacturation, quantités, marge), trois qu'au second
+    (montant HT, n° FEB, arrivé à échéance). Un seul format lit l'union des deux ; une
+    colonne absente reste **vide**, et non à zéro ;
+  - **ils se recouvrent** : 10 147 lignes en tout, 7 397 distinctes — 2 670 lignes
+    figurent dans les deux. Les importer l'un après l'autre sans clé compterait la dette
+    une fois et demie ;
+  - la clé valait « fournisseur + n° de pièce », et **écrasait 317 lignes réelles** : une
+    facture ventilée par section, un avoir qui reprend le numéro de la pièce qu'il annule
+    (le cas SOCIDA 4138005). Elle vaut désormais fournisseur + pièce + date + montant ;
+  - mille lignes de formules traînent après la dernière facture. Elles remontaient au
+    journal des rejets et noyaient les vrais : une ligne qui ne dit ni de qui, ni quelle
+    pièce, ni combien, ni quand, n'est plus comptée du tout.
+
+  Essai en transaction annulée sur les deux fichiers réels : **7 350 lignes**, dont 2 675
+  reconnues comme déjà présentes, 108 rejets nommés, **958 409 076 F** restant dus.
+  `date_echeance` passe de **zéro à 1 480 lignes renseignées** — l'écran *Fournisseurs*
+  affiche donc enfin l'échu, en disant sur combien de pièces l'échéance est connue.
+
+  Migration `2026_09_22_000003` : 24 colonnes ajoutées, `montant_refacture` et `marge`
+  élargis au vide, `mode_reglement` porté à 200 caractères (le classeur y inscrit deux
+  chèques), clé unique élargie. Reste à faire : la feuille `Liste fournisseurs` (délai de
+  règlement, TVA) comme référentiel.
 - **Caisse** : l'import existe (Date, Libellé, Entrées, sorties, Solde, Immatriculation,
   Bénéficiaire) mais l'écran a été bâti sur un autre classeur — il manque l'atelier précis et le
   solde annoncé. Règle à appliquer partout : **les colonnes d'une page listent d'abord celles du
@@ -440,6 +463,53 @@ ne regarde pas n'est plus calculé du tout.
 passe de deux lignes à cent. Il ne mesure pas un temps — qui varierait d'une machine à
 l'autre — mais la propriété qu'on avait perdue : le travail ne doit pas croître avec le
 volume.
+
+### La seconde passe de vitesse, du 23 septembre
+
+Le propriétaire signale que les pages restent lentes, « et en particulier le recouvrement ».
+Mesuré sur le serveur Apache local, OPcache actif, avec les 11 332 factures de la base :
+*Clients & tiers* **4,8 s**, l'état initial des impayés 2,7 s, les devis 1,8 s. Le SQL n'y
+comptait que pour trois cents millisecondes ; tout le reste était du PHP.
+
+**Deux causes, toutes deux mesurées.**
+
+1. **Compter des jours par Carbon.** `$depart->copy()->startOfDay()->diffInDays(...)` coûte
+   240 µs — deux copies d'objet, deux remises à minuit et une soustraction de calendrier. Les
+   quatre écrans qui lisent tout le portefeuille l'appelaient neuf mille fois chacun, soit
+   **2 147 ms par affichage** à ne faire que soustraire des dates. Écrit en numéros de jour,
+   le même calcul tient en **5 ms**. `Modules/Noyau/app/Commun/Services/NombreDeJours.php`
+   porte la règle, et un test confronte chacun de ses résultats à ceux de l'ancien calcul sur
+   quatre cents jours de suite.
+
+2. **Construire neuf mille objets pour additionner des entiers.** L'annuaire des tiers et le
+   tableau des courtiers parcourent tout le portefeuille sans afficher une seule facture ligne
+   à ligne. Chaque lecture d'attribut Eloquent coûte 9 µs, et chaque lecture d'une colonne date
+   en coûte **47** — Laravel reconstruit un Carbon **à chaque accès**, sans le retenir. Ces
+   écrans lisent donc désormais les lignes telles que la base les rend
+   (`Recouvrement::lignesDeCreance()`), huit colonnes au lieu de quarante-cinq.
+
+   **Aucune règle n'a bougé** : le tiers payant reste `Facture::tiersPayantParmi()`, le reste
+   à payer `Recouvrement::resteDe()`, le niveau `Recouvrement::niveauPourAge()` — les mêmes
+   fonctions que celles qu'appelle le chemin objet, et les mêmes tests. Les noms restent
+   comparés **à la casse près**, ce qu'un `GROUP BY` de MySQL aurait perdu : « NSIA
+   ASSURANCES » et « NSIA Assurances » doivent continuer de se voir, c'est la raison d'être de
+   cet écran.
+
+**Résultat, mesuré au même endroit** : *Clients & tiers* **4,8 s → 0,7 s**, *Courtiers*
+1,5 s → 1,0 s. *Synthèse* (1,5 s) et le *tableau de bord du recouvrement* (2,2 s) n'ont
+gagné que le compte des jours : ils lisent 1 341 factures ouvertes qu'ils construisent encore
+en objets, et c'est le prochain pas — la même technique, appliquée à `facturesOuvertes()`,
+`parTiers()` et `PortefeuilleDeRecouvrement`.
+
+**Un défaut trouvé en chemin, sans rapport avec la vitesse** : `PortefeuilleDeRecouvrement`
+retrouvait le tiers payant d'un règlement en lisant la facture **sans la colonne
+`depose_chez`**, pourtant premier candidat de la règle. Le tableau de bord créditait donc
+l'encaissement au courtier, ou au client, d'une facture déposée chez un tiers — sans qu'une
+seule erreur ne s'affiche.
+
+**Ce qui reste du côté de l'hébergement**, et qui pèse sur toutes les pages sans exception :
+`SESSION_DRIVER` et `CACHE_STORE` sont sur `database`. Chaque page paie donc une lecture, une
+écriture et un ménage de la table des sessions.
 
 ### La panne qu'on a trouvée en chemin : l'onglet « Période » ne s'ouvrait pas
 

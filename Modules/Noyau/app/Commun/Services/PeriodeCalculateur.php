@@ -191,7 +191,7 @@ class PeriodeCalculateur
     /** Nombre calendaires inclus dans la plage (1 pour une journée). */
     public static function nombreDeJours(Carbon $debut, Carbon $fin): int
     {
-        return (int) $debut->copy()->startOfDay()->diffInDays($fin->copy()->startOfDay()) + 1;
+        return abs(NombreDeJours::entre($debut, $fin)) + 1;
     }
 
     /**

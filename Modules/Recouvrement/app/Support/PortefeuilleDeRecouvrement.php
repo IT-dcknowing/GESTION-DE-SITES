@@ -5,6 +5,7 @@ namespace Modules\Recouvrement\Support;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
@@ -427,7 +428,13 @@ final class PortefeuilleDeRecouvrement
             ? collect()
             : Facture::query()
                 ->whereIn('id', $citees)
-                ->get(['id', 'client', 'assureur', 'courtier'])
+                // `depose_chez` en fait partie, et son absence était une erreur : c'est
+                // le premier candidat de `tiersPayant()`. Sans la colonne, la règle lisait
+                // null et créditait le règlement au courtier — ou au client — d'une facture
+                // déposée chez un tiers. Le tableau de bord attribuait donc l'encaissement
+                // à quelqu'un d'autre que celui à qui la créance est réclamée, sans qu'une
+                // seule erreur ne s'affiche.
+                ->get(['id', 'client', 'assureur', 'courtier', 'depose_chez'])
                 ->mapWithKeys(fn (Facture $f) => [$f->id => $f->tiersPayant()]);
     }
 
@@ -471,7 +478,6 @@ final class PortefeuilleDeRecouvrement
             return null;
         }
 
-        return max(0, (int) $dernier->copy()->startOfDay()
-            ->diffInDays($this->arrete->copy()->startOfDay(), absolute: false));
+        return max(0, NombreDeJours::entre($dernier, $this->arrete));
     }
 }

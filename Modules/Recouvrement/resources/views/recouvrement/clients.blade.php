@@ -52,10 +52,7 @@ $periode = computed(fn () => PeriodeDeTravail::depuis($this->moisFiltre, $this->
 
 $arrete = computed(fn () => Recouvrement::arrete($this->periode->arreteIso()));
 
-$annuaire = computed(fn () => Recouvrement::annuaireDesTiers(
-    Recouvrement::factures($this->arrete),
-    $this->arrete,
-));
+$annuaire = computed(fn () => Recouvrement::annuaireDesTiers($this->arrete));
 
 $lignes = computed(function () {
     $recherche = trim(mb_strtolower($this->recherche));

@@ -410,6 +410,52 @@ Une septième migration, additive — `2026_09_22_000001`. Deux colonnes nullabl
    recalcul crédit − débit avec son écart : rien n'est écrasé, et un compte qui ne tombe pas
    juste se voit au lieu de disparaître.
 
+### Une seule fois, après la mise à jour du 23 septembre 2026
+
+Deux migrations additives — `2026_09_22_000002` et `2026_09_22_000003`. Aucune donnée
+existante n'est réécrite ; aucune commande à lancer.
+
+`2026_09_22_000003` touche à la table `factures_fournisseurs`, qui porte de vraies lignes.
+Ce qu'elle fait, et pourquoi c'est sans danger :
+
+- 24 colonnes nullables s'ajoutent — les lignes déjà là restent telles quelles, et se
+  compléteront au prochain dépôt ;
+- `montant_refacture` et `marge` **acceptent désormais le vide** au lieu d'être à zéro par
+  défaut. Les zéros déjà en base restent des zéros ; c'est un élargissement, rien ne se
+  resserre ;
+- `mode_reglement` passe de 60 à 200 caractères : le classeur y inscrit parfois deux chèques
+  quand une facture a été réglée en deux fois ;
+- **la clé unique s'élargit**, de « fournisseur + n° de pièce » à « fournisseur + pièce +
+  date de facture + montant ». Elle refusait 317 lignes bien réelles — une facture ventilée
+  par section, un avoir qui reprend le numéro de la pièce qu'il annule.
+
+**Quatre changements visibles.**
+
+1. **Le suivi fournisseur se dépose enfin en entier.** L'import lisait dix-huit colonnes d'un
+   onglet secondaire ; il lit maintenant les quarante de la feuille `DETAIL`, celle que le
+   classeur remplit vraiment. À redéposer depuis **Import** → « Factures fournisseurs », les
+   deux fichiers l'un après l'autre : ils se recouvrent sur près du tiers de leurs lignes, et
+   les doublons se reconnaissent d'eux-mêmes. Essai sur les fichiers réels : 7 350 lignes,
+   108 rejets nommés, 958 409 076 F restant dus.
+2. **L'écran *Fournisseurs* affiche l'échéance et l'échu.** Il ne le pouvait pas jusqu'ici :
+   l'onglet qu'on lisait n'en portait aucune. Le KPI dit toujours **sur combien de pièces
+   l'échéance est connue** — une pièce sans échéance n'est pas une pièce à jour. Deux colonnes
+   de plus au tableau, *Échéance* et *Section*, et un filtre « Échues ».
+3. **« Où vous joindre » demande son numéro à qui n'en a pas.** La boîte se pose sur
+   n'importe quel écran, une fois, à côté de la question du code d'atelier, et se tait dès
+   qu'on a répondu. Le numéro est le même champ que celui de l'écran des accès : ce que la
+   personne écrit est ce que l'administrateur lit. À annoncer : chacun verra la question à sa
+   prochaine connexion.
+4. **Une section *Code-import* sur l'écran des codes d'atelier**
+   (`/super-admin/codes?entreprise=…`, bouton en haut). Elle liste les codes que les imports
+   rencontrent et qui n'appartiennent à aucun compte, et permet d'y noter nom, prénom, rôle
+   et atelier. **Cela n'ouvre aucun accès** : c'est de quoi savoir à qui s'adresser quand une
+   fiche pose question. Un bouton *Créer le compte* ouvre le formulaire d'accès déjà rempli.
+
+**Rappel, pour lever un doute posé le 23/09** : une confirmation de code qui tarde ne bloque
+rien. Les imports se servent du rattachement dès qu'il est posé ; la question sert à le
+corriger, pas à l'autoriser.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan
