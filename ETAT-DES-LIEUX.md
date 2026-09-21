@@ -378,6 +378,33 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
   l'immatriculation. Le code client se posera par-dessus le jour venu, sans rien refaire.
 - **Balance et règlements fournisseurs** (exports du logiciel) : deux formats à écrire.
 
+### La panne qu'on a causée, et corrigée le jour même : l'application figée
+
+**Le symptôme, signalé par le propriétaire le 21/09** : « les pages sont devenues très
+lentes, rien ne passe, aucun clic ne passe, la page charge seulement, tous les boutons sont
+identiques ». Mesuré : la page de connexion mettait **148 secondes** à répondre.
+
+**La cause** : l'écran de rapprochement confrontait *chaque* facture à *chaque* devis — deux
+mille factures contre deux mille six cents devis, soit cinq millions de tours de boucle
+portant chacun plusieurs expressions régulières, recalculées à chaque tour. Le premier volet
+faisait de même avec les prospections.
+
+**Pourquoi toute l'application semblait morte, et pas seulement cet écran** : le serveur de
+développement (`php artisan serve`) ne traite **qu'une requête à la fois**. Pendant qu'il
+moulinait, toutes les autres pages, et jusqu'aux feuilles de style et au JavaScript,
+attendaient leur tour — d'où les boutons sans style et les clics sans effet.
+
+**La correction** : chaque forme comparable n'est calculée qu'une fois par devis, et rangée
+dans un index (par fiche, par numéro, par plaque, par nom). Retrouver les candidats d'une
+facture est devenu une lecture de table. Mesuré sur les données locales, après : **190 ms**
+pour le premier volet, **884 ms** pour le second, contre plus de deux minutes. L'onglet qu'on
+ne regarde pas n'est plus calculé du tout.
+
+**Le garde-fou** : un test vérifie que le nombre de requêtes ne change pas quand la base
+passe de deux lignes à cent. Il ne mesure pas un temps — qui varierait d'une machine à
+l'autre — mais la propriété qu'on avait perdue : le travail ne doit pas croître avec le
+volume.
+
 ### La panne qu'on a trouvée en chemin : l'onglet « Période » ne s'ouvrait pas
 
 `resources/views/components/filtre-periode.blade.php` lisait `$dateDebut` et `$dateFin` sans

@@ -236,15 +236,19 @@ $confirmerLesCertains = function () {
     {{-- Les deux maillons, dans l'ordre où ils s'enchaînent. Le premier donne le
          commercial, le second le porte jusqu'à la facture — qui est ce que la
          commission compte. Confirmer le second sans le premier ne sert à rien : le
-         service le refuse et le dit. --}}
+         service le refuse et le dit.
+
+         Aucun compte n'est affiché sur l'onglet qu'on ne regarde pas : l'écrire
+         obligerait à calculer les deux listes à chaque affichage, pour n'en montrer
+         qu'une. Le compte figure dans le titre du tableau, là où il sert. --}}
     <div class="carte" style="margin-bottom:16px; display:flex; gap:8px; flex-wrap:wrap;">
         <button type="button" wire:click="$set('volet', 'prospections')"
             class="onglet {{ $volet === 'prospections' ? 'est-actif' : '' }}">
-            1 — Prospection → devis ({{ $this->propositions->count() }})
+            1 — Prospection → devis
         </button>
         <button type="button" wire:click="$set('volet', 'factures')"
             class="onglet {{ $volet === 'factures' ? 'est-actif' : '' }}">
-            2 — Devis → facture ({{ $this->propositionsFactures->count() }})
+            2 — Devis → facture
         </button>
     </div>
 

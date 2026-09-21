@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
@@ -330,6 +331,56 @@ class LaFactureRetrouveSonCommercialTest extends TestCase
             ->assertSee('comptée au commercial du devis');
 
         $this->assertSame($this->commercial->id, $facture->fresh()->commercial_id);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Le garde-fou : la liste ne doit pas croître avec le volume
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_le_rapprochement_interroge_la_base_un_nombre_fixe_de_fois(): void
+    {
+        $this->actingAs($this->compte('gerant'));
+
+        // Un premier appel sur un jeu minuscule.
+        $this->devis('2026-03-02', 'FR-AB 000001');
+        $this->facture('2026-03-20', 1_000_000, ['reference_devis' => 'FR-AB 000001']);
+
+        $petit = $this->requetesPour(fn () => RapprochementDevisFacture::propositions([$this->site->id]));
+
+        // Puis sur un jeu cinquante fois plus gros.
+        for ($i = 2; $i <= 50; $i++) {
+            $fiche = sprintf('FR-AB %06d', $i);
+            $this->devis('2026-03-02', $fiche);
+            $this->facture('2026-03-20', 1_000_000, ['reference_devis' => $fiche, 'n_facture' => 'F-'.$i]);
+        }
+
+        $grand = $this->requetesPour(fn () => RapprochementDevisFacture::propositions([$this->site->id]));
+
+        /*
+         * Le 21/09, cet écran retenait le serveur plus de deux minutes et figeait toute
+         * l'application — le serveur de développement ne traite qu'une requête à la fois.
+         * La cause était une comparaison de chaque facture à chaque devis. Ce test ne
+         * mesure pas un temps, qui varierait d'une machine à l'autre : il vérifie que le
+         * travail ne croît pas avec le volume, ce qui est la propriété qu'on a perdue.
+         */
+        $this->assertSame($petit, $grand,
+            'Le nombre de requêtes doit rester le même, que la base porte deux lignes ou cent.');
+    }
+
+    /** Combien de requêtes une opération déclenche. */
+    private function requetesPour(callable $operation): int
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $operation();
+
+        $nombre = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $nombre;
     }
 
     /*
