@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Imports\Formats\Format;
 use Modules\Noyau\Imports\Formats\FormatDeLaBalanceFournisseur;
 use Modules\Noyau\Imports\Formats\FormatDesReglementsFournisseurs;
@@ -15,6 +19,7 @@ use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Modeles\ReglementFournisseur;
 use Modules\Noyau\Imports\Modeles\SoldeFournisseur;
 use Modules\Noyau\Imports\Services\Executeur;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\ConstruitDesClasseurs;
 use Tests\TestCase;
 
@@ -52,6 +57,8 @@ class ImportBalanceEtReglementsFournisseursTest extends TestCase
         Storage::fake('local');
 
         $this->entreprise = Entreprise::create(['nom' => 'Alpha', 'slug' => 'alpha']);
+        ProvisionneurEntreprise::creerRoles($this->entreprise);
+
         $this->ville = Ville::create([
             'entreprise_id' => $this->entreprise->id, 'code' => 'ABJ', 'nom' => 'Abidjan', 'est_actif' => true,
         ]);
@@ -231,9 +238,96 @@ class ImportBalanceEtReglementsFournisseursTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
+    | Les deux écrans
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_la_page_de_la_balance_confronte_le_solde_annonce_au_recalcul(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        $this->importer(FormatDeLaBalanceFournisseur::class, [
+            ['FOURNISSEURS', 'DEBIT', 'CREDIT', 'SOLDE'],
+            // Crédit moins débit donne 10 000 ; le logiciel annonce 25 000.
+            ['BERNABE CI', 100000, 110000, 25000],
+            // Et celui-ci tombe juste.
+            ['AGROCI', 0, 179369, 179369],
+        ]);
+
+        Volt::actingAs($gerant)->test('pilotage.balance-fournisseurs')
+            ->assertSee('BERNABE CI')
+            ->assertSee('Solde annoncé')
+            ->assertSee('Solde recalculé')
+            // L'écart de 15 000 se voit, au lieu d'être effacé par un recalcul qui
+            // écraserait le chiffre du logiciel.
+            ->assertSee('15 000')
+            ->assertSee('Comptes en écart');
+    }
+
+    public function test_la_page_de_la_balance_isole_les_comptes_en_ecart(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        $this->importer(FormatDeLaBalanceFournisseur::class, [
+            ['FOURNISSEURS', 'DEBIT', 'CREDIT', 'SOLDE'],
+            ['BERNABE CI', 100000, 110000, 25000],
+            ['AGROCI', 0, 179369, 179369],
+        ]);
+
+        Volt::actingAs($gerant)->test('pilotage.balance-fournisseurs')
+            ->set('ecartsSeulement', true)
+            ->assertSee('BERNABE CI')
+            ->assertDontSee('AGROCI');
+    }
+
+    public function test_la_page_des_reglements_montre_tout_le_fichier_sans_filtre_d_annee(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        $this->importer(FormatDesReglementsFournisseurs::class, [
+            ['DATE REGLEMENT', 'CODE REGLEMENT', 'FOURNISSEURS', 'MODE REGLEMENT', 'MONTANT CFA'],
+            // Deux exercices différents dans le même fichier : l'export est global, et
+            // l'écran ne doit en cacher aucun.
+            [46297, 'F-REG N°000300', 'SAS CI', 'T BANCAIRE', 9000000],
+            [45200, 'F-REG N°000100', 'AGROCI', 'ESPECES', 500000],
+        ]);
+
+        Volt::actingAs($gerant)->test('pilotage.reglements-fournisseurs')
+            ->assertSee('F-REG N°000300')
+            ->assertSee('F-REG N°000100')
+            ->assertSee('Par mode de règlement')
+            ->assertSee('T BANCAIRE')
+            ->assertSee('ESPECES');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Outillage
     |--------------------------------------------------------------------------
     */
+
+    private function compte(string $role): User
+    {
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->entreprise->id);
+
+        $compte = User::create([
+            'entreprise_id' => $this->entreprise->id,
+            'name' => ucfirst($role),
+            'email' => $role.'@alpha.test',
+            'password' => Hash::make('motdepasse123'),
+            'ville_id' => $this->ville->id,
+            'site_id' => Site::where('entreprise_id', $this->entreprise->id)->value('id'),
+            'est_actif' => true,
+            'doit_changer_mot_de_passe' => false,
+        ]);
+
+        $compte->assignRole($role);
+
+        return $compte->fresh();
+    }
 
     /**
      * Dépose un classeur et le fait traiter, comme le ferait l'écran d'import.

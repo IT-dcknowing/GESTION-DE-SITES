@@ -386,6 +386,30 @@ l'application. C'est corrigé (index par fiche, numéro, plaque et nom) et mesur
 deux minutes à moins d'une seconde. **Si la version d'avant a été déployée quelque part, il
 faut tirer celle-ci.**
 
+### Une seule fois, après la mise à jour du 22 septembre 2026
+
+Une septième migration, additive — `2026_09_22_000001`. Deux colonnes nullables
+(`prospections.n_devis` et `baremes_commission.exercice`), aucune ligne réécrite.
+
+**Trois changements visibles, dont un à annoncer avant qu'il ne surprenne.**
+
+1. **Déclarer un passage en devis oblige désormais à donner le n° du devis.** Le champ
+   n'apparaît qu'au moment où l'on coche « devis après passage », et il est exigé à cet
+   instant-là — c'est le seul où le devis existe et où son numéro est sous les yeux de celui
+   qui saisit. À dire aux commerciaux et aux responsables de site : une saisie qui passait
+   hier sera refusée aujourd'hui si le numéro manque. Le champ accepte aussi un n° de fiche
+   de réception, pour ne bloquer personne.
+2. **La page du barème est refaite**, sur la maquette du document : deux sections avec leur
+   tableau, leur bouton *Enregistrer*, leur bouton *+ Ajouter* et leur bouton *Notes*. Elle
+   est désormais **cloisonnée par exercice** : corriger la grille de 2026 vaut aussitôt pour
+   tout 2026, les mois déjà passés compris, et ne touche à aucune autre année. Un bouton
+   *Barème de commission* apparaît sur la ligne des filtres de l'écran *Commerciaux*, pour le
+   gérant seul.
+3. **La balance et les règlements fournisseurs ont leur page**, ouvertes depuis l'écran
+   *Fournisseurs*. La balance garde le solde annoncé par le logiciel **et** affiche à côté le
+   recalcul crédit − débit avec son écart : rien n'est écrasé, et un compte qui ne tombe pas
+   juste se voit au lieu de disparaître.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

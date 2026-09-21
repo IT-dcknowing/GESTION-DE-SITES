@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 671 tests, 664 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 681 tests, 674 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -136,6 +136,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 21/09 | `110cee2` | **creances** | la grille dit elle-même quels rôles elle rémunère (plus aucune règle de rémunération dans le code) ; second maillon *devis → facture*, qui porte le commercial jusqu'à l'assiette du barème |
 | 21/09 | `16a60e2` | **creances** | correction : l'écran de rapprochement comparait tout à tout et bloquait le serveur (donc toute l'application) ; index par fiche, numéro, plaque et nom |
 | 21/09 | `b0f010c` | **creances** | jour 6 : la balance et les règlements fournisseurs exportés du logiciel comptable entrent (deux formats, deux tables, migration `2026_09_21_000006`) |
+| 22/09 | `RETOUR` | **creances** | retours du propriétaire : le n° de devis exigé au passage en devis ; barème refait et cloisonné par exercice ; balance et règlements ont leur page, avec l'écart entre solde annoncé et recalcul |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -318,13 +319,13 @@ ce qu'on voulait dire.
 | 2 | **Facture déposée chez un tiers** | ✅ **Fait le 21/09.** `factures.depose_chez` (migration additive `2026_09_21_000001`), saisie dans l'état, dans « Porter » et dans le bloc facture du recouvrement, lue dans le tableau de l'état, trouvée par la recherche ; balance âgée, relances, extrait et annuaire la comptent chez le seul dépositaire |
 | 2 bis | **Une facture réglée n'a rien à faire dans le recouvrement** | ✅ **Fait le 21/09.** « Porter à l'état » laisse la place à « Réglée » quand il ne reste rien ; la mention « Soldée » devient une pastille. Le registre garde ses créances soldées — voir l'encadré ci-dessous |
 | 3 | **Extrait de compte** | ✅ **Fait le 21/09.** Date de facturation (qui dit enfin laquelle), date de dépôt, n° de sinistre, et le tiers « pour le compte de » — à l'écran **et** dans le fichier emporté, qui n'en avait aucune |
-| 4 | **Prospection → devis → facture** | ✅ **Fait le 21/09, les deux maillons.** La prospection porte `immatriculation` et `n_fiche_reception`, tous deux facultatifs (migration additive `2026_09_21_000003`). `RapprochementProspectionDevis` propose trois pistes, de la plus sûre à la plus faible — même fiche, même plaque (lue sur la fiche du devis), même client — dans une fenêtre réglable (15 jours par défaut, jamais vers le passé). Écran `/rapprochement-prospections-devis` : on confirme ou l'on écarte, ligne par ligne ; le refus se garde avec son auteur (`rapprochements_ecartes`). Confirmer porte le devis au commercial de la prospection. Fermé au commercial lui-même. **Second maillon ajouté le soir** : `RapprochementDevisFacture` relie la facture à son devis (par la fiche que `reference_devis` contient réellement, par le numéro du devis, ou par la plaque) et lui porte son commercial — c'est ce geste qui fait exister la commission. Second volet du même écran, table `ecarts_devis_facture` (migration `2026_09_21_000005`) |
+| 4 | **Prospection → devis → facture** | ✅ **Fait les 21 et 22/09, les deux maillons.** **Tranché autrement le 22/09** : quand le commercial coche « devis après passage », il tient le devis — le **n° du devis devient obligatoire à cet instant** (`prospections.n_devis`, migration `2026_09_22_000001`), et le rapprochement n'a plus rien à deviner. Le numéro du devis plutôt que celui de la fiche, parce qu'il désigne **un** devis quand une fiche peut en porter plusieurs ; le champ accepte néanmoins un n° de fiche, pour ne pas bloquer qui n'a que lui. La piste « devis déclaré » passe en tête du rapprochement, devant la fiche, la plaque et le nom. La prospection porte `immatriculation` et `n_fiche_reception`, tous deux facultatifs (migration additive `2026_09_21_000003`). `RapprochementProspectionDevis` propose trois pistes, de la plus sûre à la plus faible — même fiche, même plaque (lue sur la fiche du devis), même client — dans une fenêtre réglable (15 jours par défaut, jamais vers le passé). Écran `/rapprochement-prospections-devis` : on confirme ou l'on écarte, ligne par ligne ; le refus se garde avec son auteur (`rapprochements_ecartes`). Confirmer porte le devis au commercial de la prospection. Fermé au commercial lui-même. **Second maillon ajouté le soir** : `RapprochementDevisFacture` relie la facture à son devis (par la fiche que `reference_devis` contient réellement, par le numéro du devis, ou par la plaque) et lui porte son commercial — c'est ce geste qui fait exister la commission. Second volet du même écran, table `ecarts_devis_facture` (migration `2026_09_21_000005`) |
 | 5 | **Deux gestes** | ✅ **Fait le 21/09.** `SuppressionDUneCreance` : gérant seul, rien de réglé, rien d'importé, confirmation sur la ligne, ligne entière au journal. Filtre « du … au … » au jour sur les douze écrans — **et réparé** : voir l'encadré |
 | 6 | **N° de fiche de réception** | Relevé fait : présent partout sauf chez les fournisseurs — parc, entrées, sorties, fiches, devis, factures ; dans le libellé pour la caisse. Depuis le 21/09 il est aussi **saisissable sur la prospection**, où il manquait ; c'est le seul endroit où il servait de clé et n'existait pas |
 | 7 | **Caisse par véhicule** | ✅ **Fait le 21/09.** Page `/caisse/vehicule` : la plaque ramène sa fiche de réception, ses mouvements de caisse, ses factures avec leur reste à payer, et ses notes. Table `notes_vehicule` (migration `2026_09_21_000002`) : les notes s'empilent, chacune avec son auteur |
 | 8 | **Trésorerie** | ✅ **Fait le 21/09.** Bouton *Détail* sur chaque encaissement et décaissement (référence, origine — saisie avec son code auteur ou fichier importé —, atelier, facture réglée) ; bloc « Ce que “Autres” recouvre », poste par poste. `PeutVenirDUnImport` gagne la relation `lot()`, qui manquait |
 | 9 | **Fournisseurs** | ✅ **Fait le 21/09.** « Déjà payé » et sa part de l'engagé dans le tableau de tête ; export créé (`fournisseurs.telecharger`) — l'écran était le seul tableau sans aucun téléchargement |
-| 10 | **Commerciaux** | ✅ **Fait le 21/09.** **Rien n'est écrit en dur** : ni les taux, ni les tranches, ni l'assiette, ni **les rôles que chaque grille rémunère** — la règle « le responsable commercial a sa grille » était en PHP jusqu'au soir du 21/09, elle est désormais cochée à l'écran (`baremes_commission.roles`, migration `2026_09_21_000005`). Un taux modifié agit à l'affichage suivant : aucun cache, aucun déploiement. Le barème est une **donnée** : tables `baremes_commission` et `tranches_bareme` (migration additive `2026_09_21_000004`), avec date d'effet — une grille posée ne réécrit jamais les mois qu'une autre a couverts. Page `/parametres/bareme-commission`, gérant seul : grilles, tranches modifiables, anomalies dites en clair, essai d'un chiffre d'affaires. Sur l'écran *Commerciaux*, colonnes **Barème**, **Commission de la période** et **Cumul de l'année**, visibles du gérant seul, calculées **mois par mois** |
+| 10 | **Commerciaux** | ✅ **Fait les 21 et 22/09.** **Page refaite le 22/09 sur la maquette du document** : deux sections (commerciaux / responsable commercial et adjoint), chacune son tableau *Tranche CA – Taux – Commission estimée*, son bouton **Enregistrer**, son bouton **+ Ajouter** (les champs s'ouvrent sous le tableau, on valide ou l'on annule) et son bouton **Notes** — les cinq phrases du document sont réparties entre les deux grilles, le seuil n'étant pas le même (25 M pour le responsable, 20 M pour le commercial). **Cloisonné par exercice** et non plus par date d'effet : une grille corrigée vaut aussitôt pour tout son exercice, les mois déjà passés compris. La liste des grilles, la construction manuelle et le bouton « poser la grille du document » ont été retirés ; à défaut d'enregistrement, la grille de référence s'affiche directement, prête à être corrigée. Un bouton **Barème de commission** est posé sur la ligne des filtres de l'écran *Commerciaux*, pour le gérant seul. **Rien n'est écrit en dur** : ni les taux, ni les tranches, ni l'assiette, ni **les rôles que chaque grille rémunère** — la règle « le responsable commercial a sa grille » était en PHP jusqu'au soir du 21/09, elle est désormais cochée à l'écran (`baremes_commission.roles`, migration `2026_09_21_000005`). Un taux modifié agit à l'affichage suivant : aucun cache, aucun déploiement. Le barème est une **donnée** : tables `baremes_commission` et `tranches_bareme` (migration additive `2026_09_21_000004`), avec date d'effet — une grille posée ne réécrit jamais les mois qu'une autre a couverts. Page `/parametres/bareme-commission`, gérant seul : grilles, tranches modifiables, anomalies dites en clair, essai d'un chiffre d'affaires. Sur l'écran *Commerciaux*, colonnes **Barème**, **Commission de la période** et **Cumul de l'année**, visibles du gérant seul, calculées **mois par mois** |
 | 11 | **Comptabilité** | ✅ **Fait le 21/09.** Le recouvrement lui était déjà ouvert en consultation ; s'y ajoutent Caisse, Caisse par véhicule, Trésorerie, Charges et Fournisseurs, en lecture et dans son périmètre. Le parc, les clients, le chiffre d'affaires et l'état des impayés restent fermés — deux tests le vérifient |
 
 ### La question posée : les factures réglées sont-elles dans l'état des impayés ?
@@ -351,8 +352,8 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
 ### Les fichiers tenus à la main, à reprendre comme les impayés
 
 - **Suivi fournisseur** : un fichier par lieu (Abidjan, San-Pédro), feuille `DETAIL` de 40
-  colonnes ; l'import actuel n'en lit que 18. **Bloqué au 21/09 : les deux `.xlsm` ne sont pas
-  sur le poste.** `IMPORT/FICHIER-TENU A LA MAIN/FICHIER-SUIVI-FOURNISSEUR` ne contient que
+  colonnes ; l'import actuel n'en lit que 18. **Toujours bloqué au 22/09 : les deux `.xlsm` ne
+  sont pas sur le poste.** `IMPORT/FICHIER-TENU A LA MAIN/FICHIER-SUIVI-FOURNISSEUR` ne contient que
   deux raccourcis Windows dont la cible n'existe plus. Les 40 colonnes ne peuvent pas être
   relevées sans les fichiers, et les deviner reviendrait à écrire un format contre un fichier
   imaginaire. Tableau unique proposé dans le PDF (identification,
@@ -382,7 +383,19 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
   pas le code client.** L'obtenir suppose que l'éditeur l'ajoute ou ouvre ses API ; d'ici là le
   rapprochement se fait par le nom ramené à une forme comparable et, pour un véhicule, par
   l'immatriculation. Le code client se posera par-dessus le jour venu, sans rien refaire.
-- **Balance et règlements fournisseurs** (exports du logiciel) : ✅ **Faits le 21/09.**
+- **Balance et règlements fournisseurs** (exports du logiciel) : ✅ **Faits les 21 et 22/09.**
+  Deux pages ajoutées le 22/09, ouvertes depuis l'écran *Fournisseurs* : `/fournisseurs/balance`
+  et `/fournisseurs/reglements`.
+
+  **La balance confronte le solde annoncé à son recalcul**, comme demandé — « on garde le
+  total estimé du logiciel et on compare après calcul, comme le fait la caisse avec son
+  KPI ». Le fichier garde son solde, la page affiche à côté crédit − débit et l'écart, avec
+  un KPI « comptes en écart » et un filtre qui les isole. Rien n'est écrasé.
+
+  **Les règlements n'ont pas d'année** : l'export est global, et la page le dit. Les deux
+  bornes de date ne servent qu'à celui qui veut réduire lui-même ce qu'il regarde. La
+  remarque du 21/09 sur les lignes datées d'octobre tombe donc d'elle-même — il n'y a pas de
+  période à respecter.
   `FormatDeLaBalanceFournisseur` (FOURNISSEURS, DEBIT, CREDIT, SOLDE) et
   `FormatDesReglementsFournisseurs` (DATE REGLEMENT, CODE REGLEMENT, FOURNISSEURS, MODE
   REGLEMENT, MONTANT CFA), déclarés au registre, avec leurs deux tables
@@ -397,10 +410,9 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
   est la clé** des paiements — le fichier contient deux virements du même jour, au même
   fournisseur, pour le même montant, que seul leur code distingue.
 
-  Relevé en passant, laissé tel quel : le fichier des règlements s'annonce jusqu'au
-  17/09/2026 et contient des lignes datées d'octobre. Rien n'est écarté — c'est au comptable
-  de dire si ce sont des paiements postdatés, et un import qui filtrerait sur le nom du
-  fichier effacerait la question.
+  Sur le format du fichier : **la balance est déjà fournie en tableur** (`.xlsx`), et c'est
+  ce fichier-là qui est lu — 118 lignes, aucun rejet. Il n'y a donc rien à attendre de plus
+  de ce côté ; c'est le **journal de caisse** qui reste en PDF, et lui seul.
 
 ### La panne qu'on a causée, et corrigée le jour même : l'application figée
 

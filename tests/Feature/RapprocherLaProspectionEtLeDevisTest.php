@@ -364,6 +364,100 @@ class RapprocherLaProspectionEtLeDevisTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
+    | Le numéro du devis, exigé au moment où l'on déclare le passage en devis
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_declarer_un_passage_en_devis_sans_son_numero_est_refuse(): void
+    {
+        $commercial = $this->compte('commercial');
+        $this->commercial->forceFill(['user_id' => $commercial->id])->save();
+        $this->actingAs($commercial);
+
+        /*
+         * Décidé par le propriétaire le 22/09 : quand le commercial coche « devis après
+         * passage », il tient le devis, et il peut en donner le numéro. L'exiger à cet
+         * instant-là supprime tout le rapprochement qui suivrait.
+         */
+        Volt::actingAs($commercial)->test('commercial.mes-prospections')
+            ->set('date', '2026-03-02')
+            ->set('client', 'Client visité')
+            ->set('activite', 'Mécanique')
+            ->set('devisApres', true)
+            ->set('dateDevis', '2026-03-02')
+            ->set('nDevis', '')
+            ->call('ajouterEtTransmettre')
+            ->assertHasErrors('nDevis');
+
+        $this->assertSame(0, Prospection::count());
+    }
+
+    public function test_une_prospection_sans_devis_ne_reclame_aucun_numero(): void
+    {
+        $commercial = $this->compte('commercial');
+        $this->commercial->forceFill(['user_id' => $commercial->id])->save();
+        $this->actingAs($commercial);
+
+        // La plupart des visites ne produisent rien tout de suite : exiger un numéro les
+        // rendrait impossibles à saisir.
+        Volt::actingAs($commercial)->test('commercial.mes-prospections')
+            ->set('date', '2026-03-02')
+            ->set('client', 'Client visité')
+            ->set('activite', 'Mécanique')
+            ->set('devisApres', false)
+            ->call('ajouterEtTransmettre')
+            ->assertHasNoErrors();
+
+        $this->assertSame(1, Prospection::count());
+        $this->assertNull(Prospection::first()->n_devis);
+    }
+
+    public function test_le_numero_declare_rapproche_sans_rien_deviner(): void
+    {
+        $prospection = $this->prospection('2026-03-02', ['n_devis' => 'PR-MT-11434']);
+
+        // Deux devis candidats. Celui que la prospection nomme gagne, même si l'autre est
+        // plus proche dans le temps et porte le même client.
+        $this->devis('2026-03-03', 'FR-AB 000001', 'Client visité');
+        $nomme = Devis::create([
+            'entreprise_id' => $this->entreprise->id,
+            'site_id' => $this->site->id,
+            'commercial_id' => $this->commercial->id,
+            'numero' => 'PR-MT-11434',
+            'n_fiche_reception' => 'FR-AB 000002',
+            'date_emission' => '2026-03-09',
+            'client' => 'Un tout autre nom',
+            'activite' => 'Mécanique',
+            'statut' => 'En attente',
+            'montant_devis' => 450_000,
+        ]);
+
+        $propositions = RapprochementProspectionDevis::propositions([$this->site->id]);
+
+        $this->assertCount(1, $propositions);
+        $this->assertSame('devis', $propositions[0]['motif']);
+        $this->assertSame($nomme->id, $propositions[0]['devis']->id);
+
+        // Et le prospection->numero n'a pas eu à être confirmé par la plaque ni par le nom.
+        $this->assertSame($prospection->id, $propositions[0]['prospection']->id);
+    }
+
+    public function test_un_numero_de_fiche_ecrit_dans_ce_champ_fonctionne_aussi(): void
+    {
+        // Un commercial qui n'a que la fiche sous les yeux ne doit pas être bloqué : le
+        // champ s'appelle « n° du devis », il accepte les deux numérotations.
+        $this->prospection('2026-03-02', ['n_devis' => 'FR-AB 010136']);
+        $devis = $this->devis('2026-03-06', 'FR-AB 010136', 'Sans rapport');
+
+        $propositions = RapprochementProspectionDevis::propositions([$this->site->id]);
+
+        $this->assertCount(1, $propositions);
+        $this->assertSame('devis', $propositions[0]['motif']);
+        $this->assertSame($devis->id, $propositions[0]['devis']->id);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Outillage
     |--------------------------------------------------------------------------
     */
@@ -383,6 +477,7 @@ class RapprocherLaProspectionEtLeDevisTest extends TestCase
             'statut_validation' => $attributs['statut_validation'] ?? 'Validée',
             'immatriculation' => $attributs['immatriculation'] ?? null,
             'n_fiche_reception' => $attributs['n_fiche_reception'] ?? null,
+            'n_devis' => $attributs['n_devis'] ?? null,
         ]);
     }
 

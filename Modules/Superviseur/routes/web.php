@@ -59,6 +59,16 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // l'écran de caisse aurait donné un écran qui répond mal aux deux questions.
     Volt::route('/caisse/vehicule', 'pilotage.caisse-vehicule')->name('caisse.vehicule');
     Volt::route('/fournisseurs', 'pilotage.fournisseurs')->name('fournisseurs');
+    /*
+     * Les deux exports du logiciel comptable ont leur page, à côté du suivi tenu à la main.
+     *
+     * Trois écrans donc, et c'est voulu : le suivi dit ce que l'atelier croit devoir, la
+     * balance ce que la comptabilité a enregistré, les règlements ce qu'elle a payé. Les
+     * réunir dans un seul tableau reviendrait à mélanger deux sources et à perdre la seule
+     * chose qu'on cherche — leur écart.
+     */
+    Volt::route('/fournisseurs/balance', 'pilotage.balance-fournisseurs')->name('balance-fournisseurs');
+    Volt::route('/fournisseurs/reglements', 'pilotage.reglements-fournisseurs')->name('reglements-fournisseurs');
     // Emporter le même tableau, avec les mêmes filtres : l'habilitation est celle de
     // l'écran d'où il vient, puisqu'un export n'est rien d'autre qu'une lecture.
     Route::get('/fournisseurs/telecharger/{format}', TelechargerLesFournisseurs::class)

@@ -236,7 +236,15 @@ $graphique = computed(fn () => [
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
-        :commerciaux="$this->optionsCommerciaux" :commercial-filtre="$commercialFiltre" />
+        :commerciaux="$this->optionsCommerciaux" :commercial-filtre="$commercialFiltre">
+        {{-- Sur la même ligne que les filtres, et pour le seul gérant : le barème dit ce
+             que quelqu'un touchera à la fin du mois, et se règle depuis cet écran-là
+             puisque c'est là qu'on lit les commissions. --}}
+        @if ($this->voitLesCommissions)
+            <a href="{{ route('bareme-commission') }}" wire:navigate class="bouton bouton-secondaire"
+                style="padding:8px 14px; white-space:nowrap;">Barème de commission</a>
+        @endif
+    </x-filtre-periode>
 
     <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Commerciaux — {{ $this->libellePerimetre }}" :value="$this->kpis['nombre']" />

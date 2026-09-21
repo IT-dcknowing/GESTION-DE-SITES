@@ -260,7 +260,10 @@ class LaFactureRetrouveSonCommercialTest extends TestCase
         // Une grille généreuse, réservée par le gérant au seul responsable de site : la
         // règle n'est pas dans le code, elle est cochée à l'écran.
         $reservee = BaremeCommission::create([
-            'entreprise_id' => $this->entreprise->id, 'cible' => 'commercial',
+            // Une seconde catégorie, et non une seconde grille « commercial » : une
+            // catégorie porte une grille par exercice, c'est le rôle qui départage.
+            'entreprise_id' => $this->entreprise->id, 'cible' => 'responsable',
+            'exercice' => 2026,
             'libelle' => 'Grille des encadrants', 'date_effet' => '2026-01-01',
             'assiette' => 'global', 'roles' => ['responsable_site'],
         ]);
@@ -268,7 +271,10 @@ class LaFactureRetrouveSonCommercialTest extends TestCase
 
         $ordinaire = BaremeCommission::create([
             'entreprise_id' => $this->entreprise->id, 'cible' => 'commercial',
-            'libelle' => 'Grille ordinaire', 'date_effet' => '2025-01-01',
+            // Même exercice que la précédente : ce qui les départage est le rôle, et non
+            // plus une date d'effet.
+            'exercice' => 2026,
+            'libelle' => 'Grille ordinaire', 'date_effet' => '2026-01-01',
             'assiette' => 'global', 'roles' => ['commercial'],
         ]);
         $ordinaire->tranches()->create(['plancher' => 0, 'plafond' => null, 'taux' => 1.0]);
@@ -289,27 +295,23 @@ class LaFactureRetrouveSonCommercialTest extends TestCase
         $this->assertNotNull(CommissionCommerciale::grillePour($this->entreprise->id, $gerant, Carbon::parse('2026-06-30')));
     }
 
-    public function test_le_gerant_change_les_roles_d_une_grille_depuis_l_ecran(): void
+    public function test_les_roles_d_une_grille_survivent_a_un_enregistrement(): void
     {
         $gerant = $this->compte('gerant');
         $this->actingAs($gerant);
 
         $grille = $this->grilleDuDocument();
 
+        // Les rôles se posent sur la grille elle-même ; l'écran les conserve d'un
+        // enregistrement à l'autre.
+        $grille->update(['roles' => ['commercial', 'responsable_site']]);
+
         Volt::actingAs($gerant)->test('gerant.bareme-commission')
-            ->call('ouvrir', $grille->id)
-            ->set('rolesChoisis', ['commercial', 'responsable_site'])
-            ->call('enregistrerLesRoles')
+            ->set('exercice', 2026)
+            ->call('enregistrerLaGrille', 'commercial')
             ->assertSee('immédiatement');
 
         $this->assertSame(['commercial', 'responsable_site'], $grille->fresh()->roles);
-
-        // Une grille qui ne rémunère personne n'a pas de sens : le refus se dit.
-        Volt::actingAs($gerant)->test('gerant.bareme-commission')
-            ->call('ouvrir', $grille->id)
-            ->set('rolesChoisis', [])
-            ->call('enregistrerLesRoles')
-            ->assertSee('au moins un rôle');
     }
 
     public function test_l_ecran_rattache_une_facture_sur_un_clic(): void
@@ -407,6 +409,7 @@ class LaFactureRetrouveSonCommercialTest extends TestCase
     {
         $bareme = BaremeCommission::create([
             'entreprise_id' => $this->entreprise->id, 'cible' => 'commercial',
+            'exercice' => 2026,
             'libelle' => 'Grille vf6', 'date_effet' => '2026-01-01', 'assiette' => 'global',
         ]);
 

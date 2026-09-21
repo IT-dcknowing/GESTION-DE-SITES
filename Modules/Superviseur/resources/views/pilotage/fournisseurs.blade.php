@@ -139,7 +139,14 @@ $detail = computed(fn () => (clone $this->requete)
 
 <div>
     <x-titre-ecran titre="Fournisseurs"
-        sous-titre="Ce que l'entreprise doit, à qui, et depuis combien de temps — repris du suivi fournisseurs." />
+        sous-titre="Ce que l'entreprise doit, à qui, et depuis combien de temps — repris du suivi fournisseurs.">
+        {{-- Les deux exports du logiciel comptable s'ouvrent d'ici : c'est la page où l'on
+             se pose la question, et c'est donc là que doivent être les réponses. --}}
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+            <a href="{{ route('balance-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Balance fournisseurs</a>
+            <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements fournisseurs</a>
+        </div>
+    </x-titre-ecran>
 
     <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Reste à payer — {{ $this->libellePerimetre }}" :value="ae($this->kpis['reste'])"

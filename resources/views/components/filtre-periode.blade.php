@@ -108,6 +108,11 @@
             @endif
         </select>
     @endif
+
+    {{-- Ce qu'un écran veut poser sur la même ligne que ses filtres : un bouton qui mène
+         ailleurs, une mention. Vide par défaut, et donc sans effet sur les onze écrans qui
+         n'en passent pas. --}}
+    {{ $slot }}
 </div>
 
 @if ($periode === 'calendrier')

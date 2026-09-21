@@ -188,20 +188,45 @@ class LeBaremeDeCommissionTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | La date d'effet protège le passé
+    | Chaque exercice a sa grille, et elle vaut pour tout l'exercice
     |--------------------------------------------------------------------------
     */
 
-    public function test_un_bareme_pose_en_decembre_ne_change_pas_la_commission_d_octobre(): void
+    public function test_la_grille_d_un_exercice_ne_touche_pas_a_celle_d_un_autre(): void
     {
-        $ancienne = $this->grille('commercial', '2026-01-01', [[0, null, 2.0]]);
-        $nouvelle = $this->grille('commercial', '2026-12-01', [[0, null, 5.0]]);
+        $ancienne = $this->grille('commercial', 2025, [[0, null, 2.0]]);
+        $nouvelle = $this->grille('commercial', 2026, [[0, null, 5.0]]);
 
-        $enOctobre = CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial', Carbon::parse('2026-10-31'));
-        $enDecembre = CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial', Carbon::parse('2026-12-31'));
+        $this->assertSame($ancienne->id, CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial', 2025)->id);
+        $this->assertSame($nouvelle->id, CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial', 2026)->id);
+    }
 
-        $this->assertSame($ancienne->id, $enOctobre->id);
-        $this->assertSame($nouvelle->id, $enDecembre->id);
+    public function test_une_grille_corrigee_vaut_aussitot_pour_les_mois_deja_passes_de_son_exercice(): void
+    {
+        $gerant = $this->compte('gerant');
+        $grille = $this->grille('commercial', 2026, [[0, null, 2.0]]);
+
+        // Un mois de janvier, déjà écoulé, calculé avec la grille de l'exercice.
+        $avant = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), ['2026-01' => 10_000_000]);
+        $this->assertSame(200_000, $avant['commission']);
+
+        // Le gérant corrige la grille en septembre.
+        CommissionCommerciale::enregistrer($gerant, 'commercial', 2026, [
+            ['plancher' => 0, 'plafond' => null, 'taux' => 3.0],
+        ]);
+
+        /*
+         * Janvier suit, et c'est ce qui a été demandé le 22/09 : « la commission est
+         * appliquée par exercice, donc elle doit être cloisonnée dans son exercice et
+         * s'appliquer directement même sur les anciens exercices ». Une date d'effet aurait
+         * laissé janvier à 2 %.
+         */
+        $apres = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), ['2026-01' => 10_000_000]);
+        $this->assertSame(300_000, $apres['commission']);
+
+        // Et c'est bien la même grille qu'on a corrigée, non une seconde posée à côté.
+        $this->assertSame(1, BaremeCommission::where('cible', 'commercial')->count());
+        $this->assertSame($grille->id, BaremeCommission::where('cible', 'commercial')->value('id'));
     }
 
     public function test_la_commission_se_calcule_mois_par_mois_et_non_sur_la_periode_entiere(): void
@@ -230,16 +255,17 @@ class LeBaremeDeCommissionTest extends TestCase
 
     public function test_un_mois_sans_grille_est_compte_a_part(): void
     {
-        $this->grille('commercial', '2026-06-01', [[0, null, 2.0]]);
+        $this->grille('commercial', 2026, [[0, null, 2.0]]);
 
         $resultat = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), [
-            '2026-03' => 30_000_000,
+            // 2025 n'a pas de grille : ce mois-là n'est ni compté zéro, ni compté au taux
+            // de 2026. Chaque exercice répond pour lui-même, ou ne répond pas.
+            '2025-11' => 30_000_000,
             '2026-07' => 30_000_000,
         ]);
 
-        // Mars n'a pas de grille : il n'est ni compté zéro, ni compté au taux de juillet.
         $this->assertSame(1, $resultat['sansGrille']);
-        $this->assertNull($resultat['mois']['2026-03']['commission']);
+        $this->assertNull($resultat['mois']['2025-11']['commission']);
         $this->assertSame(600_000, $resultat['commission']);
     }
 
@@ -249,7 +275,7 @@ class LeBaremeDeCommissionTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
-    public function test_le_gerant_pose_la_grille_du_document_d_un_clic_et_pas_deux_fois(): void
+    public function test_l_ecran_montre_les_deux_grilles_meme_quand_rien_n_est_enregistre(): void
     {
         $gerant = $this->compte('gerant');
         $this->actingAs($gerant);
@@ -258,32 +284,66 @@ class LeBaremeDeCommissionTest extends TestCase
         // n'écrit de barème.
         $this->assertSame(0, BaremeCommission::count());
 
-        $ecran = Volt::actingAs($gerant)->test('gerant.bareme-commission')
-            ->set('dateEffet', '2026-09-01')
-            ->call('poserLaGrilleDuDocument');
+        /*
+         * L'écran ne doit pourtant jamais être vide. Les deux grilles sont dans le
+         * document, et le propriétaire veut les voir — à défaut d'enregistrement, on montre
+         * la grille de référence, en le disant.
+         */
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->assertSee('Commerciaux')
+            ->assertSee('Responsable commercial et adjoint')
+            ->assertSee('Grille de référence du document')
+            // La commission estimée du document, recalculée : 1 % de 20 M à 1 % de 25 M.
+            ->assertSee('200 000 – 250 000 FCFA');
 
-        $this->assertSame(1, BaremeCommission::count());
-        $this->assertSame(7, BaremeCommission::first()->tranches()->count());
-        $this->assertSame('global', BaremeCommission::first()->assiette);
-
-        // Deux grilles qui prennent effet le même jour rendraient indécidable celle qui
-        // s'applique : la seconde est refusée, et le refus se dit.
-        $ecran->call('poserLaGrilleDuDocument')->assertSee('prend déjà effet');
-        $this->assertSame(1, BaremeCommission::count());
+        $this->assertSame(0, BaremeCommission::count());
     }
 
-    public function test_l_ecran_essaie_un_chiffre_d_affaires_sans_rien_enregistrer(): void
+    public function test_le_gerant_enregistre_une_grille_depuis_l_ecran(): void
     {
         $gerant = $this->compte('gerant');
         $this->actingAs($gerant);
 
-        $bareme = $this->grilleDuDocument('commercial');
-
         Volt::actingAs($gerant)->test('gerant.bareme-commission')
-            ->call('ouvrir', $bareme->id)
-            ->set('simulation', '32000000')
-            // 2,5 % de 32 M = 800 000.
-            ->assertSee('800 000');
+            ->set('exercice', 2026)
+            ->call('enregistrerLaGrille', 'commercial')
+            ->assertSee('enregistrée');
+
+        $bareme = BaremeCommission::where('cible', 'commercial')->first();
+
+        $this->assertNotNull($bareme);
+        $this->assertSame(2026, $bareme->exercice);
+        $this->assertSame(7, $bareme->tranches()->count());
+
+        // Enregistrer deux fois ne pose pas deux grilles : c'est la même qu'on remplace.
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', 2026)
+            ->call('enregistrerLaGrille', 'commercial');
+
+        $this->assertSame(1, BaremeCommission::where('cible', 'commercial')->count());
+        $this->assertSame(7, BaremeCommission::where('cible', 'commercial')->first()->tranches()->count());
+    }
+
+    public function test_une_tranche_ajoutee_sous_le_tableau_n_est_ecrite_qu_a_l_enregistrement(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        $ecran = Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', 2026)
+            ->call('ouvrirLAjout', 'commercial')
+            ->set('nouveauPlancher', '70000000')
+            ->set('nouveauPlafond', '')
+            ->set('nouveauTaux', '6')
+            ->call('validerLAjout');
+
+        // Elle est au tableau, mais rien n'est en base : on valide un ajout, on enregistre
+        // une grille, et ce sont deux gestes différents.
+        $this->assertSame(0, BaremeCommission::count());
+
+        $ecran->call('enregistrerLaGrille', 'commercial');
+
+        $this->assertSame(8, BaremeCommission::where('cible', 'commercial')->first()->tranches()->count());
     }
 
     public function test_le_bareme_est_ferme_a_qui_n_est_pas_gerant(): void
@@ -332,17 +392,19 @@ class LeBaremeDeCommissionTest extends TestCase
 
     private function grilleDuDocument(string $cible): BaremeCommission
     {
-        return $this->grille($cible, '2026-01-01', CommissionCommerciale::GRILLE_DU_DOCUMENT[$cible]['tranches']);
+        return $this->grille($cible, 2026, CommissionCommerciale::GRILLE_DU_DOCUMENT[$cible]['tranches']);
     }
 
     /** @param  list<array{0: int, 1: int|null, 2: float}>  $tranches */
-    private function grille(string $cible, string $dateEffet, array $tranches): BaremeCommission
+    private function grille(string $cible, int $exercice, array $tranches): BaremeCommission
     {
         $bareme = BaremeCommission::create([
             'entreprise_id' => $this->entreprise->id,
             'cible' => $cible,
-            'libelle' => 'Grille '.$cible.' '.$dateEffet,
-            'date_effet' => $dateEffet,
+            'exercice' => $exercice,
+            'libelle' => 'Grille '.$cible.' '.$exercice,
+            // Tenue au 1er janvier de l'exercice : elle ne choisit plus rien.
+            'date_effet' => $exercice.'-01-01',
             'assiette' => 'global',
         ]);
 
