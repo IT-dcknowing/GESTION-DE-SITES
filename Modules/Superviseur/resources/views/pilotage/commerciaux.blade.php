@@ -151,18 +151,19 @@ $classement = computed(function () {
          * entrer dans une tranche qu'il n'a jamais atteinte en un mois. Chaque mois est donc
          * calculé pour lui-même, avec la grille en vigueur ce mois-là.
          */
-        $cible = CommissionCommerciale::cibleDe($commercial->utilisateur);
+        // La grille n'est pas choisie ici : c'est elle qui dit quels rôles elle rémunère,
+        // et le gérant coche cette liste à l'écran.
         $moisDuCommercial = $caMensuel[$commercial->id] ?? [];
 
         $periode = CommissionCommerciale::surLesMois(
-            $entrepriseId, $cible,
+            $entrepriseId, $commercial->utilisateur,
             array_intersect_key($moisDuCommercial, array_flip($moisDeLaPeriode)),
         );
 
         // Le cumul court sur l'année civile de la fin de période : c'est la façon dont on
         // suit une rémunération, et non sur les douze derniers mois glissants.
         $cumul = CommissionCommerciale::surLesMois(
-            $entrepriseId, $cible,
+            $entrepriseId, $commercial->utilisateur,
             array_filter($moisDuCommercial, fn ($mois) => str_starts_with($mois, $anneeDeFin), ARRAY_FILTER_USE_KEY),
         );
 
@@ -173,7 +174,6 @@ $classement = computed(function () {
 
         return [
             'commercial' => $commercial,
-            'cible' => $cible,
             'commission' => $periode['commission'],
             'commissionCumul' => $cumul['commission'],
             'tauxBareme' => $dernier['taux'] ?? null,

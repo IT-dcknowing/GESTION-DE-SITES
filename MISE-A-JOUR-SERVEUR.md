@@ -329,6 +329,41 @@ L'écran **Commerciaux** gagne trois colonnes — *Barème*, *Commission de la p
 >    factures reprises, très peu portent un commercial : l'écran l'indique par un compte, et
 >    renvoie au rapprochement prospections / devis.
 
+**Une cinquième migration, additive** — `2026_09_21_000005`. Une colonne nullable
+(`baremes_commission.roles`) et une table neuve (`ecarts_devis_facture`). Rien n'est
+réécrit.
+
+Elle répond à deux manques trouvés en relisant le travail du jour.
+
+**1. Plus aucune règle de rémunération dans le code.** Savoir quelle grille s'applique à qui
+était écrit en PHP : « si le compte a le rôle responsable commercial, alors la grille
+responsable ». Élargir la grille des commerciaux aux responsables de site — qui prospectent
+pourtant — aurait demandé un déploiement. Chaque grille porte désormais la liste des rôles
+qu'elle rémunère, **cochée par le gérant sur la page du barème**. Un taux, une tranche, une
+assiette ou un rôle modifié agit **dès l'affichage suivant** : rien n'est mis en cache, et le
+seul délai possible reste celui qu'on a voulu, la date d'effet.
+
+**2. La facture retrouve son devis — et c'est là qu'était le vrai problème du barème.** Sur
+les 4 412 factures de 2026, **103 portent un commercial**. La commission restait donc à zéro
+pour presque tout le monde : non parce que personne n'avait vendu, mais parce qu'on ignorait
+qui. Or 2 386 factures portent une `reference_devis` — qui contient en réalité le **numéro de
+fiche de réception** — et 273 désignent un devis présent en base. Le lien était écrit en
+toutes lettres, jamais résolu.
+
+L'écran **Rapprochement prospections / devis** gagne donc un second volet, *Devis → facture*.
+La chaîne complète :
+
+    prospection --(plaque + date)--> devis --(fiche, numéro ou plaque)--> facture
+
+Le premier maillon donne le commercial, le second le porte jusqu'à la facture, qui est ce que
+la commission compte.
+
+> **À dire à celui qui s'en servira.** Les deux volets se font **dans l'ordre**. Confirmer
+> une facture dont le devis n'a pas encore trouvé sa prospection ne rémunère personne : le
+> refus le dit et renvoie au premier volet. La fenêtre du second est plus large (soixante
+> jours), parce qu'un devis attend l'accord du client, parfois celui de son assureur, avant
+> que les travaux ne commencent.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

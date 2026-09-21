@@ -45,6 +45,8 @@ class LeBaremeDeCommissionTest extends TestCase
 
     private Site $site;
 
+    private ?User $vendeur = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -195,8 +197,8 @@ class LeBaremeDeCommissionTest extends TestCase
         $ancienne = $this->grille('commercial', '2026-01-01', [[0, null, 2.0]]);
         $nouvelle = $this->grille('commercial', '2026-12-01', [[0, null, 5.0]]);
 
-        $enOctobre = CommissionCommerciale::grilleEnVigueur($this->entreprise->id, 'commercial', Carbon::parse('2026-10-31'));
-        $enDecembre = CommissionCommerciale::grilleEnVigueur($this->entreprise->id, 'commercial', Carbon::parse('2026-12-31'));
+        $enOctobre = CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial', Carbon::parse('2026-10-31'));
+        $enDecembre = CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial', Carbon::parse('2026-12-31'));
 
         $this->assertSame($ancienne->id, $enOctobre->id);
         $this->assertSame($nouvelle->id, $enDecembre->id);
@@ -209,7 +211,7 @@ class LeBaremeDeCommissionTest extends TestCase
         // Trois mois à 15 M : aucun n'atteint le seuil, la commission est nulle. Additionner
         // d'abord les trois donnerait 45 M, donc 2,5 % de 45 M — 1 125 000 F qui n'ont
         // jamais été gagnés. C'est l'erreur que ce test interdit.
-        $resultat = CommissionCommerciale::surLesMois($this->entreprise->id, 'commercial', [
+        $resultat = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), [
             '2026-01' => 15_000_000,
             '2026-02' => 15_000_000,
             '2026-03' => 15_000_000,
@@ -218,7 +220,7 @@ class LeBaremeDeCommissionTest extends TestCase
         $this->assertSame(0, $resultat['commission']);
 
         // Et un mois qui atteint le palier compte pour lui seul.
-        $resultat = CommissionCommerciale::surLesMois($this->entreprise->id, 'commercial', [
+        $resultat = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), [
             '2026-01' => 15_000_000,
             '2026-02' => 30_000_000,
         ]);
@@ -230,7 +232,7 @@ class LeBaremeDeCommissionTest extends TestCase
     {
         $this->grille('commercial', '2026-06-01', [[0, null, 2.0]]);
 
-        $resultat = CommissionCommerciale::surLesMois($this->entreprise->id, 'commercial', [
+        $resultat = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), [
             '2026-03' => 30_000_000,
             '2026-07' => 30_000_000,
         ]);
@@ -366,6 +368,12 @@ class LeBaremeDeCommissionTest extends TestCase
             'montant' => $montant,
             'activite' => 'Mécanique',
         ]);
+    }
+
+    /** Un compte qui vend, mémorisé : la grille se choisit sur son rôle. */
+    private function vendeur(): User
+    {
+        return $this->vendeur ??= $this->compte('commercial');
     }
 
     private function compte(string $role): User

@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Carbon;
+use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
 use Modules\Noyau\Exploitation\Modeles\BaremeCommission;
 use Modules\Noyau\Exploitation\Modeles\TrancheBareme;
 use Modules\Noyau\Exploitation\Services\CommissionCommerciale;
@@ -45,6 +46,10 @@ state(['trancheEnModification' => null]);
 // Le simulateur : un chiffre d'affaires, et ce qu'il produit.
 state(['simulation' => '']);
 
+// Les rôles que la grille ouverte rémunère, cochés à l'écran. C'était écrit dans le code
+// jusqu'au 21/09 au soir : élargir une grille à un rôle de plus demandait un déploiement.
+state(['rolesChoisis' => []]);
+
 $baremes = computed(fn () => BaremeCommission::query()
     ->where('entreprise_id', auth()->user()->entreprise_id)
     ->where('cible', $this->cible)
@@ -54,7 +59,7 @@ $baremes = computed(fn () => BaremeCommission::query()
     ->get());
 
 /** La grille en vigueur aujourd'hui — celle qui répond quand on calcule une commission. */
-$enVigueur = computed(fn () => CommissionCommerciale::grilleEnVigueur(
+$enVigueur = computed(fn () => CommissionCommerciale::grilleDeLaCible(
     auth()->user()->entreprise_id, $this->cible,
 ));
 
@@ -107,6 +112,39 @@ $ouvrir = function (int $id) {
     $this->trancheEnModification = null;
     $this->reset(['plancher', 'plafond', 'taux', 'message', 'erreur']);
     $this->oublier();
+
+    // Les cases repartent de ce que la grille dit réellement, et non de ce qu'on regardait
+    // avant : sinon on enregistrerait sur l'une les rôles cochés sur l'autre.
+    $this->rolesChoisis = $this->grille ? $this->grille->rolesRemuneres() : [];
+};
+
+/**
+ * Enregistrer les rôles que cette grille rémunère.
+ *
+ * Le changement agit tout de suite : rien n'est mis en cache, la commission se recalcule à
+ * chaque affichage de l'écran des commerciaux. Le seul délai possible est celui qu'on a
+ * voulu — la date d'effet.
+ */
+$enregistrerLesRoles = function () {
+    $grille = $this->grille;
+
+    if (! $grille) {
+        return;
+    }
+
+    // Seuls les rôles qui vendent : cocher « caissier » sur une grille de commission
+    // n'aurait aucun sens, et la liste vient d'un seul endroit dans l'application.
+    $retenus = array_values(array_intersect((array) $this->rolesChoisis, RolesCommerciaux::TOUS));
+
+    if ($retenus === []) {
+        $this->erreur = "Une grille doit rémunérer au moins un rôle, sans quoi elle ne s'applique à personne.";
+
+        return;
+    }
+
+    $grille->update(['roles' => $retenus]);
+    $this->oublier();
+    $this->message = "Rôles enregistrés : le changement s'applique immédiatement.";
 };
 
 /** Poser la grille du document, telle qu'elle est proposée à l'écran. */
@@ -210,6 +248,17 @@ $enregistrerLaTranche = function () {
     $this->trancheEnModification = null;
     $this->reset(['plancher', 'plafond', 'taux']);
     $this->oublier();
+};
+
+/** Changer la façon de compter d'une grille ouverte — elle agit à l'affichage suivant. */
+$changerLAssiette = function (string $assiette) {
+    if (! $this->grille || ! array_key_exists($assiette, BaremeCommission::ASSIETTES)) {
+        return;
+    }
+
+    $this->grille->update(['assiette' => $assiette]);
+    $this->oublier();
+    $this->message = "Assiette modifiée : le changement s'applique immédiatement.";
 };
 
 $modifierLaTranche = function (int $id) {
@@ -394,6 +443,39 @@ $supprimerLaTranche = function (int $id) {
                 Effet au {{ $this->grille->date_effet->format('d/m/Y') }} —
                 {{ \Modules\Noyau\Exploitation\Modeles\BaremeCommission::ASSIETTES[$this->grille->assiette] ?? $this->grille->assiette }}.
             </p>
+
+            {{-- Qui cette grille rémunère, et comment elle compte. Les deux se règlent ici :
+                 aucune règle de rémunération n'est écrite dans le code, et un changement
+                 agit dès l'affichage suivant. --}}
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px;
+                        background:#F7F5EF; border-radius:8px; padding:12px 14px; margin-bottom:14px;">
+                <div>
+                    <b style="font-size:13px;">Rôles rémunérés par cette grille</b>
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; margin:8px 0;">
+                        @foreach (\Modules\Noyau\Entreprises\Support\RolesCommerciaux::TOUS as $role)
+                            <label style="display:flex; align-items:center; gap:5px; font-size:13px;">
+                                <input type="checkbox" value="{{ $role }}" wire:model="rolesChoisis">
+                                {{ \Modules\Noyau\Entreprises\Support\LibellesRoles::de($role) }}
+                            </label>
+                        @endforeach
+                    </div>
+                    <button type="button" wire:click="enregistrerLesRoles" class="bouton bouton-secondaire"
+                        style="padding:4px 12px; font-size:12px;">Enregistrer les rôles</button>
+                </div>
+
+                <div>
+                    <b style="font-size:13px;">Façon de compter</b>
+                    <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
+                        @foreach (\Modules\Noyau\Exploitation\Modeles\BaremeCommission::ASSIETTES as $cle => $libelleAssiette)
+                            <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
+                                <input type="radio" wire:click="changerLAssiette('{{ $cle }}')"
+                                    @checked($this->grille->assiette === $cle)>
+                                {{ $libelleAssiette }}
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
 
             {{-- Une grille trouée ne fait pas tomber le calcul : elle le rend faux sans le
                  dire. On préfère le dire. --}}
