@@ -364,6 +364,28 @@ la commission compte.
 > jours), parce qu'un devis attend l'accord du client, parfois celui de son assureur, avant
 > que les travaux ne commencent.
 
+**Une sixième migration, additive** — `2026_09_21_000006`. Deux tables neuves,
+`soldes_fournisseur` et `reglements_fournisseur`. Elles naissent vides, et rien ne les
+remplit tant que personne n'a déposé de fichier.
+
+Le module Import sait désormais lire **deux exports de plus**, ceux du logiciel comptable :
+la **balance fournisseurs** (débit, crédit, solde) et les **règlements fournisseurs** (chaque
+paiement avec son code et son mode). Ils apparaissent dans la liste de l'écran de dépôt, à
+côté des huit autres.
+
+> **À dire au comptable.** Ces deux fichiers ne remplacent pas le suivi fournisseur tenu à la
+> main : celui-là dit ce que l'atelier croit devoir, ceux-ci ce que la comptabilité a
+> enregistré. C'est l'écart entre les deux qu'on pourra désormais regarder. Redéposer la
+> balance met à jour les soldes (c'est une photographie) ; redéposer les règlements ne double
+> aucune ligne, le code de règlement servant de clé.
+
+**Et une correction de performance, sans migration.** L'écran de rapprochement livré plus tôt
+dans la journée comparait chaque facture à chaque devis et **retenait le serveur plusieurs
+minutes** — ce qui, sur un serveur qui traite une requête à la fois, fige toute
+l'application. C'est corrigé (index par fiche, numéro, plaque et nom) et mesuré : de plus de
+deux minutes à moins d'une seconde. **Si la version d'avant a été déployée quelque part, il
+faut tirer celle-ci.**
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 660 tests, 653 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 671 tests, 664 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -134,6 +134,8 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 21/09 | `a924584` | **creances** | jour 4 : la prospection dit quel véhicule elle vise ; rapprochement prospection / devis par fiche, plaque ou nom, dans une fenêtre réglable ; écran de confirmation, refus mémorisé |
 | 21/09 | `4c0d120` | **creances** | jour 5 : le barème de commission devient une donnée (grilles, tranches, date d'effet) ; page du barème réservée au gérant, avec essai ; colonnes *Barème*, *Commission* et *Cumul* sur l'écran Commerciaux |
 | 21/09 | `110cee2` | **creances** | la grille dit elle-même quels rôles elle rémunère (plus aucune règle de rémunération dans le code) ; second maillon *devis → facture*, qui porte le commercial jusqu'à l'assiette du barème |
+| 21/09 | `16a60e2` | **creances** | correction : l'écran de rapprochement comparait tout à tout et bloquait le serveur (donc toute l'application) ; index par fiche, numéro, plaque et nom |
+| 21/09 | `JOUR6` | **creances** | jour 6 : la balance et les règlements fournisseurs exportés du logiciel comptable entrent (deux formats, deux tables, migration `2026_09_21_000006`) |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -349,7 +351,11 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
 ### Les fichiers tenus à la main, à reprendre comme les impayés
 
 - **Suivi fournisseur** : un fichier par lieu (Abidjan, San-Pédro), feuille `DETAIL` de 40
-  colonnes ; l'import actuel n'en lit que 18. Tableau unique proposé dans le PDF (identification,
+  colonnes ; l'import actuel n'en lit que 18. **Bloqué au 21/09 : les deux `.xlsm` ne sont pas
+  sur le poste.** `IMPORT/FICHIER-TENU A LA MAIN/FICHIER-SUIVI-FOURNISSEUR` ne contient que
+  deux raccourcis Windows dont la cible n'existe plus. Les 40 colonnes ne peuvent pas être
+  relevées sans les fichiers, et les deviner reviendrait à écrire un format contre un fichier
+  imaginaire. Tableau unique proposé dans le PDF (identification,
   pièce, montants, règlement, véhicule, refacturation FICORE, suivi). La feuille
   `Liste fournisseurs` (délai de règlement, TVA) devient un référentiel.
 - **Caisse** : l'import existe (Date, Libellé, Entrées, sorties, Solde, Immatriculation,
@@ -376,7 +382,25 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
   pas le code client.** L'obtenir suppose que l'éditeur l'ajoute ou ouvre ses API ; d'ici là le
   rapprochement se fait par le nom ramené à une forme comparable et, pour un véhicule, par
   l'immatriculation. Le code client se posera par-dessus le jour venu, sans rien refaire.
-- **Balance et règlements fournisseurs** (exports du logiciel) : deux formats à écrire.
+- **Balance et règlements fournisseurs** (exports du logiciel) : ✅ **Faits le 21/09.**
+  `FormatDeLaBalanceFournisseur` (FOURNISSEURS, DEBIT, CREDIT, SOLDE) et
+  `FormatDesReglementsFournisseurs` (DATE REGLEMENT, CODE REGLEMENT, FOURNISSEURS, MODE
+  REGLEMENT, MONTANT CFA), déclarés au registre, avec leurs deux tables
+  (`soldes_fournisseur`, `reglements_fournisseur`, migration additive `2026_09_21_000006`).
+  Passés en simulation sur les fichiers réels : **118 lignes de balance** et **293
+  règlements**, aucun rejet.
+
+  Trois décisions y sont écrites, et tenues par des tests. Le **solde est recopié, jamais
+  recalculé** : débit moins crédit ne redonne pas toujours la colonne du logiciel, et cet
+  écart est une information comptable. La balance est **une photographie** : la redéposer met
+  à jour le solde d'un fournisseur au lieu d'en ajouter un second. Et le **code de règlement
+  est la clé** des paiements — le fichier contient deux virements du même jour, au même
+  fournisseur, pour le même montant, que seul leur code distingue.
+
+  Relevé en passant, laissé tel quel : le fichier des règlements s'annonce jusqu'au
+  17/09/2026 et contient des lignes datées d'octobre. Rien n'est écarté — c'est au comptable
+  de dire si ce sont des paiements postdatés, et un import qui filtrerait sur le nom du
+  fichier effacerait la question.
 
 ### La panne qu'on a causée, et corrigée le jour même : l'application figée
 

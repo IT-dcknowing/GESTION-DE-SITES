@@ -33,6 +33,12 @@ class Registre
         // règlements, or un règlement n'a de sens qu'en regard d'une facture.
         'impayes' => FormatDesImpayes::class,
         'fournisseurs' => FormatDesFournisseurs::class,
+        // Les deux exports du logiciel comptable viennent après le classeur tenu à la
+        // main, et ne s'y mêlent pas : celui-là dit ce que l'atelier croit devoir, ceux-ci
+        // ce que la comptabilité a enregistré. C'est l'écart entre les deux qu'on cherche
+        // quand un fournisseur réclame.
+        'balance-fournisseurs' => FormatDeLaBalanceFournisseur::class,
+        'reglements-fournisseurs' => FormatDesReglementsFournisseurs::class,
         'caisse' => FormatDeLaCaisse::class,
         // Les entrées et les sorties viennent en dernier : elles enrichissent des fiches
         // que le parc a déjà posées, elles ne les fondent pas.
@@ -43,8 +49,9 @@ class Registre
     /**
      * Ce qui reste à écrire.
      *
-     * **Vide, et c'est le but atteint.** Les huit types de fichiers du logiciel sont
-     * désormais lus. Cette liste reste en place parce qu'elle a une fonction : elle dit
+     * **Vide, et c'est le but atteint.** Les dix types de fichiers sont désormais lus — les
+     * huit du logiciel d'atelier, plus la balance et les règlements fournisseurs exportés du
+     * logiciel comptable, écrits le 21/09/2026. Cette liste reste en place parce qu'elle a une fonction : elle dit
      * honnêtement ce qui manque plutôt que de laisser croire que tout est couvert. Le jour
      * où un nouveau fichier apparaît, il s'y déclare avant d'être écrit.
      *
