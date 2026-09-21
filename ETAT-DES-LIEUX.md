@@ -392,7 +392,7 @@ entier, pour que les liens mis en favori continuent de fonctionner.
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. **Dix-huit lignes sont passées à « Terminé » le 21/09** (jours 1 à 3),
+date de fin, une ligne par chantier. **Vingt-deux lignes sont passées à « Terminé » le 21/09** (jours 1 à 4),
 et l'envoi du courrier à M. Fofana est à « À valider ». Le classeur vit désormais dans
 `C:\BUREAU\GESTION-DE-SITES\ARTISAN-PLAN-RESTANT\`. Le classeur se refabrique par le script de
 la séance ; il ne s'écrase pas tant qu'un tableur le tient ouvert, auquel cas la version à jour
