@@ -237,6 +237,12 @@ class MenuNavigation
             ['label' => 'Ajouter un accès', 'route' => 'acces.creer'],
         ];
 
+        // Le barème décide de ce qu'un commercial touche à la fin du mois : il n'est
+        // proposé qu'au gérant, comme l'écran lui-même.
+        if ($utilisateur->hasRole('gerant')) {
+            $general[] = ['label' => 'Barème de commission', 'route' => 'bareme-commission'];
+        }
+
         /*
          * Sa performance individuelle, pour qui vend. Un responsable de ville et un
          * responsable de site portent une fiche commercial et des objectifs depuis

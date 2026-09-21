@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 634 tests, 627 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 648 tests, 641 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -132,6 +132,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 21/09 | `ea7a480` | **creances** | jour 3 : écran *Caisse par véhicule* (fiche, caisse, factures, notes) ; « Autres » détaillé et bouton *Détail* en trésorerie ; les cinq écrans d'argent ouverts au comptable |
 | 21/09 | `b8ac87c` | **creances** | trois constats de l'écran : l'état des impayés se filtre « du … au … » (sur le dépôt, sinon l'édition), la colonne des boutons se colle au bord droit, une carte en grille peut enfin se rétrécir |
 | 21/09 | `a924584` | **creances** | jour 4 : la prospection dit quel véhicule elle vise ; rapprochement prospection / devis par fiche, plaque ou nom, dans une fenêtre réglable ; écran de confirmation, refus mémorisé |
+| 21/09 | `JOUR5` | **creances** | jour 5 : le barème de commission devient une donnée (grilles, tranches, date d'effet) ; page du barème réservée au gérant, avec essai ; colonnes *Barème*, *Commission* et *Cumul* sur l'écran Commerciaux |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -320,7 +321,7 @@ ce qu'on voulait dire.
 | 7 | **Caisse par véhicule** | ✅ **Fait le 21/09.** Page `/caisse/vehicule` : la plaque ramène sa fiche de réception, ses mouvements de caisse, ses factures avec leur reste à payer, et ses notes. Table `notes_vehicule` (migration `2026_09_21_000002`) : les notes s'empilent, chacune avec son auteur |
 | 8 | **Trésorerie** | ✅ **Fait le 21/09.** Bouton *Détail* sur chaque encaissement et décaissement (référence, origine — saisie avec son code auteur ou fichier importé —, atelier, facture réglée) ; bloc « Ce que “Autres” recouvre », poste par poste. `PeutVenirDUnImport` gagne la relation `lot()`, qui manquait |
 | 9 | **Fournisseurs** | ✅ **Fait le 21/09.** « Déjà payé » et sa part de l'engagé dans le tableau de tête ; export créé (`fournisseurs.telecharger`) — l'écran était le seul tableau sans aucun téléchargement |
-| 10 | **Commerciaux** | Barème de commission (paramètres), colonnes « Barème » et « Cumul », page du barème — réservé au gérant |
+| 10 | **Commerciaux** | ✅ **Fait le 21/09.** Le barème est une **donnée**, pas une règle écrite dans le code : tables `baremes_commission` et `tranches_bareme` (migration additive `2026_09_21_000004`), avec date d'effet — une grille posée ne réécrit jamais les mois qu'une autre a couverts. Page `/parametres/bareme-commission`, gérant seul : grilles, tranches modifiables, anomalies dites en clair, essai d'un chiffre d'affaires. Sur l'écran *Commerciaux*, colonnes **Barème**, **Commission de la période** et **Cumul de l'année**, visibles du gérant seul, calculées **mois par mois** |
 | 11 | **Comptabilité** | ✅ **Fait le 21/09.** Le recouvrement lui était déjà ouvert en consultation ; s'y ajoutent Caisse, Caisse par véhicule, Trésorerie, Charges et Fournisseurs, en lecture et dans son périmètre. Le parc, les clients, le chiffre d'affaires et l'état des impayés restent fermés — deux tests le vérifient |
 
 ### La question posée : les factures réglées sont-elles dans l'état des impayés ?
@@ -410,17 +411,40 @@ attend à côté.
   ville par ordre alphabétique. Il atterrit sur *Saisie du jour* (proposé : *Commerciaux*).
 - *Mes prospections* et *Mes notes* restent fermées au responsable de ville et de site.
 - Les branches `import` et `recouvrement` sont entièrement fusionnées dans `main` : supprimables.
-- **Le barème de commission a été retrouvé** : `Commission_Commerciaux_Artisan (1)_vf6.pdf`
-  (déposé à la racine du dépôt, non versionné). Deux grilles — commerciaux, puis responsable
-  commercial et adjoint — reprises telles quelles au § 6 du PDF. **Quatre points à trancher avant
-  de calculer** : le seuil d'entrée (le texte dit 25 M, la grille ouvre à 20 M) ; les trous entre
-  tranches (25–26 M, 30–31 M, 25–30 M chez le responsable) ; les bornes qui se chevauchent chez le
-  responsable (40, 50 et 60 M appartiennent à deux tranches) ; et l'assiette — les commissions
-  indicatives du document montrent que le taux porte sur **tout** le chiffre d'affaires, non sur
-  la seule part de la tranche.
+- **Le barème de commission** : `Commission_Commerciaux_Artisan (1)_vf6.pdf` (déposé à la racine
+  du dépôt, non versionné). **Les quatre points sont levés depuis le 21/09**, et ils ne sont plus
+  bloquants : la grille est devenue une **donnée** que le gérant modifie à l'écran.
+
+  - **L'assiette est tranchée par le document lui-même** : sa dernière ligne dit « Commission
+    appliquée sur le chiffre d'affaires **global** mensuel HT », et l'arithmétique de sa propre
+    colonne le confirme — 200 000 F annoncés à 1 % sur la tranche 20–25 M, soit 1 % de 20 M
+    entiers. Un test le vérifie valeur par valeur sur les deux grilles.
+  - **Le seuil d'entrée** : la phrase « aucune commission sous 25 M » contredit la grille et sa
+    propre commission indicative. La proposition retient **20 M**, celui de la grille.
+  - **Les trous entre tranches** : les tranches sont rendues **jointives**.
+  - **Les bornes qui se chevauchent** : une convention unique, **plancher atteint, plafond
+    exclu**.
+
+  Ces trois derniers points sont des *propositions*, posées d'un clic et modifiables ligne par
+  ligne : le gérant tranche lui-même, sans déploiement. **Reste à confirmer par le propriétaire**
+  une fois la grille posée et relue à l'écran.
 - **Deux règles ajoutées au barème**, absentes du document mais nécessaires : commission sur le
   **facturé** du mois (non l'encaissé), et seulement sur les factures rattachées à une prospection
   ou à un devis du commercial — ce qui fait dépendre le chantier 10 du chantier 4.
+- **Ce que les API changeront au chantier 4 — remarque du propriétaire du 21/09.** Elles règlent
+  la moitié du problème, et pas l'autre.
+
+  - **Ce qu'elles règlent.** Le flux « Proformas et devis » demandé dans le courrier porte
+    l'immatriculation, le n° de fiche et le code client. Aujourd'hui, le devis ne connaît pas sa
+    plaque : il faut passer par sa fiche de réception, et **1 172 devis sur 2 673 seulement** s'y
+    raccrochent. Avec l'API, chaque devis porte sa propre plaque — le rapprochement par
+    immatriculation cesse d'être une piste pour devenir une lecture.
+  - **Ce qu'elles ne régleront pas.** Aucune API ne dira **quel commercial a fait la visite** :
+    la prospection n'existe que dans cette application, elle n'est dans aucun logiciel d'atelier.
+    Le lien prospection → devis restera donc un rapprochement à confirmer, quoi qu'il arrive.
+  - **Conséquence pratique** : le travail fait le 21/09 n'est pas à refaire. Le jour où l'API
+    arrivera, `RapprochementProspectionDevis` lira la plaque directement sur le devis au lieu de
+    la chercher sur sa fiche — un seul endroit à changer, `plaquesParFiche()`.
 
 ---
 

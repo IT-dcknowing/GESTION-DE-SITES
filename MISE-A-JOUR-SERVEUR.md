@@ -299,6 +299,36 @@ Ces trois-là touchent la feuille de style, donc `public/build`. Elle est versio
 `git pull` suffit, il n'y a **pas** de `npm run build` à lancer sur le serveur. Prévenez les
 utilisateurs de recharger la page une fois (Ctrl + F5) si l'ancien style leur reste.
 
+**Une quatrième migration, additive** — `2026_09_21_000004`. Deux tables neuves,
+`baremes_commission` et `tranches_bareme`. Elles naissent **vides** : ni la migration ni
+`app:deployer` n'écrit de barème. Rien ne change à l'écran tant que le gérant n'en a pas posé
+un, et c'est voulu — un barème décide de ce que quelqu'un touche à la fin du mois, il ne
+s'installe pas tout seul.
+
+Ce qu'elle ouvre : une page **Barème de commission** (`/parametres/bareme-commission`, menu
+*Général*), **réservée au gérant**. Il y trouve la grille du document `vf6` proposée, à poser
+d'un clic après l'avoir relue, puis modifiable tranche par tranche. La page signale en clair
+ce qui cloche dans une grille (un trou, un chevauchement, une tranche finale fermée) et
+permet d'**essayer** un chiffre d'affaires avant de l'appliquer à quelqu'un.
+
+L'écran **Commerciaux** gagne trois colonnes — *Barème*, *Commission de la période*,
+*Cumul de l'année* — **visibles du gérant seul**.
+
+> **À dire au gérant avant qu'il ne s'en serve.**
+>
+> 1. **La date d'effet protège le passé.** On ne corrige pas un barème qui a déjà servi : on
+>    en pose un nouveau, avec le jour où il prend effet. Les mois déjà couverts continuent de
+>    répondre avec l'ancienne grille.
+> 2. **La commission se calcule mois par mois**, jamais sur la période affichée. Trois mois à
+>    15 M ne font pas 45 M commissionnés à 2,5 % : ils font trois mois sous le seuil.
+> 3. **Trois points du document sont des propositions**, pas des décisions : l'entrée à 20 M
+>    (le texte annonce 25 M, la grille dit 20 M), les tranches rendues jointives, et la règle
+>    « plancher atteint, plafond exclu ». Ils sont modifiables ligne par ligne — à relire et à
+>    confirmer.
+> 4. **La colonne Commission peut rester à zéro sans que personne n'ait mal vendu.** Sur les
+>    factures reprises, très peu portent un commercial : l'écran l'indique par un compte, et
+>    renvoie au rapprochement prospections / devis.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan
