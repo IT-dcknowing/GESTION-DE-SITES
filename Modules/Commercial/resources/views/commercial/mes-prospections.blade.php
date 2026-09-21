@@ -24,6 +24,10 @@ state([
     'completionId' => null,
     'date' => null,
     'client' => '', 'localisation' => '', 'moyen' => 'RDV',
+    // Le véhicule visé, et sa fiche quand elle est déjà ouverte. Les deux sont facultatifs :
+    // c'est ce qui permettra plus tard de retrouver le devis né de cette visite, ce n'est
+    // pas une condition pour la saisir.
+    'immatriculation' => '', 'nFicheReception' => '',
     'activite' => '', 'passage' => false, 'datePassage' => null,
     'devisApres' => false, 'dateDevis' => null, 'observations' => '',
     'commentaire' => '',
@@ -32,6 +36,7 @@ state([
     // Édition en ligne d'un brouillon, tant qu'il n'est pas parti chez le responsable.
     'editionId' => null,
     'eClient' => '', 'eLocalisation' => '', 'eMoyen' => 'RDV', 'eActivite' => '',
+    'eImmatriculation' => '', 'eNFicheReception' => '',
     'ePassage' => false, 'eDatePassage' => null,
     'eDevisApres' => false, 'eDateDevis' => null, 'eObservations' => '',
 ]);
@@ -179,6 +184,8 @@ $enregistrerProspection = function (string $statut) {
         'date' => ['required', 'date'],
         'client' => ['required', 'string', 'max:255'],
         'localisation' => ['nullable', 'string', 'max:255'],
+        'immatriculation' => ['nullable', 'string', 'max:32'],
+        'nFicheReception' => ['nullable', 'string', 'max:60'],
         'moyen' => ['required', 'string', 'max:60'],
         'activite' => ['required', 'string', 'max:60'],
         'datePassage' => ['nullable', 'date'],
@@ -206,6 +213,10 @@ $enregistrerProspection = function (string $statut) {
         'date' => $donnees['date'],
         'client' => $donnees['client'],
         'localisation' => $donnees['localisation'] ?: null,
+        // La plaque est rangée par le modèle : majuscules, espaces simples. On ne la met
+        // pas en forme ici, sinon elle le serait deux fois et différemment.
+        'immatriculation' => $donnees['immatriculation'] ?: null,
+        'n_fiche_reception' => trim($donnees['nFicheReception'] ?? '') ?: null,
         'moyen' => $donnees['moyen'],
         'activite' => $donnees['activite'],
         ...$coherence,
@@ -222,7 +233,8 @@ $enregistrerProspection = function (string $statut) {
         $this->prevenirLeResponsable(1);
     }
 
-    $this->reset(['client', 'localisation', 'observations', 'commentaire', 'passage', 'datePassage', 'devisApres', 'dateDevis']);
+    $this->reset(['client', 'localisation', 'immatriculation', 'nFicheReception',
+        'observations', 'commentaire', 'passage', 'datePassage', 'devisApres', 'dateDevis']);
     $this->resetPage();
     $this->annoncer($statut === 'Transmise'
         ? 'Prospection transmise à votre responsable.'
@@ -268,6 +280,8 @@ $modifier = function (int $id) {
     $this->editionId = $p->id;
     $this->eClient = $p->client;
     $this->eLocalisation = $p->localisation ?? '';
+    $this->eImmatriculation = $p->immatriculation ?? '';
+    $this->eNFicheReception = $p->n_fiche_reception ?? '';
     $this->eMoyen = $p->moyen;
     $this->eActivite = $p->activite;
     $this->ePassage = (bool) $p->passage;
@@ -332,6 +346,8 @@ $enregistrerEdition = function () {
         'eLocalisation' => ['nullable', 'string', 'max:255'],
         'eMoyen' => ['required', 'string', 'max:60'],
         'eActivite' => ['required', 'string', 'max:60'],
+        'eImmatriculation' => ['nullable', 'string', 'max:32'],
+        'eNFicheReception' => ['nullable', 'string', 'max:60'],
         'eDatePassage' => ['nullable', 'date'],
         'eDateDevis' => ['nullable', 'date'],
         'eObservations' => ['nullable', 'string'],
@@ -345,6 +361,8 @@ $enregistrerEdition = function () {
     $p->update([
         'client' => $donnees['eClient'],
         'localisation' => $donnees['eLocalisation'] ?: null,
+        'immatriculation' => $donnees['eImmatriculation'] ?: null,
+        'n_fiche_reception' => trim($donnees['eNFicheReception'] ?? '') ?: null,
         'moyen' => $donnees['eMoyen'],
         'activite' => $donnees['eActivite'],
         ...$coherence,
@@ -558,6 +576,14 @@ $transmettreSelection = function () {
                 <x-champ label="Date" model="date" type="date" width="140" />
                 <x-champ label="Clients visités" model="client" requis="true" />
                 <x-champ label="Localisation" model="localisation" width="150" />
+                {{-- La plaque, et non le n° de fiche, est ce que le commercial a sous les
+                     yeux au moment de la visite. C'est elle qui retrouvera le devis émis
+                     trois à cinq jours plus tard : personne ne reviendra écrire un numéro
+                     de fiche sur une visite de la semaine passée. --}}
+                <x-champ label="Immatriculation" model="immatriculation" width="150"
+                    placeholder="1234 AB 01" aide="Facultatif — sert à retrouver le devis" />
+                <x-champ label="N° de fiche de réception" model="nFicheReception" width="170"
+                    placeholder="FR-…" aide="Facultatif — si le véhicule est déjà à l'atelier" />
                 <x-champ label="Moyens" model="moyen" type="select" :options="$this->optionsMoyen" width="140" />
                 <x-champ label="Activité" model="activite" type="select" :options="$this->optionsActivite" width="150" />
                 <x-champ label="Passage" model="passage" type="checkbox" live="true" />
@@ -608,7 +634,7 @@ $transmettreSelection = function () {
                     <thead>
                         <tr>
                             <th>✓</th><th>N°</th><th>Date</th><th>Clients visités</th><th>Localisation</th>
-                            <th>Moyens</th><th>Activité</th><th>Passage</th><th>Devis après passage</th>
+                            <th>Véhicule</th><th>Moyens</th><th>Activité</th><th>Passage</th><th>Devis après passage</th>
                             <th>Observations</th><th>Informations libres</th><th>Statut</th>
                             <th>Décision</th><th></th>
                         </tr>
@@ -632,6 +658,12 @@ $transmettreSelection = function () {
                                     <td>{{ $ligne->date->format('d/m/Y') }}</td>
                                     <td><input type="text" wire:model="eClient" value="{{ $eClient }}" class="champ" style="min-width:130px;"></td>
                                     <td><input type="text" wire:model="eLocalisation" value="{{ $eLocalisation }}" class="champ" style="min-width:110px;"></td>
+                                    <td style="white-space:normal; min-width:150px;">
+                                        <input type="text" wire:model="eImmatriculation" value="{{ $eImmatriculation }}"
+                                            class="champ" placeholder="1234 AB 01">
+                                        <input type="text" wire:model="eNFicheReception" value="{{ $eNFicheReception }}"
+                                            class="champ" placeholder="N° de fiche" style="margin-top:4px;">
+                                    </td>
                                     <td>
                                         <select wire:model="eMoyen" class="champ">
                                             @foreach ($this->optionsMoyen as $valeur => $libelle)
@@ -685,6 +717,12 @@ $transmettreSelection = function () {
                                 <td>{{ $ligne->date->format('d/m/Y') }}</td>
                                 <td>{{ $ligne->client }}</td>
                                 <td style="color:var(--th-gris,#6B6E76);">{{ $ligne->localisation ?? '—' }}</td>
+                                <td style="color:var(--th-gris,#6B6E76);">
+                                    {{ $ligne->immatriculation ?? '—' }}
+                                    @if ($ligne->n_fiche_reception)
+                                        <span style="font-size:11px; display:block;">{{ $ligne->n_fiche_reception }}</span>
+                                    @endif
+                                </td>
                                 <td>{{ $ligne->moyen }}</td>
                                 <td>{{ $ligne->activite }}</td>
 
@@ -816,7 +854,7 @@ $transmettreSelection = function () {
                             </tr>
                             @endif
                         @empty
-                            <x-table-vide :colspan="13" texte="Aucune prospection ne correspond à ces filtres." />
+                            <x-table-vide :colspan="14" texte="Aucune prospection ne correspond à ces filtres." />
                         @endforelse
                     </tbody>
                 </table>

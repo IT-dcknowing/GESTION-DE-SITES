@@ -269,7 +269,7 @@ $detail = computed(fn () => (clone $this->requete)
                         <th>Bénéficiaire</th>
                         <th>Immatriculation</th>
                         <th>Ville</th>
-                        <th style="text-align:right;">Montant</th>
+                        <th class="colonne-collee" style="text-align:right;">Montant</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -296,7 +296,8 @@ $detail = computed(fn () => (clone $this->requete)
                                 @endif
                             </td>
                             <td style="color:#6B6E76;">{{ $ligne->ville?->nom ?? '—' }}</td>
-                            <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
+                            <td class="colonne-collee"
+                                style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $ligne->sens === 'entree' ? '#1E7B34' : '#C8102E' }};">
                                 {{ ae($ligne->montant) }}
                             </td>

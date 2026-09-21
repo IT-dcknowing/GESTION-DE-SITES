@@ -114,7 +114,7 @@ body { font-size: 16px; }
 .tableau-conteneur { overflow-x: auto; width: 100%; }
 
 
-/* ------------------------------------- La colonne des boutons reste sous la main
+/* --------------------------------- La dernière colonne reste collée au bord droit
 
    Constaté le 21/09/2026 en trésorerie : les décaissements portent sept colonnes dont un
    libellé d'opération entier, dans une carte qui n'occupe que la moitié de l'écran. Le
@@ -122,20 +122,23 @@ body { font-size: 16px; }
    vue sans qu'on puisse l'y ramener (voir aussi « .carte » plus bas, qui empêchait le
    conteneur de défiler).
 
-   La colonne d'action se colle donc au bord droit : elle reste visible pendant que le
-   reste défile dessous. Le fond est recopié rang par rang, sinon le texte qui passe
-   dessous se lirait au travers. */
-.tableau th.colonne-action,
-.tableau td.colonne-action {
+   La colonne se colle donc au bord droit : elle reste visible pendant que le reste défile
+   dessous. Le fond est recopié rang par rang, sinon le texte qui passe dessous se lirait
+   au travers.
+
+   Même remède pour le montant de la caisse : dernière des sept colonnes, il sortait de
+   l'écran, et c'est pourtant le chiffre qu'on vient lire. */
+.tableau th.colonne-collee,
+.tableau td.colonne-collee {
     position: sticky;
     right: 0;
     background: #fff;
     box-shadow: -7px 0 7px -7px rgba(0, 0, 0, .18);
 }
 
-.tableau thead th.colonne-action { background: var(--th-ink); }
-.tableau tbody tr:nth-child(even) td.colonne-action { background: #FAF9F5; }
-.tableau tbody tr:hover td.colonne-action { background: #F4F3EF; }
+.tableau thead th.colonne-collee { background: var(--th-ink); }
+.tableau tbody tr:nth-child(even) td.colonne-collee { background: #FAF9F5; }
+.tableau tbody tr:hover td.colonne-collee { background: #F4F3EF; }
 
 
 /* ------------------------------------------------- Les nombres ne se coupent pas

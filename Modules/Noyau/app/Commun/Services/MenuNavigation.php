@@ -204,6 +204,9 @@ class MenuNavigation
             'groupe' => [
                 ['label' => 'Prospects', 'route' => 'prospects'],
                 ['label' => 'Devis', 'route' => 'devis'],
+                // Entre les deux, l'écran qui les relie : une prospection sans devis et un
+                // devis sans commercial sont le même trou, vu de ses deux bords.
+                ['label' => 'Rapprochement prospections / devis', 'route' => 'rapprochement.prospections-devis'],
                 ['label' => 'Parc véhicules', 'route' => 'parc-vehicules'],
                 ['label' => 'Entrées / sorties', 'route' => 'mouvements-vehicules'],
                 ['label' => 'Clients', 'route' => 'clients'],

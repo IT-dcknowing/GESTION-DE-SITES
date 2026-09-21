@@ -19,7 +19,9 @@ $prospection = computed(fn () => Prospection::with(['commercial', 'site.ville'])
 $historique = computed(fn () => $this->prospection->activities()->with('causer')->latest('id')->get());
 
 $libellesChamps = computed(fn () => [
-    'client' => 'Client', 'localisation' => 'Localisation', 'moyen' => 'Moyen',
+    'client' => 'Client', 'localisation' => 'Localisation',
+    'immatriculation' => 'Immatriculation', 'n_fiche_reception' => 'N° de fiche de réception',
+    'moyen' => 'Moyen',
     'activite' => 'Activité', 'commercial_id' => 'Commercial',
     'passage' => 'Passage', 'date_passage' => 'Date de passage',
     'devis_apres_passage' => 'Devis après passage', 'date_devis' => 'Date du devis',
@@ -53,6 +55,9 @@ $formaterValeur = computed(fn () => fn ($v) => match (true) {
             <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">Site</span><b>{{ $this->prospection->site->nom }}</b></div>
             <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">Client</span><b>{{ $this->prospection->client }}</b></div>
             <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">Localisation</span><b>{{ $this->prospection->localisation ?? '—' }}</b></div>
+            {{-- Le véhicule visé : c'est par lui que le devis retrouvera cette visite. --}}
+            <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">Véhicule</span><b>{{ $this->prospection->immatriculation ?? '—' }}</b></div>
+            <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">N° de fiche</span><b>{{ $this->prospection->n_fiche_reception ?? '—' }}</b></div>
             <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">Moyen</span><b>{{ $this->prospection->moyen }}</b></div>
             <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">Commercial</span><b>{{ $this->prospection->commercial->nom }}</b></div>
             <div><span style="font-size:11.5px; color:#9A9DA5; display:block;">Activité</span><b>{{ $this->prospection->activite }}</b></div>

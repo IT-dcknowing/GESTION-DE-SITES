@@ -267,6 +267,38 @@ Trois nouveautés visibles en découlent :
   Charges et Fournisseurs, en lecture et dans son périmètre. À annoncer : ces cinq onglets
   apparaîtront dans son bandeau à la première connexion après la mise à jour.
 
+**Une troisième migration, additive elle aussi** — `2026_09_21_000003`. Elle ajoute à la
+prospection deux colonnes facultatives, `immatriculation` et `n_fiche_reception`, et crée la
+table neuve `rapprochements_ecartes`. Les 574 prospections existantes gardent ces colonnes
+vides ; rien n'est réécrit, et aucun écran ne change de chiffre tant que personne ne les
+remplit.
+
+Ce qu'elle ouvre : un écran **Rapprochement prospections / devis**
+(`/rapprochement-prospections-devis`, dans le menu *Indicateurs*, entre *Devis* et *Parc
+véhicules*). Le constat qui l'a fait naître : sur 2 673 devis, **241 seulement sont rattachés
+à une prospection** — les 2 432 autres viennent de l'import et ne sont comptés à aucun
+commercial. L'écran propose les couples possibles — même fiche, même plaque, même client —
+dans les quinze jours qui suivent la visite, et **rien n'est rattaché sans un clic**.
+
+> **À dire à celui qui s'en servira.** Confirmer un rapprochement **porte le devis au compte
+> du commercial de la prospection** : c'est un chiffre qui change de mains. L'écran est donc
+> ouvert au gérant et aux responsables, **jamais au commercial lui-même**. Écarter un couple
+> le retire définitivement de la liste, avec le nom de celui qui l'a écarté.
+
+**Et trois corrections d'écran du même envoi, sans migration :**
+
+- l'**état des impayés** gagne un filtre **« Déposée du … au … »**, au jour, sur la date de
+  dépôt (l'édition à défaut) — la même date que l'ancienneté affichée à côté. Laissé vide, il
+  ne retire rien, et les totaux du bandeau suivent les bornes ;
+- en **trésorerie**, le bouton *Détail* des décaissements était hors de vue et rien ne
+  permettait de l'y ramener ; la colonne des boutons se colle désormais au bord droit, et les
+  deux tableaux se rangent l'un sous l'autre quand l'écran est trop étroit ;
+- en **caisse**, la colonne *Montant* — dernière des sept — se colle de la même façon.
+
+Ces trois-là touchent la feuille de style, donc `public/build`. Elle est versionnée : le
+`git pull` suffit, il n'y a **pas** de `npm run build` à lancer sur le serveur. Prévenez les
+utilisateurs de recharger la page une fois (Ctrl + F5) si l'ancien style leur reste.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

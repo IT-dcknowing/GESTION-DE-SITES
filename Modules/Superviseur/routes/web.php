@@ -108,6 +108,18 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     Volt::route('/impayes/creance/{creance}', 'pilotage.impayes-detail')
         ->name('impayes.detail')->whereNumber('creance');
     Volt::route('/rapprochement-ca-impayes', 'pilotage.rapprochement-ca-impayes')->name('rapprochement-ca-impayes');
+
+    /*
+     * Le rapprochement prospection / devis.
+     *
+     * Il est ici, avec l'exploitation, et non dans le module Commercial : confirmer un
+     * rapprochement porte un devis au compte d'un commercial, c'est-à-dire un chiffre à
+     * quelqu'un. Ce geste appartient à celui qui arbitre, pas à celui qui est compté — un
+     * commercial qui se rattacherait lui-même les devis de l'atelier n'aurait aucun mal à
+     * gonfler sa performance.
+     */
+    Volt::route('/rapprochement-prospections-devis', 'pilotage.rapprochement-prospections-devis')
+        ->name('rapprochement.prospections-devis');
 });
 
 /*

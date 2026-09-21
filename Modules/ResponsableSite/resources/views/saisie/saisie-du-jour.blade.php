@@ -25,6 +25,10 @@ state([
     'siteSaisieId' => null,
 
     'prosClient' => '', 'prosLocalisation' => '', 'prosMoyen' => 'RDV', 'prosCommercialId' => '',
+    // Le véhicule visé : facultatif, et c'est lui qui retrouvera plus tard le devis né de
+    // cette visite — le devis suit de trois à cinq jours, et personne ne revient écrire un
+    // n° de fiche sur une prospection de la semaine passée.
+    'prosImmatriculation' => '', 'prosNFiche' => '',
     'prosActivite' => 'Mécanique', 'prosPassage' => false, 'prosDatePassage' => null,
     'prosDevisApres' => false, 'prosDateDevis' => null, 'prosObs' => '',
 
@@ -485,6 +489,8 @@ $ajouterProspection = function () {
     $donnees = $this->validate([
         'prosClient' => ['required', 'string', 'max:255'],
         'prosLocalisation' => ['nullable', 'string', 'max:255'],
+        'prosImmatriculation' => ['nullable', 'string', 'max:32'],
+        'prosNFiche' => ['nullable', 'string', 'max:60'],
         'prosMoyen' => ['required', Rule::in(array_keys($this->optionsMoyenProspection))],
         'prosCommercialId' => ['required', Rule::exists('commerciaux', 'id')->whereIn('ville_id', $this->sitesActifs->pluck('ville_id')->unique())],
         'prosActivite' => ['required', Rule::in(array_keys($this->optionsActivite))],
@@ -508,6 +514,8 @@ $ajouterProspection = function () {
         'date' => $this->date,
         'client' => $donnees['prosClient'],
         'localisation' => $donnees['prosLocalisation'] ?: null,
+        'immatriculation' => $donnees['prosImmatriculation'] ?: null,
+        'n_fiche_reception' => trim($donnees['prosNFiche'] ?? '') ?: null,
         'moyen' => $donnees['prosMoyen'],
         'activite' => $donnees['prosActivite'],
         ...$coherence,
@@ -515,7 +523,8 @@ $ajouterProspection = function () {
         'cree_par' => auth()->id(),
     ]);
 
-    $this->reset(['prosClient', 'prosLocalisation', 'prosObs', 'prosPassage', 'prosDatePassage', 'prosDevisApres', 'prosDateDevis']);
+    $this->reset(['prosClient', 'prosLocalisation', 'prosImmatriculation', 'prosNFiche',
+        'prosObs', 'prosPassage', 'prosDatePassage', 'prosDevisApres', 'prosDateDevis']);
     $this->prosMoyen = 'RDV';
     $this->prosActivite = 'Mécanique';
 };
@@ -1363,6 +1372,8 @@ $ajouterCharge = function () {
             <div class="bloc-saisie">
                 <x-champ label="Clients visités" model="prosClient" />
                 <x-champ label="Localisation" model="prosLocalisation" width="130" />
+                <x-champ label="Immatriculation" model="prosImmatriculation" width="140" placeholder="1234 AB 01" />
+                <x-champ label="N° de fiche" model="prosNFiche" width="140" placeholder="FR-…" />
                 <x-champ label="Moyens" model="prosMoyen" type="select" :options="$this->optionsMoyenProspection" width="130" />
                 <x-champ label="Commercial" model="prosCommercialId" type="select" :options="$this->commerciauxSelectables" width="170" />
                 <x-champ label="Activité" model="prosActivite" type="select" :options="$this->optionsActivite" width="140" />

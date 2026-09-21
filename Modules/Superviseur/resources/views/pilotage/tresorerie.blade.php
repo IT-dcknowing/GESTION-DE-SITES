@@ -331,7 +331,7 @@ $origineDe = protect(function ($ligne) {
                             <th>Montant</th>
                             <th>Clients</th>
                             <th>Autres tiers</th>
-                            <th class="colonne-action"></th>
+                            <th class="colonne-collee"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -343,7 +343,7 @@ $origineDe = protect(function ($ligne) {
                                 <td style="font-variant-numeric:tabular-nums; font-weight:700; color:#0E9F6E;">{{ ae($ligne->montant) }}</td>
                                 <td>{{ $ligne->client ?? '—' }}</td>
                                 <td style="color:#6B6E76;">{{ $ligne->autres_tiers ?? '—' }}</td>
-                                <td class="colonne-action" style="white-space:nowrap;">
+                                <td class="colonne-collee" style="white-space:nowrap;">
                                     <button type="button" wire:click="voirEncaissement({{ $ligne->id }})"
                                         class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;">
                                         {{ (int) $detailEncaissement === (int) $ligne->id ? 'Fermer' : 'Détail' }}
@@ -393,7 +393,7 @@ $origineDe = protect(function ($ligne) {
                             <th>Moyens</th>
                             <th>Montant</th>
                             <th>Tiers</th>
-                            <th class="colonne-action"></th>
+                            <th class="colonne-collee"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -405,7 +405,7 @@ $origineDe = protect(function ($ligne) {
                                 <td>{{ $ligne->moyen }}</td>
                                 <td style="font-variant-numeric:tabular-nums; font-weight:700; color:#C8102E;">{{ ae($ligne->montant) }}</td>
                                 <td style="color:#6B6E76;">{{ $ligne->tiers ?? '—' }}</td>
-                                <td class="colonne-action" style="white-space:nowrap;">
+                                <td class="colonne-collee" style="white-space:nowrap;">
                                     <button type="button" wire:click="voirDecaissement({{ $ligne->id }})"
                                         class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;">
                                         {{ (int) $detailDecaissement === (int) $ligne->id ? 'Fermer' : 'Détail' }}

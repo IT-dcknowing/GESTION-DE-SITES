@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 612 tests, 605 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 634 tests, 627 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -130,6 +130,8 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 21/09 | `8b611d9` | **creances** | jour 1 du plan : `factures.depose_chez` prend la tête du tiers payant ; la créance déposée n'est comptée que chez le dépositaire ; « Porter à l'état » disparaît des factures réglées ; sept tests verrouillent la règle |
 | 21/09 | `282538e` | **creances** | jour 2 : le filtre « du … au … » descend au jour (et s'ouvre enfin) ; suppression d'une créance réservée au gérant ; extrait de compte complété ; fournisseurs emportables avec leur déjà payé |
 | 21/09 | `ea7a480` | **creances** | jour 3 : écran *Caisse par véhicule* (fiche, caisse, factures, notes) ; « Autres » détaillé et bouton *Détail* en trésorerie ; les cinq écrans d'argent ouverts au comptable |
+| 21/09 | `b8ac87c` | **creances** | trois constats de l'écran : l'état des impayés se filtre « du … au … » (sur le dépôt, sinon l'édition), la colonne des boutons se colle au bord droit, une carte en grille peut enfin se rétrécir |
+| 21/09 | `7c00b4b` | **creances** | jour 4 : la prospection dit quel véhicule elle vise ; rapprochement prospection / devis par fiche, plaque ou nom, dans une fenêtre réglable ; écran de confirmation, refus mémorisé |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -312,9 +314,9 @@ ce qu'on voulait dire.
 | 2 | **Facture déposée chez un tiers** | ✅ **Fait le 21/09.** `factures.depose_chez` (migration additive `2026_09_21_000001`), saisie dans l'état, dans « Porter » et dans le bloc facture du recouvrement, lue dans le tableau de l'état, trouvée par la recherche ; balance âgée, relances, extrait et annuaire la comptent chez le seul dépositaire |
 | 2 bis | **Une facture réglée n'a rien à faire dans le recouvrement** | ✅ **Fait le 21/09.** « Porter à l'état » laisse la place à « Réglée » quand il ne reste rien ; la mention « Soldée » devient une pastille. Le registre garde ses créances soldées — voir l'encadré ci-dessous |
 | 3 | **Extrait de compte** | ✅ **Fait le 21/09.** Date de facturation (qui dit enfin laquelle), date de dépôt, n° de sinistre, et le tiers « pour le compte de » — à l'écran **et** dans le fichier emporté, qui n'en avait aucune |
-| 4 | **Prospection → devis → facture** | **Rapprochement par immatriculation + date d'abord** (fenêtre proposée : 15 jours) — le devis suit la prospection de trois à cinq jours, personne ne reviendra écrire un n° de fiche. `n_fiche_reception` ajouté à la prospection mais facultatif : quand il est là, il emporte la décision. Écran de confirmation, jamais de rapprochement muet |
+| 4 | **Prospection → devis → facture** | ✅ **Fait le 21/09.** La prospection porte `immatriculation` et `n_fiche_reception`, tous deux facultatifs (migration additive `2026_09_21_000003`). `RapprochementProspectionDevis` propose trois pistes, de la plus sûre à la plus faible — même fiche, même plaque (lue sur la fiche du devis), même client — dans une fenêtre réglable (15 jours par défaut, jamais vers le passé). Écran `/rapprochement-prospections-devis` : on confirme ou l'on écarte, ligne par ligne ; le refus se garde avec son auteur (`rapprochements_ecartes`). Confirmer porte le devis au commercial de la prospection. Fermé au commercial lui-même |
 | 5 | **Deux gestes** | ✅ **Fait le 21/09.** `SuppressionDUneCreance` : gérant seul, rien de réglé, rien d'importé, confirmation sur la ligne, ligne entière au journal. Filtre « du … au … » au jour sur les douze écrans — **et réparé** : voir l'encadré |
-| 6 | **N° de fiche de réception** | Relevé fait : présent partout sauf chez les fournisseurs — parc, entrées, sorties, fiches, devis, factures ; dans le libellé pour la caisse |
+| 6 | **N° de fiche de réception** | Relevé fait : présent partout sauf chez les fournisseurs — parc, entrées, sorties, fiches, devis, factures ; dans le libellé pour la caisse. Depuis le 21/09 il est aussi **saisissable sur la prospection**, où il manquait ; c'est le seul endroit où il servait de clé et n'existait pas |
 | 7 | **Caisse par véhicule** | ✅ **Fait le 21/09.** Page `/caisse/vehicule` : la plaque ramène sa fiche de réception, ses mouvements de caisse, ses factures avec leur reste à payer, et ses notes. Table `notes_vehicule` (migration `2026_09_21_000002`) : les notes s'empilent, chacune avec son auteur |
 | 8 | **Trésorerie** | ✅ **Fait le 21/09.** Bouton *Détail* sur chaque encaissement et décaissement (référence, origine — saisie avec son code auteur ou fichier importé —, atelier, facture réglée) ; bloc « Ce que “Autres” recouvre », poste par poste. `PeutVenirDUnImport` gagne la relation `lot()`, qui manquait |
 | 9 | **Fournisseurs** | ✅ **Fait le 21/09.** « Déjà payé » et sa part de l'engagé dans le tableau de tête ; export créé (`fournisseurs.telecharger`) — l'écran était le seul tableau sans aucun téléchargement |
@@ -352,6 +354,21 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
   Bénéficiaire) mais l'écran a été bâti sur un autre classeur — il manque l'atelier précis et le
   solde annoncé. Règle à appliquer partout : **les colonnes d'une page listent d'abord celles du
   fichier d'origine**.
+
+  **Question posée le 21/09 — les deux sources sont-elles prises en compte ? Non, une seule.**
+  L'écran *Caisse* est alimenté par le **classeur Excel tenu à la main**, un onglet par mois,
+  lu par `FormatDeLaCaisse`. Le **journal de caisse en PDF** (sortie du logiciel comptable :
+  *PÉRIODE du … au …*, *CAISSE : CAISSE BOUAKÉ*, *SOLDE AVANT LA PÉRIODE*, puis DATE /
+  LIBELLÉ DE LA TRANSACTION / ENTRÉE / SORTIE / SOLDE) **n'est lu par rien** — aucun format
+  d'import ne lit de PDF, et celui-ci ne porte ni immatriculation ni colonne bénéficiaire :
+  le n° de pièce, le motif, le remettant et le bénéficiaire y sont **empilés dans le
+  libellé**. Les deux décrivent la même caisse par deux bouts différents.
+
+  **Arbitré par le propriétaire le 21/09** : en alignant l'écran sur le journal, **le sens
+  (entrée / sortie) reste une colonne à part** et ne redevient pas un montant signé, **la
+  ville reste**, **le montant reste**. Ce qui manque encore à l'écran, et que le journal
+  porte : le n° de pièce, le motif, le remettant ou bénéficiaire sortis du libellé, le solde
+  progressif, le nom de la caisse et le solde avant période. Chantier des jours 6-7.
 - **Fiches de réception** : pas d'import propre à écrire — la situation du parc porte les mêmes
   fiches avec plus de colonnes ; seul le code client lui manque. **Décidé le 18/09 : on n'attend
   pas le code client.** L'obtenir suppose que l'éditeur l'ajoute ou ouvre ses API ; d'ici là le
