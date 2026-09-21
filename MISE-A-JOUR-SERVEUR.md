@@ -252,6 +252,21 @@ service recouvrement le sache avant de le découvrir.
   réglée ou importée, avec confirmation sur la ligne et trace complète au journal ;
 - l'écran **Fournisseurs** montre le déjà payé et gagne ses trois boutons de téléchargement.
 
+**Et une seconde migration, elle aussi additive** — `2026_09_21_000002` crée la table
+`notes_vehicule` (plaque, texte, auteur). Table neuve : aucune ligne existante n'est touchée,
+et rien à lancer après `app:deployer`.
+
+Trois nouveautés visibles en découlent :
+
+- une page **Caisse par véhicule** (`/caisse/vehicule`, dans le menu sous *Caisse*) : on tape
+  une plaque, on obtient sa fiche de réception, ses mouvements de caisse, ses factures avec
+  leur reste à payer, et de quoi laisser une note qui garde son auteur ;
+- la **Trésorerie** gagne un bouton *Détail* par mouvement et un bloc qui dit ce que la ligne
+  « Autres » recouvre, poste par poste ;
+- **le comptable** (rôle `caissier`) voit désormais Caisse, Caisse par véhicule, Trésorerie,
+  Charges et Fournisseurs, en lecture et dans son périmètre. À annoncer : ces cinq onglets
+  apparaîtront dans son bandeau à la première connexion après la mise à jour.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

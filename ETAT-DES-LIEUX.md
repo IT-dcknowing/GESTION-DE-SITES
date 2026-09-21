@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 603 tests, 596 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 612 tests, 605 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -129,6 +129,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 18/09 | `63c0b66` | **plan** | relevé des fichiers réels, plan de travail d'une semaine (PDF + classeur de suivi) et courrier à l'éditeur du logiciel (§ 6) ; `DocumentPdf` gagne l'en-tête à deux marques et les cellules qui reviennent à la ligne |
 | 21/09 | `8b611d9` | **creances** | jour 1 du plan : `factures.depose_chez` prend la tête du tiers payant ; la créance déposée n'est comptée que chez le dépositaire ; « Porter à l'état » disparaît des factures réglées ; sept tests verrouillent la règle |
 | 21/09 | `282538e` | **creances** | jour 2 : le filtre « du … au … » descend au jour (et s'ouvre enfin) ; suppression d'une créance réservée au gérant ; extrait de compte complété ; fournisseurs emportables avec leur déjà payé |
+| 21/09 | `ea7a480` | **creances** | jour 3 : écran *Caisse par véhicule* (fiche, caisse, factures, notes) ; « Autres » détaillé et bouton *Détail* en trésorerie ; les cinq écrans d'argent ouverts au comptable |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -314,11 +315,11 @@ ce qu'on voulait dire.
 | 4 | **Prospection → devis → facture** | **Rapprochement par immatriculation + date d'abord** (fenêtre proposée : 15 jours) — le devis suit la prospection de trois à cinq jours, personne ne reviendra écrire un n° de fiche. `n_fiche_reception` ajouté à la prospection mais facultatif : quand il est là, il emporte la décision. Écran de confirmation, jamais de rapprochement muet |
 | 5 | **Deux gestes** | ✅ **Fait le 21/09.** `SuppressionDUneCreance` : gérant seul, rien de réglé, rien d'importé, confirmation sur la ligne, ligne entière au journal. Filtre « du … au … » au jour sur les douze écrans — **et réparé** : voir l'encadré |
 | 6 | **N° de fiche de réception** | Relevé fait : présent partout sauf chez les fournisseurs — parc, entrées, sorties, fiches, devis, factures ; dans le libellé pour la caisse |
-| 7 | **Caisse par véhicule** | Page dédiée : recherche sur l'immatriculation, factures en cours du véhicule, champ de commentaire tracé |
-| 8 | **Trésorerie** | Bouton « Détail » par mouvement (pièce, import, auteur) et contenu réel de la ligne « Autres » |
+| 7 | **Caisse par véhicule** | ✅ **Fait le 21/09.** Page `/caisse/vehicule` : la plaque ramène sa fiche de réception, ses mouvements de caisse, ses factures avec leur reste à payer, et ses notes. Table `notes_vehicule` (migration `2026_09_21_000002`) : les notes s'empilent, chacune avec son auteur |
+| 8 | **Trésorerie** | ✅ **Fait le 21/09.** Bouton *Détail* sur chaque encaissement et décaissement (référence, origine — saisie avec son code auteur ou fichier importé —, atelier, facture réglée) ; bloc « Ce que “Autres” recouvre », poste par poste. `PeutVenirDUnImport` gagne la relation `lot()`, qui manquait |
 | 9 | **Fournisseurs** | ✅ **Fait le 21/09.** « Déjà payé » et sa part de l'engagé dans le tableau de tête ; export créé (`fournisseurs.telecharger`) — l'écran était le seul tableau sans aucun téléchargement |
 | 10 | **Commerciaux** | Barème de commission (paramètres), colonnes « Barème » et « Cumul », page du barème — réservé au gérant |
-| 11 | **Comptabilité** | Ouvrir au comptable le module de recouvrement et les indicateurs qui le regardent (caisse, trésorerie, charges, fournisseurs), dans son périmètre — sans suppression, ni objectifs, ni commerciaux, ni barème |
+| 11 | **Comptabilité** | ✅ **Fait le 21/09.** Le recouvrement lui était déjà ouvert en consultation ; s'y ajoutent Caisse, Caisse par véhicule, Trésorerie, Charges et Fournisseurs, en lecture et dans son périmètre. Le parc, les clients, le chiffre d'affaires et l'état des impayés restent fermés — deux tests le vérifient |
 
 ### La question posée : les factures réglées sont-elles dans l'état des impayés ?
 
@@ -374,7 +375,7 @@ entier, pour que les liens mis en favori continuent de fonctionner.
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. **Onze lignes sont passées à « Terminé » le 21/09** (jours 1 et 2),
+date de fin, une ligne par chantier. **Dix-huit lignes sont passées à « Terminé » le 21/09** (jours 1 à 3),
 et l'envoi du courrier à M. Fofana est à « À valider ». Le classeur vit désormais dans
 `C:\BUREAU\GESTION-DE-SITES\ARTISAN-PLAN-RESTANT\`. Le classeur se refabrique par le script de
 la séance ; il ne s'écrase pas tant qu'un tableur le tient ouvert, auquel cas la version à jour
