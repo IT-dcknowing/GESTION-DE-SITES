@@ -137,7 +137,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 21/09 | `16a60e2` | **creances** | correction : l'écran de rapprochement comparait tout à tout et bloquait le serveur (donc toute l'application) ; index par fiche, numéro, plaque et nom |
 | 21/09 | `b0f010c` | **creances** | jour 6 : la balance et les règlements fournisseurs exportés du logiciel comptable entrent (deux formats, deux tables, migration `2026_09_21_000006`) |
 | 22/09 | `5698290` | **creances** | retours du propriétaire : le n° de devis exigé au passage en devis ; barème refait et cloisonné par exercice ; balance et règlements ont leur page, avec l'écart entre solde annoncé et recalcul |
-| 23/09 | `RETOUR` | **creances** | vitesse : les jours ne se comptent plus par Carbon, et les consolidations ne construisent plus d'objets (« Clients & tiers » 4,8 s → 0,7 s) ; « Où vous joindre » demande son numéro à qui n'en a pas ; section **Code-import** sur l'écran des codes ; le suivi fournisseur entre en entier — feuille `DETAIL`, 40 colonnes, deux classeurs fondus sans doublon |
+| 23/09 | `2156dfc` | **creances** | vitesse : les jours ne se comptent plus par Carbon, et les consolidations ne construisent plus d'objets (« Clients & tiers » 4,8 s → 0,7 s) ; « Où vous joindre » demande son numéro à qui n'en a pas ; section **Code-import** sur l'écran des codes ; le suivi fournisseur entre en entier — feuille `DETAIL`, 40 colonnes, deux classeurs fondus sans doublon |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
