@@ -174,7 +174,14 @@ $detail = computed(fn () => (clone $this->requete)
 
 <div>
     <x-titre-ecran titre="Caisse"
-        sous-titre="Les entrées et les sorties d'espèces, reprises des états de caisse de l'atelier." />
+        sous-titre="Les entrées et les sorties d'espèces, reprises des états de caisse de l'atelier.">
+        {{-- L'autre question qu'on pose à la caisse, et qui ne se pose pas sur une
+             période : celle d'un véhicule précis. --}}
+        <div style="margin-top:10px;">
+            <a href="{{ route('caisse.vehicule') }}" wire:navigate class="bouton bouton-secondaire"
+                style="padding:8px 14px; text-decoration:none;">Rechercher un véhicule</a>
+        </div>
+    </x-titre-ecran>
 
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="null" :site-filtre="null"
@@ -278,7 +285,16 @@ $detail = computed(fn () => (clone $this->requete)
                             </td>
                             <td>{{ $ligne->libelle ?: '—' }}</td>
                             <td style="color:#6B6E76;">{{ $ligne->beneficiaire ?: '—' }}</td>
-                            <td style="color:#6B6E76;">{{ $ligne->immatriculation ?: '—' }}</td>
+                            <td style="color:#6B6E76;">
+                                @if ($ligne->immatriculation)
+                                    {{-- La plaque mène au dossier du véhicule : c'est le geste
+                                         qu'on fait de toute façon, en la recopiant à la main. --}}
+                                    <a href="{{ route('caisse.vehicule', ['plaque' => $ligne->immatriculation]) }}"
+                                        wire:navigate style="color:#191B20; font-weight:600;">{{ $ligne->immatriculation }}</a>
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td style="color:#6B6E76;">{{ $ligne->ville?->nom ?? '—' }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $ligne->sens === 'entree' ? '#1E7B34' : '#C8102E' }};">

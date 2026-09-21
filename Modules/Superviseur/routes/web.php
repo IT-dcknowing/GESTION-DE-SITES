@@ -34,11 +34,19 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
 });
 
 /*
- * Les charges et la trésorerie restent fermées au responsable commercial. Animer une
- * équipe de vente ne donne aucun titre à lire ce que l'entreprise dépense — et l'ouvrir
- * « parce qu'il est responsable » confondrait le rang avec la branche.
+ * Les indicateurs d'argent : ce qui entre, ce qui sort, ce qu'on doit.
+ *
+ * **Le comptable y entre, et c'est le sens du chantier 11.** Il tenait la caisse sans
+ * pouvoir lire l'état de cette caisse, ni la trésorerie qu'il alimente, ni ce que
+ * l'entreprise doit à ses fournisseurs : trois écrans faits de ses propres écritures, et
+ * fermés à lui. Ce sont des pages de lecture — aucune n'écrit quoi que ce soit — et son
+ * périmètre s'y applique comme à tout le monde : il ne voit que sa ville.
+ *
+ * **Ils restent fermés au responsable commercial.** Animer une équipe de vente ne donne
+ * aucun titre à lire ce que l'entreprise dépense — et l'ouvrir « parce qu'il est
+ * responsable » confondrait le rang avec la branche.
  */
-Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->group(function () {
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caissier'])->group(function () {
     Volt::route('/charges', 'pilotage.charges')->name('charges');
     Volt::route('/tresorerie', 'pilotage.tresorerie')->name('tresorerie');
     // Les deux écrans qui manquaient à ce qui était déjà importé : mille cent cinquante-cinq
@@ -46,12 +54,24 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     // en base sans qu'aucune page ne les affiche. Une donnée qu'on ne peut pas voir n'a pas
     // été importée, elle a été rangée.
     Volt::route('/caisse', 'pilotage.caisse')->name('caisse');
+    // La question du comptoir — « cette plaque, on a payé quoi dessus, et reste-t-il
+    // quelque chose ? » — a sa page : elle ne se pose pas sur une période, et la mêler à
+    // l'écran de caisse aurait donné un écran qui répond mal aux deux questions.
+    Volt::route('/caisse/vehicule', 'pilotage.caisse-vehicule')->name('caisse.vehicule');
     Volt::route('/fournisseurs', 'pilotage.fournisseurs')->name('fournisseurs');
     // Emporter le même tableau, avec les mêmes filtres : l'habilitation est celle de
     // l'écran d'où il vient, puisqu'un export n'est rien d'autre qu'une lecture.
     Route::get('/fournisseurs/telecharger/{format}', TelechargerLesFournisseurs::class)
         ->name('fournisseurs.telecharger')
         ->whereIn('format', array_keys(Exportateur::FORMATS));
+});
+
+/*
+ * Le reste du pilotage : le parc, les clients, les mouvements de véhicules et l'état des
+ * impayés. Le comptable n'y entre pas — ce ne sont plus ses chiffres mais ceux de
+ * l'exploitation, et l'état des impayés est un écran de saisie.
+ */
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->group(function () {
     // Le parc vit ici, avec les autres indicateurs, et non dans le module Import :
     // l'import le remplit, l'exploitation le consulte. On le lit tous les jours,
     // on n'importe qu'une fois par semaine.

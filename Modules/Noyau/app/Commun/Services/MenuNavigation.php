@@ -3,7 +3,9 @@
 namespace Modules\Noyau\Commun\Services;
 
 use App\Models\User;
+use Modules\Import\Support\AccesImport;
 use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 
 /**
  * Construit le menu du bandeau supérieur selon le rôle de l'utilisateur connecté.
@@ -95,6 +97,17 @@ class MenuNavigation
                 // décrochait le téléphone sans pouvoir lire ce qu'un client devait.
                 // Consultation seulement — voir AccesRecouvrement.
                 ['label' => 'Recouvrement', 'route' => 'recouvrement.tableau-de-bord', 'actifPattern' => 'recouvrement.'],
+                /*
+                 * Les indicateurs faits de ses propres écritures, qui lui étaient fermés :
+                 * il tenait la caisse sans pouvoir lire l'état de cette caisse, ni la
+                 * trésorerie qu'il alimente, ni ce que l'entreprise doit. Lecture seule —
+                 * aucune de ces pages n'écrit — et dans son périmètre, comme pour tous.
+                 */
+                ['label' => 'Caisse', 'route' => 'caisse'],
+                ['label' => 'Caisse par véhicule', 'route' => 'caisse.vehicule'],
+                ['label' => 'Trésorerie', 'route' => 'tresorerie'],
+                ['label' => 'Charges', 'route' => 'charges'],
+                ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
                 ['label' => 'Messages', 'route' => 'messages'],
                 ['label' => 'Notifications', 'route' => 'mes-notifications'],
                 ['label' => 'Paramètres', 'route' => 'mon-espace'],
@@ -108,7 +121,7 @@ class MenuNavigation
          * ouvertes, et le premier onglet auquel il a droit est sa page d'arrivée.
          */
         if ($utilisateur->hasRole('superviseur_recouvrement') || $utilisateur->hasRole('agent_recouvrement')) {
-            $pages = \Modules\Recouvrement\Support\AccesRecouvrement::pagesDe($utilisateur);
+            $pages = AccesRecouvrement::pagesDe($utilisateur);
 
             /*
              * Le tableau de bord se détache du reste : c'est la page d'arrivée, celle qui
@@ -167,7 +180,7 @@ class MenuNavigation
          * l'encours est la moitié qu'on ne lui montrait pas. AccesRecouvrement décide de ce
          * que chacun y trouve ; ici on se contente d'ouvrir la porte à qui en a une.
          */
-        if (\Modules\Recouvrement\Support\AccesRecouvrement::ouvertA($utilisateur)) {
+        if (AccesRecouvrement::ouvertA($utilisateur)) {
             $onglets[] = ['label' => 'Recouvrement', 'route' => 'recouvrement.tableau-de-bord', 'actifPattern' => 'recouvrement.'];
         }
 
@@ -176,7 +189,7 @@ class MenuNavigation
          * superviseur de ville arrivent sur le dépôt, la comptabilité sur le journal —
          * elle consulte les imports sans en faire.
          */
-        $pagesImport = \Modules\Import\Support\AccesImport::pagesDe($utilisateur);
+        $pagesImport = AccesImport::pagesDe($utilisateur);
 
         if ($pagesImport !== []) {
             $onglets[] = [
@@ -209,6 +222,9 @@ class MenuNavigation
                 // faces de la même question — ce qui sort en espèces, et ce qu'on doit
                 // encore. Toutes deux viennent d'un fichier du logiciel d'atelier.
                 ['label' => 'Caisse', 'route' => 'caisse'],
+                // La caisse répond à « combien est entré cette semaine » ; celle-ci à
+                // « cette plaque, on a payé quoi dessus » — deux questions, deux écrans.
+                ['label' => 'Caisse par véhicule', 'route' => 'caisse.vehicule'],
                 ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
                 ['label' => 'Commerciaux', 'route' => 'commerciaux'],
             ],

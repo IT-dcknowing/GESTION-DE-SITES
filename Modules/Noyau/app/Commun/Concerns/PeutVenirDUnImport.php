@@ -3,6 +3,8 @@
 namespace Modules\Noyau\Commun\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Noyau\Imports\Modeles\LotImport;
 
 /**
  * Une ligne peut avoir été saisie sur la plateforme, ou reprise du logiciel d'atelier.
@@ -29,6 +31,19 @@ use Illuminate\Database\Eloquent\Builder;
  */
 trait PeutVenirDUnImport
 {
+    /**
+     * Le lot dont cette ligne est venue — nul si elle a été saisie ici.
+     *
+     * La colonne existait, le chemin pour la suivre non : savoir qu'une ligne est importée
+     * ne servait à rien tant qu'on ne pouvait pas dire **de quel fichier**, ni quand il a
+     * été déposé. C'est la première question posée devant un chiffre qu'on ne s'explique
+     * pas, et il fallait aller la chercher à la main dans le journal des lots.
+     */
+    public function lot(): BelongsTo
+    {
+        return $this->belongsTo(LotImport::class, 'lot_import_id');
+    }
+
     /** Les lignes nées sur la plateforme, avec tout ce que la saisie garantit. */
     public function scopeSaisieManuelle(Builder $query): Builder
     {
