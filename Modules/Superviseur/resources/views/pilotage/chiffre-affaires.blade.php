@@ -6,6 +6,7 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\Recouvrement;
 use function Livewire\Volt\{state, computed, mount};
 
 state([
@@ -198,9 +199,16 @@ $peutPorter = computed(fn () => auth()->user()->hasAnyRole(['gerant', 'responsab
 
 $nombreDetail = computed(fn () => (clone $this->requeteDetail)->count());
 
-/** Seule la page affichée se charge : dix factures, et non toutes celles de la période. */
+/**
+ * Seule la page affichée se charge : dix factures, et non toutes celles de la période.
+ *
+ * L'encaissé est additionné en base, pour une raison qui n'est pas d'affichage : c'est lui
+ * qui décide si « Porter à l'état » a un sens. Une facture entièrement réglée n'a rien à
+ * recouvrer, et lui offrir le bouton, c'est proposer d'ouvrir une créance qui n'existe pas.
+ */
 $detail = computed(fn () => (clone $this->requeteDetail)
     ->with(['commercial', 'site'])
+    ->withSum('encaissements', 'montant')
     ->latest('date')->latest('id')
     ->forPage(max(1, (int) $this->pageDetail), 10)
     ->get());
@@ -341,8 +349,11 @@ $comptesParOrigine = computed(fn () => [
                             @if ($this->peutPorter)
                                 <td style="white-space:nowrap;">
                                     {{-- Envoyer la facture à l'état : le panneau « Porter » s'y ouvre dessus,
-                                         les champs connus déjà remplis. --}}
-                                    @if ($ligne->exercice_impayes === null)
+                                         les champs connus déjà remplis. Sauf si elle est réglée :
+                                         un état des impayés n'a que faire d'une créance éteinte. --}}
+                                    @if ($ligne->exercice_impayes === null && Recouvrement::reste($ligne) < Recouvrement::SEUIL_SOLDE)
+                                        <span style="font-size:12px; color:#0E9F6E; font-weight:600;">Réglée</span>
+                                    @elseif ($ligne->exercice_impayes === null)
                                         <a href="{{ route('impayes', ['porter' => $ligne->id]) }}" wire:navigate class="bouton bouton-secondaire"
                                             style="padding:4px 10px; font-size:12px; text-decoration:none;">Porter à l'état</a>
                                     @else

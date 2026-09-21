@@ -443,8 +443,9 @@ final class PortefeuilleDeRecouvrement
      * insensible à la casse : mesuré sur la base, « NSIA Assurances » et « NSIA ASSURANCES »
      * y sont le même tiers, alors que la balance âgée les compte séparément — le dossier
      * aurait affiché deux cent quarante et une factures là où l'encours en annonce deux cent
-     * trente-quatre. Ensuite parce que la priorité courtier → compagnie → client est écrite
-     * à un seul endroit, et qu'une seconde écriture en SQL aurait fini par en diverger.
+     * trente-quatre. Ensuite parce que la priorité déposant → courtier → compagnie → client
+     * est écrite à un seul endroit, et qu'une seconde écriture en SQL aurait fini par en
+     * diverger.
      *
      * @return Collection<int, int>
      */
@@ -452,10 +453,11 @@ final class PortefeuilleDeRecouvrement
     {
         return Facture::query()
             ->where(fn ($requete) => $requete
-                ->where('courtier', $tiers)
+                ->where('depose_chez', $tiers)
+                ->orWhere('courtier', $tiers)
                 ->orWhere('assureur', $tiers)
                 ->orWhere('client', $tiers))
-            ->get(['id', 'client', 'assureur', 'courtier'])
+            ->get(['id', 'client', 'assureur', 'courtier', 'depose_chez'])
             ->filter(fn (Facture $f) => $f->tiersPayant() === $tiers)
             ->pluck('id');
     }

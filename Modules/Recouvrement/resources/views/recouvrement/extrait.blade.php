@@ -63,8 +63,17 @@ $tousLesTiers = computed(fn () => Recouvrement::tiers());
  */
 $factures = computed(fn () => Recouvrement::facturesDuTiers(Recouvrement::factures($this->arrete), $this->tiers));
 
-/** Vrai si ce tiers porte au moins une facture au titre d'une compagnie : l'extrait le dit alors. */
-$estCourtier = computed(fn () => $this->factures->contains(fn (Facture $f) => trim((string) $f->courtier) !== ''));
+/**
+ * Vrai si ce tiers règle pour le compte d'un autre — l'extrait dit alors pour qui.
+ *
+ * Deux cas le font : le courtier, qui porte les factures des compagnies qu'il représente ;
+ * et le dépositaire, chez qui des factures établies au nom de leurs clients ont été
+ * déposées. Dans les deux cas, un relevé qui n'aligne que des numéros ne se vérifie pas :
+ * celui qui le reçoit doit retrouver de quel dossier chaque ligne vient.
+ */
+$estCourtier = computed(fn () => $this->factures->contains(
+    fn (Facture $f) => trim((string) $f->courtier) !== '' || trim((string) $f->depose_chez) !== ''
+));
 
 $ouvertes = computed(fn () => $this->factures->filter(fn (Facture $f) => Recouvrement::reste($f) >= Recouvrement::SEUIL_SOLDE));
 
@@ -188,12 +197,23 @@ $totaux = computed(fn () => [
                                 $reste = Recouvrement::reste($facture);
                                 $niveau = Recouvrement::niveau($facture, $this->arrete);
                                 $age = Recouvrement::anciennete($facture, $this->arrete);
+
+                                /*
+                                 * Pour le compte de qui la facture est portée. Déposée chez ce
+                                 * tiers : c'est le client facturé qui est derrière ; portée par
+                                 * un courtier : c'est la compagnie. Calculé ici et non en tête
+                                 * du composant — une fonction posée là-haut deviendrait une
+                                 * action appelable depuis le navigateur.
+                                 */
+                                $pourLeCompte = trim((string) $facture->depose_chez) !== ''
+                                    ? ($facture->client ?: Recouvrement::assuranceDe($facture))
+                                    : Recouvrement::assuranceDe($facture);
                             @endphp
                             <tr>
                                 <td>{{ $facture->date?->format('d/m/Y') ?? '—' }}</td>
                                 <td>{{ $facture->n_facture }}</td>
                                 @if ($this->estCourtier)
-                                    <td>{{ Recouvrement::assuranceDe($facture) }}</td>
+                                    <td>{{ $pourLeCompte }}</td>
                                 @endif
                                 <td>{{ $facture->vehicule }}</td>
                                 <td>{{ $facture->immatriculation }}</td>

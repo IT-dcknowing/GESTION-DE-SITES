@@ -87,6 +87,9 @@ state([
     'fSiteId' => '',
     'fVilleId' => '',
     'fCourtier' => '',
+    // Hors classeur : chez qui la facture a été déposée. Le fichier ne le disait pas, et
+    // c'est précisément ce qui manquait pour réclamer la créance à qui la doit.
+    'fDeposeChez' => '',
     'fDateReception' => '',
     'fDate' => '',
     'fNumero' => '',
@@ -228,6 +231,7 @@ $requeteDesLignes = protect(function () {
             ->where('client', 'like', $terme)
             ->orWhere('assureur', 'like', $terme)
             ->orWhere('courtier', 'like', $terme)
+            ->orWhere('depose_chez', 'like', $terme)
             ->orWhere('numero', 'like', $terme)
             ->orWhere('n_facture', 'like', $terme)
             ->orWhere('immatriculation', 'like', $terme)
@@ -288,7 +292,7 @@ $verrouilles = computed(fn () => $this->ligneModifiee ? EtatDesImpayes::champsVe
  */
 $viderLeFormulaire = function () {
     foreach ([
-        'fAssureur', 'fClient', 'fSiteId', 'fVilleId', 'fCourtier', 'fDateReception', 'fDate', 'fNumero',
+        'fAssureur', 'fClient', 'fSiteId', 'fVilleId', 'fCourtier', 'fDeposeChez', 'fDateReception', 'fDate', 'fNumero',
         'fSinistre', 'fVehicule', 'fImmatriculation', 'fMontant', 'fRegle', 'fModeReglement',
         'fDateReglement', 'fBanque', 'fCommentaires',
     ] as $champ) {
@@ -331,6 +335,7 @@ $modifier = function (int $id) {
     $this->fSiteId = (string) ($ligne->site_id ?? '');
     $this->fVilleId = (string) ($ligne->ville_id ?? '');
     $this->fCourtier = (string) $ligne->courtier;
+    $this->fDeposeChez = (string) $ligne->depose_chez;
     $this->fDateReception = $ligne->date_reception?->toDateString() ?? '';
     $this->fDate = $ligne->date?->toDateString() ?? '';
     $this->fNumero = (string) $ligne->n_facture;
@@ -416,6 +421,7 @@ $enregistrer = function () {
         'fDateReglement' => ['exclude_if:fRegle,', 'required_unless:fRegle,0', 'date', 'after_or_equal:fDate', 'before_or_equal:today'],
         'fAssureur' => ['nullable', 'string', 'max:160'],
         'fCourtier' => ['nullable', 'string', 'max:160'],
+        'fDeposeChez' => ['nullable', 'string', 'max:160'],
         'fSinistre' => ['nullable', 'string', 'max:60'],
         'fVehicule' => ['nullable', 'string', 'max:120'],
         'fImmatriculation' => ['nullable', 'string', 'max:30'],
@@ -428,6 +434,7 @@ $enregistrer = function () {
         'fSiteId' => 'site', 'fVilleId' => 'ville', 'fMontant' => 'montant TTC', 'fRegle' => 'montant réglé',
         'fDateReception' => 'date de réception', 'fModeReglement' => 'mode de règlement',
         'fDateReglement' => 'date de règlement', 'fAssureur' => 'assureur', 'fCourtier' => 'courtier',
+        'fDeposeChez' => 'déposée chez',
         'fSinistre' => 'numéro de sinistre', 'fVehicule' => 'véhicule',
         'fImmatriculation' => 'immatriculation', 'fBanque' => 'banque',
     ]);
@@ -476,6 +483,7 @@ $enregistrer = function () {
         'client' => trim($donnees['fClient']),
         'assureur' => $donnees['fAssureur'] ?: null,
         'courtier' => $donnees['fCourtier'] ?: null,
+        'depose_chez' => trim((string) $donnees['fDeposeChez']) ?: null,
         'banque' => $donnees['fBanque'] ?: null,
         'vehicule' => $donnees['fVehicule'] ?: null,
         'immatriculation' => $immatriculation ?: null,
@@ -708,6 +716,8 @@ $basculerPortage = function () {
                         <x-champ label="Ville (sans atelier)" model="fVilleId" type="select" :options="$this->villesSaisissables" vide="— à préciser —" width="150" />
                     @endif
                     <x-champ label="Courtier" model="fCourtier" width="150" />
+                    {{-- Facultatif, et décisif : renseigné, c'est lui qu'on relance. --}}
+                    <x-champ label="Déposée chez" model="fDeposeChez" width="160" />
                     <x-champ label="Date d'édition" model="fDate" type="date" :requis="true" width="140" :disabled="in_array('date', $verrou, true)" />
                     <x-champ label="Date de réception" model="fDateReception" type="date" :requis="true" width="140" />
                     <x-champ label="N° de la facture" model="fNumero" :requis="true" width="135" :disabled="in_array('n_facture', $verrou, true)" />
@@ -779,6 +789,7 @@ $basculerPortage = function () {
                         <th>Client</th>
                         <th>SITE</th>
                         <th>Courtier</th>
+                        <th>Déposée chez</th>
                         <th>Date de réception</th>
                         <th>Date d'édition</th>
                         <th>N° facture</th>
@@ -827,6 +838,16 @@ $basculerPortage = function () {
                                 @endif
                             </td>
                             <td>{{ $ligne->courtier ?? '—' }}</td>
+                            {{-- Renseignée, c'est elle qui désigne le payeur : on le dit, plutôt
+                                 que de laisser deviner pourquoi la relance part ailleurs. --}}
+                            <td>
+                                @if ($ligne->depose_chez)
+                                    <span style="font-weight:600;">{{ $ligne->depose_chez }}</span>
+                                    <div style="font-size:11px; color:#6B6E76;">c'est lui qu'on relance</div>
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td>{{ $ligne->date_reception?->format('d/m/Y') ?? '—' }}</td>
                             <td>{{ $ligne->date?->format('d/m/Y') ?? '—' }}</td>
                             <td>{{ $ligne->n_facture ?? '—' }}</td>
@@ -851,7 +872,10 @@ $basculerPortage = function () {
                             <td>{{ $ligne->banque ?? '—' }}</td>
                             <td style="white-space:nowrap;">
                                 @if ($reste < Recouvrement::SEUIL_SOLDE)
-                                    <span style="color:#0E9F6E; font-weight:600;">Soldée</span>
+                                    {{-- Une pastille, et non plus un mot vert : avec le filtre sur
+                                         « Toutes », une créance éteinte doit se distinguer d'une
+                                         créance ouverte sans qu'on ait à lire la colonne. --}}
+                                    <span class="pastille pastille-vert" style="font-weight:600;">Soldée</span>
                                 @else
                                     {{ $age !== null ? $age.' j' : '—' }}
                                     <div style="font-size:11px; color:#6B6E76;">
@@ -880,7 +904,7 @@ $basculerPortage = function () {
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="22"
+                        <x-table-vide :colspan="23"
                             texte="Aucune créance dans l'état {{ $this->annee }}. Le bouton « Ajouter une créance » ouvre la saisie." />
                     @endforelse
                 </tbody>

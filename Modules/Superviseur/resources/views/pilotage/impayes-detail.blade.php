@@ -135,7 +135,12 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
                     <tr><td style="{{ $intitule }}">Année de l'état</td><td style="{{ $cellule }}">{{ $f->exercice_impayes }}</td></tr>
                     <tr><td style="{{ $intitule }}">Report</td><td style="{{ $cellule }}">{{ EtatDesImpayes::libelleReport($f, (int) now()->year) }}</td></tr>
                     <tr><td style="{{ $intitule }}">Activité</td><td style="{{ $cellule }}">{{ $f->activite ?? '—' }}</td></tr>
-                    <tr><td style="{{ $intitule }}">Tiers payant (celui qu'on relance)</td><td style="{{ $cellule }}">{{ $f->tiersPayant() }}</td></tr>
+                    @if ($f->depose_chez)
+                        <tr><td style="{{ $intitule }}">Déposée chez</td><td style="{{ $cellule }}">{{ $f->depose_chez }}</td></tr>
+                    @endif
+                    {{-- Dire d'où vient le payeur évite la question suivante : pourquoi la
+                         relance ne part-elle pas au nom inscrit sur la facture ? --}}
+                    <tr><td style="{{ $intitule }}">Tiers payant (celui qu'on relance)</td><td style="{{ $cellule }}">{{ $f->tiersPayant() }}@if ($f->depose_chez)<span style="color:#6B6E76;"> — parce que la facture est déposée chez lui</span>@endif</td></tr>
                     <tr><td style="{{ $intitule }}">Niveau de relance</td><td style="{{ $cellule }}">{{ $niveau['libelle'] }}</td></tr>
                     @if ($f->anciennete_declaree)
                         <tr><td style="{{ $intitule }}">Tranche écrite dans le classeur</td><td style="{{ $cellule }}">{{ $f->anciennete_declaree }}</td></tr>
