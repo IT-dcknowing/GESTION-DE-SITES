@@ -37,8 +37,8 @@ state([
 $parPage = computed(fn () => 25);
 
 mount(function () {
-    $this->dateDebut ??= now()->startOfYear()->format('Y-m');
-    $this->dateFin ??= now()->format('Y-m');
+    $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
+    $this->dateFin ??= now()->format('Y-m-d');
 });
 
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; $this->pageDetail = 1; };
@@ -174,7 +174,7 @@ $couleurStatut = fn (?string $statut) => match (true) {
     {{-- La même barre que sur les autres écrans de pilotage : calendrier ou période,
          ville, atelier. La précision Mécanique/Sinistre est masquée — le parc ne porte pas
          cette notion, il porte un motif de venue, filtré plus bas. --}}
-    <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSites" :site-filtre="$siteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
         masquer-activite />

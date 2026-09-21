@@ -316,15 +316,28 @@ class TelechargementController
         $regle = 0;
         $reste = 0;
 
+        /*
+         * Les colonnes de l'écran, toutes. Le document sortait sans la date de dépôt, sans le
+         * numéro de sinistre et sans le tiers pour le compte de qui la facture est portée —
+         * c'est-à-dire sans ce qui permet à celui qui le reçoit de retrouver ses dossiers. Un
+         * extrait qu'on ne peut pas rapprocher se conteste, et il a raison de se contester.
+         */
         $corps = $factures->map(function (Facture $f) use ($arrete, &$regle, &$reste) {
             $du = Recouvrement::reste($f);
             $age = Recouvrement::anciennete($f, $arrete);
             $regle += (int) $f->montant - $du;
             $reste += $du;
 
+            $pourLeCompte = trim((string) $f->depose_chez) !== ''
+                ? ($f->client ?: Recouvrement::assuranceDe($f))
+                : Recouvrement::assuranceDe($f);
+
             return [
                 $f->date?->format('d/m/Y') ?? '—',
+                $f->date_reception?->format('d/m/Y') ?? '—',
                 (string) $f->n_facture,
+                (string) ($f->n_sinistre ?: '—'),
+                $pourLeCompte,
                 (string) ($f->vehicule ?: '—'),
                 (string) ($f->immatriculation ?: '—'),
                 (int) $f->montant,
@@ -335,9 +348,10 @@ class TelechargementController
         })->values()->all();
 
         $donnees = [
-            ['Date', 'N° facture', 'Véhicule', 'Immatriculation', 'Montant TTC', 'Réglé', 'Reste à payer', 'Ancienneté'],
+            ['Date de facturation', 'Date de dépôt', 'N° facture', 'N° sinistre', 'Pour le compte de',
+                'Véhicule', 'Immatriculation', 'Montant TTC', 'Réglé', 'Reste à payer', 'Ancienneté'],
             $corps,
-            ['TOTAL', '', '', '', (int) $factures->sum('montant'), $regle, $reste, ''],
+            ['TOTAL', '', '', '', '', '', '', (int) $factures->sum('montant'), $regle, $reste, ''],
             [],
         ];
 

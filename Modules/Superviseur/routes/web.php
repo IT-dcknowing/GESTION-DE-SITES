@@ -3,7 +3,9 @@
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Commun\Controleurs\TelechargerAnnuaire;
+use Modules\Noyau\Commun\Services\Exportateur;
 use Modules\Superviseur\Http\Controllers\AccesController;
+use Modules\Superviseur\Http\Controllers\TelechargerLesFournisseurs;
 
 /*
 |--------------------------------------------------------------------------
@@ -45,6 +47,11 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     // été importée, elle a été rangée.
     Volt::route('/caisse', 'pilotage.caisse')->name('caisse');
     Volt::route('/fournisseurs', 'pilotage.fournisseurs')->name('fournisseurs');
+    // Emporter le même tableau, avec les mêmes filtres : l'habilitation est celle de
+    // l'écran d'où il vient, puisqu'un export n'est rien d'autre qu'une lecture.
+    Route::get('/fournisseurs/telecharger/{format}', TelechargerLesFournisseurs::class)
+        ->name('fournisseurs.telecharger')
+        ->whereIn('format', array_keys(Exportateur::FORMATS));
     // Le parc vit ici, avec les autres indicateurs, et non dans le module Import :
     // l'import le remplit, l'exploitation le consulte. On le lit tous les jours,
     // on n'importe qu'une fois par semaine.

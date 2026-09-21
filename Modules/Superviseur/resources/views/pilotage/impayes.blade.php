@@ -12,6 +12,7 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Noyau\Exploitation\Services\SuppressionDUneCreance;
 use function Livewire\Volt\{computed, mount, on, protect, state};
 
 /*
@@ -108,6 +109,15 @@ state([
     // laquelle il s'ouvre quand on arrive d'une autre page.
     'porterOuvert' => false,
     'porterFacture' => null,
+
+    /*
+     * La créance dont la suppression est demandée, en attente de confirmation.
+     *
+     * Deux temps plutôt qu'un dialogue du navigateur : `confirm()` est banni de la maison,
+     * il bloque la page et se ressemble d'un écran à l'autre au point qu'on le valide sans
+     * le lire. Ici la ligne elle-même change d'aspect et pose la question à sa place.
+     */
+    'suppressionDemandee' => null,
 ]);
 
 mount(function () {
@@ -316,6 +326,61 @@ $basculerFormulaire = function () {
 };
 
 /** Ouvre le formulaire sur une ligne existante. */
+/** La créance visée par une demande de suppression, relue dans le périmètre du compte. */
+$creanceASupprimer = computed(fn () => $this->suppressionDemandee === null ? null : EtatDesImpayes::dansLePerimetre(
+    Facture::query()->whereNotNull('exercice_impayes'),
+    $this->idsSitesDuCompte,
+    $this->idsVillesDuCompte,
+)->find((int) $this->suppressionDemandee));
+
+/** Vrai si ce compte peut, en principe, effacer une créance — le bouton n'apparaît pas sinon. */
+$peutSupprimer = computed(fn () => auth()->user()->hasRole('gerant'));
+
+$demanderLaSuppression = function (int $id) {
+    $this->suppressionDemandee = $id;
+    unset($this->creanceASupprimer);
+};
+
+$annulerLaSuppression = function () {
+    $this->suppressionDemandee = null;
+    unset($this->creanceASupprimer);
+};
+
+/**
+ * Efface la créance confirmée.
+ *
+ * L'identifiant n'est pas repris du navigateur : on efface celle que le composant tient,
+ * relue dans le périmètre du compte. Et le service repose ses trois verrous — gérant, rien
+ * de réglé, rien d'importé — car un bouton caché n'a jamais autorisé personne.
+ */
+$confirmerLaSuppression = function () {
+    $creance = $this->creanceASupprimer;
+
+    if ($creance === null) {
+        $this->suppressionDemandee = null;
+        $this->dispatch('annonce', texte: "Cette créance n'est pas dans votre périmètre, ou n'existe plus.");
+
+        return;
+    }
+
+    $refus = SuppressionDUneCreance::refus(auth()->user(), $creance);
+
+    if ($refus !== null) {
+        $this->suppressionDemandee = null;
+        unset($this->creanceASupprimer);
+        $this->dispatch('annonce', texte: $refus);
+
+        return;
+    }
+
+    $reference = SuppressionDUneCreance::effacer(auth()->user(), $creance);
+
+    $this->suppressionDemandee = null;
+    unset($this->creanceASupprimer, $this->pageLignes, $this->totaux, $this->exercices);
+
+    $this->dispatch('annonce', texte: 'Créance '.$reference.' supprimée. Le journal en garde le contenu.');
+};
+
 $modifier = function (int $id) {
     $this->viderLeFormulaire();
     $this->enModification = $id;
@@ -901,6 +966,28 @@ $basculerPortage = function () {
                                     style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
                                 <button type="button" wire:click="modifier({{ $ligne->id }})" class="bouton"
                                     style="padding:4px 10px; font-size:12px;">Modifier</button>
+
+                                @if ($this->peutSupprimer)
+                                    @php $empeche = SuppressionDUneCreance::refus(auth()->user(), $ligne); @endphp
+
+                                    @if ((int) $suppressionDemandee === (int) $ligne->id)
+                                        {{-- La question se pose là où l'on a cliqué, sur la ligne
+                                             concernée : on voit ce qu'on s'apprête à effacer. --}}
+                                        <span style="font-size:12px; color:#C8102E; font-weight:700;">Effacer ?</span>
+                                        <button type="button" wire:click="confirmerLaSuppression" class="bouton"
+                                            style="padding:4px 10px; font-size:12px; background:#C8102E; border-color:#C8102E;">Oui, effacer</button>
+                                        <button type="button" wire:click="annulerLaSuppression" class="bouton bouton-secondaire"
+                                            style="padding:4px 10px; font-size:12px;">Non</button>
+                                    @elseif ($empeche === null)
+                                        <button type="button" wire:click="demanderLaSuppression({{ $ligne->id }})"
+                                            class="bouton bouton-secondaire"
+                                            style="padding:4px 10px; font-size:12px; color:#C8102E; border-color:#C8102E;">Supprimer</button>
+                                    @else
+                                        {{-- Le refus s'affiche plutôt que le bouton : un bouton grisé
+                                             sans raison se prend pour une panne. --}}
+                                        <span title="{{ $empeche }}" style="font-size:11px; color:#6B6E76;">non supprimable</span>
+                                    @endif
+                                @endif
                             </td>
                         </tr>
                     @empty

@@ -94,11 +94,39 @@ $kpis = computed(fn () => [
     'fournisseurs' => (clone $this->perimetre)->distinct()->count('fournisseur'),
 ]);
 
-/** À qui l'on doit le plus : c'est par là qu'une négociation de délai commence. */
-$principaux = computed(fn () => (clone $this->perimetre)
-    ->where('reste_a_payer', '>', 0)
-    ->selectRaw('fournisseur, count(*) as pieces, sum(reste_a_payer) as du')
-    ->groupBy('fournisseur')->orderByDesc('du')->limit(10)->get());
+/**
+ * À qui l'on doit le plus : c'est par là qu'une négociation de délai commence.
+ *
+ * **Le déjà payé y figure, et ce n'est pas un ornement.** Le tableau ne montrait que la
+ * dette. Or on n'aborde pas de la même façon un fournisseur à qui l'on doit deux millions
+ * sur trois millions engagés et un autre à qui l'on doit les deux millions d'une première
+ * commande : le premier est un compte qui tourne, le second un compte qui s'installe. Le
+ * chiffre existait dans le détail d'un fournisseur ; il manquait là où l'on décide.
+ *
+ * Le réglé est additionné sur **toutes** les pièces du fournisseur, y compris soldées,
+ * quand la dette ne compte que les pièces ouvertes : c'est ce que « déjà payé » veut dire.
+ * D'où la jointure sur une seconde lecture plutôt qu'une colonne de plus dans la première.
+ */
+$principaux = computed(function () {
+    $dus = (clone $this->perimetre)
+        ->where('reste_a_payer', '>', 0)
+        ->selectRaw('fournisseur, count(*) as pieces, sum(reste_a_payer) as du')
+        ->groupBy('fournisseur')->orderByDesc('du')->limit(10)->get();
+
+    if ($dus->isEmpty()) {
+        return $dus;
+    }
+
+    $regles = (clone $this->perimetre)
+        ->whereIn('fournisseur', $dus->pluck('fournisseur')->all())
+        ->selectRaw('fournisseur, sum(montant_regle) as regle, sum(montant) as engage')
+        ->groupBy('fournisseur')->get()->keyBy('fournisseur');
+
+    return $dus->each(function ($ligne) use ($regles) {
+        $ligne->regle = (int) ($regles[$ligne->fournisseur]->regle ?? 0);
+        $ligne->engage = (int) ($regles[$ligne->fournisseur]->engage ?? 0);
+    });
+});
 
 $detail = computed(fn () => (clone $this->requete)
     ->with('ville')
@@ -150,6 +178,7 @@ $detail = computed(fn () => (clone $this->requete)
                         <tr>
                             <th>Fournisseur</th>
                             <th style="text-align:right;">Pièces ouvertes</th>
+                            <th style="text-align:right;">Déjà payé</th>
                             <th style="text-align:right;">Reste à payer</th>
                             <th style="text-align:right;">Part de la dette</th>
                         </tr>
@@ -159,6 +188,14 @@ $detail = computed(fn () => (clone $this->requete)
                             <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                                 <td>{{ $f->fournisseur ?: '—' }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ $f->pieces }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
+                                    {{ ae((int) $f->regle) }}
+                                    @if ($f->engage > 0)
+                                        {{-- La part réglée dit d'un coup d'œil si le compte tourne
+                                             ou s'il s'installe. --}}
+                                        <div style="font-size:11px; color:#6B6E76;">{{ round($f->regle / $f->engage * 100) }} % de l'engagé</div>
+                                    @endif
+                                </td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $f->du) }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
                                     {{ $this->kpis['reste'] > 0 ? round($f->du / $this->kpis['reste'] * 100) : 0 }} %
@@ -177,7 +214,7 @@ $detail = computed(fn () => (clone $this->requete)
                 Factures reçues ({{ number_format($this->detail->total(), 0, ',', ' ') }})
             </h3>
 
-            <div style="display:flex; gap:9px; flex-wrap:wrap;">
+            <div style="display:flex; gap:9px; flex-wrap:wrap; align-items:center;">
                 <input type="search" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}"
                     placeholder="Fournisseur, n° de pièce, immatriculation…" class="champ" style="min-width:280px;">
 
@@ -187,6 +224,11 @@ $detail = computed(fn () => (clone $this->requete)
                     <option value="soldees" @selected($etatFiltre === 'soldees')>Soldées</option>
                     <option value="toutes" @selected($etatFiltre === 'toutes')>Toutes</option>
                 </select>
+
+                {{-- Les filtres voyagent dans l'adresse du lien : le fichier emporté contient
+                     exactement ce que le tableau montre, et le lien se transmet tel quel. --}}
+                <x-telecharger route="fournisseurs.telecharger"
+                    :parametres="['ville' => $villeFiltre, 'etat' => $etatFiltre, 'recherche' => $recherche]" />
             </div>
         </div>
 

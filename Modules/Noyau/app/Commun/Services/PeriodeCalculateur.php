@@ -14,9 +14,57 @@ use Modules\Noyau\Entreprises\Services\ExerciceDeTravail;
 class PeriodeCalculateur
 {
     /**
+     * Une borne saisie, lue au jour près — ou au mois, pour ce qui a été écrit avant.
+     *
+     * **Pourquoi deux formats.** Le filtre « du … au … » ne connaissait que le mois :
+     * on ne pouvait pas demander « du 3 au 17 mars », alors que c'est exactement ce
+     * qu'on cherche quand on rapproche une caisse ou qu'on vérifie une journée. Les
+     * bornes sont donc passées au jour (`Y-m-d`).
+     *
+     * Mais les anciennes valeurs (`Y-m`) survivent dans les liens partagés, dans les
+     * favoris du navigateur et dans l'adresse de toute page ouverte avant la mise à
+     * jour : les refuser rendrait ces liens inutilisables du jour au lendemain. Elles
+     * sont donc encore lues, et ouvertes au mois entier — début au premier, fin au
+     * dernier —, ce qui est très exactement ce qu'elles voulaient dire.
+     *
+     * @param  bool  $versLaFin  une borne de fin s'étend au dernier jour du mois quand seul
+     *                           le mois est donné ; une borne de début, au premier.
+     */
+    private static function borne(?string $valeur, bool $versLaFin): ?Carbon
+    {
+        $valeur = trim((string) $valeur);
+
+        if ($valeur === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valeur)) {
+            try {
+                return Carbon::createFromFormat('Y-m-d', $valeur)->startOfDay();
+            } catch (\Throwable) {
+                // Une date forgée dans l'adresse ne doit pas faire tomber la page : on
+                // retombe sur la borne par défaut, comme si rien n'avait été demandé.
+                return null;
+            }
+        }
+
+        if (preg_match('/^\d{4}-\d{2}$/', $valeur)) {
+            try {
+                $mois = Carbon::createFromFormat('Y-m', $valeur);
+
+                return $versLaFin ? $mois->endOfMonth() : $mois->startOfMonth();
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  string  $periode  'calendrier' ou 'periode'.
-     * @param  string|null  $debutPersonnalise  Mois de début au format "Y-m" (mode période).
-     * @param  string|null  $finPersonnalisee  Mois de fin au format "Y-m" (mode période).
+     * @param  string|null  $debutPersonnalise  Début du mode période, au jour (`Y-m-d`) ou au mois (`Y-m`).
+     * @param  string|null  $finPersonnalisee  Fin du mode période, au jour (`Y-m-d`) ou au mois (`Y-m`).
      * @param  int|null  $moisFiltre  Mois choisi (1-12) en mode calendrier, ou null pour « tous les mois ».
      * @param  int|null  $semaineFiltre  Numéro de semaine dans le mois choisi, ou null pour « toutes les semaines ».
      * @param  int|null  $jourFiltre  Jour du mois (ou de la semaine si elle est précisée), ou null pour « tous les jours ».
@@ -38,18 +86,18 @@ class PeriodeCalculateur
         $courante = $anneeRegardee === $aujourdhui->year;
 
         if ($periode === 'periode') {
-            $debut = $debutPersonnalise
-                ? Carbon::createFromFormat('Y-m', $debutPersonnalise)->startOfMonth()
-                : Carbon::create($anneeRegardee, 1, 1)->startOfMonth();
-            $fin = $finPersonnalisee
-                ? Carbon::createFromFormat('Y-m', $finPersonnalisee)->endOfMonth()
+            $debut = self::borne($debutPersonnalise, false)
+                ?? Carbon::create($anneeRegardee, 1, 1)->startOfMonth();
+            $fin = self::borne($finPersonnalisee, true)
                 // Sur l'année en cours on s'arrête au mois courant ; sur une année passée,
                 // s'y arrêter amputerait l'exercice de ses derniers mois.
-                : ($courante ? $aujourdhui->copy()->endOfMonth() : Carbon::create($anneeRegardee, 12, 31));
+                ?? ($courante ? $aujourdhui->copy()->endOfMonth() : Carbon::create($anneeRegardee, 12, 31));
 
-            // Un intervalle de mois inversé (fin avant début) n'a pas de sens à interroger.
+            // Un intervalle inversé (fin avant début) n'a pas de sens à interroger. On ramène
+            // la fin sur le début — un jour, et non un mois : borner au mois entier ferait
+            // revenir des écritures que les dates saisies excluaient.
             if ($fin->lessThan($debut)) {
-                $fin = $debut->copy()->endOfMonth();
+                $fin = $debut->copy();
             }
 
             return [$debut->startOfDay(), $fin->startOfDay()];
