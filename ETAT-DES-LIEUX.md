@@ -549,11 +549,18 @@ entier, pour que les liens mis en favori continuent de fonctionner.
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. **Vingt-deux lignes sont passées à « Terminé » le 21/09** (jours 1 à 4),
-et l'envoi du courrier à M. Fofana est à « À valider ». Le classeur vit désormais dans
-`C:\BUREAU\GESTION-DE-SITES\ARTISAN-PLAN-RESTANT\`. Le classeur se refabrique par le script de
-la séance ; il ne s'écrase pas tant qu'un tableur le tient ouvert, auquel cas la version à jour
-attend à côté.
+date de fin, une ligne par chantier. Au 23/09 : **45 lignes terminées, 12 à faire, 1 à
+valider** (l'envoi du courrier à M. Fofana). Deux sections se sont ajoutées au plan
+d'origine — la vitesse des pages, et la plateforme (qui saisit, et comment le joindre).
+Le classeur vit dans `C:\BUREAU\GESTION-DE-SITES\ARTISAN-PLAN-RESTANT\`, le PDF un cran
+au-dessus.
+
+Il se refabrique par le script de la séance, qui **relit le classeur au lieu de le réécrire**
+— les libellés ont été rédigés une fois, et les retaper les ferait dériver. Ce qui suppose
+qu'il soit rejouable sans rien empiler : il retire les doublons qu'une exécution précédente
+aurait laissés, repère la ligne de colonnes par son intitulé plutôt que par son rang, et
+repose ses deux sections entières. Il ne s'écrase pas tant qu'un tableur le tient ouvert,
+auquel cas la version à jour attend à côté.
 
 ### Hors chantier, toujours en attente
 
