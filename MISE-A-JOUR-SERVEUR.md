@@ -218,6 +218,31 @@ ni l'une ni l'autre ne lit ou n'écrit une ligne :
 - `2026_09_17_000002` ajoute `lots_import.controle` — un dépôt se souvient d'avoir été demandé
   « pour vérifier », afin qu'une relance tardive ne se mette pas à écrire.
 
+### Une seule fois, après la mise à jour du 21 septembre 2026
+
+La branche **`creances`** porte le premier jour du plan : le dépôt désigne le payeur, et une
+facture réglée ne se porte plus à l'état des impayés. Elle se fusionne dans `main` **sur le
+poste**, comme d'habitude, puis le poste pousse et les serveurs tirent.
+
+```bash
+git pull origin main
+php artisan app:deployer
+```
+
+**Rien à lancer de plus, et aucune donnée touchée.** Une seule migration passe avec
+`app:deployer` :
+
+- `2026_09_21_000001` ajoute `factures.depose_chez` (texte, facultatif) et son index
+  `(entreprise_id, depose_chez)`. La colonne naît vide : les 11 332 factures de la base
+  retombent exactement sur la règle d'hier — courtier, puis assureur, puis client — et aucun
+  écran ne change de chiffre tant que personne n'a renseigné un dépositaire.
+
+Ce qu'il faut savoir avant de l'annoncer aux utilisateurs : dès qu'une facture porte un
+« Déposée chez », **c'est ce tiers-là qui est relancé**, et la créance sort de la balance âgée
+du client facturé pour entrer dans la sienne. C'est le but ; ce n'est pas réversible par
+inadvertance, mais cela déplace un encours d'un compte à l'autre, et il vaut mieux que le
+service recouvrement le sache avant de le découvrir.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

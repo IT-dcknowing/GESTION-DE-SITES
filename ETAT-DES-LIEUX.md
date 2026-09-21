@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **18 septembre 2026**.*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **21 septembre 2026**.*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 561 tests, 554 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 590 tests, 583 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -126,7 +126,8 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 17/09 | voir `git log` | **impayes** | Porter : listes client → facture (numéro de saisie) cherchables, champs préremplis, composant à part ; bouton « Porter à l'état » sur le chiffre d'affaires ; état et chiffre d'affaires calculés en base ; index `encaissements (facture_id, montant)` ; caches reconstruits au déploiement |
 | 17/09 | voir `git log` | **impayes** | Porter = le formulaire de saisie prérempli (avance montrée et déduite) ; « + Ajouter une créance » s'ouvre sans le serveur ; menu préchargé au survol ; un dépôt endormi repart seul (`lots_import.controle`) ; rubrique *Vitesse* du diagnostic |
 | 17/09 | `aa6332a` | **main** | le propriétaire fusionne et pousse : `main`, `impayes` et `origin` au même point |
-| 18/09 | — | **plan** | relevé des fichiers réels, plan de travail d'une semaine (PDF + classeur de suivi) et courrier à l'éditeur du logiciel (§ 6) ; `DocumentPdf` gagne l'en-tête à deux marques et les cellules qui reviennent à la ligne |
+| 18/09 | `63c0b66` | **plan** | relevé des fichiers réels, plan de travail d'une semaine (PDF + classeur de suivi) et courrier à l'éditeur du logiciel (§ 6) ; `DocumentPdf` gagne l'en-tête à deux marques et les cellules qui reviennent à la ligne |
+| 21/09 | `8b611d9` | **creances** | jour 1 du plan : `factures.depose_chez` prend la tête du tiers payant ; la créance déposée n'est comptée que chez le dépositaire ; « Porter à l'état » disparaît des factures réglées ; sept tests verrouillent la règle |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -305,9 +306,9 @@ ce qu'on voulait dire.
 
 | # | Chantier | Ce qu'il faut faire |
 |---|---|---|
-| 1 | **Le payeur** | Vérifier partout la règle courtier → assureur → client (`Facture::tiersPayant()`), et l'entourer d'un test |
-| 2 | **Facture déposée chez un tiers** | Colonne « déposée chez » (additive) ; le payeur devient ce déposant ; la créance n'est comptée que chez lui — **et la colonne se lit dans le tableau de l'état des impayés**, c'est là qu'on constate le dépôt |
-| 2 bis | **Une facture réglée n'a rien à faire dans le recouvrement** | Voir l'encadré ci-dessous : le registre garde les soldées, le recouvrement ne les poursuit pas, mais « Porter à l'état » leur est encore proposé |
+| 1 | **Le payeur** | ✅ **Fait le 21/09.** La règle devient déposant → courtier → assureur → client, écrite une seule fois (`Facture::tiersPayant()`) et confrontée à sa traduction SQL (`Recouvrement::EXPRESSION_TIERS_PAYANT`) par un test |
+| 2 | **Facture déposée chez un tiers** | ✅ **Fait le 21/09.** `factures.depose_chez` (migration additive `2026_09_21_000001`), saisie dans l'état, dans « Porter » et dans le bloc facture du recouvrement, lue dans le tableau de l'état, trouvée par la recherche ; balance âgée, relances, extrait et annuaire la comptent chez le seul dépositaire |
+| 2 bis | **Une facture réglée n'a rien à faire dans le recouvrement** | ✅ **Fait le 21/09.** « Porter à l'état » laisse la place à « Réglée » quand il ne reste rien ; la mention « Soldée » devient une pastille. Le registre garde ses créances soldées — voir l'encadré ci-dessous |
 | 3 | **Extrait de compte** | Trois colonnes de plus : n° de sinistre, date de facturation, date de dépôt (données déjà en base) + exports |
 | 4 | **Prospection → devis → facture** | **Rapprochement par immatriculation + date d'abord** (fenêtre proposée : 15 jours) — le devis suit la prospection de trois à cinq jours, personne ne reviendra écrire un n° de fiche. `n_fiche_reception` ajouté à la prospection mais facultatif : quand il est là, il emporte la décision. Écran de confirmation, jamais de rapprochement muet |
 | 5 | **Deux gestes** | Suppression réservée au gérant (tracée, refusée sur une pièce réglée ou importée) ; filtre « du … au … » sur tous les tableaux |
@@ -331,11 +332,13 @@ l'écran on ne voit que les créances non soldées ; une soldée porte la mentio
 et son reste tombe à zéro ; `Recouvrement::niveau()` rend le niveau 0 « Soldée », et la balance
 âgée comme l'extrait de compte les écartent (`SEUIL_SOLDE`).
 
-Ce qui **manque vraiment**, et c'est le travail à faire : sur l'écran du chiffre d'affaires, le
-bouton « Porter à l'état » est offert dès que `exercice_impayes` est nul, **même pour une facture
-entièrement réglée** — il ne doit apparaître que s'il subsiste un reste, et afficher « Réglée »
-sinon. Et la mention « Soldée » doit être aussi visible qu'une pastille de relance quand le filtre
-est sur « Toutes ».
+Ce qui **manquait vraiment**, corrigé le 21/09 : sur l'écran du chiffre d'affaires, le bouton
+« Porter à l'état » était offert dès que `exercice_impayes` était nul, **même pour une facture
+entièrement réglée**. Il n'apparaît plus que s'il subsiste un reste, et affiche « Réglée » sinon —
+l'encaissé est additionné en base pour le savoir (`withSum`). La mention « Soldée » est devenue une
+pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur « Toutes ».
+
+**Reste à faire sur ce point** : rien. Le registre garde ses soldées, et c'est voulu.
 
 ### Les fichiers tenus à la main, à reprendre comme les impayés
 
@@ -353,6 +356,14 @@ est sur « Toutes ».
   rapprochement se fait par le nom ramené à une forme comparable et, pour un véhicule, par
   l'immatriculation. Le code client se posera par-dessus le jour venu, sans rien refaire.
 - **Balance et règlements fournisseurs** (exports du logiciel) : deux formats à écrire.
+
+### Où en est le plan
+
+Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
+date de fin, une ligne par chantier. **Six lignes sont passées à « Terminé » le 21/09** (jour 1),
+et l'envoi du courrier à M. Fofana est à « À valider ». Le classeur se refabrique par le script de
+la séance ; il ne s'écrase pas tant qu'un tableur le tient ouvert, auquel cas la version à jour
+attend à côté.
 
 ### Hors chantier, toujours en attente
 
