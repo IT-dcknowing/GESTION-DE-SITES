@@ -132,7 +132,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 21/09 | `ea7a480` | **creances** | jour 3 : écran *Caisse par véhicule* (fiche, caisse, factures, notes) ; « Autres » détaillé et bouton *Détail* en trésorerie ; les cinq écrans d'argent ouverts au comptable |
 | 21/09 | `b8ac87c` | **creances** | trois constats de l'écran : l'état des impayés se filtre « du … au … » (sur le dépôt, sinon l'édition), la colonne des boutons se colle au bord droit, une carte en grille peut enfin se rétrécir |
 | 21/09 | `a924584` | **creances** | jour 4 : la prospection dit quel véhicule elle vise ; rapprochement prospection / devis par fiche, plaque ou nom, dans une fenêtre réglable ; écran de confirmation, refus mémorisé |
-| 21/09 | `JOUR5` | **creances** | jour 5 : le barème de commission devient une donnée (grilles, tranches, date d'effet) ; page du barème réservée au gérant, avec essai ; colonnes *Barème*, *Commission* et *Cumul* sur l'écran Commerciaux |
+| 21/09 | `4c0d120` | **creances** | jour 5 : le barème de commission devient une donnée (grilles, tranches, date d'effet) ; page du barème réservée au gérant, avec essai ; colonnes *Barème*, *Commission* et *Cumul* sur l'écran Commerciaux |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
