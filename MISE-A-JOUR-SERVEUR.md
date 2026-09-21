@@ -243,6 +243,15 @@ du client facturé pour entrer dans la sienne. C'est le but ; ce n'est pas réve
 inadvertance, mais cela déplace un encours d'un compte à l'autre, et il vaut mieux que le
 service recouvrement le sache avant de le découvrir.
 
+**Trois autres changements du même envoi, sans migration ni commande :**
+
+- l'onglet **« Période »** des écrans d'indicateurs s'ouvrait sur une erreur — il ne s'ouvre
+  plus sur rien du tout, il s'ouvre. Le filtre y est désormais **au jour** (« du 3 au 17 mars »),
+  et les anciens liens mis en favori, qui portaient un mois, continuent de fonctionner ;
+- l'état des impayés propose au **gérant seul** un bouton **Supprimer**, refusé sur une créance
+  réglée ou importée, avec confirmation sur la ligne et trace complète au journal ;
+- l'écran **Fournisseurs** montre le déjà payé et gagne ses trois boutons de téléchargement.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

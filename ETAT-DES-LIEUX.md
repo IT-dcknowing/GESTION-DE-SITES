@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 590 tests, 583 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 603 tests, 596 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -128,6 +128,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 17/09 | `aa6332a` | **main** | le propriétaire fusionne et pousse : `main`, `impayes` et `origin` au même point |
 | 18/09 | `63c0b66` | **plan** | relevé des fichiers réels, plan de travail d'une semaine (PDF + classeur de suivi) et courrier à l'éditeur du logiciel (§ 6) ; `DocumentPdf` gagne l'en-tête à deux marques et les cellules qui reviennent à la ligne |
 | 21/09 | `8b611d9` | **creances** | jour 1 du plan : `factures.depose_chez` prend la tête du tiers payant ; la créance déposée n'est comptée que chez le dépositaire ; « Porter à l'état » disparaît des factures réglées ; sept tests verrouillent la règle |
+| 21/09 | `282538e` | **creances** | jour 2 : le filtre « du … au … » descend au jour (et s'ouvre enfin) ; suppression d'une créance réservée au gérant ; extrait de compte complété ; fournisseurs emportables avec leur déjà payé |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -309,13 +310,13 @@ ce qu'on voulait dire.
 | 1 | **Le payeur** | ✅ **Fait le 21/09.** La règle devient déposant → courtier → assureur → client, écrite une seule fois (`Facture::tiersPayant()`) et confrontée à sa traduction SQL (`Recouvrement::EXPRESSION_TIERS_PAYANT`) par un test |
 | 2 | **Facture déposée chez un tiers** | ✅ **Fait le 21/09.** `factures.depose_chez` (migration additive `2026_09_21_000001`), saisie dans l'état, dans « Porter » et dans le bloc facture du recouvrement, lue dans le tableau de l'état, trouvée par la recherche ; balance âgée, relances, extrait et annuaire la comptent chez le seul dépositaire |
 | 2 bis | **Une facture réglée n'a rien à faire dans le recouvrement** | ✅ **Fait le 21/09.** « Porter à l'état » laisse la place à « Réglée » quand il ne reste rien ; la mention « Soldée » devient une pastille. Le registre garde ses créances soldées — voir l'encadré ci-dessous |
-| 3 | **Extrait de compte** | Trois colonnes de plus : n° de sinistre, date de facturation, date de dépôt (données déjà en base) + exports |
+| 3 | **Extrait de compte** | ✅ **Fait le 21/09.** Date de facturation (qui dit enfin laquelle), date de dépôt, n° de sinistre, et le tiers « pour le compte de » — à l'écran **et** dans le fichier emporté, qui n'en avait aucune |
 | 4 | **Prospection → devis → facture** | **Rapprochement par immatriculation + date d'abord** (fenêtre proposée : 15 jours) — le devis suit la prospection de trois à cinq jours, personne ne reviendra écrire un n° de fiche. `n_fiche_reception` ajouté à la prospection mais facultatif : quand il est là, il emporte la décision. Écran de confirmation, jamais de rapprochement muet |
-| 5 | **Deux gestes** | Suppression réservée au gérant (tracée, refusée sur une pièce réglée ou importée) ; filtre « du … au … » sur tous les tableaux |
+| 5 | **Deux gestes** | ✅ **Fait le 21/09.** `SuppressionDUneCreance` : gérant seul, rien de réglé, rien d'importé, confirmation sur la ligne, ligne entière au journal. Filtre « du … au … » au jour sur les douze écrans — **et réparé** : voir l'encadré |
 | 6 | **N° de fiche de réception** | Relevé fait : présent partout sauf chez les fournisseurs — parc, entrées, sorties, fiches, devis, factures ; dans le libellé pour la caisse |
 | 7 | **Caisse par véhicule** | Page dédiée : recherche sur l'immatriculation, factures en cours du véhicule, champ de commentaire tracé |
 | 8 | **Trésorerie** | Bouton « Détail » par mouvement (pièce, import, auteur) et contenu réel de la ligne « Autres » |
-| 9 | **Fournisseurs** | Remonter « déjà payé » dans le tableau de tête et dans l'export |
+| 9 | **Fournisseurs** | ✅ **Fait le 21/09.** « Déjà payé » et sa part de l'engagé dans le tableau de tête ; export créé (`fournisseurs.telecharger`) — l'écran était le seul tableau sans aucun téléchargement |
 | 10 | **Commerciaux** | Barème de commission (paramètres), colonnes « Barème » et « Cumul », page du barème — réservé au gérant |
 | 11 | **Comptabilité** | Ouvrir au comptable le module de recouvrement et les indicateurs qui le regardent (caisse, trésorerie, charges, fournisseurs), dans son périmètre — sans suppression, ni objectifs, ni commerciaux, ni barème |
 
@@ -357,11 +358,25 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
   l'immatriculation. Le code client se posera par-dessus le jour venu, sans rien refaire.
 - **Balance et règlements fournisseurs** (exports du logiciel) : deux formats à écrire.
 
+### La panne qu'on a trouvée en chemin : l'onglet « Période » ne s'ouvrait pas
+
+`resources/views/components/filtre-periode.blade.php` lisait `$dateDebut` et `$dateFin` sans
+les déclarer dans ses `@props`, et **aucun des douze écrans ne les lui passait**. Cliquer sur
+l'onglet « Période » tombait donc sur `Undefined variable $dateDebut`. Aucun test ne l'avait
+vu : tous ouvraient les écrans en mode « Calendrier ». C'est ce qui se cachait derrière la
+demande d'un filtre par intervalle — il existait dans le calcul (`PeriodeCalculateur`), il ne
+s'affichait pas.
+
+Corrigé, et étendu : les bornes sont déclarées, passées par les douze écrans, et lues **au
+jour** (`Y-m-d`). Les valeurs écrites au mois (`Y-m`) restent comprises et ouvertes au mois
+entier, pour que les liens mis en favori continuent de fonctionner.
+
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. **Six lignes sont passées à « Terminé » le 21/09** (jour 1),
-et l'envoi du courrier à M. Fofana est à « À valider ». Le classeur se refabrique par le script de
+date de fin, une ligne par chantier. **Onze lignes sont passées à « Terminé » le 21/09** (jours 1 et 2),
+et l'envoi du courrier à M. Fofana est à « À valider ». Le classeur vit désormais dans
+`C:\BUREAU\GESTION-DE-SITES\ARTISAN-PLAN-RESTANT\`. Le classeur se refabrique par le script de
 la séance ; il ne s'écrase pas tant qu'un tableur le tient ouvert, auquel cas la version à jour
 attend à côté.
 
