@@ -95,7 +95,7 @@ class TelechargementController
     /** @return array{0: list<string>, 1: list<list<mixed>>, 2: ?list<mixed>, 3: array<int, array>} */
     private function balance($arrete): array
     {
-        $lignes = Recouvrement::parTiers(Recouvrement::facturesOuvertes($arrete), $arrete);
+        $lignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes($arrete), $arrete);
 
         // Les intitulés des tranches viennent du service, pas d'ici : le jour où l'on
         // change le découpage, l'export suit sans qu'on ait à y penser.

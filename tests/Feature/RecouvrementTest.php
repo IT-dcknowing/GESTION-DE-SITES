@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Commun\Modeles\Referentiel;
+use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
@@ -457,7 +458,7 @@ class RecouvrementTest extends TestCase
         $this->facture('NSIA ASSURANCES', 'F-002', 200_000, now()->subDays(45));   // 31-60
         $this->facture('NSIA ASSURANCES', 'F-003', 400_000, now()->subDays(300));  // +180
 
-        $lignes = Recouvrement::parTiers(Recouvrement::facturesOuvertes(now()), now());
+        $lignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes(now()), now());
 
         $this->assertCount(1, $lignes);
         $this->assertSame(700_000, $lignes[0]['reste']);
@@ -482,7 +483,7 @@ class RecouvrementTest extends TestCase
 
         $this->facture('KOUAME YAO', 'F-001', 1_000_000, now()->subDays(40), 'AXA', 'WILLIS');
 
-        $lignes = Recouvrement::parTiers(Recouvrement::facturesOuvertes(now()), now());
+        $lignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes(now()), now());
 
         // Ni l'assuré ni la compagnie : le courtier.
         $this->assertSame(['WILLIS'], $lignes->pluck('tiers')->all());
@@ -496,7 +497,7 @@ class RecouvrementTest extends TestCase
         $this->facture('KOUAME YAO', 'F-001', 400_000, now()->subDays(10), 'AXA');
         $this->facture('GARAGE DU PORT', 'F-002', 600_000, now()->subDays(10));
 
-        $lignes = Recouvrement::parTiers(Recouvrement::facturesOuvertes(now()), now())
+        $lignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes(now()), now())
             ->pluck('reste', 'tiers')->all();
 
         // La compagnie quand elle est renseignée, le client quand elle ne l'est pas.
@@ -995,6 +996,48 @@ class RecouvrementTest extends TestCase
 
         $this->assertCount(0, $ouvertes, "L'encours d'une autre entreprise ne doit jamais apparaître ici.");
         $this->assertNotContains('ASSUREUR DE BETA', array_keys(Recouvrement::tiers($this->entreprise->id)));
+    }
+
+    public function test_les_deux_lectures_du_portefeuille_disent_la_meme_chose(): void
+    {
+        $this->actingAs($this->compte('gerant'));
+
+        $this->facture('NSIA ASSURANCES', 'F-001', 100_000, now()->subDays(10));
+        $this->facture('NSIA ASSURANCES', 'F-002', 200_000, now()->subDays(45));
+        $this->facture('SUNU', 'F-003', 400_000, now()->subDays(300));
+
+        /*
+         * Le garde-fou de la reprise du 23/09.
+         *
+         * Les écrans qui consolident tout le portefeuille lisent désormais les lignes
+         * telles que la base les rend, au lieu d'en faire des objets — neuf mille lectures
+         * d'attributs de moins par affichage. Les règles, elles, n'ont pas bougé : ce sont
+         * les mêmes fonctions des deux côtés. Si les deux lectures se mettaient à diverger,
+         * la balance âgée et l'export du même jour ne diraient plus le même encours, et
+         * l'écart ne se verrait qu'en rapprochant deux totaux à la main.
+         */
+        $parObjets = Recouvrement::parTiers(Recouvrement::facturesOuvertes(now()), now());
+        $parLignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes(now()), now());
+
+        $this->assertEquals($parObjets->all(), $parLignes->all());
+
+        $this->assertEquals(
+            Recouvrement::kpis(Recouvrement::facturesOuvertes(now()), now()),
+            Recouvrement::kpis(Recouvrement::lignesOuvertes(now()), now()),
+        );
+
+        // Et l'âge se compte pareil, ligne à ligne.
+        $jourArrete = NombreDeJours::jour(now());
+
+        foreach (Recouvrement::lignesOuvertes(now()) as $ligne) {
+            $facture = Facture::withoutGlobalScopes()->find($ligne->id);
+
+            $this->assertSame(
+                Recouvrement::anciennete($facture, now()),
+                Recouvrement::ageDeLaLigne($ligne, $jourArrete),
+                "âge de la facture {$facture->n_facture}",
+            );
+        }
     }
 
     /*

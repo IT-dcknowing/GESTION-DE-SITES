@@ -3,6 +3,7 @@
 use Illuminate\Support\Carbon;
 use Modules\Noyau\Exploitation\Modeles\CommentaireEcartRecouvrement;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
+use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
 use Modules\Recouvrement\Support\AccesRecouvrement;
@@ -51,7 +52,11 @@ $periodeDeTravail = computed(fn () => PeriodeDeTravail::depuis($this->moisFiltre
 
 $arrete = computed(fn () => Recouvrement::arrete($this->periodeDeTravail->arreteIso()));
 
-$ouvertes = computed(fn () => Recouvrement::facturesOuvertes($this->arrete));
+/*
+ * Lues telles que la base les rend, sans en faire des objets : cet écran additionne les
+ * créances ouvertes, il n'en affiche aucune ligne à ligne. Voir lignesOuvertes().
+ */
+$ouvertes = computed(fn () => Recouvrement::lignesOuvertes($this->arrete));
 
 $kpis = computed(fn () => Recouvrement::kpis($this->ouvertes, $this->arrete));
 
@@ -81,11 +86,13 @@ $peutFixerLObjectif = computed(fn () => AccesRecouvrement::peutFixerLObjectif(au
 $tranches = computed(function () {
     $totaux = array_fill(0, count(Recouvrement::TRANCHES), 0);
 
-    foreach ($this->ouvertes as $facture) {
-        $index = Recouvrement::tranche($facture, $this->arrete);
+    $jourArrete = NombreDeJours::jour($this->arrete);
+
+    foreach ($this->ouvertes as $ligne) {
+        $index = Recouvrement::tranchePourAge(Recouvrement::ageDeLaLigne($ligne, $jourArrete));
 
         if ($index !== null) {
-            $totaux[$index] += Recouvrement::reste($facture);
+            $totaux[$index] += Recouvrement::resteDe($ligne->montant, $ligne->encaissements_sum_montant);
         }
     }
 

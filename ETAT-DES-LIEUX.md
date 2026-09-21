@@ -138,6 +138,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 21/09 | `b0f010c` | **creances** | jour 6 : la balance et les règlements fournisseurs exportés du logiciel comptable entrent (deux formats, deux tables, migration `2026_09_21_000006`) |
 | 22/09 | `5698290` | **creances** | retours du propriétaire : le n° de devis exigé au passage en devis ; barème refait et cloisonné par exercice ; balance et règlements ont leur page, avec l'écart entre solde annoncé et recalcul |
 | 23/09 | `2156dfc` | **creances** | vitesse : les jours ne se comptent plus par Carbon, et les consolidations ne construisent plus d'objets (« Clients & tiers » 4,8 s → 0,7 s) ; « Où vous joindre » demande son numéro à qui n'en a pas ; section **Code-import** sur l'écran des codes — un code se déclare à la main, s'aligne dans un tableau et sert aux imports comme n'importe quel autre ; le suivi fournisseur entre en entier — feuille `DETAIL`, 40 colonnes, deux classeurs fondus sans doublon |
+| 23/09 | `RETOUR` | **creances** | seconde passe de vitesse : les créances ouvertes se lisent aussi sans objets — synthèse 1,5 s → 0,66 s, balance âgée 1,15 s → 0,59 s, tableau de bord 2,2 s → 1,64 s ; un test confronte les deux lectures |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -495,11 +496,32 @@ comptait que pour trois cents millisecondes ; tout le reste était du PHP.
    ASSURANCES » et « NSIA Assurances » doivent continuer de se voir, c'est la raison d'être de
    cet écran.
 
-**Résultat, mesuré au même endroit** : *Clients & tiers* **4,8 s → 0,7 s**, *Courtiers*
-1,5 s → 1,0 s. *Synthèse* (1,5 s) et le *tableau de bord du recouvrement* (2,2 s) n'ont
-gagné que le compte des jours : ils lisent 1 341 factures ouvertes qu'ils construisent encore
-en objets, et c'est le prochain pas — la même technique, appliquée à `facturesOuvertes()`,
-`parTiers()` et `PortefeuilleDeRecouvrement`.
+**Puis la même technique aux créances ouvertes**, dans la foulée : `lignesOuvertes()`
+sert désormais la synthèse, la balance âgée, la saisie, l'export et le tableau de bord.
+`parTiers()` et `kpis()` lisent des lignes ; le tableau de bord retient la plus vieille
+créance de chaque tiers **dans la passe qui les groupe déjà**, au lieu de la rechercher
+tiers par tiers ; la page d'un dossier relit les factures du seul tiers demandé au lieu de
+filtrer les 1 341.
+
+**Résultat, mesuré au même endroit, avant → après** :
+
+| Écran | Avant | Après |
+|---|---|---|
+| Recouvrement — Clients & tiers | 4,8 s | **0,65 s** |
+| Recouvrement — Synthèse | 1,5 s | **0,66 s** |
+| Recouvrement — Balance âgée | 1,15 s | **0,59 s** |
+| Recouvrement — Courtiers | 1,5 s | **0,50 s** |
+| Recouvrement — Tableau de bord | 2,2 s | **1,64 s** |
+
+Le tableau de bord reste le plus lourd du module, et c'est attendu : il croise les créances,
+les relances, les encaissements et les agents. Ce qui lui reste est réparti — 232 ms pour la
+lecture des créances ouvertes, 82 ms pour les encaissements de la période (un `whereDate` qui
+empêche l'index de servir), le reste en rendu de ses 129 lignes.
+
+**Un test confronte les deux lectures** : `parTiers()` et `kpis()` doivent rendre exactement
+la même chose qu'on leur passe des objets ou des lignes, et l'âge d'une ligne doit valoir
+celui de sa facture. Sans lui, la balance âgée et l'export du même jour pourraient cesser de
+dire le même encours, et l'écart ne se verrait qu'en rapprochant deux totaux à la main.
 
 **Un défaut trouvé en chemin, sans rapport avec la vitesse** : `PortefeuilleDeRecouvrement`
 retrouvait le tiers payant d'un règlement en lisant la facture **sans la colonne

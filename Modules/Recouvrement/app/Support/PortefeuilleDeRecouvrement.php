@@ -53,8 +53,12 @@ final class PortefeuilleDeRecouvrement
 
     private Collection $ouvertes;
 
-    /** Les factures ouvertes rangées par tiers payant, groupées une seule fois. */
-    private Collection $ouvertesParTiers;
+    /**
+     * La plus vieille créance ouverte de chaque tiers, retenue dès la première passe.
+     *
+     * @var array<string, array{jour: int, depuis: int, date: Carbon, numero: ?string}>
+     */
+    private array $plusAncienneParTiers = [];
 
     /** Les lignes du tableau, calculées une fois par instance. */
     private ?Collection $lignes = null;
@@ -84,12 +88,40 @@ final class PortefeuilleDeRecouvrement
         private readonly Carbon $arrete,
         private readonly ?Carbon $debut = null,
     ) {
-        $this->ouvertes = Recouvrement::facturesOuvertes($this->arrete);
+        // Lues telles que la base les rend, sans en faire des objets : ce tableau
+        // consolide mille trois cent quarante créances sans en afficher une seule ligne à
+        // ligne, et chaque lecture d'une colonne date coûtait quarante-sept microsecondes.
+        // Voir Recouvrement::lignesOuvertes().
+        $this->ouvertes = Recouvrement::lignesOuvertes($this->arrete);
 
-        // Groupées d'emblée : chercher les factures d'un tiers en balayant les mille trois
-        // cents lignes, pour chacun des deux mille quatre cents tiers, coûte trois millions
-        // de comparaisons. Le groupement les ramène à une passe.
-        $this->ouvertesParTiers = $this->ouvertes->groupBy(fn (Facture $f) => $f->tiersPayant());
+        // La plus vieille créance de chaque tiers se retient en une seule passe : c'est
+        // elle que le tableau nomme, et la chercher ensuite tiers par tiers ferait balayer
+        // les mille trois cents lignes pour chacun des deux mille quatre cents tiers, soit
+        // trois millions de comparaisons.
+        $jourArrete = NombreDeJours::jour($this->arrete);
+
+        foreach ($this->ouvertes as $ligne) {
+            $payeur = Facture::tiersPayantParmi(
+                $ligne->depose_chez, $ligne->courtier, $ligne->assureur, $ligne->client,
+            );
+
+            $depart = NombreDeJours::jourDeLIso($ligne->date_reception ?: $ligne->date);
+
+            if ($depart === null) {
+                continue;
+            }
+
+            $connue = $this->plusAncienneParTiers[$payeur] ?? null;
+
+            if ($connue === null || $depart < $connue['jour']) {
+                $this->plusAncienneParTiers[$payeur] = [
+                    'jour' => $depart,
+                    'depuis' => max(0, $jourArrete - $depart),
+                    'date' => Carbon::parse(substr(trim((string) ($ligne->date_reception ?: $ligne->date)), 0, 10)),
+                    'numero' => $ligne->n_facture,
+                ];
+            }
+        }
         $this->relancesParTiers = RelanceRecouvrement::query()
             ->orderByDesc('date')->orderByDesc('id')->get()
             ->groupBy('tiers');
@@ -110,20 +142,17 @@ final class PortefeuilleDeRecouvrement
                 $this->encaissementsParTiers ??= $this->rapprocherLesEncaissements();
                 $encaisse = $this->encaissementsParTiers[$tiers] ?? ['montant' => 0, 'date' => null, 'auteur' => null];
 
-                $factures = $this->ouvertesParTiers->get($tiers, collect());
                 // La plus ancienne au sens du recouvrement : déposée la première, et non
-                // éditée la première — voir Recouvrement::dateDeDepart().
-                $plusAncienne = $factures->filter(fn (Facture $f) => Recouvrement::dateDeDepart($f) !== null)
-                    ->sortBy(fn (Facture $f) => Recouvrement::dateDeDepart($f))->first();
+                // éditée la première — voir Recouvrement::dateDeDepart(). Retenue au
+                // constructeur, dans la passe qui groupe déjà les créances.
+                $plusAncienne = $this->plusAncienneParTiers[$tiers] ?? null;
 
                 return $ligne + [
                     // Depuis quand ce tiers doit-il : l'âge de sa plus vieille facture non
                     // soldée. C'est ce chiffre qui classe un dossier, pas le montant seul.
-                    'depuis' => $plusAncienne
-                        ? Recouvrement::anciennete($plusAncienne, $this->arrete)
-                        : null,
-                    'plus_ancienne' => $plusAncienne ? Recouvrement::dateDeDepart($plusAncienne) : null,
-                    'plus_ancienne_numero' => $plusAncienne?->n_facture,
+                    'depuis' => $plusAncienne['depuis'] ?? null,
+                    'plus_ancienne' => $plusAncienne['date'] ?? null,
+                    'plus_ancienne_numero' => $plusAncienne['numero'] ?? null,
 
                     // Le dernier geste, et qui l'a fait.
                     'derniere_relance' => $derniere?->date,
@@ -150,7 +179,7 @@ final class PortefeuilleDeRecouvrement
                     'silence' => $this->silence(
                         $derniere?->date,
                         $encaisse['date'],
-                        $plusAncienne ? Recouvrement::dateDeDepart($plusAncienne) : null,
+                        $plusAncienne['date'] ?? null,
                     ),
                 ];
             })
@@ -227,11 +256,13 @@ final class PortefeuilleDeRecouvrement
     {
         $montants = array_fill(0, count(Recouvrement::TRANCHES), 0);
 
-        foreach ($this->ouvertes as $facture) {
-            $index = Recouvrement::tranche($facture, $this->arrete);
+        $jourArrete = NombreDeJours::jour($this->arrete);
+
+        foreach ($this->ouvertes as $ligne) {
+            $index = Recouvrement::tranchePourAge(Recouvrement::ageDeLaLigne($ligne, $jourArrete));
 
             if ($index !== null) {
-                $montants[$index] += Recouvrement::reste($facture);
+                $montants[$index] += Recouvrement::resteDe($ligne->montant, $ligne->encaissements_sum_montant);
             }
         }
 
@@ -326,10 +357,16 @@ final class PortefeuilleDeRecouvrement
         ];
     }
 
-    /** Tout ce qui concerne un tiers — c'est la page de détail. */
+    /**
+     * Tout ce qui concerne un tiers — c'est la page de détail.
+     *
+     * Les factures se relisent ici pour ce seul tiers, et non dans la collection entière
+     * du portefeuille : c'est la seule page qui les affiche ligne à ligne, et il en faut
+     * une poignée. La lecture ciblée applique la même règle du payeur que partout ailleurs.
+     */
     public function dossier(string $tiers): array
     {
-        $factures = $this->ouvertesParTiers->get($tiers, collect())
+        $factures = Recouvrement::facturesOuvertesDuTiers($tiers)
             ->sortBy(fn (Facture $f) => $f->date)
             ->values();
 
