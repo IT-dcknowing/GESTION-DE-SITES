@@ -4,6 +4,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Modules\Noyau\Commun\Modeles\Referentiel;
+use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
@@ -67,6 +68,22 @@ state(['siteFiltre' => ''])->url(except: '');
 state(['statutFiltre' => 'ouvertes'])->url(except: 'ouvertes');
 state(['reportFiltre' => ''])->url(except: '');
 state(['recherche' => ''])->url(except: '');
+
+/*
+ * Les deux bornes du filtre « du … au … ».
+ *
+ * L'écran n'en avait pas : sa période, c'était l'année de l'état, et c'est juste — une
+ * créance garde son année d'origine et s'y reporte. Mais on ne pouvait pas demander « les
+ * factures déposées entre le 1er et le 15 mars », ce qu'on cherche dès qu'on rapproche un
+ * dépôt avec un bordereau. L'année reste donc le registre ; les bornes ne font que réduire
+ * ce qu'on en regarde, et les totaux du bandeau les suivent.
+ *
+ * Elles comptent sur la **date de dépôt, sinon l'édition** — la date d'où court l'ancienneté
+ * affichée dans le tableau (`Recouvrement::dateDeDepart()`), et non une troisième date qui
+ * dirait autre chose que la colonne d'à côté.
+ */
+state(['dateDebut' => ''])->url(except: '');
+state(['dateFin' => ''])->url(except: '');
 
 state([
     'page' => 1,
@@ -163,6 +180,8 @@ $updatedExercice = function () { $this->page = 1; };
 $updatedStatutFiltre = function () { $this->page = 1; };
 $updatedReportFiltre = function () { $this->page = 1; };
 $updatedRecherche = function () { $this->page = 1; };
+$updatedDateDebut = function () { $this->page = 1; };
+$updatedDateFin = function () { $this->page = 1; };
 
 $annee = computed(fn () => (int) ($this->exercice ?: now()->year));
 
@@ -247,6 +266,23 @@ $requeteDesLignes = protect(function () {
             ->orWhere('immatriculation', 'like', $terme)
             ->orWhere('n_sinistre', 'like', $terme)
             ->orWhere('observations', 'like', $terme));
+    }
+
+    /*
+     * Les bornes viennent de l'adresse : elles ne sont jamais posées telles quelles dans la
+     * requête. `PeriodeCalculateur::borne()` les relit — le même lecteur que les douze autres
+     * écrans — et rend null sur tout ce qui n'est pas une date, ce qui revient à ne rien
+     * demander plutôt qu'à faire tomber la page.
+     */
+    $depuis = PeriodeCalculateur::borne($this->dateDebut, false);
+    $jusqua = PeriodeCalculateur::borne($this->dateFin, true);
+
+    if ($depuis) {
+        $requete->whereRaw(Recouvrement::EXPRESSION_DATE_DE_DEPART.' >= ?', [$depuis->toDateString()]);
+    }
+
+    if ($jusqua) {
+        $requete->whereRaw(Recouvrement::EXPRESSION_DATE_DE_DEPART.' <= ?', [$jusqua->toDateString()]);
     }
 
     EtatDesImpayes::filtrerLeSolde($requete, $this->statutFiltre);
@@ -699,6 +735,11 @@ $basculerPortage = function () {
 
             <x-champ label="Origine de la ligne" model="reportFiltre" type="select" :live="true" width="190"
                 :options="['reportees' => 'Reportées d\'avant', 'annee' => 'Nées dans l\'année']" vide="Toutes" />
+
+            {{-- Le « du … au … » de l'état : sur le dépôt, sinon l'édition. Laissé vide, il ne
+                 retire rien — l'année de l'état reste le registre entier. --}}
+            <x-champ label="Déposée du" model="dateDebut" type="date" :live="true" width="150" />
+            <x-champ label="au" model="dateFin" type="date" :live="true" width="150" />
 
             <x-champ label="Recherche" model="recherche" :live="true"
                 placeholder="Client, assureur, n° facture, immatriculation, commentaire…" />

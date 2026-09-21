@@ -316,7 +316,9 @@ $origineDe = protect(function ($ligne) {
         </div>
     @endif
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+    {{-- Les deux tableaux se rangent l'un sous l'autre quand l'écran ne peut plus les tenir
+         côte à côte : à moins de 430 px chacun, ils ne montraient plus rien d'utile. --}}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(430px, 1fr)); gap:20px;">
         <div class="carte">
             <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Encaissements ({{ $this->detailEncaissements->count() }})</h3>
             <div class="tableau-conteneur">
@@ -329,7 +331,7 @@ $origineDe = protect(function ($ligne) {
                             <th>Montant</th>
                             <th>Clients</th>
                             <th>Autres tiers</th>
-                            <th></th>
+                            <th class="colonne-action"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -341,7 +343,7 @@ $origineDe = protect(function ($ligne) {
                                 <td style="font-variant-numeric:tabular-nums; font-weight:700; color:#0E9F6E;">{{ ae($ligne->montant) }}</td>
                                 <td>{{ $ligne->client ?? '—' }}</td>
                                 <td style="color:#6B6E76;">{{ $ligne->autres_tiers ?? '—' }}</td>
-                                <td style="white-space:nowrap;">
+                                <td class="colonne-action" style="white-space:nowrap;">
                                     <button type="button" wire:click="voirEncaissement({{ $ligne->id }})"
                                         class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;">
                                         {{ (int) $detailEncaissement === (int) $ligne->id ? 'Fermer' : 'Détail' }}
@@ -391,7 +393,7 @@ $origineDe = protect(function ($ligne) {
                             <th>Moyens</th>
                             <th>Montant</th>
                             <th>Tiers</th>
-                            <th></th>
+                            <th class="colonne-action"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -403,7 +405,7 @@ $origineDe = protect(function ($ligne) {
                                 <td>{{ $ligne->moyen }}</td>
                                 <td style="font-variant-numeric:tabular-nums; font-weight:700; color:#C8102E;">{{ ae($ligne->montant) }}</td>
                                 <td style="color:#6B6E76;">{{ $ligne->tiers ?? '—' }}</td>
-                                <td style="white-space:nowrap;">
+                                <td class="colonne-action" style="white-space:nowrap;">
                                     <button type="button" wire:click="voirDecaissement({{ $ligne->id }})"
                                         class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;">
                                         {{ (int) $detailDecaissement === (int) $ligne->id ? 'Fermer' : 'Détail' }}

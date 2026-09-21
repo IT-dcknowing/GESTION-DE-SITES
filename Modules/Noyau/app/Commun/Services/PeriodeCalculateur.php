@@ -27,10 +27,15 @@ class PeriodeCalculateur
      * sont donc encore lues, et ouvertes au mois entier — début au premier, fin au
      * dernier —, ce qui est très exactement ce qu'elles voulaient dire.
      *
+     * **Publique depuis le 21/09/2026.** L'état des impayés a reçu le même filtre « du … au … »
+     * et devait lire ses deux bornes exactement comme les autres écrans : une valeur forgée
+     * dans l'adresse doit y être écartée de la même manière, et non par une seconde règle
+     * écrite à côté qui finirait par diverger de celle-ci.
+     *
      * @param  bool  $versLaFin  une borne de fin s'étend au dernier jour du mois quand seul
      *                           le mois est donné ; une borne de début, au premier.
      */
-    private static function borne(?string $valeur, bool $versLaFin): ?Carbon
+    public static function borne(?string $valeur, bool $versLaFin): ?Carbon
     {
         $valeur = trim((string) $valeur);
 
