@@ -301,51 +301,139 @@ class CodeAtelierTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
-    public function test_la_section_code_import_liste_les_codes_sans_titulaire(): void
+    public function test_on_declare_un_code_de_toutes_pieces_sans_ouvrir_aucun_acces(): void
     {
-        $this->codeVuALImport('TT', 412);
-        $porte = $this->codeVuALImport('KZ', 900);
-        $koffi = $this->compte('Koffi Yao', 'commercial', 'koffi@alpha.test');
-        $porte->forceFill(['user_id' => $koffi->id])->save();
-
-        $this->actingAs($this->superAdmin())
-            ->get(route('super-admin.codes', ['entreprise' => $this->entreprise->id, 'vue' => 'import']))
-            ->assertOk()
-            ->assertSee('Code-import')
-            ->assertSee('TT')
-            // Le code déjà rattaché à quelqu'un n'a rien à faire dans cette section : il se
-            // corrige sur la ligne de son porteur.
-            ->assertDontSee('900 fiche(s)', false);
-    }
-
-    public function test_on_nomme_la_personne_derriere_un_code_sans_lui_ouvrir_d_acces(): void
-    {
-        $code = $this->codeVuALImport('TT', 412);
-
+        // Le code n'a jamais été croisé dans un fichier : une recrue est connue le jour où
+        // elle arrive, et son travail doit se ranger au bon atelier dès sa première fiche.
         $this->actingAs($this->superAdmin())
             ->post(route('super-admin.codes.import'), [
-                'code_agent' => $code->id,
+                'entreprise' => $this->entreprise->id,
+                'code' => 'tt',
                 'nom' => 'TRAORE',
                 'prenom' => 'Ali',
                 'fonction' => 'Réceptionnaire',
                 'site_id' => $this->site->id,
             ])->assertRedirect();
 
-        $code->refresh();
+        $code = CodeAgent::withoutGlobalScopes()->where('code', 'TT')->first();
 
+        $this->assertNotNull($code);
+        // Rangé en majuscules, comme le logiciel l'écrit dans ses numéros de fiche.
+        $this->assertSame('TT', $code->code);
         $this->assertSame('TRAORE', $code->nom);
         $this->assertSame('Ali', $code->prenom);
         $this->assertSame('Réceptionnaire', $code->fonction);
         $this->assertSame($this->site->id, $code->site_id);
-        // L'atelier désigne sa ville : sans cela le rattachement resterait muet.
+        // L'atelier désigne sa ville : sans elle le rattachement resterait muet.
         $this->assertSame($this->ville->id, $code->ville_id);
 
-        // Et surtout : aucun compte n'a été ouvert, aucun code rattaché à personne.
+        // Aucun compte ouvert, aucun code rattaché à personne : c'est un renseignement.
         $this->assertNull($code->user_id);
+        $this->assertSame(0, $code->occurrences);
         $this->assertSame(0, User::withoutGlobalScopes()->where('name', 'like', '%TRAORE%')->count());
+
+        $this->assertDatabaseHas('activity_log', ['description' => 'Code de saisie déclaré']);
     }
 
-    public function test_le_bouton_creer_le_compte_ouvre_le_formulaire_deja_rempli(): void
+    public function test_un_code_declare_est_rattache_par_les_imports_comme_les_autres(): void
+    {
+        // C'est tout l'intérêt : sans accès, mais compté comme les autres.
+        $this->actingAs($this->superAdmin())
+            ->post(route('super-admin.codes.import'), [
+                'entreprise' => $this->entreprise->id,
+                'code' => 'TT',
+                'nom' => 'TRAORE',
+                'site_id' => $this->site->id,
+            ]);
+
+        $ou = (new Rattachement($this->entreprise->id))->resoudre(null, 'FR-TTN° 010669', null);
+
+        $this->assertSame('TT', $ou['code']);
+        $this->assertSame($this->ville->id, $ou['ville_id']);
+        $this->assertSame($this->site->id, $ou['site_id']);
+
+        // Et le référentiel reste le même : une seule ligne pour ces deux lettres, dont le
+        // compteur de fiches avance.
+        $this->assertSame(1, CodeAgent::withoutGlobalScopes()->where('code', 'TT')->count());
+    }
+
+    public function test_le_tableau_ne_liste_que_les_codes_declares(): void
+    {
+        // Un code croisé dans les imports et jamais nommé n'est pas une déclaration : il
+        // s'affiche comme pastille à reprendre, pas comme une ligne du tableau.
+        $this->codeVuALImport('ZZ', 412);
+
+        $this->actingAs($this->superAdmin())
+            ->post(route('super-admin.codes.import'), [
+                'entreprise' => $this->entreprise->id,
+                'code' => 'TT',
+                'nom' => 'TRAORE',
+                'prenom' => 'Ali',
+                'site_id' => $this->site->id,
+            ]);
+
+        $this->actingAs($this->superAdmin())
+            ->get(route('super-admin.codes', ['entreprise' => $this->entreprise->id, 'vue' => 'import']))
+            ->assertOk()
+            ->assertSee('Codes de saisie déclarés (1)')
+            ->assertSee('TRAORE')
+            ->assertSee('Créer un compte')
+            // La pastille du code jamais nommé reste visible, avec son volume.
+            ->assertSee('ZZ')
+            ->assertSee('412 fiche(s)');
+    }
+
+    public function test_declarer_deux_fois_les_memes_lettres_corrige_au_lieu_de_doubler(): void
+    {
+        $envoi = [
+            'entreprise' => $this->entreprise->id,
+            'code' => 'TT',
+            'nom' => 'TRAORE',
+            'site_id' => $this->site->id,
+        ];
+
+        $this->actingAs($this->superAdmin())->post(route('super-admin.codes.import'), $envoi);
+        $this->actingAs($this->superAdmin())
+            ->post(route('super-admin.codes.import'), [...$envoi, 'nom' => 'TRAORÉ', 'prenom' => 'Ali'])
+            ->assertRedirect();
+
+        $this->assertSame(1, CodeAgent::withoutGlobalScopes()->where('code', 'TT')->count());
+
+        $code = CodeAgent::withoutGlobalScopes()->where('code', 'TT')->first();
+        $this->assertSame('TRAORÉ', $code->nom);
+        $this->assertSame('Ali', $code->prenom);
+
+        $this->assertDatabaseHas('activity_log', ['description' => 'Code de saisie corrigé']);
+    }
+
+    public function test_un_code_sans_nom_est_refuse(): void
+    {
+        // Un code sans nom ne renseigne personne : c'est exactement l'état d'où l'on vient.
+        $this->actingAs($this->superAdmin())
+            ->from(route('super-admin.codes', ['entreprise' => $this->entreprise->id, 'vue' => 'import']))
+            ->post(route('super-admin.codes.import'), [
+                'entreprise' => $this->entreprise->id,
+                'code' => 'TT',
+                'nom' => '',
+            ])->assertSessionHasErrors('nom');
+
+        $this->assertSame(0, CodeAgent::withoutGlobalScopes()->where('code', 'TT')->count());
+    }
+
+    public function test_un_code_qui_n_a_pas_deux_lettres_est_refuse_a_la_declaration(): void
+    {
+        $this->actingAs($this->superAdmin())
+            ->from(route('super-admin.codes', ['entreprise' => $this->entreprise->id, 'vue' => 'import']))
+            ->post(route('super-admin.codes.import'), [
+                'entreprise' => $this->entreprise->id,
+                'code' => 'TTT',
+                'nom' => 'TRAORE',
+            ])->assertSessionHasErrors('code');
+
+        $this->assertSame(0, CodeAgent::withoutGlobalScopes()->where('code', 'TTT')->count());
+    }
+
+    public function test_le_bouton_creer_un_compte_ouvre_le_formulaire_deja_rempli(): void
     {
         $code = $this->codeVuALImport('TT', 412);
         $code->forceFill([
@@ -367,23 +455,60 @@ class CodeAtelierTest extends TestCase
             ->assertSee('TT');
     }
 
-    public function test_un_code_deja_rattache_a_un_compte_ne_se_renseigne_pas_par_cette_section(): void
+    public function test_le_lien_corriger_rouvre_le_formulaire_sur_ces_deux_lettres(): void
+    {
+        $this->codeVuALImport('TT', 412)
+            ->forceFill(['nom' => 'TRAORE'])->save();
+
+        // Le formulaire se rappelle par l'adresse : c'est un lien, il marche sans script.
+        $this->actingAs($this->superAdmin())
+            ->get(route('super-admin.codes', [
+                'entreprise' => $this->entreprise->id, 'vue' => 'import', 'code' => 'tt',
+            ]))
+            ->assertOk()
+            ->assertSee('value="TT"', false);
+    }
+
+    public function test_un_code_deja_rattache_a_un_compte_ne_se_declare_pas_par_cette_section(): void
     {
         $koffi = $this->compte('Koffi Yao', 'commercial', 'koffi@alpha.test');
         CodeDeLAtelier::attribuer($koffi, 'KZ', $this->superAdmin());
-        $code = CodeDeLAtelier::de($koffi->fresh());
 
         $this->actingAs($this->superAdmin())
-            ->post(route('super-admin.codes.import'), ['code_agent' => $code->id, 'nom' => 'QUELQU UN'])
-            ->assertSessionHas('refus-code');
+            ->post(route('super-admin.codes.import'), [
+                'entreprise' => $this->entreprise->id,
+                'code' => 'KZ',
+                'nom' => 'QUELQU UN',
+            ])->assertSessionHas('refus-code');
 
-        $this->assertNull($code->fresh()->nom);
+        $this->assertNull(CodeDeLAtelier::de($koffi->fresh())->nom);
+    }
+
+    public function test_un_atelier_d_une_autre_ville_que_celle_choisie_n_est_pas_retenu(): void
+    {
+        $bouake = Ville::create([
+            'entreprise_id' => $this->entreprise->id, 'code' => 'BKE', 'nom' => 'Bouaké', 'est_actif' => true,
+        ]);
+
+        // Le formulaire dirait Bouaké et la base rangerait à Abidjan : c'est exactement ce
+        // qu'un atelier mal choisi produit, et cela ne se voit sur aucun écran ensuite.
+        $this->actingAs($this->superAdmin())
+            ->post(route('super-admin.codes.import'), [
+                'entreprise' => $this->entreprise->id,
+                'code' => 'TT',
+                'nom' => 'TRAORE',
+                'ville_id' => $bouake->id,
+                'site_id' => $this->site->id,
+            ])->assertRedirect();
+
+        $code = CodeAgent::withoutGlobalScopes()->where('code', 'TT')->first();
+
+        $this->assertSame($bouake->id, $code->ville_id);
+        $this->assertNull($code->site_id);
     }
 
     public function test_un_atelier_d_une_autre_entreprise_n_est_pas_retenu(): void
     {
-        $code = $this->codeVuALImport('TT', 412);
-
         $autre = Entreprise::create(['nom' => 'Beta', 'slug' => 'beta']);
         $villeAilleurs = Ville::create([
             'entreprise_id' => $autre->id, 'code' => 'BKE', 'nom' => 'Bouaké', 'est_actif' => true,
@@ -397,14 +522,17 @@ class CodeAtelierTest extends TestCase
         // d'une autre maison.
         $this->actingAs($this->superAdmin())
             ->post(route('super-admin.codes.import'), [
-                'code_agent' => $code->id,
+                'entreprise' => $this->entreprise->id,
+                'code' => 'TT',
                 'nom' => 'TRAORE',
                 'ville_id' => $villeAilleurs->id,
                 'site_id' => $siteAilleurs->id,
             ])->assertRedirect();
 
-        $this->assertNull($code->fresh()->site_id);
-        $this->assertNull($code->fresh()->ville_id);
+        $code = CodeAgent::withoutGlobalScopes()->where('code', 'TT')->first();
+
+        $this->assertNull($code->site_id);
+        $this->assertNull($code->ville_id);
     }
 
     /*

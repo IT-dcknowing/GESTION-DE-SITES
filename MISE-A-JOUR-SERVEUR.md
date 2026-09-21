@@ -447,10 +447,17 @@ Ce qu'elle fait, et pourquoi c'est sans danger :
    personne écrit est ce que l'administrateur lit. À annoncer : chacun verra la question à sa
    prochaine connexion.
 4. **Une section *Code-import* sur l'écran des codes d'atelier**
-   (`/super-admin/codes?entreprise=…`, bouton en haut). Elle liste les codes que les imports
-   rencontrent et qui n'appartiennent à aucun compte, et permet d'y noter nom, prénom, rôle
-   et atelier. **Cela n'ouvre aucun accès** : c'est de quoi savoir à qui s'adresser quand une
-   fiche pose question. Un bouton *Créer le compte* ouvre le formulaire d'accès déjà rempli.
+   (`/super-admin/codes?entreprise=…`, bouton en haut). Un formulaire y **déclare** un code
+   de saisie : les deux lettres se tapent à la main, avec le nom, le prénom, le rôle s'il y a
+   lieu, la ville et l'atelier. Choisir la ville réduit la liste des ateliers à ceux de cette
+   ville — c'est là qu'on dit Site 1 ou Site 2 pour Abidjan. Les codes déclarés s'alignent
+   dans un tableau en dessous, chacun avec son bouton *Créer un compte*, qui ouvre le
+   formulaire d'accès déjà rempli, code compris.
+
+   **Un code déclaré est un code comme les autres pour les imports** : le rattachement s'en
+   sert de la même façon et compte ses fiches. La seule chose qu'il n'a pas, c'est un accès.
+   On peut donc déclarer une recrue le jour où elle arrive, sans attendre qu'un fichier ait
+   croisé ses initiales. **Déclarer n'ouvre rien** — aucun compte n'est créé.
 
 **Rappel, pour lever un doute posé le 23/09** : une confirmation de code qui tarde ne bloque
 rien. Les imports se servent du rattachement dès qu'il est posé ; la question sert à le

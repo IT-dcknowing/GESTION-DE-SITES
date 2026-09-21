@@ -44,7 +44,7 @@ Route::middleware(['auth', 'role:super_admin'])
          * qui les porte, sans rien leur ouvrir. Même habilitation, puisque c'est la même
          * donnée regardée par l'autre bout.
          */
-        Route::post('/codes/import', [CodesAtelierController::class, 'identifier'])
+        Route::post('/codes/import', [CodesAtelierController::class, 'declarer'])
             ->name('codes.import')->middleware('habilitation:acces');
         Volt::route('/journal', 'superadmin.journal')->name('journal.index')->middleware('habilitation:journal');
         // Même habilitation que le journal : les deux écrans répondent à la même

@@ -72,56 +72,87 @@ class CodesAtelierController
     }
 
     /**
-     * Nommer la personne derrière un code vu dans les imports, sans lui ouvrir de compte.
+     * Déclarer un code de saisie, et la personne qui le porte, sans lui ouvrir de compte.
      *
-     * **Pourquoi cela existe.** Une partie de ceux qui saisissent dans le logiciel
-     * d'atelier n'ont pas accès à cette application, et n'en auront peut-être jamais. Leur
-     * code arrive pourtant par chaque import, et restait une énigme de deux lettres : un
-     * volume de fiches, aucun nom, personne à appeler pour lever un doute. On note donc ce
-     * qu'on sait d'eux — nom, prénom, fonction s'il y a lieu, et l'atelier où ils
-     * travaillent — sans confondre cela avec l'ouverture d'un accès.
+     * **Pourquoi cela existe.** Une partie de ceux qui saisissent dans le logiciel d'atelier
+     * n'ont pas accès à cette application, et n'en auront peut-être jamais. Leur code arrive
+     * pourtant par chaque import, et restait une énigme de deux lettres : un volume de
+     * fiches, aucun nom, personne à appeler pour lever un doute.
      *
-     * **Le code reste rattaché à personne.** `user_id` n'est pas touché : ce que l'on
-     * écrit ici est un renseignement, pas une habilitation. Le jour où l'accès s'ouvre, le
-     * bouton « Créer le compte » reprend ces informations et c'est l'écran des accès qui
-     * attribue le code — là où cela se décide.
+     * **Le code se tape à la main, et c'est voulu.** On n'attend pas qu'un import l'ait
+     * rencontré : une nouvelle recrue est connue le jour où elle arrive, et son travail doit
+     * se ranger au bon atelier dès sa première fiche. Un code déclaré ici est un code comme
+     * les autres — le rattachement des imports s'en sert exactement de la même façon, et
+     * compte ses fiches. La seule chose qu'il n'a pas, c'est un accès.
+     *
+     * **Déclarer n'ouvre rien.** `user_id` n'est pas touché. Le jour où l'accès s'ouvre, le
+     * bouton « Créer un compte » de la ligne reprend ces informations et c'est l'écran des
+     * accès qui attribue le code — là où cela se décide.
+     *
+     * **Le même formulaire corrige.** Un code déjà déclaré se retrouve par ses deux lettres
+     * et se met à jour : deux entrées pour les mêmes initiales n'auraient aucun sens, et la
+     * base le refuse de toute façon (unique sur entreprise + code).
      */
-    public function identifier(Request $requete): RedirectResponse
+    public function declarer(Request $requete): RedirectResponse
     {
         $donnees = $requete->validate([
-            'code_agent' => ['required', 'integer', 'exists:codes_agents,id'],
-            'nom' => ['nullable', 'string', 'max:120'],
+            'entreprise' => ['required', 'integer', 'exists:entreprises,id'],
+            'code' => ['required', 'string', 'regex:'.CodeDeLAtelier::FORMAT],
+            'nom' => ['required', 'string', 'max:120'],
             'prenom' => ['nullable', 'string', 'max:120'],
             'fonction' => ['nullable', 'string', 'max:120'],
             'ville_id' => ['nullable', 'integer'],
             'site_id' => ['nullable', 'integer'],
+        ], [
+            'code.required' => 'Indiquez les deux lettres du code.',
+            'code.regex' => "Un code de saisie fait exactement deux lettres : c'est sous cette forme que le logiciel l'inscrit dans les numéros de fiche.",
+            'nom.required' => 'Indiquez au moins le nom de la personne : un code sans nom ne renseigne personne.',
         ]);
 
-        $code = CodeAgent::withoutGlobalScopes()->findOrFail($donnees['code_agent']);
-        $retour = ['entreprise' => $code->entreprise_id, 'vue' => 'import'];
+        $entrepriseId = (int) $donnees['entreprise'];
+        $deuxLettres = mb_strtoupper(trim($donnees['code']));
+        $retour = ['entreprise' => $entrepriseId, 'vue' => 'import'];
 
-        // Un code déjà rattaché à un compte se corrige par la ligne de la personne, pas
+        $code = CodeAgent::withoutGlobalScopes()->firstOrNew(
+            ['entreprise_id' => $entrepriseId, 'code' => $deuxLettres],
+            ['est_actif' => true, 'occurrences' => 0],
+        );
+
+        // Un code déjà porté par un compte se corrige sur la ligne de son titulaire, pas
         // ici : deux écrans qui écrivent la même chose finiraient par se contredire.
-        if ($code->user_id !== null) {
+        if ($code->exists && $code->user_id !== null) {
             return redirect()->route('super-admin.codes', $retour)->with(
                 'refus-code',
-                "Le code « {$code->code} » est déjà celui d'un compte : c'est sur sa ligne qu'il se corrige.",
+                "Le code « {$deuxLettres} » est déjà celui d'un compte : c'est sur sa ligne, dans l'onglet « Comptes », qu'il se corrige.",
             );
         }
 
-        // Le lieu n'est retenu que s'il appartient bien à l'entreprise du code : un
-        // identifiant recopié à la main ne doit pas rattacher des fiches à l'atelier
-        // d'une autre maison.
-        $villeId = $this->appartientALEntreprise(Ville::class, $donnees['ville_id'] ?? null, $code->entreprise_id);
-        $siteId = $this->appartientALEntreprise(Site::class, $donnees['site_id'] ?? null, $code->entreprise_id);
+        $nouveau = ! $code->exists;
 
-        // Un atelier désigne sa ville : la laisser vide rendrait le rattachement muet.
-        if ($siteId !== null && $villeId === null) {
-            $villeId = Site::withoutGlobalScopes()->whereKey($siteId)->value('ville_id');
+        // Le lieu n'est retenu que s'il appartient bien à l'entreprise : un identifiant
+        // recopié à la main ne doit pas rattacher des fiches à l'atelier d'une autre maison.
+        $villeId = $this->appartientALEntreprise(Ville::class, $donnees['ville_id'] ?? null, $entrepriseId);
+        $siteId = $this->appartientALEntreprise(Site::class, $donnees['site_id'] ?? null, $entrepriseId);
+
+        // Un atelier désigne sa ville : la laisser vide rendrait le rattachement muet. Et un
+        // atelier d'une autre ville que celle choisie ne se retient pas — sans quoi le
+        // formulaire dirait Abidjan et la base rangerait à Bouaké.
+        if ($siteId !== null) {
+            $villeDuSite = Site::withoutGlobalScopes()->whereKey($siteId)->value('ville_id');
+
+            if ($villeId !== null && (int) $villeDuSite !== $villeId) {
+                $siteId = null;
+            } else {
+                $villeId = (int) $villeDuSite;
+            }
         }
 
         $code->forceFill([
-            'nom' => $this->propre($donnees['nom'] ?? null),
+            'entreprise_id' => $entrepriseId,
+            'code' => $deuxLettres,
+            'est_actif' => true,
+            'occurrences' => (int) ($code->occurrences ?? 0),
+            'nom' => $this->propre($donnees['nom']),
             'prenom' => $this->propre($donnees['prenom'] ?? null),
             'fonction' => $this->propre($donnees['fonction'] ?? null),
             'ville_id' => $villeId,
@@ -136,15 +167,13 @@ class CodesAtelierController
                 'nom' => $code->nomComplet() ?: null,
                 'fonction' => $code->fonction,
             ]))
-            ->log("Code d'import renseigné");
-
-        $nomme = $code->nomComplet();
+            ->log($nouveau ? 'Code de saisie déclaré' : 'Code de saisie corrigé');
 
         return redirect()->route('super-admin.codes', $retour)->with(
             'annonce',
-            $nomme !== ''
-                ? "Code {$code->code} : « {$nomme} ». Rien ne lui est ouvert — c'est un renseignement."
-                : "Code {$code->code} mis à jour.",
+            $nouveau
+                ? "Code {$code->code} déclaré pour « {$code->nomComplet()} ». Les prochains imports lui rattacheront ses fiches ; aucun accès ne lui est ouvert."
+                : "Code {$code->code} corrigé : « {$code->nomComplet()} ».",
         );
     }
 
