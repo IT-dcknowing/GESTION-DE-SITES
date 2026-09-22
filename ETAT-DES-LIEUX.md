@@ -938,6 +938,22 @@ aurait laissés, repère la ligne de colonnes par son intitulé plutôt que par 
 repose ses deux sections entières. Il ne s'écrase pas tant qu'un tableur le tient ouvert,
 auquel cas la version à jour attend à côté.
 
+### Pour le jour où les API répondront
+
+Demandé par le propriétaire le 24/09, à garder pour ce moment-là et pas avant.
+
+Quand les données arriveront par une API plutôt que par un fichier, les **codes** qu'elles
+portent — code employé, code client — seront reconnus à la lecture. Il faudra alors
+**afficher le nom du porteur du code juste en dessous**, lorsqu'il correspond à quelqu'un
+qu'on a déjà en base.
+
+Le pourquoi tient en une phrase : un code se vérifie du coin de l'œil quand le nom est à
+côté, et ne se vérifie jamais quand il est seul. C'est déjà le parti pris de
+`x-numero-ligne`, qui affiche le nom en clair sous le code de saisie — « aucun code ne se
+retient ». La même règle vaudra pour les codes venus de l'API, avec une différence : le nom
+ne doit s'afficher que si la correspondance existe **réellement en base**. Afficher un nom
+deviné serait pire que d'afficher un code nu.
+
 ### Hors chantier, toujours en attente
 
 - **Rotation des secrets** (le `.env` de production a circulé en clair) : mot de passe du
