@@ -466,10 +466,10 @@ autres villes sont tous deux lus, et l'écran montre ce qu'ils portent.
   élargis au vide, `mode_reglement` porté à 200 caractères (le classeur y inscrit deux
   chèques), clé unique élargie. Reste à faire : la feuille `Liste fournisseurs` (délai de
   règlement, TVA) comme référentiel.
-- **Caisse** : l'import existe (Date, Libellé, Entrées, sorties, Solde, Immatriculation,
-  Bénéficiaire) mais l'écran a été bâti sur un autre classeur — il manque l'atelier précis et le
-  solde annoncé. Règle à appliquer partout : **les colonnes d'une page listent d'abord celles du
-  fichier d'origine**.
+- **Caisse** : ✅ **Fait le 24/09.** Les deux sources sont lues — le classeur tenu à la main
+  d'Abidjan et le journal imprimé de Bouaké et San-Pédro — et l'écran liste les colonnes des
+  fichiers. Règle appliquée : **les colonnes d'une page listent d'abord celles du fichier
+  d'origine**. Détail dans la section « Le journal de caisse imprimé » ci-dessus.
 
   **Question posée le 21/09 — les deux sources sont-elles prises en compte ? Non, une seule.**
   L'écran *Caisse* est alimenté par le **classeur Excel tenu à la main**, un onglet par mois,
@@ -633,9 +633,14 @@ entier, pour que les liens mis en favori continuent de fonctionner.
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 23/09 : **45 lignes terminées, 12 à faire, 1 à
-valider** (l'envoi du courrier à M. Fofana). Deux sections se sont ajoutées au plan
-d'origine — la vitesse des pages, et la plateforme (qui saisit, et comment le joindre).
+date de fin, une ligne par chantier. Au 24/09 : **53 lignes terminées, 10 à faire, 1 à
+valider** (l'envoi du courrier à M. Fofana) **et 1 sans objet**. Trois sections se sont
+ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
+joindre), et la caisse (le journal imprimé).
+
+La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
+direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans
+son PDF. On ne laisse pas une attente derrière une chose dont on n'a plus besoin.
 Le classeur vit dans `C:\BUREAU\GESTION-DE-SITES\ARTISAN-PLAN-RESTANT\`, le PDF un cran
 au-dessus.
 
