@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (6e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (7e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 813 tests, 806 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 820 tests, 813 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -150,6 +150,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | **les colonnes d'une page listent d'abord celles du fichier** : les entrées et sorties reçoivent les quatre colonnes qui n'avaient nulle part où aller (travaux, propriétaire, déposant, **date de livraison prévue — 147 sur 147**), et l'indicateur « promesse de sortie dépassée » devient calculable — **60 véhicules** ; les pages de détail lisent désormais `colonnes()` du format, ce qui rend sept colonnes fournisseur oubliées, dont « TVA 2 » |
 | 24/09 | voir `git log` | **creances** | le **n° de fiche de réception** devient la clé qui relie les états : la fiche du parc montre son devis, sa facture et ses mouvements, et le numéro s'ouvre d'un clic depuis les devis, le chiffre d'affaires et les entrées/sorties. Le rapprochement se fait par égalité — mesuré identique à une forme normalisée, donc aucune colonne de plus |
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
+| 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -307,8 +308,9 @@ migration `2026_09_16_000002` est passée sur le serveur). Fusionnée aussi dans
 - `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.pdf` (7 pages) — ce qui est en service, les onze
   chantiers, les fichiers tenus à la main, l'inventaire du dossier IMPORT, le barème et le
   déroulé de la semaine.
-- `plan-a-jour.xlsx` (nommé `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` jusqu'au 24/09,
-  renommé à la demande du propriétaire) — le même plan pour le suivi : un chantier par
+- `ARTISAN-PLAN-RESTANT/plan-a-jour.xlsx` (nommé `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx`
+  jusqu'au 24/09, renommé à la demande du propriétaire ; sa mise en forme vient du gabarit
+  `modele-mise-en-forme.xlsx` posé à côté de lui) — le même plan pour le suivi : un chantier par
   ligne, groupés par module avec une ligne vide entre deux modules, colonne **Statut** à liste
   déroulante (À faire · En cours · Bloqué · À valider · Terminé · Abandonné) et colonnes
   **Début** / **Fin** au format date.
@@ -827,6 +829,91 @@ imports :
   format importable sache où il écrit.
 
 Tests : `UnFichierEcarteLeDitEtDitPourquoiTest` (8). Aucune migration.
+
+### Les retours du propriétaire du 24/09
+
+Une revue d'écran par écran, faite sur la version en service. Sept lots, tous livrés le
+même jour. Ce qui suit dit surtout **pourquoi** chaque point valait d'être corrigé.
+
+**Ce qui se lisait mal.**
+
+- La pagination parlait anglais — « Showing 1 to 25 of 714 results ». `lang/fr.json` la
+  traduit partout d'un coup.
+- Sur la caisse et les fournisseurs, tourner une page **rechargeait tout et ramenait en
+  haut** : le paginateur d'Eloquent rend de vraies ancres. Les deux écrans passent au
+  composant maison, piloté par `$set` — on ne perd plus la ligne qu'on lisait.
+- Le journal des modifications affichait « updated » et « ville_id : — → 1 ». Un journal
+  qu'il faut connaître la base pour lire ne répond qu'à ceux qui n'en ont pas besoin :
+  `JournalLisible` traduit le geste, le nom du champ, et remplace un identifiant de ville
+  par son nom. Sur la créance et sur la pièce fournisseur.
+- Sur les entrées et sorties, deux colonnes débordaient sur leurs voisines — `max-width`
+  sur un `<td>` n'est qu'un avis. Et « 0 promesse dépassée » se lisait de travers : il peut
+  vouloir dire « tout est tenu » ou « aucune date n'est connue ». Le KPI le dit maintenant,
+  et la case de filtre ne s'affiche que lorsqu'elle a quelque chose à filtrer.
+- Le délai moyen d'envoi d'un devis s'exprime en jours **et** heures : arrondi au jour, il
+  affichait « 0 j » aussi bien pour six heures que pour vingt, alors que le délai visé est
+  de vingt-quatre heures.
+
+**Ce qui manquait.**
+
+- **Le référentiel fournisseur se corrige à la main**, et chaque correction laisse sa trace
+  — qui, quoi, quand, depuis quelle adresse et quel poste. La page disait « la correction se
+  fait dans le classeur » : vrai, et insuffisant, puisque le classeur est tenu ailleurs. Le
+  nom d'une fiche venue d'un classeur reste verrouillé — c'est la clé qui la relie à ses
+  factures. Les jours et le « fin de mois » ne se saisissent pas : ils sont la lecture du
+  libellé, relue ici comme à l'import.
+- **Tout encaissement et tout décaissement dit son motif**, obligatoire à la saisie et
+  nullable en base : les lignes déjà enregistrées ne peuvent pas en recevoir un, et le leur
+  inventer serait écrire à leur place. Migration `2026_09_24_000003`.
+- Le chiffre d'affaires reçoit un **filtre d'état** (portées à l'état, réglées) et un
+  **bouton Détail** par ligne, qui ouvre la page d'une créance : c'est la même facture des
+  deux côtés. Cette page n'acceptait que les factures portées à l'état ; elle les accepte
+  toutes et dit, le cas échéant, que la facture n'y est pas encore.
+- Le **rapprochement se coche** : une case par ligne, « tout cocher », « cocher les
+  certains », « confirmer la sélection ». Entre « tout confirmer » et « ligne à ligne »
+  manquait le geste ordinaire. Les deux tableaux sont enfin paginés.
+- **Des bornes de date** sur les clients, le rapprochement et les impayés. Sur les impayés,
+  un sélecteur de mois qui ne porte pas d'année : elle est déjà choisie dans le sélecteur
+  d'exercice, et deux années sur un même écran finissent par diverger.
+
+**Ce qui a été retiré.** Les fiches de réception écartées ne s'annoncent plus sur l'écran de
+dépôt : la décision est prise, et cet écran répond à « qu'est-ce que je dépose ? ». Le
+paragraphe qui expliquait la traçabilité sous chaque fiche de prospection disparaît aussi —
+le tableau se lit seul. « Caisse par véhicule » quitte le menu des indicateurs : elle ne
+répond pas à une question qu'on se pose en arrivant, mais devant une plaque.
+
+### Le barème court jusqu'à ce qu'un autre le remplace
+
+✅ **Fait le 24/09**, et cela **revient sur la décision du 22/09**. On avait cloisonné le
+barème par exercice : une grille valait pour son année, et la corriger recalculait l'année
+entière. L'usage a montré deux conséquences.
+
+Il fallait **reposer une grille chaque 1er janvier**, et le jour où on l'oublie plus aucune
+commission ne se calcule — sans que rien ne prévienne. Une grille de 2026 rémunère désormais
+2027 tant que personne n'en a posé d'autre.
+
+Et corriger la grille en novembre **recalculait les dix mois déjà annoncés** aux commerciaux,
+ce qui est exactement ce qu'on ne veut pas d'une rémunération. Une grille enregistrée
+aujourd'hui vaut à partir d'aujourd'hui ; les mois antérieurs gardent celle sous laquelle ils
+ont été arrêtés. Remplacer n'est pas écraser : les deux grilles coexistent, et l'écran dit
+depuis quand court celle d'aujourd'hui.
+
+La date d'effet redevient la clé ; `exercice` ne cloisonne plus, il dit sous quel exercice la
+grille a été posée. Les grilles existantes étant datées du 1er janvier de leur exercice, la
+règle s'applique sans qu'aucune ligne soit réécrite. Migration `2026_09_24_000004` (l'index
+d'unicité change de colonnes, vérifié avant d'être touché).
+
+### Le classeur du plan garde sa mise en forme
+
+Le script de séance régénérait le classeur par l'exportateur générique de l'application :
+bandeau « GESTION-DE-SITES », largeurs standard, plus de liste déroulante sur le statut, plus
+de volet figé. Le classeur du 18/09 avait sa propre mise en forme, et c'est elle qu'on veut.
+
+On ne régénère donc plus la mise en forme : on garde le classeur d'origine — styles, colonnes
+taillées pour ce tableau, volet figé sous la ligne de colonnes, liste des statuts — et l'on
+n'y remplace que les lignes. Le gabarit vit à côté du plan
+(`ARTISAN-PLAN-RESTANT/modele-mise-en-forme.xlsx`). Les dates redeviennent des dates : en
+texte, elles ne se trieraient pas. La liste déroulante suit jusqu'à la dernière ligne.
 
 ### Où en est le plan
 
