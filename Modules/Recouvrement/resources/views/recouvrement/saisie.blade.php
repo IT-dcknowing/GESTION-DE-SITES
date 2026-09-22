@@ -67,6 +67,9 @@ state([
     'facTiers' => '',
     'facAssureur' => '',
     'facCourtier' => '',
+    // Chez qui la facture a été déposée. Renseigné, il passe devant le courtier : c'est le
+    // dépôt qui désigne celui à qui la créance est réclamée.
+    'facDeposeChez' => '',
     'facSiteId' => '',
     'facDate' => '',
     'facNumero' => '',
@@ -84,7 +87,11 @@ $periode = computed(fn () => PeriodeDeTravail::depuis($this->moisFiltre, $this->
 
 $arrete = computed(fn () => Recouvrement::arrete($this->periode->arreteIso()));
 
-$ouvertes = computed(fn () => Recouvrement::facturesOuvertes($this->arrete));
+/*
+ * Lues telles que la base les rend, sans en faire des objets : cet écran additionne les
+ * créances ouvertes, il n'en affiche aucune ligne à ligne. Voir lignesOuvertes().
+ */
+$ouvertes = computed(fn () => Recouvrement::lignesOuvertes($this->arrete));
 
 $kpis = computed(fn () => Recouvrement::kpis($this->ouvertes, $this->arrete));
 
@@ -378,6 +385,7 @@ $creerFacture = function () {
         'facTiers' => ['required', Rule::in($tiersConnus)],
         'facAssureur' => [Rule::in(['', ...$tiersConnus])],
         'facCourtier' => [Rule::in(['', ...$tiersConnus])],
+        'facDeposeChez' => [Rule::in(['', ...$tiersConnus])],
         'facSiteId' => ['required', Rule::in(array_keys($this->sites))],
         'facDate' => ['required', 'date'],
         'facNumero' => ['required', 'string', 'max:60'],
@@ -389,6 +397,7 @@ $creerFacture = function () {
         'facTiers' => 'client', 'facSiteId' => 'site', 'facDate' => 'date facture',
         'facNumero' => 'n° facture', 'facMontant' => 'montant TTC',
         'facAssureur' => 'assurance représentée', 'facCourtier' => 'courtier',
+        'facDeposeChez' => 'dépositaire',
     ]);
 
     // Un doublon de numéro pour le même client rend l'extrait de compte incontestable —
@@ -419,6 +428,7 @@ $creerFacture = function () {
         'client' => $donnees['facTiers'],
         'assureur' => $donnees['facAssureur'] ?: null,
         'courtier' => $donnees['facCourtier'] ?: null,
+        'depose_chez' => $donnees['facDeposeChez'] ?: null,
         'vehicule' => $donnees['facVehicule'] ?: null,
         'immatriculation' => $donnees['facImmatriculation'] ?: null,
         'activite' => $donnees['facActivite'],
@@ -431,6 +441,7 @@ $creerFacture = function () {
             'client' => $donnees['facTiers'],
             'assureur' => $donnees['facAssureur'] ?: null,
             'courtier' => $donnees['facCourtier'] ?: null,
+            'depose_chez' => $donnees['facDeposeChez'] ?: null,
             'numero' => $donnees['facNumero'],
             'montant' => (int) $donnees['facMontant'],
         ])
@@ -672,6 +683,11 @@ $creerTiers = function () {
                             vide="— Aucun —" placeholder="Taper le nom du courtier…" />
                     </div>
                     <div class="rec-fld">
+                        <x-select-cherchable id="fac-depose" label="Déposée chez (passe devant)"
+                            model="facDeposeChez" :valeur="$facDeposeChez" source="rec-tiers-connus"
+                            vide="— Personne —" placeholder="Taper le nom du dépositaire…" />
+                    </div>
+                    <div class="rec-fld">
                         <label>Site</label>
                         <select wire:model="facSiteId">
                             <option value="" @selected($facSiteId === '')>— Site —</option>
@@ -715,8 +731,11 @@ $creerTiers = function () {
                 @elseif ($errors->has('facCourtier'))
                     <div class="rec-hint warn">⚠ {{ $errors->first('facCourtier') }}</div>
                 @else
-                    <div class="rec-hint {{ $facCourtier !== '' ? 'ok' : '' }}">
-                        @if ($facCourtier !== '')
+                    <div class="rec-hint {{ $facCourtier !== '' || $facDeposeChez !== '' ? 'ok' : '' }}">
+                        @if ($facDeposeChez !== '')
+                            ✓ Facture déposée chez <b>{{ $facDeposeChez }}</b> : c'est lui qui la règle,
+                            et c'est chez lui seul qu'elle est comptée. Le client facturé reste inscrit.
+                        @elseif ($facCourtier !== '')
                             ✓ Facture suivie, relancée et encaissée au nom de
                             <b>{{ $facCourtier }}</b> — l'assurance représentée reste inscrite pour la
                             ventilation de la page Courtiers.

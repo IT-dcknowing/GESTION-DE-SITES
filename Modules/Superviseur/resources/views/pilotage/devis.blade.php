@@ -4,6 +4,7 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Exploitation\Services\StatistiquesDevis;
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use function Livewire\Volt\{state, computed, mount};
 
@@ -26,8 +27,8 @@ state([
 ]);
 
 mount(function () {
-    $this->dateDebut ??= now()->startOfYear()->format('Y-m');
-    $this->dateFin ??= now()->format('Y-m');
+    $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
+    $this->dateFin ??= now()->format('Y-m-d');
 });
 
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; };
@@ -203,7 +204,7 @@ $detail = computed(function () {
     <x-titre-ecran titre="Devis & proformas"
         sous-titre="Ce qui a été chiffré, et ce qui est devenu une facture." />
 
-    <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
         :commerciaux="$this->commerciaux" :commercial-filtre="$commercialFiltre" />
@@ -224,10 +225,13 @@ $detail = computed(function () {
             :mecanique="$activiteFiltre ? null : ae($this->kpis['differenciationMecanique'] !== null ? (int) $this->kpis['differenciationMecanique'] : null)"
             :sinistre="$activiteFiltre ? null : ae($this->kpis['differenciationSinistre'] !== null ? (int) $this->kpis['differenciationSinistre'] : null)" />
         <x-kpi-card label="Délai moyen d'envoi — {{ $this->libellePerimetre }}"
-            :value="$this->kpis['delaiEnvoi'] !== null ? $this->kpis['delaiEnvoi'].' j' : '—'"
+            {{-- En jours **et** heures : une moyenne arrondie au jour affiche « 0 j » aussi
+                 bien pour six heures que pour vingt, et le délai visé est de vingt-quatre
+                 heures. Une demi-journée, elle, ne veut rien dire pour personne. --}}
+            :value="StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoi'])"
             sub="Réception → émission"
-            :mecanique="$activiteFiltre ? null : ($this->kpis['delaiEnvoiMecanique'] !== null ? $this->kpis['delaiEnvoiMecanique'].' j' : '—')"
-            :sinistre="$activiteFiltre ? null : ($this->kpis['delaiEnvoiSinistre'] !== null ? $this->kpis['delaiEnvoiSinistre'].' j' : '—')" />
+            :mecanique="$activiteFiltre ? null : StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoiMecanique'])"
+            :sinistre="$activiteFiltre ? null : StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoiSinistre'])" />
     </div>
 
     <div style="margin-bottom:20px;">
@@ -316,7 +320,17 @@ $detail = computed(function () {
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td><x-numero-ligne :ligne="$ligne" /></td>
                             <td>{{ $ligne->date_reception?->format('d/m/Y') ?? '—' }}</td>
-                            <td>{{ $ligne->n_fiche_reception ?? '—' }}</td>
+                            <td>
+                                @if ($ligne->n_fiche_reception && PisteDeLaFiche::peutOuvrir(auth()->user()))
+                                    {{-- Le n° de fiche relie les états entre eux : d'ici on
+                                         ouvre la fiche du parc, et de là le devis, la facture,
+                                         l'entrée et la sortie. --}}
+                                    <a href="{{ route('parc-fiche.numero', ['numero' => $ligne->n_fiche_reception]) }}"
+                                        wire:navigate style="color:inherit;">{{ $ligne->n_fiche_reception }}</a>
+                                @else
+                                    {{ $ligne->n_fiche_reception ?? '—' }}
+                                @endif
+                            </td>
                             <td>{{ $ligne->client }}</td>
                             <td>{{ $ligne->date_emission->format('d/m/Y') }}</td>
                             <td style="font-weight:700; color:{{ $delaiHeures === null ? 'inherit' : ($delaiDepasse ? '#C8102E' : '#0E9F6E') }};">

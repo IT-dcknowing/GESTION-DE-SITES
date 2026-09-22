@@ -6,6 +6,8 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use function Livewire\Volt\{state, computed, mount};
 
 state([
@@ -30,12 +32,13 @@ state([
      * rattaché. Voir PeutVenirDUnImport.
      */
     'origineFiltre' => '',
+    'etatImpayesFiltre' => '',
     'pageDetail' => 1,
 ]);
 
 mount(function () {
-    $this->dateDebut ??= now()->startOfYear()->format('Y-m');
-    $this->dateFin ??= now()->format('Y-m');
+    $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
+    $this->dateFin ??= now()->format('Y-m-d');
 });
 
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; };
@@ -187,6 +190,14 @@ $requeteDetail = computed(function () {
         $q->saisieManuelle();
     }
 
+    /* Portée à l'état, ou réglée : ce sont les deux états d'une facture vue depuis le
+       recouvrement, et on ne porte à l'état que ce qui reste dû. */
+    if ($this->etatImpayesFiltre === 'portee') {
+        $q->whereNotNull('exercice_impayes');
+    } elseif ($this->etatImpayesFiltre === 'reglee') {
+        $q->whereNull('exercice_impayes');
+    }
+
     return $q;
 });
 
@@ -198,9 +209,22 @@ $peutPorter = computed(fn () => auth()->user()->hasAnyRole(['gerant', 'responsab
 
 $nombreDetail = computed(fn () => (clone $this->requeteDetail)->count());
 
-/** Seule la page affichée se charge : dix factures, et non toutes celles de la période. */
+/* Combien de lignes derrière chaque choix, pour que le filtre annonce ce qu'il va trouver. */
+$comptesParEtat = computed(fn () => [
+    'portee' => (clone $this->requeteBase)->whereNotNull('exercice_impayes')->count(),
+    'reglee' => (clone $this->requeteBase)->whereNull('exercice_impayes')->count(),
+]);
+
+/**
+ * Seule la page affichée se charge : dix factures, et non toutes celles de la période.
+ *
+ * L'encaissé est additionné en base, pour une raison qui n'est pas d'affichage : c'est lui
+ * qui décide si « Porter à l'état » a un sens. Une facture entièrement réglée n'a rien à
+ * recouvrer, et lui offrir le bouton, c'est proposer d'ouvrir une créance qui n'existe pas.
+ */
 $detail = computed(fn () => (clone $this->requeteDetail)
     ->with(['commercial', 'site'])
+    ->withSum('encaissements', 'montant')
     ->latest('date')->latest('id')
     ->forPage(max(1, (int) $this->pageDetail), 10)
     ->get());
@@ -217,7 +241,7 @@ $comptesParOrigine = computed(fn () => [
     <x-titre-ecran titre="Chiffre d'affaires"
         sous-titre="Ce qui a été facturé sur la période, par activité et par lieu." />
 
-    <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
 
@@ -266,6 +290,19 @@ $comptesParOrigine = computed(fn () => [
             </select>
             {{-- Le décompte est dans l'intitulé de chaque choix : un filtre qui annonce
                  « 0 » avant qu'on le choisisse évite le clic qui ne trouve rien. --}}
+            {{-- L'état des impayés a deux valeurs et pas trois : une facture y est portée, ou
+                 elle ne l'est pas — auquel cas elle est réglée, puisqu'on ne porte à l'état
+                 que ce qui reste dû. Le filtre reprend donc les mots de l'écran des impayés,
+                 et non un vocabulaire de plus. --}}
+            <select wire:model.live="etatImpayesFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
+                <option value="" @selected($etatImpayesFiltre === '')>État : toutes</option>
+                <option value="portee" @selected($etatImpayesFiltre === 'portee')>
+                    Portées à l'état ({{ $this->comptesParEtat['portee'] }})
+                </option>
+                <option value="reglee" @selected($etatImpayesFiltre === 'reglee')>
+                    Réglées ({{ $this->comptesParEtat['reglee'] }})
+                </option>
+            </select>
             <select wire:model.live="origineFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
                 <option value="" @selected($origineFiltre === '')>Origine : toutes</option>
                 <option value="import" @selected($origineFiltre === 'import')>
@@ -301,6 +338,7 @@ $comptesParOrigine = computed(fn () => [
                         @if ($this->peutPorter)
                             <th>État des impayés</th>
                         @endif
+                        <th class="colonne-collee"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -317,7 +355,17 @@ $comptesParOrigine = computed(fn () => [
                             <td>{{ $ligne->date?->format('d/m/Y') ?? '—' }}</td>
                             <td>{{ $ligne->n_facture ?? '—' }}</td>
                             <td>{{ $ligne->n_sticker ?? '—' }}</td>
-                            <td>{{ $ligne->reference_devis ?? '—' }}</td>
+                            <td>
+                                @if ($ligne->reference_devis && PisteDeLaFiche::peutOuvrir(auth()->user()))
+                                    {{-- Le n° de fiche relie les états entre eux : d'ici on
+                                         ouvre la fiche du parc, et de là le devis, la facture,
+                                         l'entrée et la sortie. --}}
+                                    <a href="{{ route('parc-fiche.numero', ['numero' => $ligne->reference_devis]) }}"
+                                        wire:navigate style="color:inherit;">{{ $ligne->reference_devis }}</a>
+                                @else
+                                    {{ $ligne->reference_devis ?? '—' }}
+                                @endif
+                            </td>
                             <td>{{ $ligne->n_sinistre ?? '—' }}</td>
                             <td>{{ $ligne->immatriculation ?? '—' }}</td>
                             {{-- Marque et modèle sont deux colonnes du fichier que l'import
@@ -341,8 +389,11 @@ $comptesParOrigine = computed(fn () => [
                             @if ($this->peutPorter)
                                 <td style="white-space:nowrap;">
                                     {{-- Envoyer la facture à l'état : le panneau « Porter » s'y ouvre dessus,
-                                         les champs connus déjà remplis. --}}
-                                    @if ($ligne->exercice_impayes === null)
+                                         les champs connus déjà remplis. Sauf si elle est réglée :
+                                         un état des impayés n'a que faire d'une créance éteinte. --}}
+                                    @if ($ligne->exercice_impayes === null && Recouvrement::reste($ligne) < Recouvrement::SEUIL_SOLDE)
+                                        <span style="font-size:12px; color:#0E9F6E; font-weight:600;">Réglée</span>
+                                    @elseif ($ligne->exercice_impayes === null)
                                         <a href="{{ route('impayes', ['porter' => $ligne->id]) }}" wire:navigate class="bouton bouton-secondaire"
                                             style="padding:4px 10px; font-size:12px; text-decoration:none;">Porter à l'état</a>
                                     @else
@@ -351,9 +402,23 @@ $comptesParOrigine = computed(fn () => [
                                     @endif
                                 </td>
                             @endif
+                            {{-- Le détail s'ouvre dans sa page, et non sous la ligne : déplié
+                                 ici, il pousserait les quinze colonnes vers le bas et se
+                                 perdrait au premier changement de page. C'est la même page
+                                 que celle d'une créance — c'est la même facture. --}}
+                            <td class="colonne-collee" style="text-align:right;">
+                                {{-- La page de détail vit dans l'état des impayés, qui n'est pas
+                                     ouvert au responsable commercial : un bouton qui répond
+                                     « interdit » vaut moins qu'un bouton absent. --}}
+                                @if ($this->peutPorter)
+                                    <a href="{{ route('impayes.detail', $ligne->id) }}" wire:navigate
+                                        class="bouton bouton-secondaire"
+                                        style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="(count($this->idsSites) > 1 ? 16 : 15) + ($this->peutPorter ? 1 : 0)" texte="Aucune facture enregistrée sur cette période." />
+                        <x-table-vide :colspan="(count($this->idsSites) > 1 ? 17 : 16) + ($this->peutPorter ? 1 : 0)" texte="Aucune facture enregistrée sur cette période." />
                     @endforelse
                 </tbody>
             </table>

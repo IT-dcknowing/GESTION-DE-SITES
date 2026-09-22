@@ -63,8 +63,17 @@ $tousLesTiers = computed(fn () => Recouvrement::tiers());
  */
 $factures = computed(fn () => Recouvrement::facturesDuTiers(Recouvrement::factures($this->arrete), $this->tiers));
 
-/** Vrai si ce tiers porte au moins une facture au titre d'une compagnie : l'extrait le dit alors. */
-$estCourtier = computed(fn () => $this->factures->contains(fn (Facture $f) => trim((string) $f->courtier) !== ''));
+/**
+ * Vrai si ce tiers règle pour le compte d'un autre — l'extrait dit alors pour qui.
+ *
+ * Deux cas le font : le courtier, qui porte les factures des compagnies qu'il représente ;
+ * et le dépositaire, chez qui des factures établies au nom de leurs clients ont été
+ * déposées. Dans les deux cas, un relevé qui n'aligne que des numéros ne se vérifie pas :
+ * celui qui le reçoit doit retrouver de quel dossier chaque ligne vient.
+ */
+$estCourtier = computed(fn () => $this->factures->contains(
+    fn (Facture $f) => trim((string) $f->courtier) !== '' || trim((string) $f->depose_chez) !== ''
+));
 
 $ouvertes = computed(fn () => $this->factures->filter(fn (Facture $f) => Recouvrement::reste($f) >= Recouvrement::SEUIL_SOLDE));
 
@@ -169,8 +178,14 @@ $totaux = computed(fn () => [
                 <table class="rec-tbl">
                     <thead>
                         <tr>
-                            <th>Date</th>
+                            {{-- « Date » ne disait pas laquelle. Sur un relevé qu'on oppose à un
+                                 assureur, la date de facturation et la date de dépôt ne se
+                                 discutent pas de la même façon : l'une ouvre la créance, l'autre
+                                 ouvre le droit de la réclamer. --}}
+                            <th>Date de facturation</th>
+                            <th>Date de dépôt</th>
                             <th>N° facture</th>
+                            <th>N° sinistre</th>
                             @if ($this->estCourtier)
                                 <th>Pour le compte de</th>
                             @endif
@@ -188,12 +203,25 @@ $totaux = computed(fn () => [
                                 $reste = Recouvrement::reste($facture);
                                 $niveau = Recouvrement::niveau($facture, $this->arrete);
                                 $age = Recouvrement::anciennete($facture, $this->arrete);
+
+                                /*
+                                 * Pour le compte de qui la facture est portée. Déposée chez ce
+                                 * tiers : c'est le client facturé qui est derrière ; portée par
+                                 * un courtier : c'est la compagnie. Calculé ici et non en tête
+                                 * du composant — une fonction posée là-haut deviendrait une
+                                 * action appelable depuis le navigateur.
+                                 */
+                                $pourLeCompte = trim((string) $facture->depose_chez) !== ''
+                                    ? ($facture->client ?: Recouvrement::assuranceDe($facture))
+                                    : Recouvrement::assuranceDe($facture);
                             @endphp
                             <tr>
                                 <td>{{ $facture->date?->format('d/m/Y') ?? '—' }}</td>
+                                <td>{{ $facture->date_reception?->format('d/m/Y') ?? '—' }}</td>
                                 <td>{{ $facture->n_facture }}</td>
+                                <td>{{ $facture->n_sinistre ?: '—' }}</td>
                                 @if ($this->estCourtier)
-                                    <td>{{ Recouvrement::assuranceDe($facture) }}</td>
+                                    <td>{{ $pourLeCompte }}</td>
                                 @endif
                                 <td>{{ $facture->vehicule }}</td>
                                 <td>{{ $facture->immatriculation }}</td>
@@ -205,14 +233,16 @@ $totaux = computed(fn () => [
                                     @if ($age !== null && $reste >= Recouvrement::SEUIL_SOLDE)
                                         <span style="color:#5A6472; font-size:11px;"> · {{ $age }} j</span>
                                     @endif
-                                    @if ($facture->date_reception)
-                                        <div style="color:#5A6472; font-size:10.5px;">depuis le dépôt du {{ $facture->date_reception->format('d/m/Y') }}</div>
-                                    @endif
+                                    {{-- Le dépôt a sa colonne à présent : ici on ne rappelle plus
+                                         que d'où l'âge est compté, pas la date elle-même. --}}
+                                    <div style="color:#5A6472; font-size:10.5px;">
+                                        depuis {{ $facture->date_reception ? 'le dépôt' : "l'édition" }}
+                                    </div>
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ $this->estCourtier ? 9 : 8 }}" style="text-align:center; color:#5A6472; padding:26px;">
+                                <td colspan="{{ $this->estCourtier ? 11 : 10 }}" style="text-align:center; color:#5A6472; padding:26px;">
                                     Aucune facture pour ce tiers à cette date.
                                 </td>
                             </tr>
@@ -220,7 +250,7 @@ $totaux = computed(fn () => [
 
                         @if ($this->factures->isNotEmpty())
                             <tr class="tot">
-                                <td colspan="{{ $this->estCourtier ? 5 : 4 }}">TOTAUX</td>
+                                <td colspan="{{ $this->estCourtier ? 7 : 6 }}">TOTAUX</td>
                                 <td class="num">{{ number_format($this->totaux['ttc'], 0, ',', ' ') }}</td>
                                 <td class="num">{{ number_format($this->totaux['regle'], 0, ',', ' ') }}</td>
                                 <td class="num">{{ number_format($this->totaux['reste'], 0, ',', ' ') }}</td>

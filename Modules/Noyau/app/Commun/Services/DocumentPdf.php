@@ -204,6 +204,89 @@ class DocumentPdf
     }
 
     /**
+     * Un en-tête à deux marques : un logo à chaque extrémité, le titre au milieu.
+     *
+     * **Pourquoi celui-ci existe à côté de l'autre.** {@see enTete()} sert les documents
+     * qu'une maison adresse à ses clients : une marque à gauche, tout le texte à sa suite.
+     * Un courrier écrit par un cabinet pour le compte d'une entreprise en met deux en jeu,
+     * et les tasser du même côté produit un bandeau touffu où l'œil ne sait plus qui écrit
+     * à qui. Les marques prennent donc chacune un bord, le titre tient le milieu, et ce
+     * qu'il faut lire ensuite — destinataire, objet, lieu et date — descend sous le cadre,
+     * là où on le cherche dans une lettre.
+     *
+     * @param  array{titre?: string, sousTitre?: string, logoGauche?: ?string, logoDroite?: ?string}  $infos
+     */
+    public function enTeteADeuxMarques(array $infos): self
+    {
+        $hauteur = 62.0;
+        $gauche = self::MARGE;
+        $haut = $this->y;
+        $bas = $haut - $hauteur + 14;
+
+        $this->contenu .= sprintf(
+            "%s\n%.2f %.2f %.2f %.2f re f\n",
+            $this->opCouleur('#F7F5EF', 'rg'), $gauche, $bas, $this->largeurUtile(), $hauteur,
+        );
+        $this->contenu .= sprintf(
+            "%s\n0.7 w %.2f %.2f %.2f %.2f re S\n",
+            $this->opCouleur('#D9D5CA', 'RG'), $gauche, $bas, $this->largeurUtile(), $hauteur,
+        );
+
+        // Les deux logos d'abord : le titre se centre sur ce qu'ils laissent entre eux.
+        $hauteurLogo = 34.0;
+        $milieuLogo = $bas + ($hauteur - $hauteurLogo) / 2;
+        $prisGauche = 0.0;
+        $prisDroite = 0.0;
+
+        if (! empty($infos['logoGauche'])) {
+            $prisGauche = $this->image((string) $infos['logoGauche'], $gauche + 12, $milieuLogo, $hauteurLogo);
+        }
+
+        if (! empty($infos['logoDroite'])) {
+            // Posé par son bord droit : on mesure d'abord ce qu'il occupera, faute de quoi
+            // un logo large sortirait du cadre par la droite.
+            $largeur = $this->mesurerImage((string) $infos['logoDroite'], $hauteurLogo);
+
+            if ($largeur > 0.0) {
+                $prisDroite = $this->image(
+                    (string) $infos['logoDroite'],
+                    $gauche + $this->largeurUtile() - 12 - $largeur,
+                    $milieuLogo,
+                    $hauteurLogo,
+                );
+            }
+        }
+
+        $depart = $gauche + 12 + $prisGauche + 14;
+        $fin = $gauche + $this->largeurUtile() - 12 - $prisDroite - 14;
+        $place = max(80.0, $fin - $depart);
+
+        $titre = $this->tronquer((string) ($infos['titre'] ?? $this->titre), 14, true, $place);
+        $this->y = $bas + $hauteur - (empty($infos['sousTitre']) ? 36 : 30);
+        $this->texte($titre, $depart + ($place - $this->largeurDe($titre, 14, true)) / 2, 14, true, '#191B20');
+
+        if (! empty($infos['sousTitre'])) {
+            $this->y -= 15;
+            $sous = $this->tronquer((string) $infos['sousTitre'], 9, false, $place);
+            $this->texte($sous, $depart + ($place - $this->largeurDe($sous, 9, false)) / 2, 9, false, '#5A6472');
+        }
+
+        $this->y = $bas - 20;
+
+        return $this;
+    }
+
+    /** La largeur qu'occupera une image posée à cette hauteur — sans l'embarquer. */
+    private function mesurerImage(string $chemin, float $hauteurVoulue): float
+    {
+        $taille = is_file($chemin) ? @getimagesize($chemin) : false;
+
+        return $taille === false || (int) $taille[1] < 1
+            ? 0.0
+            : $hauteurVoulue * (int) $taille[0] / (int) $taille[1];
+    }
+
+    /**
      * Embarque une image et la dessine. Rend la largeur occupée, en points.
      *
      * **Comment elle est embarquée.** Le fichier est relu par GD, aplati sur du blanc —
@@ -281,7 +364,7 @@ class DocumentPdf
      * Un tableau à en-tête répété.
      *
      * @param  array<int, string>  $colonnes  intitulés
-     * @param  array<int, float>   $largeurs  en points, additionnées à la largeur utile
+     * @param  array<int, float>  $largeurs  en points, additionnées à la largeur utile
      * @param  array<int, array<int, string>>  $lignes
      */
     public function tableau(array $colonnes, array $largeurs, array $lignes, array $options = []): self
@@ -308,6 +391,12 @@ class DocumentPdf
         $enTete();
 
         foreach ($lignes as $ligne) {
+            if ($options['multiligne'] ?? false) {
+                $this->ligneQuiRevientALaLigne($ligne, $largeurs, $options['gras'] ?? [], $options['taille'] ?? 8.6);
+
+                continue;
+            }
+
             $this->reserver(16);
             $this->ligneDeTableau($ligne, $largeurs, false, '#25272D', $alignements, $etiquettes);
             $this->trait($this->y + 11, '#EBE9E2', 0.4);
@@ -342,11 +431,11 @@ class DocumentPdf
 
     /**
      * @param  array<int, string>  $cellules
-     * @param  array<int, float>   $largeurs
+     * @param  array<int, float>  $largeurs
      */
     /**
      * @param  array<int, string>  $cellules
-     * @param  array<int, float>   $largeurs
+     * @param  array<int, float>  $largeurs
      * @param  array<int, string>  $alignements  'droite' pour les colonnes de montants
      * @param  array<int, array<string, array{fond: string, texte: string}>>  $etiquettes
      */
@@ -387,6 +476,54 @@ class DocumentPdf
         }
 
         $this->y -= 15;
+    }
+
+    /**
+     * Une ligne dont les cellules reviennent à la ligne au lieu d'être coupées.
+     *
+     * **Pourquoi elle existe.** La ligne ordinaire tronque : entre deux colonnes qui se
+     * chevauchent et une seule raccourcie, le raccourci est le moindre mal, et pour un
+     * tableau de montants c'est le bon choix. Mais un tableau dont une colonne porte une
+     * phrase — une demande, une observation — perd alors précisément ce qu'on voulait
+     * dire : la phrase sort avec des points de suspension, et le lecteur ne saura jamais
+     * ce qu'il y avait après. Ici la cellule s'étale donc sur autant de lignes qu'il en
+     * faut, et c'est la hauteur de la rangée qui cède, pas le texte.
+     *
+     * @param  array<int, string>  $cellules
+     * @param  array<int, float>  $largeurs
+     * @param  array<int, int>  $gras  rangs des colonnes à écrire en gras
+     */
+    private function ligneQuiRevientALaLigne(array $cellules, array $largeurs, array $gras, float $taille): void
+    {
+        $blocs = [];
+        $hauteur = 1;
+
+        foreach (array_values($cellules) as $rang => $cellule) {
+            $blocs[$rang] = $this->couper(
+                (string) $cellule, $taille, in_array($rang, $gras, true), ($largeurs[$rang] ?? 100) - 8,
+            );
+            $hauteur = max($hauteur, count($blocs[$rang]));
+        }
+
+        $interligne = $taille + 2.6;
+
+        // La rangée entière tient sur une page ou passe à la suivante : la couper en deux
+        // rendrait une phrase orpheline de sa colonne de gauche.
+        $this->reserver($hauteur * $interligne + 8);
+        $sommet = $this->y;
+
+        foreach ($blocs as $rang => $lignes) {
+            $x = self::MARGE + array_sum(array_slice($largeurs, 0, $rang));
+            $this->y = $sommet;
+
+            foreach ($lignes as $ligne) {
+                $this->texte($ligne, $x, $taille, in_array($rang, $gras, true), '#25272D');
+                $this->y -= $interligne;
+            }
+        }
+
+        $this->y = $sommet - $hauteur * $interligne - 3;
+        $this->trait($this->y + 7, '#EBE9E2', 0.4);
     }
 
     /** Un libellé sur fond plein, arrondi par le seul effet de la marge. */

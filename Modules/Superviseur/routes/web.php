@@ -3,7 +3,10 @@
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Commun\Controleurs\TelechargerAnnuaire;
+use Modules\Noyau\Commun\Services\Exportateur;
 use Modules\Superviseur\Http\Controllers\AccesController;
+use Modules\Superviseur\Http\Controllers\OuvrirLaFicheParSonNumero;
+use Modules\Superviseur\Http\Controllers\TelechargerLesFournisseurs;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,11 +35,24 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
 });
 
 /*
- * Les charges et la trésorerie restent fermées au responsable commercial. Animer une
- * équipe de vente ne donne aucun titre à lire ce que l'entreprise dépense — et l'ouvrir
- * « parce qu'il est responsable » confondrait le rang avec la branche.
+ * Les indicateurs d'argent : ce qui entre, ce qui sort, ce qu'on doit.
+ *
+ * **Le comptable y entre, et c'est le sens du chantier 11.** Il tenait la caisse sans
+ * pouvoir lire l'état de cette caisse, ni la trésorerie qu'il alimente, ni ce que
+ * l'entreprise doit à ses fournisseurs : trois écrans faits de ses propres écritures, et
+ * fermés à lui. Son périmètre s'y applique comme à tout le monde : il ne voit que sa ville.
+ *
+ * **Depuis le 24/09, l'une d'elles écrit.** Le suivi fournisseur reçoit une saisie — une
+ * facture arrivée entre deux dépôts n'avait nulle part où aller. Tout le monde n'a pas à
+ * engager l'entreprise auprès d'un fournisseur : le responsable d'atelier continue de lire
+ * la page, il n'y écrit pas. La règle est dans `EtatDesFournisseurs::peutEcrire()`, et elle
+ * est vérifiée dans l'action autant qu'ici — une route ne protège que l'entrée.
+ *
+ * **Ils restent fermés au responsable commercial.** Animer une équipe de vente ne donne
+ * aucun titre à lire ce que l'entreprise dépense — et l'ouvrir « parce qu'il est
+ * responsable » confondrait le rang avec la branche.
  */
-Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->group(function () {
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caissier'])->group(function () {
     Volt::route('/charges', 'pilotage.charges')->name('charges');
     Volt::route('/tresorerie', 'pilotage.tresorerie')->name('tresorerie');
     // Les deux écrans qui manquaient à ce qui était déjà importé : mille cent cinquante-cinq
@@ -44,7 +60,42 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     // en base sans qu'aucune page ne les affiche. Une donnée qu'on ne peut pas voir n'a pas
     // été importée, elle a été rangée.
     Volt::route('/caisse', 'pilotage.caisse')->name('caisse');
+    // La question du comptoir — « cette plaque, on a payé quoi dessus, et reste-t-il
+    // quelque chose ? » — a sa page : elle ne se pose pas sur une période, et la mêler à
+    // l'écran de caisse aurait donné un écran qui répond mal aux deux questions.
+    Volt::route('/caisse/vehicule', 'pilotage.caisse-vehicule')->name('caisse.vehicule');
     Volt::route('/fournisseurs', 'pilotage.fournisseurs')->name('fournisseurs');
+    /*
+     * Les deux exports du logiciel comptable ont leur page, à côté du suivi tenu à la main.
+     *
+     * Trois écrans donc, et c'est voulu : le suivi dit ce que l'atelier croit devoir, la
+     * balance ce que la comptabilité a enregistré, les règlements ce qu'elle a payé. Les
+     * réunir dans un seul tableau reviendrait à mélanger deux sources et à perdre la seule
+     * chose qu'on cherche — leur écart.
+     */
+    // La pièce, en entier : une quarantaine de colonnes que le tableau d'ensemble ne peut
+    // pas montrer, et qu'il fallait pouvoir lire — et corriger — quelque part.
+    Volt::route('/fournisseurs/piece/{piece}', 'pilotage.fournisseur-piece')
+        ->name('fournisseurs.piece')->whereNumber('piece');
+    // Le fournisseur lui-même, et non ses factures : à quel terme il se règle, s'il
+    // facture la TVA. C'est de cette page que sort l'échéance attendue d'une pièce que le
+    // fichier n'a pas datée — 5 184 sur 7 350 lignes à la mesure du 24/09.
+    Volt::route('/fournisseurs/referentiel', 'pilotage.referentiel-fournisseurs')->name('referentiel-fournisseurs');
+    Volt::route('/fournisseurs/balance', 'pilotage.balance-fournisseurs')->name('balance-fournisseurs');
+    Volt::route('/fournisseurs/reglements', 'pilotage.reglements-fournisseurs')->name('reglements-fournisseurs');
+    // Emporter le même tableau, avec les mêmes filtres : l'habilitation est celle de
+    // l'écran d'où il vient, puisqu'un export n'est rien d'autre qu'une lecture.
+    Route::get('/fournisseurs/telecharger/{format}', TelechargerLesFournisseurs::class)
+        ->name('fournisseurs.telecharger')
+        ->whereIn('format', array_keys(Exportateur::FORMATS));
+});
+
+/*
+ * Le reste du pilotage : le parc, les clients, les mouvements de véhicules et l'état des
+ * impayés. Le comptable n'y entre pas — ce ne sont plus ses chiffres mais ceux de
+ * l'exploitation, et l'état des impayés est un écran de saisie.
+ */
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->group(function () {
     // Le parc vit ici, avec les autres indicateurs, et non dans le module Import :
     // l'import le remplit, l'exploitation le consulte. On le lit tous les jours,
     // on n'importe qu'une fois par semaine.
@@ -58,7 +109,19 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     Volt::route('/entrees-sorties', 'pilotage.mouvements-vehicules')->name('mouvements-vehicules');
     // La fiche a son adresse propre : elle se met en favori et se transmet, ce qu'un volet
     // replié sous un tableau ne permet pas.
-    Volt::route('/parc-vehicules/{dossier}', 'pilotage.parc-fiche')->name('parc-fiche');
+    Volt::route('/parc-vehicules/{dossier}', 'pilotage.parc-fiche')->name('parc-fiche')->whereNumber('dossier');
+    /*
+     * La même fiche, atteinte par son numéro.
+     *
+     * Le n° de fiche est la seule clé commune aux états du logiciel d'atelier : il figure
+     * sur le devis, sur la facture et sur les entrées et sorties. Le rendre cliquable
+     * depuis ces écrans sans cette route coûterait une requête par ligne affichée — ici
+     * elle n'a lieu qu'au clic. Le périmètre y est relu, et un numéro introuvable dit
+     * pourquoi plutôt que de laisser croire à une panne.
+     */
+    Route::get('/parc-vehicules/fiche/{numero}', OuvrirLaFicheParSonNumero::class)
+        ->name('parc-fiche.numero')
+        ->where('numero', '[A-Za-z0-9\s\-\x{00B0}]{1,40}');
 
     /*
      * L'état des impayés, et ce qui va avec.
@@ -81,6 +144,18 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     Volt::route('/impayes/creance/{creance}', 'pilotage.impayes-detail')
         ->name('impayes.detail')->whereNumber('creance');
     Volt::route('/rapprochement-ca-impayes', 'pilotage.rapprochement-ca-impayes')->name('rapprochement-ca-impayes');
+
+    /*
+     * Le rapprochement prospection / devis.
+     *
+     * Il est ici, avec l'exploitation, et non dans le module Commercial : confirmer un
+     * rapprochement porte un devis au compte d'un commercial, c'est-à-dire un chiffre à
+     * quelqu'un. Ce geste appartient à celui qui arbitre, pas à celui qui est compté — un
+     * commercial qui se rattacherait lui-même les devis de l'atelier n'aurait aucun mal à
+     * gonfler sa performance.
+     */
+    Volt::route('/rapprochement-prospections-devis', 'pilotage.rapprochement-prospections-devis')
+        ->name('rapprochement.prospections-devis');
 });
 
 /*

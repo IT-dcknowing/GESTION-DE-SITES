@@ -106,7 +106,11 @@ class ImportLecteursTest extends TestCase
         $intrus = $this->fichierTemporaire('<?php echo "bonjour"; ?>', '.xlsx');
 
         $this->assertNull(Classeur::format($intrus));
-        $this->expectExceptionMessage("Ce fichier n'est ni un classeur Excel récent");
+
+        // Le refus nomme ce qu'on accepte : un message qui dit seulement « non » n'apprend
+        // rien à celui qui s'est trompé de fichier. Le PDF y figure depuis le 23/09, seul
+        // format imprimé lu — le journal de caisse de Bouaké et de San-Pédro.
+        $this->expectExceptionMessage('ni un classeur Excel (.xlsx, .xlsm, .xls) ni un document PDF');
         Classeur::ouvrir($intrus);
     }
 

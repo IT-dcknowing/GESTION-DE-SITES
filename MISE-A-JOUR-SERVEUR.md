@@ -218,6 +218,251 @@ ni l'une ni l'autre ne lit ou n'écrit une ligne :
 - `2026_09_17_000002` ajoute `lots_import.controle` — un dépôt se souvient d'avoir été demandé
   « pour vérifier », afin qu'une relance tardive ne se mette pas à écrire.
 
+### Une seule fois, après la mise à jour du 21 septembre 2026
+
+La branche **`creances`** porte le premier jour du plan : le dépôt désigne le payeur, et une
+facture réglée ne se porte plus à l'état des impayés. Elle se fusionne dans `main` **sur le
+poste**, comme d'habitude, puis le poste pousse et les serveurs tirent.
+
+```bash
+git pull origin main
+php artisan app:deployer
+```
+
+**Rien à lancer de plus, et aucune donnée touchée.** Une seule migration passe avec
+`app:deployer` :
+
+- `2026_09_21_000001` ajoute `factures.depose_chez` (texte, facultatif) et son index
+  `(entreprise_id, depose_chez)`. La colonne naît vide : les 11 332 factures de la base
+  retombent exactement sur la règle d'hier — courtier, puis assureur, puis client — et aucun
+  écran ne change de chiffre tant que personne n'a renseigné un dépositaire.
+
+Ce qu'il faut savoir avant de l'annoncer aux utilisateurs : dès qu'une facture porte un
+« Déposée chez », **c'est ce tiers-là qui est relancé**, et la créance sort de la balance âgée
+du client facturé pour entrer dans la sienne. C'est le but ; ce n'est pas réversible par
+inadvertance, mais cela déplace un encours d'un compte à l'autre, et il vaut mieux que le
+service recouvrement le sache avant de le découvrir.
+
+**Trois autres changements du même envoi, sans migration ni commande :**
+
+- l'onglet **« Période »** des écrans d'indicateurs s'ouvrait sur une erreur — il ne s'ouvre
+  plus sur rien du tout, il s'ouvre. Le filtre y est désormais **au jour** (« du 3 au 17 mars »),
+  et les anciens liens mis en favori, qui portaient un mois, continuent de fonctionner ;
+- l'état des impayés propose au **gérant seul** un bouton **Supprimer**, refusé sur une créance
+  réglée ou importée, avec confirmation sur la ligne et trace complète au journal ;
+- l'écran **Fournisseurs** montre le déjà payé et gagne ses trois boutons de téléchargement.
+
+**Et une seconde migration, elle aussi additive** — `2026_09_21_000002` crée la table
+`notes_vehicule` (plaque, texte, auteur). Table neuve : aucune ligne existante n'est touchée,
+et rien à lancer après `app:deployer`.
+
+Trois nouveautés visibles en découlent :
+
+- une page **Caisse par véhicule** (`/caisse/vehicule`, dans le menu sous *Caisse*) : on tape
+  une plaque, on obtient sa fiche de réception, ses mouvements de caisse, ses factures avec
+  leur reste à payer, et de quoi laisser une note qui garde son auteur ;
+- la **Trésorerie** gagne un bouton *Détail* par mouvement et un bloc qui dit ce que la ligne
+  « Autres » recouvre, poste par poste ;
+- **le comptable** (rôle `caissier`) voit désormais Caisse, Caisse par véhicule, Trésorerie,
+  Charges et Fournisseurs, en lecture et dans son périmètre. À annoncer : ces cinq onglets
+  apparaîtront dans son bandeau à la première connexion après la mise à jour.
+
+**Une troisième migration, additive elle aussi** — `2026_09_21_000003`. Elle ajoute à la
+prospection deux colonnes facultatives, `immatriculation` et `n_fiche_reception`, et crée la
+table neuve `rapprochements_ecartes`. Les 574 prospections existantes gardent ces colonnes
+vides ; rien n'est réécrit, et aucun écran ne change de chiffre tant que personne ne les
+remplit.
+
+Ce qu'elle ouvre : un écran **Rapprochement prospections / devis**
+(`/rapprochement-prospections-devis`, dans le menu *Indicateurs*, entre *Devis* et *Parc
+véhicules*). Le constat qui l'a fait naître : sur 2 673 devis, **241 seulement sont rattachés
+à une prospection** — les 2 432 autres viennent de l'import et ne sont comptés à aucun
+commercial. L'écran propose les couples possibles — même fiche, même plaque, même client —
+dans les quinze jours qui suivent la visite, et **rien n'est rattaché sans un clic**.
+
+> **À dire à celui qui s'en servira.** Confirmer un rapprochement **porte le devis au compte
+> du commercial de la prospection** : c'est un chiffre qui change de mains. L'écran est donc
+> ouvert au gérant et aux responsables, **jamais au commercial lui-même**. Écarter un couple
+> le retire définitivement de la liste, avec le nom de celui qui l'a écarté.
+
+**Et trois corrections d'écran du même envoi, sans migration :**
+
+- l'**état des impayés** gagne un filtre **« Déposée du … au … »**, au jour, sur la date de
+  dépôt (l'édition à défaut) — la même date que l'ancienneté affichée à côté. Laissé vide, il
+  ne retire rien, et les totaux du bandeau suivent les bornes ;
+- en **trésorerie**, le bouton *Détail* des décaissements était hors de vue et rien ne
+  permettait de l'y ramener ; la colonne des boutons se colle désormais au bord droit, et les
+  deux tableaux se rangent l'un sous l'autre quand l'écran est trop étroit ;
+- en **caisse**, la colonne *Montant* — dernière des sept — se colle de la même façon.
+
+Ces trois-là touchent la feuille de style, donc `public/build`. Elle est versionnée : le
+`git pull` suffit, il n'y a **pas** de `npm run build` à lancer sur le serveur. Prévenez les
+utilisateurs de recharger la page une fois (Ctrl + F5) si l'ancien style leur reste.
+
+**Une quatrième migration, additive** — `2026_09_21_000004`. Deux tables neuves,
+`baremes_commission` et `tranches_bareme`. Elles naissent **vides** : ni la migration ni
+`app:deployer` n'écrit de barème. Rien ne change à l'écran tant que le gérant n'en a pas posé
+un, et c'est voulu — un barème décide de ce que quelqu'un touche à la fin du mois, il ne
+s'installe pas tout seul.
+
+Ce qu'elle ouvre : une page **Barème de commission** (`/parametres/bareme-commission`, menu
+*Général*), **réservée au gérant**. Il y trouve la grille du document `vf6` proposée, à poser
+d'un clic après l'avoir relue, puis modifiable tranche par tranche. La page signale en clair
+ce qui cloche dans une grille (un trou, un chevauchement, une tranche finale fermée) et
+permet d'**essayer** un chiffre d'affaires avant de l'appliquer à quelqu'un.
+
+L'écran **Commerciaux** gagne trois colonnes — *Barème*, *Commission de la période*,
+*Cumul de l'année* — **visibles du gérant seul**.
+
+> **À dire au gérant avant qu'il ne s'en serve.**
+>
+> 1. **La date d'effet protège le passé.** On ne corrige pas un barème qui a déjà servi : on
+>    en pose un nouveau, avec le jour où il prend effet. Les mois déjà couverts continuent de
+>    répondre avec l'ancienne grille.
+> 2. **La commission se calcule mois par mois**, jamais sur la période affichée. Trois mois à
+>    15 M ne font pas 45 M commissionnés à 2,5 % : ils font trois mois sous le seuil.
+> 3. **Trois points du document sont des propositions**, pas des décisions : l'entrée à 20 M
+>    (le texte annonce 25 M, la grille dit 20 M), les tranches rendues jointives, et la règle
+>    « plancher atteint, plafond exclu ». Ils sont modifiables ligne par ligne — à relire et à
+>    confirmer.
+> 4. **La colonne Commission peut rester à zéro sans que personne n'ait mal vendu.** Sur les
+>    factures reprises, très peu portent un commercial : l'écran l'indique par un compte, et
+>    renvoie au rapprochement prospections / devis.
+
+**Une cinquième migration, additive** — `2026_09_21_000005`. Une colonne nullable
+(`baremes_commission.roles`) et une table neuve (`ecarts_devis_facture`). Rien n'est
+réécrit.
+
+Elle répond à deux manques trouvés en relisant le travail du jour.
+
+**1. Plus aucune règle de rémunération dans le code.** Savoir quelle grille s'applique à qui
+était écrit en PHP : « si le compte a le rôle responsable commercial, alors la grille
+responsable ». Élargir la grille des commerciaux aux responsables de site — qui prospectent
+pourtant — aurait demandé un déploiement. Chaque grille porte désormais la liste des rôles
+qu'elle rémunère, **cochée par le gérant sur la page du barème**. Un taux, une tranche, une
+assiette ou un rôle modifié agit **dès l'affichage suivant** : rien n'est mis en cache, et le
+seul délai possible reste celui qu'on a voulu, la date d'effet.
+
+**2. La facture retrouve son devis — et c'est là qu'était le vrai problème du barème.** Sur
+les 4 412 factures de 2026, **103 portent un commercial**. La commission restait donc à zéro
+pour presque tout le monde : non parce que personne n'avait vendu, mais parce qu'on ignorait
+qui. Or 2 386 factures portent une `reference_devis` — qui contient en réalité le **numéro de
+fiche de réception** — et 273 désignent un devis présent en base. Le lien était écrit en
+toutes lettres, jamais résolu.
+
+L'écran **Rapprochement prospections / devis** gagne donc un second volet, *Devis → facture*.
+La chaîne complète :
+
+    prospection --(plaque + date)--> devis --(fiche, numéro ou plaque)--> facture
+
+Le premier maillon donne le commercial, le second le porte jusqu'à la facture, qui est ce que
+la commission compte.
+
+> **À dire à celui qui s'en servira.** Les deux volets se font **dans l'ordre**. Confirmer
+> une facture dont le devis n'a pas encore trouvé sa prospection ne rémunère personne : le
+> refus le dit et renvoie au premier volet. La fenêtre du second est plus large (soixante
+> jours), parce qu'un devis attend l'accord du client, parfois celui de son assureur, avant
+> que les travaux ne commencent.
+
+**Une sixième migration, additive** — `2026_09_21_000006`. Deux tables neuves,
+`soldes_fournisseur` et `reglements_fournisseur`. Elles naissent vides, et rien ne les
+remplit tant que personne n'a déposé de fichier.
+
+Le module Import sait désormais lire **deux exports de plus**, ceux du logiciel comptable :
+la **balance fournisseurs** (débit, crédit, solde) et les **règlements fournisseurs** (chaque
+paiement avec son code et son mode). Ils apparaissent dans la liste de l'écran de dépôt, à
+côté des huit autres.
+
+> **À dire au comptable.** Ces deux fichiers ne remplacent pas le suivi fournisseur tenu à la
+> main : celui-là dit ce que l'atelier croit devoir, ceux-ci ce que la comptabilité a
+> enregistré. C'est l'écart entre les deux qu'on pourra désormais regarder. Redéposer la
+> balance met à jour les soldes (c'est une photographie) ; redéposer les règlements ne double
+> aucune ligne, le code de règlement servant de clé.
+
+**Et une correction de performance, sans migration.** L'écran de rapprochement livré plus tôt
+dans la journée comparait chaque facture à chaque devis et **retenait le serveur plusieurs
+minutes** — ce qui, sur un serveur qui traite une requête à la fois, fige toute
+l'application. C'est corrigé (index par fiche, numéro, plaque et nom) et mesuré : de plus de
+deux minutes à moins d'une seconde. **Si la version d'avant a été déployée quelque part, il
+faut tirer celle-ci.**
+
+### Une seule fois, après la mise à jour du 22 septembre 2026
+
+Une septième migration, additive — `2026_09_22_000001`. Deux colonnes nullables
+(`prospections.n_devis` et `baremes_commission.exercice`), aucune ligne réécrite.
+
+**Trois changements visibles, dont un à annoncer avant qu'il ne surprenne.**
+
+1. **Déclarer un passage en devis oblige désormais à donner le n° du devis.** Le champ
+   n'apparaît qu'au moment où l'on coche « devis après passage », et il est exigé à cet
+   instant-là — c'est le seul où le devis existe et où son numéro est sous les yeux de celui
+   qui saisit. À dire aux commerciaux et aux responsables de site : une saisie qui passait
+   hier sera refusée aujourd'hui si le numéro manque. Le champ accepte aussi un n° de fiche
+   de réception, pour ne bloquer personne.
+2. **La page du barème est refaite**, sur la maquette du document : deux sections avec leur
+   tableau, leur bouton *Enregistrer*, leur bouton *+ Ajouter* et leur bouton *Notes*. Elle
+   est désormais **cloisonnée par exercice** : corriger la grille de 2026 vaut aussitôt pour
+   tout 2026, les mois déjà passés compris, et ne touche à aucune autre année. Un bouton
+   *Barème de commission* apparaît sur la ligne des filtres de l'écran *Commerciaux*, pour le
+   gérant seul.
+3. **La balance et les règlements fournisseurs ont leur page**, ouvertes depuis l'écran
+   *Fournisseurs*. La balance garde le solde annoncé par le logiciel **et** affiche à côté le
+   recalcul crédit − débit avec son écart : rien n'est écrasé, et un compte qui ne tombe pas
+   juste se voit au lieu de disparaître.
+
+### Une seule fois, après la mise à jour du 23 septembre 2026
+
+Deux migrations additives — `2026_09_22_000002` et `2026_09_22_000003`. Aucune donnée
+existante n'est réécrite ; aucune commande à lancer.
+
+`2026_09_22_000003` touche à la table `factures_fournisseurs`, qui porte de vraies lignes.
+Ce qu'elle fait, et pourquoi c'est sans danger :
+
+- 24 colonnes nullables s'ajoutent — les lignes déjà là restent telles quelles, et se
+  compléteront au prochain dépôt ;
+- `montant_refacture` et `marge` **acceptent désormais le vide** au lieu d'être à zéro par
+  défaut. Les zéros déjà en base restent des zéros ; c'est un élargissement, rien ne se
+  resserre ;
+- `mode_reglement` passe de 60 à 200 caractères : le classeur y inscrit parfois deux chèques
+  quand une facture a été réglée en deux fois ;
+- **la clé unique s'élargit**, de « fournisseur + n° de pièce » à « fournisseur + pièce +
+  date de facture + montant ». Elle refusait 317 lignes bien réelles — une facture ventilée
+  par section, un avoir qui reprend le numéro de la pièce qu'il annule.
+
+**Quatre changements visibles.**
+
+1. **Le suivi fournisseur se dépose enfin en entier.** L'import lisait dix-huit colonnes d'un
+   onglet secondaire ; il lit maintenant les quarante de la feuille `DETAIL`, celle que le
+   classeur remplit vraiment. À redéposer depuis **Import** → « Factures fournisseurs », les
+   deux fichiers l'un après l'autre : ils se recouvrent sur près du tiers de leurs lignes, et
+   les doublons se reconnaissent d'eux-mêmes. Essai sur les fichiers réels : 7 350 lignes,
+   108 rejets nommés, 958 409 076 F restant dus.
+2. **L'écran *Fournisseurs* affiche l'échéance et l'échu.** Il ne le pouvait pas jusqu'ici :
+   l'onglet qu'on lisait n'en portait aucune. Le KPI dit toujours **sur combien de pièces
+   l'échéance est connue** — une pièce sans échéance n'est pas une pièce à jour. Deux colonnes
+   de plus au tableau, *Échéance* et *Section*, et un filtre « Échues ».
+3. **« Où vous joindre » demande son numéro à qui n'en a pas.** La boîte se pose sur
+   n'importe quel écran, une fois, à côté de la question du code d'atelier, et se tait dès
+   qu'on a répondu. Le numéro est le même champ que celui de l'écran des accès : ce que la
+   personne écrit est ce que l'administrateur lit. À annoncer : chacun verra la question à sa
+   prochaine connexion.
+4. **Une section *Code-import* sur l'écran des codes d'atelier**
+   (`/super-admin/codes?entreprise=…`, bouton en haut). Un formulaire y **déclare** un code
+   de saisie : les deux lettres se tapent à la main, avec le nom, le prénom, le rôle s'il y a
+   lieu, la ville et l'atelier. Choisir la ville réduit la liste des ateliers à ceux de cette
+   ville — c'est là qu'on dit Site 1 ou Site 2 pour Abidjan. Les codes déclarés s'alignent
+   dans un tableau en dessous, chacun avec son bouton *Créer un compte*, qui ouvre le
+   formulaire d'accès déjà rempli, code compris.
+
+   **Un code déclaré est un code comme les autres pour les imports** : le rattachement s'en
+   sert de la même façon et compte ses fiches. La seule chose qu'il n'a pas, c'est un accès.
+   On peut donc déclarer une recrue le jour où elle arrive, sans attendre qu'un fichier ait
+   croisé ses initiales. **Déclarer n'ouvre rien** — aucun compte n'est créé.
+
+**Rappel, pour lever un doute posé le 23/09** : une confirmation de code qui tarde ne bloque
+rien. Les imports se servent du rattachement dès qu'il est posé ; la question sert à le
+corriger, pas à l'autoriser.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

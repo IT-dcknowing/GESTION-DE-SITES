@@ -13,6 +13,13 @@
      posée une seule fois dans la mise en page, et un seul écouteur sert toute
      l'application.
 
+     **Le mode information.** `data-confirmer-mode="information"` affiche la même boîte
+     pour dire quelque chose plutôt que pour demander : un seul bouton « Fermer », et
+     aucun geste relancé. C'est ce qu'il fallait pour les notes du barème, qui
+     s'ouvraient jusqu'ici en dépliant la page sous le tableau qu'on était en train de
+     lire — elles poussaient le tableau vers le bas au moment où l'on comparait les
+     tranches. Une note qu'on lit puis qu'on referme est une boîte, pas un volet.
+
      **Ce qui se passe sans JavaScript.** Le geste part directement, sans question. C'est
      une dégradation assumée et elle est du bon côté : mieux vaut un bouton qui agit qu'un
      bouton qui ne fait rien. Les gestes vraiment irréversibles — annuler un import,
@@ -89,6 +96,10 @@
 
         if (! cible) { return; }
 
+        // En mode information, il n'y a pas de geste à relancer : la boîte a dit ce
+        // qu'elle avait à dire.
+        if (cible.getAttribute('data-confirmer-mode') === 'information') { return; }
+
         if (cible.tagName === 'A') {
             window.location.href = cible.href;
 
@@ -126,7 +137,12 @@
         var alerte = cible.getAttribute('data-confirmer-ton') === 'alerte';
         bande.style.background = alerte ? '#C8102E' : '#191B20';
         valider.style.background = alerte ? '#C8102E' : '#191B20';
-        valider.textContent = cible.getAttribute('data-confirmer-libelle') || 'Confirmer';
+
+        var information = cible.getAttribute('data-confirmer-mode') === 'information';
+        // « Annuler » n'a pas de sens devant une note : il n'y a rien à annuler.
+        annuler.hidden = information;
+        valider.textContent = cible.getAttribute('data-confirmer-libelle')
+            || (information ? 'Fermer' : 'Confirmer');
 
         enAttente = cible;
         boite.showModal();

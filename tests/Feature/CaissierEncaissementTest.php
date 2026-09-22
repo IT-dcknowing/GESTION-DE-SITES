@@ -2,18 +2,18 @@
 
 namespace Tests\Feature;
 
-use Modules\Noyau\Exploitation\Modeles\Charge;
-use Modules\Noyau\Exploitation\Modeles\Commercial;
-use Modules\Noyau\Exploitation\Modeles\Encaissement;
-use Modules\Noyau\Exploitation\Modeles\Facture;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Volt\Volt;
 use Modules\Noyau\Commun\Modeles\NotificationApp;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
-use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Volt\Volt;
+use Modules\Noyau\Exploitation\Modeles\Charge;
+use Modules\Noyau\Exploitation\Modeles\Commercial;
+use Modules\Noyau\Exploitation\Modeles\Encaissement;
+use Modules\Noyau\Exploitation\Modeles\Facture;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -130,10 +130,14 @@ class CaissierEncaissementTest extends TestCase
             ->call('choisirFacture', $facture->id)
             ->set('montant', 300_000)
             ->set('moyen', 'Espèces')
+            // Le motif est obligatoire depuis le 24/09 : le n° de facture dit sur quoi
+            // porte le règlement, le motif dit pourquoi il arrive aujourd'hui.
+            ->set('motif', 'Acompte convenu')
             ->call('encaisser')
             ->assertHasNoErrors();
 
         $this->assertSame(300_000, (int) Encaissement::where('facture_id', $facture->id)->sum('montant'));
+        $this->assertSame('Acompte convenu', Encaissement::where('facture_id', $facture->id)->value('motif'));
         $this->assertSame(200_000, $facture->fresh()->resteAEncaisser());
 
         // Le responsable du site est notifié de l'encaissement du caissier.
@@ -149,6 +153,7 @@ class CaissierEncaissementTest extends TestCase
         Volt::test('comptabilite.encaissements')
             ->call('choisirFacture', $facture->id)
             ->set('montant', 600_000)
+            ->set('motif', 'Solde de la facture')
             ->call('encaisser')
             ->assertHasErrors(['montant']);
 
@@ -173,10 +178,42 @@ class CaissierEncaissementTest extends TestCase
         Volt::test('comptabilite.encaissements')
             ->set('factureId', $facture->id)
             ->set('montant', 100_000)
+            ->set('motif', 'Solde de la facture')
             ->call('encaisser')
             ->assertHasErrors(['montant']);
 
         $this->assertSame(400_000, (int) Encaissement::where('facture_id', $facture->id)->sum('montant'));
+    }
+
+    public function test_un_encaissement_sans_motif_est_refuse(): void
+    {
+        $facture = $this->facture(500_000);
+
+        $this->actingAs($this->caissier);
+
+        // « Obligatoire » veut dire refusé, pas suggéré : un champ qu'on peut laisser vide
+        // finit vide sur la moitié des lignes, et la colonne n'apprend plus rien.
+        Volt::test('comptabilite.encaissements')
+            ->call('choisirFacture', $facture->id)
+            ->set('montant', 100_000)
+            ->call('encaisser')
+            ->assertHasErrors(['motif']);
+
+        $this->assertSame(0, Encaissement::where('facture_id', $facture->id)->count());
+    }
+
+    public function test_un_decaissement_sans_motif_est_refuse(): void
+    {
+        $this->actingAs($this->caissier);
+
+        Volt::test('comptabilite.decaissements')
+            ->set('chgTypeOp', 'Charges')
+            ->set('chgLibelle', 'Achats pièces')
+            ->set('chgMontant', 75_000)
+            ->call('ajouterCharge')
+            ->assertHasErrors(['chgMotif']);
+
+        $this->assertSame(0, Charge::where('site_id', $this->site->id)->count());
     }
 
     public function test_le_caissier_enregistre_un_decaissement_sur_son_site(): void
@@ -187,12 +224,14 @@ class CaissierEncaissementTest extends TestCase
             ->set('chgTypeOp', 'Charges')
             ->set('chgLibelle', 'Achats pièces')
             ->set('chgMontant', 75_000)
+            ->set('chgMotif', 'Commande de plaquettes')
             ->set('chgTiers', 'Fournisseur X')
             ->call('ajouterCharge')
             ->assertHasNoErrors();
 
         $charge = Charge::where('site_id', $this->site->id)->firstOrFail();
         $this->assertSame(75_000, $charge->montant);
+        $this->assertSame('Commande de plaquettes', $charge->motif);
         $this->assertSame($this->caissier->id, $charge->cree_par);
     }
 }

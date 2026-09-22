@@ -24,6 +24,10 @@ state([
     'completionId' => null,
     'date' => null,
     'client' => '', 'localisation' => '', 'moyen' => 'RDV',
+    // Le véhicule visé, et sa fiche quand elle est déjà ouverte. Les deux sont facultatifs :
+    // c'est ce qui permettra plus tard de retrouver le devis né de cette visite, ce n'est
+    // pas une condition pour la saisir.
+    'immatriculation' => '', 'nFicheReception' => '', 'nDevis' => '',
     'activite' => '', 'passage' => false, 'datePassage' => null,
     'devisApres' => false, 'dateDevis' => null, 'observations' => '',
     'commentaire' => '',
@@ -32,6 +36,7 @@ state([
     // Édition en ligne d'un brouillon, tant qu'il n'est pas parti chez le responsable.
     'editionId' => null,
     'eClient' => '', 'eLocalisation' => '', 'eMoyen' => 'RDV', 'eActivite' => '',
+    'eImmatriculation' => '', 'eNFicheReception' => '', 'eNDevis' => '',
     'ePassage' => false, 'eDatePassage' => null,
     'eDevisApres' => false, 'eDateDevis' => null, 'eObservations' => '',
 ]);
@@ -179,12 +184,23 @@ $enregistrerProspection = function (string $statut) {
         'date' => ['required', 'date'],
         'client' => ['required', 'string', 'max:255'],
         'localisation' => ['nullable', 'string', 'max:255'],
+        'immatriculation' => ['nullable', 'string', 'max:32'],
+        'nFicheReception' => ['nullable', 'string', 'max:60'],
+        /*
+         * Obligatoire **seulement** quand le passage en devis est déclaré.
+         *
+         * C'est l'instant où le commercial tient le devis : lui demander son numéro alors
+         * ne coûte rien, et cela supprime tout le travail de rapprochement qui suivait.
+         * L'exiger en dehors de ce cas reviendrait à refuser une visite qui n'a encore rien
+         * produit — c'est-à-dire la plupart d'entre elles.
+         */
+        'nDevis' => [$this->devisApres ? 'required' : 'nullable', 'string', 'max:60'],
         'moyen' => ['required', 'string', 'max:60'],
         'activite' => ['required', 'string', 'max:60'],
         'datePassage' => ['nullable', 'date'],
         'dateDevis' => ['nullable', 'date'],
         'observations' => ['nullable', 'string'],
-    ], [], ['client' => 'clients visités', 'activite' => 'activité']);
+    ], [], ['client' => 'clients visités', 'activite' => 'activité', 'nDevis' => 'n° du devis']);
 
     $coherence = Prospection::normaliserPassage(
         (bool) $this->passage, $donnees['datePassage'],
@@ -206,6 +222,11 @@ $enregistrerProspection = function (string $statut) {
         'date' => $donnees['date'],
         'client' => $donnees['client'],
         'localisation' => $donnees['localisation'] ?: null,
+        // La plaque est rangée par le modèle : majuscules, espaces simples. On ne la met
+        // pas en forme ici, sinon elle le serait deux fois et différemment.
+        'immatriculation' => $donnees['immatriculation'] ?: null,
+        'n_fiche_reception' => trim($donnees['nFicheReception'] ?? '') ?: null,
+        'n_devis' => trim($donnees['nDevis'] ?? '') ?: null,
         'moyen' => $donnees['moyen'],
         'activite' => $donnees['activite'],
         ...$coherence,
@@ -222,7 +243,8 @@ $enregistrerProspection = function (string $statut) {
         $this->prevenirLeResponsable(1);
     }
 
-    $this->reset(['client', 'localisation', 'observations', 'commentaire', 'passage', 'datePassage', 'devisApres', 'dateDevis']);
+    $this->reset(['client', 'localisation', 'immatriculation', 'nFicheReception', 'nDevis',
+        'observations', 'commentaire', 'passage', 'datePassage', 'devisApres', 'dateDevis']);
     $this->resetPage();
     $this->annoncer($statut === 'Transmise'
         ? 'Prospection transmise à votre responsable.'
@@ -268,6 +290,9 @@ $modifier = function (int $id) {
     $this->editionId = $p->id;
     $this->eClient = $p->client;
     $this->eLocalisation = $p->localisation ?? '';
+    $this->eImmatriculation = $p->immatriculation ?? '';
+    $this->eNFicheReception = $p->n_fiche_reception ?? '';
+    $this->eNDevis = $p->n_devis ?? '';
     $this->eMoyen = $p->moyen;
     $this->eActivite = $p->activite;
     $this->ePassage = (bool) $p->passage;
@@ -332,10 +357,13 @@ $enregistrerEdition = function () {
         'eLocalisation' => ['nullable', 'string', 'max:255'],
         'eMoyen' => ['required', 'string', 'max:60'],
         'eActivite' => ['required', 'string', 'max:60'],
+        'eImmatriculation' => ['nullable', 'string', 'max:32'],
+        'eNFicheReception' => ['nullable', 'string', 'max:60'],
+        'eNDevis' => [$this->eDevisApres ? 'required' : 'nullable', 'string', 'max:60'],
         'eDatePassage' => ['nullable', 'date'],
         'eDateDevis' => ['nullable', 'date'],
         'eObservations' => ['nullable', 'string'],
-    ], [], ['eClient' => 'clients visités', 'eActivite' => 'activité']);
+    ], [], ['eClient' => 'clients visités', 'eActivite' => 'activité', 'eNDevis' => 'n° du devis']);
 
     $coherence = Prospection::normaliserPassage(
         (bool) $this->ePassage, $donnees['eDatePassage'],
@@ -345,6 +373,9 @@ $enregistrerEdition = function () {
     $p->update([
         'client' => $donnees['eClient'],
         'localisation' => $donnees['eLocalisation'] ?: null,
+        'immatriculation' => $donnees['eImmatriculation'] ?: null,
+        'n_fiche_reception' => trim($donnees['eNFicheReception'] ?? '') ?: null,
+        'n_devis' => trim($donnees['eNDevis'] ?? '') ?: null,
         'moyen' => $donnees['eMoyen'],
         'activite' => $donnees['eActivite'],
         ...$coherence,
@@ -558,6 +589,14 @@ $transmettreSelection = function () {
                 <x-champ label="Date" model="date" type="date" width="140" />
                 <x-champ label="Clients visités" model="client" requis="true" />
                 <x-champ label="Localisation" model="localisation" width="150" />
+                {{-- La plaque, et non le n° de fiche, est ce que le commercial a sous les
+                     yeux au moment de la visite. C'est elle qui retrouvera le devis émis
+                     trois à cinq jours plus tard : personne ne reviendra écrire un numéro
+                     de fiche sur une visite de la semaine passée. --}}
+                <x-champ label="Immatriculation" model="immatriculation" width="150"
+                    placeholder="1234 AB 01" aide="Facultatif — sert à retrouver le devis" />
+                <x-champ label="N° de fiche de réception" model="nFicheReception" width="170"
+                    placeholder="FR-…" aide="Facultatif — si le véhicule est déjà à l'atelier" />
                 <x-champ label="Moyens" model="moyen" type="select" :options="$this->optionsMoyen" width="140" />
                 <x-champ label="Activité" model="activite" type="select" :options="$this->optionsActivite" width="150" />
                 <x-champ label="Passage" model="passage" type="checkbox" live="true" />
@@ -567,6 +606,11 @@ $transmettreSelection = function () {
                 <x-champ label="Devis après passage" model="devisApres" type="checkbox" live="true" />
                 @if ($devisApres)
                     <x-champ label="Date du devis (= date de passage)" model="dateDevis" type="date" live="true" width="180" />
+                    {{-- Il n'apparaît qu'ici, et il est exigé : c'est l'instant où le devis
+                         existe et où son numéro est sous les yeux du commercial. Le donner
+                         maintenant évite tout le rapprochement qui suivrait. --}}
+                    <x-champ label="N° du devis" model="nDevis" width="170" requis="true"
+                        placeholder="PR-MT-11434" aide="Ou le n° de fiche, à défaut" />
                 @endif
                 <x-champ label="Observations" model="observations" />
                 {{-- Deux gestes distincts : mettre de côté, ou transmettre tout de suite.
@@ -608,7 +652,7 @@ $transmettreSelection = function () {
                     <thead>
                         <tr>
                             <th>✓</th><th>N°</th><th>Date</th><th>Clients visités</th><th>Localisation</th>
-                            <th>Moyens</th><th>Activité</th><th>Passage</th><th>Devis après passage</th>
+                            <th>Véhicule</th><th>Moyens</th><th>Activité</th><th>Passage</th><th>Devis après passage</th>
                             <th>Observations</th><th>Informations libres</th><th>Statut</th>
                             <th>Décision</th><th></th>
                         </tr>
@@ -632,6 +676,12 @@ $transmettreSelection = function () {
                                     <td>{{ $ligne->date->format('d/m/Y') }}</td>
                                     <td><input type="text" wire:model="eClient" value="{{ $eClient }}" class="champ" style="min-width:130px;"></td>
                                     <td><input type="text" wire:model="eLocalisation" value="{{ $eLocalisation }}" class="champ" style="min-width:110px;"></td>
+                                    <td style="white-space:normal; min-width:150px;">
+                                        <input type="text" wire:model="eImmatriculation" value="{{ $eImmatriculation }}"
+                                            class="champ" placeholder="1234 AB 01">
+                                        <input type="text" wire:model="eNFicheReception" value="{{ $eNFicheReception }}"
+                                            class="champ" placeholder="N° de fiche" style="margin-top:4px;">
+                                    </td>
                                     <td>
                                         <select wire:model="eMoyen" class="champ">
                                             @foreach ($this->optionsMoyen as $valeur => $libelle)
@@ -660,6 +710,8 @@ $transmettreSelection = function () {
                                         </label>
                                         @if ($eDevisApres)
                                             <input type="date" wire:model.live="eDateDevis" value="{{ $eDateDevis }}" class="champ" style="margin-top:4px;">
+                                            <input type="text" wire:model="eNDevis" value="{{ $eNDevis }}"
+                                                class="champ" placeholder="N° du devis" style="margin-top:4px;">
                                         @endif
                                     </td>
                                     <td style="white-space:normal; min-width:180px;">
@@ -685,6 +737,12 @@ $transmettreSelection = function () {
                                 <td>{{ $ligne->date->format('d/m/Y') }}</td>
                                 <td>{{ $ligne->client }}</td>
                                 <td style="color:var(--th-gris,#6B6E76);">{{ $ligne->localisation ?? '—' }}</td>
+                                <td style="color:var(--th-gris,#6B6E76);">
+                                    {{ $ligne->immatriculation ?? '—' }}
+                                    @if ($ligne->n_fiche_reception)
+                                        <span style="font-size:11px; display:block;">{{ $ligne->n_fiche_reception }}</span>
+                                    @endif
+                                </td>
                                 <td>{{ $ligne->moyen }}</td>
                                 <td>{{ $ligne->activite }}</td>
 
@@ -816,7 +874,7 @@ $transmettreSelection = function () {
                             </tr>
                             @endif
                         @empty
-                            <x-table-vide :colspan="13" texte="Aucune prospection ne correspond à ces filtres." />
+                            <x-table-vide :colspan="14" texte="Aucune prospection ne correspond à ces filtres." />
                         @endforelse
                     </tbody>
                 </table>

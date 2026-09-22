@@ -31,8 +31,16 @@ mount(function (int $creance) {
 $creance = computed(function () {
     $sites = PerimetreSites::idsRetenus(auth()->user(), '', '');
 
+    /*
+     * Toute facture s'ouvre ici, portée à l'état ou non.
+     *
+     * La page n'acceptait que les factures portées à l'état des impayés. Or c'est la même
+     * facture des deux côtés : depuis le 24/09, le tableau du chiffre d'affaires ouvre lui
+     * aussi cette page, et refuser une facture non portée aurait fait répondre « introuvable »
+     * à une facture qui est sous les yeux. La page dit à la place qu'elle n'est pas à l'état.
+     */
     return EtatDesImpayes::dansLePerimetre(
-        Facture::query()->whereNotNull('exercice_impayes')->withSum('encaissements', 'montant'),
+        Facture::query()->withSum('encaissements', 'montant'),
         $sites,
         EtatDesImpayes::villesDesSites($sites),
     )
@@ -79,10 +87,20 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px;
                     flex-wrap:wrap; margin:0 0 16px;">
             <div>
-                <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes]) }}" wire:navigate
-                   style="color:#6B6E76; text-decoration:none; font-size:12.5px; font-weight:600;">
-                    ‹ État des impayés {{ $f->exercice_impayes }}
-                </a>
+                {{-- Le retour mène là d'où l'on vient : l'état des impayés quand la facture y
+                     est portée, le chiffre d'affaires sinon — c'est le seul tableau qui
+                     ouvre cette page pour une facture non portée. --}}
+                @if ($f->exercice_impayes)
+                    <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes]) }}" wire:navigate
+                       class="bouton bouton-secondaire" style="text-decoration:none; padding:5px 12px; font-size:12.5px;">
+                        ← Retour à l'état des impayés {{ $f->exercice_impayes }}
+                    </a>
+                @else
+                    <a href="{{ route('chiffre-affaires') }}" wire:navigate
+                       class="bouton bouton-secondaire" style="text-decoration:none; padding:5px 12px; font-size:12.5px;">
+                        ← Retour au chiffre d'affaires
+                    </a>
+                @endif
                 <h1 style="font-family:'Barlow Condensed',sans-serif; font-size:27px; font-weight:800;
                            margin:3px 0 0; letter-spacing:.5px;">
                     {{ $f->numero }} — facture n° {{ $f->n_facture }}
@@ -92,8 +110,16 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
                 </div>
             </div>
 
-            <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes, 'modifier' => $f->id]) }}" wire:navigate
-               class="bouton" style="padding:9px 16px; text-decoration:none;">Modifier</a>
+            @if ($f->exercice_impayes)
+                <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes, 'modifier' => $f->id]) }}" wire:navigate
+                   class="bouton" style="padding:9px 16px; text-decoration:none;">Modifier</a>
+            @else
+                {{-- Une facture qui n'est pas à l'état ne se corrige pas d'ici : elle s'y
+                     porte d'abord, et c'est un geste qui appartient à l'état des impayés. --}}
+                <span style="font-size:12.5px; color:#B9791C; font-weight:700; align-self:center;">
+                    Pas encore portée à l'état des impayés
+                </span>
+            @endif
         </div>
 
         <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
@@ -135,7 +161,12 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
                     <tr><td style="{{ $intitule }}">Année de l'état</td><td style="{{ $cellule }}">{{ $f->exercice_impayes }}</td></tr>
                     <tr><td style="{{ $intitule }}">Report</td><td style="{{ $cellule }}">{{ EtatDesImpayes::libelleReport($f, (int) now()->year) }}</td></tr>
                     <tr><td style="{{ $intitule }}">Activité</td><td style="{{ $cellule }}">{{ $f->activite ?? '—' }}</td></tr>
-                    <tr><td style="{{ $intitule }}">Tiers payant (celui qu'on relance)</td><td style="{{ $cellule }}">{{ $f->tiersPayant() }}</td></tr>
+                    @if ($f->depose_chez)
+                        <tr><td style="{{ $intitule }}">Déposée chez</td><td style="{{ $cellule }}">{{ $f->depose_chez }}</td></tr>
+                    @endif
+                    {{-- Dire d'où vient le payeur évite la question suivante : pourquoi la
+                         relance ne part-elle pas au nom inscrit sur la facture ? --}}
+                    <tr><td style="{{ $intitule }}">Tiers payant (celui qu'on relance)</td><td style="{{ $cellule }}">{{ $f->tiersPayant() }}@if ($f->depose_chez)<span style="color:#6B6E76;"> — parce que la facture est déposée chez lui</span>@endif</td></tr>
                     <tr><td style="{{ $intitule }}">Niveau de relance</td><td style="{{ $cellule }}">{{ $niveau['libelle'] }}</td></tr>
                     @if ($f->anciennete_declaree)
                         <tr><td style="{{ $intitule }}">Tranche écrite dans le classeur</td><td style="{{ $cellule }}">{{ $f->anciennete_declaree }}</td></tr>
@@ -193,26 +224,27 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
                         <tr><th>Quand</th><th>Qui</th><th>Geste</th><th>Avant → après</th></tr>
                     </thead>
                     <tbody>
+                        @php $nomsDesLieux = \Modules\Noyau\Tracabilite\Services\JournalLisible::nomsDesLieux($this->historique); @endphp
                         @forelse ($this->historique as $trace)
                             @php
-                                $avant = $trace->properties['old'] ?? [];
-                                $apres = $trace->properties['attributes'] ?? [];
+                                /* Le journal se lit sans connaître la base : « updated »
+                                   devient « Modifiée », « ville_id : — → 1 » devient
+                                   « Ville : vide → Abidjan », et les dates prennent le
+                                   format d'ici. Voir JournalLisible. */
+                                $changements = \Modules\Noyau\Tracabilite\Services\JournalLisible::changements($trace, $nomsDesLieux);
                             @endphp
                             <tr>
                                 <td style="white-space:nowrap;">{{ $trace->created_at?->format('d/m/Y H:i') }}</td>
                                 <td>{{ $trace->causer?->name ?? 'import' }}</td>
-                                <td>{{ $trace->description }}</td>
+                                <td>{{ \Modules\Noyau\Tracabilite\Services\JournalLisible::geste($trace) }}</td>
                                 <td style="font-size:12.5px;">
-                                    @forelse ($avant as $champ => $valeur)
-                                        @if (($apres[$champ] ?? null) !== $valeur)
-                                            <div>
-                                                <strong>{{ $champ }}</strong> :
-                                                {{ is_scalar($valeur) ? \Illuminate\Support\Str::limit((string) $valeur, 60) : '—' }}
-                                                → {{ is_scalar($apres[$champ] ?? null) ? \Illuminate\Support\Str::limit((string) $apres[$champ], 60) : '—' }}
-                                            </div>
-                                        @endif
+                                    @forelse ($changements as $changement)
+                                        <div>
+                                            <strong>{{ $changement['champ'] }}</strong> :
+                                            {{ $changement['avant'] }} → {{ $changement['apres'] }}
+                                        </div>
                                     @empty
-                                        —
+                                        <span style="color:#9A9DA5;">rien de visible n'a changé</span>
                                     @endforelse
                                 </td>
                             </tr>

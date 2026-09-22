@@ -39,6 +39,13 @@ Route::middleware(['auth', 'role:super_admin'])
         Volt::route('/codes', 'superadmin.codes')->name('codes')->middleware('habilitation:acces');
         Route::post('/codes', [CodesAtelierController::class, 'update'])
             ->name('codes.enregistrer')->middleware('habilitation:acces');
+        /*
+         * Les codes vus dans les imports et qui n'appartiennent à aucun compte : on y note
+         * qui les porte, sans rien leur ouvrir. Même habilitation, puisque c'est la même
+         * donnée regardée par l'autre bout.
+         */
+        Route::post('/codes/import', [CodesAtelierController::class, 'declarer'])
+            ->name('codes.import')->middleware('habilitation:acces');
         Volt::route('/journal', 'superadmin.journal')->name('journal.index')->middleware('habilitation:journal');
         // Même habilitation que le journal : les deux écrans répondent à la même
         // question — que s'est-il passé, et par qui. Ouvrir une section de plus aurait

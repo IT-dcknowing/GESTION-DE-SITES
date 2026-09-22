@@ -4,6 +4,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Modules\Noyau\Commun\Modeles\Referentiel;
+use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
@@ -12,6 +13,7 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Noyau\Exploitation\Services\SuppressionDUneCreance;
 use function Livewire\Volt\{computed, mount, on, protect, state};
 
 /*
@@ -67,6 +69,54 @@ state(['statutFiltre' => 'ouvertes'])->url(except: 'ouvertes');
 state(['reportFiltre' => ''])->url(except: '');
 state(['recherche' => ''])->url(except: '');
 
+/*
+ * Les deux bornes du filtre « du … au … ».
+ *
+ * L'écran n'en avait pas : sa période, c'était l'année de l'état, et c'est juste — une
+ * créance garde son année d'origine et s'y reporte. Mais on ne pouvait pas demander « les
+ * factures déposées entre le 1er et le 15 mars », ce qu'on cherche dès qu'on rapproche un
+ * dépôt avec un bordereau. L'année reste donc le registre ; les bornes ne font que réduire
+ * ce qu'on en regarde, et les totaux du bandeau les suivent.
+ *
+ * Elles comptent sur la **date de dépôt, sinon l'édition** — la date d'où court l'ancienneté
+ * affichée dans le tableau (`Recouvrement::dateDeDepart()`), et non une troisième date qui
+ * dirait autre chose que la colonne d'à côté.
+ */
+state(['dateDebut' => ''])->url(except: '');
+state(['dateFin' => ''])->url(except: '');
+
+/*
+ * Le mois, choisi dans l'année de l'état.
+ *
+ * **Il ne porte pas d'année, et c'est le point.** L'année est déjà choisie plus haut, dans
+ * le sélecteur d'exercice : la redemander ici en ferait deux à tenir d'accord, et le jour
+ * où elles divergent l'écran montre un mois qui n'est pas celui de l'état qu'on lit.
+ *
+ * Choisir un mois pose les deux bornes du « du … au … » : ce sont les mêmes bornes, prises
+ * d'un geste plutôt que de deux. Les saisir à la main ensuite rouvre le choix libre.
+ */
+state(['moisFiltre' => ''])->url(except: '');
+
+$updatedMoisFiltre = function () {
+    if ($this->moisFiltre === '') {
+        $this->dateDebut = '';
+        $this->dateFin = '';
+
+        return;
+    }
+
+    $premier = \Illuminate\Support\Carbon::create($this->annee, (int) $this->moisFiltre, 1);
+
+    $this->dateDebut = $premier->format('Y-m-d');
+    $this->dateFin = $premier->copy()->endOfMonth()->format('Y-m-d');
+};
+
+/** Les douze mois, dans les mots d'ici. */
+$moisDeLAnnee = computed(fn () => [
+    1 => 'Janvier', 2 => 'Février', 3 => 'Mars', 4 => 'Avril', 5 => 'Mai', 6 => 'Juin',
+    7 => 'Juillet', 8 => 'Août', 9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre',
+]);
+
 state([
     'page' => 1,
     'formulaireOuvert' => false,
@@ -87,6 +137,9 @@ state([
     'fSiteId' => '',
     'fVilleId' => '',
     'fCourtier' => '',
+    // Hors classeur : chez qui la facture a été déposée. Le fichier ne le disait pas, et
+    // c'est précisément ce qui manquait pour réclamer la créance à qui la doit.
+    'fDeposeChez' => '',
     'fDateReception' => '',
     'fDate' => '',
     'fNumero' => '',
@@ -105,6 +158,15 @@ state([
     // laquelle il s'ouvre quand on arrive d'une autre page.
     'porterOuvert' => false,
     'porterFacture' => null,
+
+    /*
+     * La créance dont la suppression est demandée, en attente de confirmation.
+     *
+     * Deux temps plutôt qu'un dialogue du navigateur : `confirm()` est banni de la maison,
+     * il bloque la page et se ressemble d'un écran à l'autre au point qu'on le valide sans
+     * le lire. Ici la ligne elle-même change d'aspect et pose la question à sa place.
+     */
+    'suppressionDemandee' => null,
 ]);
 
 mount(function () {
@@ -146,10 +208,21 @@ on(['facture-portee' => function (int $exercice, string $texte) {
 
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; $this->page = 1; };
 $updatedSiteFiltre = function () { $this->page = 1; };
-$updatedExercice = function () { $this->page = 1; };
+$updatedExercice = function () {
+    $this->page = 1;
+
+    /* Changer d'exercice déplace le mois choisi dans la nouvelle année : le mois reste le
+       même, l'année suit l'état. Sans cela, on lirait l'état 2025 avec les bornes de 2026,
+       et le tableau serait vide sans qu'on comprenne pourquoi. */
+    if ($this->moisFiltre !== '') {
+        $this->updatedMoisFiltre();
+    }
+};
 $updatedStatutFiltre = function () { $this->page = 1; };
 $updatedReportFiltre = function () { $this->page = 1; };
 $updatedRecherche = function () { $this->page = 1; };
+$updatedDateDebut = function () { $this->page = 1; };
+$updatedDateFin = function () { $this->page = 1; };
 
 $annee = computed(fn () => (int) ($this->exercice ?: now()->year));
 
@@ -228,11 +301,29 @@ $requeteDesLignes = protect(function () {
             ->where('client', 'like', $terme)
             ->orWhere('assureur', 'like', $terme)
             ->orWhere('courtier', 'like', $terme)
+            ->orWhere('depose_chez', 'like', $terme)
             ->orWhere('numero', 'like', $terme)
             ->orWhere('n_facture', 'like', $terme)
             ->orWhere('immatriculation', 'like', $terme)
             ->orWhere('n_sinistre', 'like', $terme)
             ->orWhere('observations', 'like', $terme));
+    }
+
+    /*
+     * Les bornes viennent de l'adresse : elles ne sont jamais posées telles quelles dans la
+     * requête. `PeriodeCalculateur::borne()` les relit — le même lecteur que les douze autres
+     * écrans — et rend null sur tout ce qui n'est pas une date, ce qui revient à ne rien
+     * demander plutôt qu'à faire tomber la page.
+     */
+    $depuis = PeriodeCalculateur::borne($this->dateDebut, false);
+    $jusqua = PeriodeCalculateur::borne($this->dateFin, true);
+
+    if ($depuis) {
+        $requete->whereRaw(Recouvrement::EXPRESSION_DATE_DE_DEPART.' >= ?', [$depuis->toDateString()]);
+    }
+
+    if ($jusqua) {
+        $requete->whereRaw(Recouvrement::EXPRESSION_DATE_DE_DEPART.' <= ?', [$jusqua->toDateString()]);
     }
 
     EtatDesImpayes::filtrerLeSolde($requete, $this->statutFiltre);
@@ -288,7 +379,7 @@ $verrouilles = computed(fn () => $this->ligneModifiee ? EtatDesImpayes::champsVe
  */
 $viderLeFormulaire = function () {
     foreach ([
-        'fAssureur', 'fClient', 'fSiteId', 'fVilleId', 'fCourtier', 'fDateReception', 'fDate', 'fNumero',
+        'fAssureur', 'fClient', 'fSiteId', 'fVilleId', 'fCourtier', 'fDeposeChez', 'fDateReception', 'fDate', 'fNumero',
         'fSinistre', 'fVehicule', 'fImmatriculation', 'fMontant', 'fRegle', 'fModeReglement',
         'fDateReglement', 'fBanque', 'fCommentaires',
     ] as $champ) {
@@ -312,6 +403,61 @@ $basculerFormulaire = function () {
 };
 
 /** Ouvre le formulaire sur une ligne existante. */
+/** La créance visée par une demande de suppression, relue dans le périmètre du compte. */
+$creanceASupprimer = computed(fn () => $this->suppressionDemandee === null ? null : EtatDesImpayes::dansLePerimetre(
+    Facture::query()->whereNotNull('exercice_impayes'),
+    $this->idsSitesDuCompte,
+    $this->idsVillesDuCompte,
+)->find((int) $this->suppressionDemandee));
+
+/** Vrai si ce compte peut, en principe, effacer une créance — le bouton n'apparaît pas sinon. */
+$peutSupprimer = computed(fn () => auth()->user()->hasRole('gerant'));
+
+$demanderLaSuppression = function (int $id) {
+    $this->suppressionDemandee = $id;
+    unset($this->creanceASupprimer);
+};
+
+$annulerLaSuppression = function () {
+    $this->suppressionDemandee = null;
+    unset($this->creanceASupprimer);
+};
+
+/**
+ * Efface la créance confirmée.
+ *
+ * L'identifiant n'est pas repris du navigateur : on efface celle que le composant tient,
+ * relue dans le périmètre du compte. Et le service repose ses trois verrous — gérant, rien
+ * de réglé, rien d'importé — car un bouton caché n'a jamais autorisé personne.
+ */
+$confirmerLaSuppression = function () {
+    $creance = $this->creanceASupprimer;
+
+    if ($creance === null) {
+        $this->suppressionDemandee = null;
+        $this->dispatch('annonce', texte: "Cette créance n'est pas dans votre périmètre, ou n'existe plus.");
+
+        return;
+    }
+
+    $refus = SuppressionDUneCreance::refus(auth()->user(), $creance);
+
+    if ($refus !== null) {
+        $this->suppressionDemandee = null;
+        unset($this->creanceASupprimer);
+        $this->dispatch('annonce', texte: $refus);
+
+        return;
+    }
+
+    $reference = SuppressionDUneCreance::effacer(auth()->user(), $creance);
+
+    $this->suppressionDemandee = null;
+    unset($this->creanceASupprimer, $this->pageLignes, $this->totaux, $this->exercices);
+
+    $this->dispatch('annonce', texte: 'Créance '.$reference.' supprimée. Le journal en garde le contenu.');
+};
+
 $modifier = function (int $id) {
     $this->viderLeFormulaire();
     $this->enModification = $id;
@@ -331,6 +477,7 @@ $modifier = function (int $id) {
     $this->fSiteId = (string) ($ligne->site_id ?? '');
     $this->fVilleId = (string) ($ligne->ville_id ?? '');
     $this->fCourtier = (string) $ligne->courtier;
+    $this->fDeposeChez = (string) $ligne->depose_chez;
     $this->fDateReception = $ligne->date_reception?->toDateString() ?? '';
     $this->fDate = $ligne->date?->toDateString() ?? '';
     $this->fNumero = (string) $ligne->n_facture;
@@ -416,6 +563,7 @@ $enregistrer = function () {
         'fDateReglement' => ['exclude_if:fRegle,', 'required_unless:fRegle,0', 'date', 'after_or_equal:fDate', 'before_or_equal:today'],
         'fAssureur' => ['nullable', 'string', 'max:160'],
         'fCourtier' => ['nullable', 'string', 'max:160'],
+        'fDeposeChez' => ['nullable', 'string', 'max:160'],
         'fSinistre' => ['nullable', 'string', 'max:60'],
         'fVehicule' => ['nullable', 'string', 'max:120'],
         'fImmatriculation' => ['nullable', 'string', 'max:30'],
@@ -428,6 +576,7 @@ $enregistrer = function () {
         'fSiteId' => 'site', 'fVilleId' => 'ville', 'fMontant' => 'montant TTC', 'fRegle' => 'montant réglé',
         'fDateReception' => 'date de réception', 'fModeReglement' => 'mode de règlement',
         'fDateReglement' => 'date de règlement', 'fAssureur' => 'assureur', 'fCourtier' => 'courtier',
+        'fDeposeChez' => 'déposée chez',
         'fSinistre' => 'numéro de sinistre', 'fVehicule' => 'véhicule',
         'fImmatriculation' => 'immatriculation', 'fBanque' => 'banque',
     ]);
@@ -476,6 +625,7 @@ $enregistrer = function () {
         'client' => trim($donnees['fClient']),
         'assureur' => $donnees['fAssureur'] ?: null,
         'courtier' => $donnees['fCourtier'] ?: null,
+        'depose_chez' => trim((string) $donnees['fDeposeChez']) ?: null,
         'banque' => $donnees['fBanque'] ?: null,
         'vehicule' => $donnees['fVehicule'] ?: null,
         'immatriculation' => $immatriculation ?: null,
@@ -627,6 +777,18 @@ $basculerPortage = function () {
             <x-champ label="Origine de la ligne" model="reportFiltre" type="select" :live="true" width="190"
                 :options="['reportees' => 'Reportées d\'avant', 'annee' => 'Nées dans l\'année']" vide="Toutes" />
 
+            {{-- Le mois pose les deux bornes d'un geste, dans l'année de l'état choisie
+                 plus haut. Il ne porte pas d'année à lui : deux années sur un même écran
+                 finissent par diverger. --}}
+            <x-champ label="Mois de {{ $this->annee }}" model="moisFiltre" type="select" :live="true" width="160"
+                :options="$this->moisDeLAnnee" vide="Toute l'année" />
+
+            {{-- Le « du … au … » de l'état : la date retenue est celle du dépôt quand elle
+                 existe, sinon celle de l'édition. Laissé vide, il ne retire rien — l'année
+                 de l'état reste le registre entier. --}}
+            <x-champ label="Du" model="dateDebut" type="date" :live="true" width="150" />
+            <x-champ label="au" model="dateFin" type="date" :live="true" width="150" />
+
             <x-champ label="Recherche" model="recherche" :live="true"
                 placeholder="Client, assureur, n° facture, immatriculation, commentaire…" />
 
@@ -708,6 +870,8 @@ $basculerPortage = function () {
                         <x-champ label="Ville (sans atelier)" model="fVilleId" type="select" :options="$this->villesSaisissables" vide="— à préciser —" width="150" />
                     @endif
                     <x-champ label="Courtier" model="fCourtier" width="150" />
+                    {{-- Facultatif, et décisif : renseigné, c'est lui qu'on relance. --}}
+                    <x-champ label="Déposée chez" model="fDeposeChez" width="160" />
                     <x-champ label="Date d'édition" model="fDate" type="date" :requis="true" width="140" :disabled="in_array('date', $verrou, true)" />
                     <x-champ label="Date de réception" model="fDateReception" type="date" :requis="true" width="140" />
                     <x-champ label="N° de la facture" model="fNumero" :requis="true" width="135" :disabled="in_array('n_facture', $verrou, true)" />
@@ -779,6 +943,7 @@ $basculerPortage = function () {
                         <th>Client</th>
                         <th>SITE</th>
                         <th>Courtier</th>
+                        <th>Déposée chez</th>
                         <th>Date de réception</th>
                         <th>Date d'édition</th>
                         <th>N° facture</th>
@@ -827,6 +992,16 @@ $basculerPortage = function () {
                                 @endif
                             </td>
                             <td>{{ $ligne->courtier ?? '—' }}</td>
+                            {{-- Renseignée, c'est elle qui désigne le payeur : on le dit, plutôt
+                                 que de laisser deviner pourquoi la relance part ailleurs. --}}
+                            <td>
+                                @if ($ligne->depose_chez)
+                                    <span style="font-weight:600;">{{ $ligne->depose_chez }}</span>
+                                    <div style="font-size:11px; color:#6B6E76;">c'est lui qu'on relance</div>
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td>{{ $ligne->date_reception?->format('d/m/Y') ?? '—' }}</td>
                             <td>{{ $ligne->date?->format('d/m/Y') ?? '—' }}</td>
                             <td>{{ $ligne->n_facture ?? '—' }}</td>
@@ -851,7 +1026,10 @@ $basculerPortage = function () {
                             <td>{{ $ligne->banque ?? '—' }}</td>
                             <td style="white-space:nowrap;">
                                 @if ($reste < Recouvrement::SEUIL_SOLDE)
-                                    <span style="color:#0E9F6E; font-weight:600;">Soldée</span>
+                                    {{-- Une pastille, et non plus un mot vert : avec le filtre sur
+                                         « Toutes », une créance éteinte doit se distinguer d'une
+                                         créance ouverte sans qu'on ait à lire la colonne. --}}
+                                    <span class="pastille pastille-vert" style="font-weight:600;">Soldée</span>
                                 @else
                                     {{ $age !== null ? $age.' j' : '—' }}
                                     <div style="font-size:11px; color:#6B6E76;">
@@ -877,10 +1055,32 @@ $basculerPortage = function () {
                                     style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
                                 <button type="button" wire:click="modifier({{ $ligne->id }})" class="bouton"
                                     style="padding:4px 10px; font-size:12px;">Modifier</button>
+
+                                @if ($this->peutSupprimer)
+                                    @php $empeche = SuppressionDUneCreance::refus(auth()->user(), $ligne); @endphp
+
+                                    @if ((int) $suppressionDemandee === (int) $ligne->id)
+                                        {{-- La question se pose là où l'on a cliqué, sur la ligne
+                                             concernée : on voit ce qu'on s'apprête à effacer. --}}
+                                        <span style="font-size:12px; color:#C8102E; font-weight:700;">Effacer ?</span>
+                                        <button type="button" wire:click="confirmerLaSuppression" class="bouton"
+                                            style="padding:4px 10px; font-size:12px; background:#C8102E; border-color:#C8102E;">Oui, effacer</button>
+                                        <button type="button" wire:click="annulerLaSuppression" class="bouton bouton-secondaire"
+                                            style="padding:4px 10px; font-size:12px;">Non</button>
+                                    @elseif ($empeche === null)
+                                        <button type="button" wire:click="demanderLaSuppression({{ $ligne->id }})"
+                                            class="bouton bouton-secondaire"
+                                            style="padding:4px 10px; font-size:12px; color:#C8102E; border-color:#C8102E;">Supprimer</button>
+                                    @else
+                                        {{-- Le refus s'affiche plutôt que le bouton : un bouton grisé
+                                             sans raison se prend pour une panne. --}}
+                                        <span title="{{ $empeche }}" style="font-size:11px; color:#6B6E76;">non supprimable</span>
+                                    @endif
+                                @endif
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="22"
+                        <x-table-vide :colspan="23"
                             texte="Aucune créance dans l'état {{ $this->annee }}. Le bouton « Ajouter une créance » ouvre la saisie." />
                     @endforelse
                 </tbody>

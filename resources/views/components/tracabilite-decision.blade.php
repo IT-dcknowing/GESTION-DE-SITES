@@ -103,11 +103,9 @@
             </tbody>
         </table>
 
-        <p style="font-size:12.5px; color:#6B6E76; margin:10px 0 0; line-height:1.55;">
-            Le nom est recopié au moment de la décision, en plus du renvoi au compte&nbsp;: un
-            accès fermé plus tard ne rend pas anonyme ce qui a été engagé sous ce nom. Le
-            «&nbsp;poste&nbsp;» est ce que le navigateur déclare de lui-même — un serveur ne
-            connaît pas le nom de la machine qui l'appelle, et rien dans une requête ne le porte.
-        </p>
+        {{-- Le paragraphe qui expliquait pourquoi le nom est recopié et ce qu'est le
+             « poste » a été retiré le 24/09 à la demande du propriétaire : le tableau
+             ci-dessus se lit seul, et une explication posée sous chaque fiche se lit une
+             fois puis encombre. Le pourquoi reste écrit dans SignatureDeDecision. --}}
     @endif
 </div>

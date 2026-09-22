@@ -20,8 +20,8 @@ state([
 ]);
 
 mount(function () {
-    $this->dateDebut ??= now()->startOfYear()->format('Y-m');
-    $this->dateFin ??= now()->format('Y-m');
+    $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
+    $this->dateFin ??= now()->format('Y-m-d');
 });
 
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; };
@@ -84,7 +84,7 @@ $dernieresOperations = computed(function () {
     <x-titre-ecran titre="Comptabilité — tableau de bord"
         sous-titre="Ce qui reste à encaisser, et ce qui est sorti de la caisse." />
 
-    <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :masquer-activite="true"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
 

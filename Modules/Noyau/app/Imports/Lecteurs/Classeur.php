@@ -13,15 +13,20 @@ use RuntimeException;
  * bonnes raisons — les exports sont filtrés puis renommés à la main — et on a mesuré qu'un
  * fichier « San Pédro » pouvait contenir les données d'Abidjan.
  *
- * Les deux signatures suffisent à trancher : `PK` ouvre toute archive ZIP, donc tout
+ * Les trois signatures suffisent à trancher : `PK` ouvre toute archive ZIP, donc tout
  * `.xlsx` et tout `.xlsm` ; la séquence `D0CF11E0` ouvre un conteneur OLE2, donc les
- * `.xls`. Un fichier qui n'a ni l'une ni l'autre est refusé avant que la moindre ligne
- * n'ait été lue.
+ * `.xls` ; `%PDF-` ouvre un document imprimé. Un fichier qui n'a aucune des trois est
+ * refusé avant que la moindre ligne n'ait été lue.
+ *
+ * **Le PDF est entré le 23/09**, et à contre-cœur : le journal de caisse est le seul état
+ * que le logiciel d'atelier ne sait pas sortir en tableur, et Bouaké comme San-Pédro n'ont
+ * que lui. Voir `LecteurPdf` pour ce que la lecture d'un document imprimé suppose, et ce
+ * qu'elle ne fait pas.
  */
 class Classeur
 {
     /** Ce qu'on accepte de recevoir, et sous quel poids. */
-    public const EXTENSIONS = ['xls', 'xlsx', 'xlsm'];
+    public const EXTENSIONS = ['xls', 'xlsx', 'xlsm', 'pdf'];
 
     public const POIDS_MAXIMAL = 40 * 1024 * 1024;
 
@@ -44,14 +49,15 @@ class Classeur
         return match (self::format($chemin)) {
             'xlsx' => new LecteurXlsx($chemin),
             'xls' => new LecteurXls($chemin),
+            'pdf' => new LecteurPdf($chemin),
             default => throw new RuntimeException(
-                "Ce fichier n'est ni un classeur Excel récent (.xlsx, .xlsm) ni un classeur ancien (.xls)."
+                "Ce fichier n'est ni un classeur Excel (.xlsx, .xlsm, .xls) ni un document PDF."
             ),
         };
     }
 
     /**
-     * Ce qu'est réellement le fichier : `xlsx`, `xls`, ou null.
+     * Ce qu'est réellement le fichier : `xlsx`, `xls`, `pdf`, ou null.
      *
      * Huit octets suffisent, et on ne lit que ceux-là — inutile de charger quarante méga-
      * octets pour découvrir qu'on a affaire à une image renommée.
@@ -73,6 +79,10 @@ class Classeur
 
         if (str_starts_with($entete, LecteurXls::SIGNATURE)) {
             return 'xls';
+        }
+
+        if (str_starts_with($entete, LecteurPdf::SIGNATURE)) {
+            return 'pdf';
         }
 
         return null;

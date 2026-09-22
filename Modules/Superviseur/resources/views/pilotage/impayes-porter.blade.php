@@ -46,6 +46,9 @@ state([
     'pSiteId' => '',
     'pVilleId' => '',
     'pCourtier' => '',
+    // Porter une facture, c'est déclarer qu'elle a été déposée : c'est donc ici, plus
+    // qu'ailleurs, qu'on sait dire chez qui.
+    'pDeposeChez' => '',
     'pDateReception' => '',
     'pSinistre' => '',
     'pVehicule' => '',
@@ -208,7 +211,7 @@ $modes = computed(fn () => Referentiel::options(Referentiel::MODE_RECOUVREMENT))
  * règlement vide n'exige ni mode ni date » compare à la chaîne vide.
  */
 $prendreLaFacture = protect(function () {
-    foreach (['pAssureur', 'pClient', 'pSiteId', 'pVilleId', 'pCourtier', 'pDateReception', 'pSinistre',
+    foreach (['pAssureur', 'pClient', 'pSiteId', 'pVilleId', 'pCourtier', 'pDeposeChez', 'pDateReception', 'pSinistre',
         'pVehicule', 'pImmatriculation', 'pRegle', 'pModeReglement', 'pDateReglement', 'pBanque',
         'pCommentaires'] as $champ) {
         $this->{$champ} = '';
@@ -235,6 +238,7 @@ $prendreLaFacture = protect(function () {
     $this->pSiteId = (string) ($facture->site_id ?? '');
     $this->pVilleId = (string) ($facture->ville_id ?? '');
     $this->pCourtier = (string) $facture->courtier;
+    $this->pDeposeChez = (string) $facture->depose_chez;
     $this->pSinistre = (string) $facture->n_sinistre;
     $this->pVehicule = (string) $facture->vehicule;
     $this->pImmatriculation = (string) $facture->immatriculation;
@@ -291,6 +295,7 @@ $porter = function () {
         'pClient' => ['required', 'string', 'max:255'],
         'pAssureur' => ['nullable', 'string', 'max:160'],
         'pCourtier' => ['nullable', 'string', 'max:160'],
+        'pDeposeChez' => ['nullable', 'string', 'max:160'],
         'pVehicule' => ['nullable', 'string', 'max:120'],
         'pImmatriculation' => ['nullable', 'string', 'max:30'],
         'pSiteId' => ['nullable', Rule::in($sitesPermis)],
@@ -309,7 +314,7 @@ $porter = function () {
         'pRegle.max' => 'Le règlement dépasse le reste à payer ('.ae($this->avance['reste']).', avance déduite).',
     ], [
         'pDateReception' => 'date de réception', 'pSiteId' => 'site', 'pVilleId' => 'ville',
-        'pClient' => 'client', 'pAssureur' => 'assureur', 'pCourtier' => 'courtier',
+        'pClient' => 'client', 'pAssureur' => 'assureur', 'pCourtier' => 'courtier', 'pDeposeChez' => 'déposée chez',
         'pVehicule' => 'véhicule', 'pImmatriculation' => 'immatriculation',
         'pRegle' => 'montant réglé', 'pModeReglement' => 'mode de règlement', 'pDateReglement' => 'date de règlement',
     ]);
@@ -351,6 +356,7 @@ $porter = function () {
             'client' => trim($donnees['pClient']),
             'assureur' => $donnees['pAssureur'] ?: null,
             'courtier' => $donnees['pCourtier'] ?: null,
+            'depose_chez' => trim((string) $donnees['pDeposeChez']) ?: null,
             'vehicule' => $donnees['pVehicule'] ?: null,
             // L'immatriculation verrouillée a déjà été relue en base plus haut.
             'immatriculation' => $immatriculation ?: null,
@@ -483,6 +489,8 @@ $porter = function () {
                     <x-champ label="Ville (sans atelier)" model="pVilleId" type="select" :options="$this->villesSaisissables" vide="— à préciser —" width="150" />
                 @endif
                 <x-champ label="Courtier" model="pCourtier" width="150" />
+                {{-- Facultatif, et décisif : renseigné, c'est lui qu'on relance. --}}
+                <x-champ label="Déposée chez" model="pDeposeChez" width="160" />
                 <x-champ-fige label="Date d'édition" :valeur="$aPorter->date?->format('d/m/Y')" width="140" />
                 <x-champ label="Date de réception" model="pDateReception" type="date" :requis="true" width="140" />
                 <x-champ-fige label="N° de la facture" :valeur="$aPorter->n_facture" width="135" />

@@ -4,11 +4,12 @@ use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\LogoEntrepriseController;
 use App\Http\Controllers\RedirectionController;
 use Illuminate\Support\Facades\Route;
+use Livewire\Volt\Volt;
 use Modules\Noyau\Commun\Controleurs\ChangerLeMotDePasse;
+use Modules\Noyau\Commun\Controleurs\ChoisirLaLoupe;
 use Modules\Noyau\Commun\Controleurs\ConfirmerLeCodeAtelier;
 use Modules\Noyau\Commun\Controleurs\EnregistrerLaLiaison;
-use Livewire\Volt\Volt;
-use Modules\Noyau\Commun\Controleurs\ChoisirLaLoupe;
+use Modules\Noyau\Commun\Controleurs\EnregistrerSonTelephone;
 
 /*
 |--------------------------------------------------------------------------
@@ -78,6 +79,12 @@ Route::middleware(['auth'])->group(function () {
     // la question se ferme ici — et laisse une ligne au journal, comme l'attribution.
     Route::post('/mon-profil/code-atelier/confirmer', ConfirmerLeCodeAtelier::class)
         ->name('code-atelier.confirmer');
+
+    // « Où vous joindre ? » Le numéro manque sur une bonne part des accès ouverts en série,
+    // et c'est de lui qu'on a besoin le jour où une fiche pose question. Chacun donne le
+    // sien, une fois, depuis n'importe quel écran.
+    Route::post('/mon-profil/telephone', EnregistrerSonTelephone::class)
+        ->name('mon-profil.telephone');
 
     /*
      * La fiche d'une prospection vue par le commercial — sa ligne, et la signature de la

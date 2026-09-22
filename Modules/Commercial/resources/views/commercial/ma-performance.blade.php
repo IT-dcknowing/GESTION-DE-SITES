@@ -18,8 +18,8 @@ state([
 ]);
 
 mount(function () {
-    $this->dateDebut ??= now()->startOfYear()->format('Y-m');
-    $this->dateFin ??= now()->format('Y-m');
+    $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
+    $this->dateFin ??= now()->format('Y-m-d');
 });
 
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; };
@@ -111,7 +111,7 @@ $kpis = computed(function () {
             <p style="color:#6B6E76; font-size:14.5px; margin:0;">{{ $this->commercial->ville->nom }}</p>
         </div>
 
-        <x-filtre-periode :periode="$periode" :ville-unique="$this->villeUnique" :activite-filtre="$activiteFiltre"
+        <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :ville-unique="$this->villeUnique" :activite-filtre="$activiteFiltre"
             :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
 
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); gap:10px; margin-bottom:16px;">

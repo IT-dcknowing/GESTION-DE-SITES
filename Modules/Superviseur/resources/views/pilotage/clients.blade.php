@@ -4,8 +4,9 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ExerciceDeTravail;
 use Modules\Noyau\Exploitation\Services\AnnuaireDesClients;
+use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 
-use function Livewire\Volt\{computed, state};
+use function Livewire\Volt\{computed, mount, state};
 
 /*
 |--------------------------------------------------------------------------
@@ -29,6 +30,40 @@ state([
     'page' => 1,
 ]);
 
+/*
+ * La période, comme sur les autres écrans.
+ *
+ * L'annuaire se lisait sur l'exercice entier, et lui seul : on ne pouvait pas demander
+ * « qui est venu en mars », ni comparer deux trimestres. Les bornes ouvertes prennent tout,
+ * ce qui reste le cas ordinaire d'un annuaire — on veut d'abord savoir qui est client.
+ */
+state([
+    'periode' => 'calendrier',
+    'dateDebut' => null,
+    'dateFin' => null,
+    'moisFiltre' => '',
+    'semaineFiltre' => '',
+    'jourFiltre' => '',
+]);
+
+mount(function () {
+    $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
+    $this->dateFin ??= now()->format('Y-m-d');
+});
+
+$updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; $this->page = 1; };
+$updatedSemaineFiltre = function () { $this->jourFiltre = ''; $this->page = 1; };
+$updatedJourFiltre = function () { $this->page = 1; };
+$updatedPeriode = function () { $this->page = 1; };
+$updatedDateDebut = function () { $this->page = 1; };
+$updatedDateFin = function () { $this->page = 1; };
+
+$plage = computed(fn () => PeriodeCalculateur::plage(
+    $this->periode, $this->dateDebut, $this->dateFin,
+    $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null,
+));
+
+
 $villes = computed(fn () => Ville::where('est_actif', true)->orderBy('nom')->pluck('nom', 'id')->all());
 
 /** Les ateliers de la ville choisie — la liste reste vide tant qu'aucune ville ne l'est. */
@@ -42,7 +77,7 @@ $parPage = computed(fn () => 30);
 $annuaire = computed(fn () => (new AnnuaireDesClients((int) auth()->user()->entreprise_id))->lignes(
     $this->villeFiltre === '' ? null : (int) $this->villeFiltre,
     $this->siteFiltre === '' ? null : (int) $this->siteFiltre,
-    ExerciceDeTravail::annee(),
+    $this->plage,
 ));
 
 $lignes = computed(function () {
@@ -114,6 +149,13 @@ $updatedSiteFiltre = function () { $this->page = 1; };
             </div>
         </div>
     </div>
+
+    {{-- Seules les bornes de temps viennent du composant : la ville et l'atelier ont déjà
+         leurs listes dans le bloc « Filtrer » ci-dessous, et deux sélecteurs de ville sur
+         un même écran feraient chercher lequel des deux a vidé le tableau. --}}
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin"
+        :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
+        masquer-activite />
 
     <div class="carte">
         <h3 class="titre-section">

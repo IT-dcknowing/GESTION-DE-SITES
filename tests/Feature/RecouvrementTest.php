@@ -6,6 +6,8 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
+use Modules\Noyau\Commun\Modeles\Referentiel;
+use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
@@ -160,7 +162,7 @@ class RecouvrementTest extends TestCase
         $this->facture('NSIA ASSURANCES', 'F-001', 1_200_000, now()->subDays(120));
         $this->facture('GNA ASSURANCES', 'F-002', 300_000, now()->subDays(5));
 
-        foreach (array_keys(\Modules\Recouvrement\Support\AccesRecouvrement::PAGES) as $page) {
+        foreach (array_keys(AccesRecouvrement::PAGES) as $page) {
             $this->actingAs($gerant)->get(route('recouvrement.'.$page))->assertOk();
         }
 
@@ -271,7 +273,7 @@ class RecouvrementTest extends TestCase
         $agent = $this->compte('agent_recouvrement');
 
         $this->assertFalse(
-            \Modules\Recouvrement\Support\AccesRecouvrement::peutCreerUneFacture($agent),
+            AccesRecouvrement::peutCreerUneFacture($agent),
             "L'agent ne crée pas la créance qu'il encaisse, quel que soit son niveau de relance.",
         );
     }
@@ -456,7 +458,7 @@ class RecouvrementTest extends TestCase
         $this->facture('NSIA ASSURANCES', 'F-002', 200_000, now()->subDays(45));   // 31-60
         $this->facture('NSIA ASSURANCES', 'F-003', 400_000, now()->subDays(300));  // +180
 
-        $lignes = Recouvrement::parTiers(Recouvrement::facturesOuvertes(now()), now());
+        $lignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes(now()), now());
 
         $this->assertCount(1, $lignes);
         $this->assertSame(700_000, $lignes[0]['reste']);
@@ -481,7 +483,7 @@ class RecouvrementTest extends TestCase
 
         $this->facture('KOUAME YAO', 'F-001', 1_000_000, now()->subDays(40), 'AXA', 'WILLIS');
 
-        $lignes = Recouvrement::parTiers(Recouvrement::facturesOuvertes(now()), now());
+        $lignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes(now()), now());
 
         // Ni l'assuré ni la compagnie : le courtier.
         $this->assertSame(['WILLIS'], $lignes->pluck('tiers')->all());
@@ -495,7 +497,7 @@ class RecouvrementTest extends TestCase
         $this->facture('KOUAME YAO', 'F-001', 400_000, now()->subDays(10), 'AXA');
         $this->facture('GARAGE DU PORT', 'F-002', 600_000, now()->subDays(10));
 
-        $lignes = Recouvrement::parTiers(Recouvrement::facturesOuvertes(now()), now())
+        $lignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes(now()), now())
             ->pluck('reste', 'tiers')->all();
 
         // La compagnie quand elle est renseignée, le client quand elle ne l'est pas.
@@ -510,7 +512,7 @@ class RecouvrementTest extends TestCase
         $this->facture('ASSURE B', 'F-002', 1_000_000, now()->subDays(10), 'GNA', 'WILLIS');
         $this->facture('ASSURE C', 'F-003', 2_000_000, now()->subDays(20), 'AXA', 'ASCOMA');
 
-        $toutes = Recouvrement::factures(now());
+        $toutes = Recouvrement::lignesDeCreance(now());
         $consolide = Recouvrement::parCourtier($toutes, now());
 
         // Le plus gros débiteur en tête, et le niveau du courtier est celui de sa
@@ -537,7 +539,7 @@ class RecouvrementTest extends TestCase
         $this->facture('ASSURE B', 'F-002', 1_000_000, now()->subDays(10), null, 'WILLIS');
         $this->facture('ASSURE C', 'F-003', 2_000_000, now()->subDays(20), 'AXA', 'ASCOMA');
 
-        $toutes = Recouvrement::factures(now());
+        $toutes = Recouvrement::lignesDeCreance(now());
 
         // C'est le contrôle affiché en haut du second tableau. S'il tombe, une facture
         // est comptée deux fois ou pas du tout — et la relance part sur un chiffre faux.
@@ -566,7 +568,7 @@ class RecouvrementTest extends TestCase
             'type' => 'Client', 'moyen' => 'CHÈQUE', 'montant' => 500_000, 'client' => 'FILHET-ALLARD',
         ]);
 
-        $consolide = Recouvrement::parCourtier(Recouvrement::factures(now()), now());
+        $consolide = Recouvrement::parCourtier(Recouvrement::lignesDeCreance(now()), now());
 
         // « Il ne doit rien » et « il n'existe pas » ne se disent pas de la même façon :
         // un courtier qui disparaît de la page est un apporteur d'affaires qu'on perd.
@@ -832,8 +834,8 @@ class RecouvrementTest extends TestCase
 
         // Les six modes livrés nomment la banque : un rapprochement bancaire se pointe
         // relevé par relevé, et « Virement » sans la banque n'aide personne.
-        $modes = array_keys(\Modules\Noyau\Commun\Modeles\Referentiel::options(
-            \Modules\Noyau\Commun\Modeles\Referentiel::MODE_RECOUVREMENT,
+        $modes = array_keys(Referentiel::options(
+            Referentiel::MODE_RECOUVREMENT,
             $this->entreprise->id,
         ));
 
@@ -843,9 +845,9 @@ class RecouvrementTest extends TestCase
 
         // La liste est ouverte : un mode ajouté depuis les Paramètres devient utilisable
         // le jour même, sans passer par une mise à jour du logiciel.
-        \Modules\Noyau\Commun\Modeles\Referentiel::withoutGlobalScopes()->create([
+        Referentiel::withoutGlobalScopes()->create([
             'entreprise_id' => $this->entreprise->id,
-            'type' => \Modules\Noyau\Commun\Modeles\Referentiel::MODE_RECOUVREMENT,
+            'type' => Referentiel::MODE_RECOUVREMENT,
             'valeur' => 'VIREMENT — ECOBANK',
             'est_actif' => true,
         ]);
@@ -895,9 +897,7 @@ class RecouvrementTest extends TestCase
         $this->facture('KOUAME YAO', 'F-002', 700_000, now()->subDays(30), 'AXA');
         $this->declarerLeTiers('JAMAIS FACTURE');
 
-        $annuaire = Recouvrement::annuaireDesTiers(
-            Recouvrement::factures(now()), now(), $this->entreprise->id,
-        )->keyBy('tiers');
+        $annuaire = Recouvrement::annuaireDesTiers(now(), $this->entreprise->id)->keyBy('tiers');
 
         // Les quatre provenances : les trois colonnes de la facture, plus le référentiel.
         $this->assertEqualsCanonicalizing(
@@ -996,6 +996,48 @@ class RecouvrementTest extends TestCase
 
         $this->assertCount(0, $ouvertes, "L'encours d'une autre entreprise ne doit jamais apparaître ici.");
         $this->assertNotContains('ASSUREUR DE BETA', array_keys(Recouvrement::tiers($this->entreprise->id)));
+    }
+
+    public function test_les_deux_lectures_du_portefeuille_disent_la_meme_chose(): void
+    {
+        $this->actingAs($this->compte('gerant'));
+
+        $this->facture('NSIA ASSURANCES', 'F-001', 100_000, now()->subDays(10));
+        $this->facture('NSIA ASSURANCES', 'F-002', 200_000, now()->subDays(45));
+        $this->facture('SUNU', 'F-003', 400_000, now()->subDays(300));
+
+        /*
+         * Le garde-fou de la reprise du 23/09.
+         *
+         * Les écrans qui consolident tout le portefeuille lisent désormais les lignes
+         * telles que la base les rend, au lieu d'en faire des objets — neuf mille lectures
+         * d'attributs de moins par affichage. Les règles, elles, n'ont pas bougé : ce sont
+         * les mêmes fonctions des deux côtés. Si les deux lectures se mettaient à diverger,
+         * la balance âgée et l'export du même jour ne diraient plus le même encours, et
+         * l'écart ne se verrait qu'en rapprochant deux totaux à la main.
+         */
+        $parObjets = Recouvrement::parTiers(Recouvrement::facturesOuvertes(now()), now());
+        $parLignes = Recouvrement::parTiers(Recouvrement::lignesOuvertes(now()), now());
+
+        $this->assertEquals($parObjets->all(), $parLignes->all());
+
+        $this->assertEquals(
+            Recouvrement::kpis(Recouvrement::facturesOuvertes(now()), now()),
+            Recouvrement::kpis(Recouvrement::lignesOuvertes(now()), now()),
+        );
+
+        // Et l'âge se compte pareil, ligne à ligne.
+        $jourArrete = NombreDeJours::jour(now());
+
+        foreach (Recouvrement::lignesOuvertes(now()) as $ligne) {
+            $facture = Facture::withoutGlobalScopes()->find($ligne->id);
+
+            $this->assertSame(
+                Recouvrement::anciennete($facture, now()),
+                Recouvrement::ageDeLaLigne($ligne, $jourArrete),
+                "âge de la facture {$facture->n_facture}",
+            );
+        }
     }
 
     /*
@@ -1149,9 +1191,9 @@ class RecouvrementTest extends TestCase
      */
     private function declarerLeTiers(string $nom): void
     {
-        \Modules\Noyau\Commun\Modeles\Referentiel::withoutGlobalScopes()->create([
+        Referentiel::withoutGlobalScopes()->create([
             'entreprise_id' => $this->entreprise->id,
-            'type' => \Modules\Noyau\Commun\Modeles\Referentiel::TIERS_RECOUVREMENT,
+            'type' => Referentiel::TIERS_RECOUVREMENT,
             'valeur' => $nom,
             'est_actif' => true,
         ]);

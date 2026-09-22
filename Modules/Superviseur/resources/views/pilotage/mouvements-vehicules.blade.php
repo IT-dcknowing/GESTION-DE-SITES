@@ -2,6 +2,7 @@
 
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Imports\Modeles\MouvementVehicule;
 
 use function Livewire\Volt\{computed, mount, state};
@@ -40,9 +41,13 @@ state([
     'pageDetail' => 1,
 ]);
 
+/* La promesse dépassée se demande par l'adresse : c'est une question qu'on se repose, et
+   qu'on transmet. */
+state(['promesseDepassee' => false])->url(except: false);
+
 mount(function () {
-    $this->dateDebut ??= now()->startOfYear()->format('Y-m');
-    $this->dateFin ??= now()->format('Y-m');
+    $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
+    $this->dateFin ??= now()->format('Y-m-d');
 });
 
 $parPage = computed(fn () => 30);
@@ -51,6 +56,7 @@ $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre 
 $updatedSemaineFiltre = function () { $this->jourFiltre = ''; $this->pageDetail = 1; };
 $updatedRecherche = function () { $this->pageDetail = 1; };
 $updatedSensFiltre = function () { $this->pageDetail = 1; };
+$updatedPromesseDepassee = function () { $this->pageDetail = 1; };
 
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin,
@@ -73,7 +79,7 @@ $mesSites = computed(fn () => PerimetreSites::optionsSites(auth()->user(), $this
  * Comme sur le parc, une ligne **sans atelier** reste visible pour qui voit sa ville :
  * c'est celle qu'il faut affecter, et la cacher reviendrait à cacher le travail restant.
  */
-$requete = function () {
+$requete = function (bool $avecLeFiltreDesPromesses = true) {
     $requete = MouvementVehicule::query()
         ->where(fn ($q) => $q->whereIn('site_id', $this->idsSites)
             ->orWhere(fn ($sansSite) => $sansSite->whereNull('site_id')
@@ -102,6 +108,10 @@ $requete = function () {
         $requete->where('sens', $this->sensFiltre);
     }
 
+    if ($avecLeFiltreDesPromesses && $this->promesseDepassee) {
+        MouvementVehicule::promesseDepassee($requete);
+    }
+
     return $requete;
 };
 
@@ -119,6 +129,33 @@ $entrees = computed(fn () => (int) ($this->parSens[MouvementVehicule::ENTREE] ??
 $sorties = computed(fn () => (int) ($this->parSens[MouvementVehicule::SORTIE] ?? 0));
 
 $sansAtelier = computed(fn () => (clone $this->requete())->reorder()->whereNull('site_id')->count());
+
+/**
+ * Les promesses de sortie dépassées : entrées dont la date de livraison prévue est passée,
+ * et dont aucune sortie n'a été enregistrée.
+ *
+ * **C'est la question du comptoir**, et jusqu'au 24/09 on ne pouvait pas la poser : la date
+ * de livraison prévue existait sur les 147 mouvements repris, mais rangée dans une phrase
+ * d'observations. Une date dans une phrase ne se compare pas à aujourd'hui.
+ *
+ * Le compteur se lit toujours hors du filtre, sans quoi il vaudrait le total dès qu'on
+ * coche la case et n'apprendrait plus rien.
+ */
+$enRetard = computed(fn () => MouvementVehicule::promesseDepassee(
+    $this->requete(false)->reorder(),
+)->count());
+
+/**
+ * Combien de mouvements portent une date de livraison prévue.
+ *
+ * **Sans ce compteur, « 0 promesse dépassée » se lit de travers.** Il peut vouloir dire
+ * « tout est tenu » ou « le fichier n'a pas encore été redéposé, donc aucune date n'est
+ * connue » — deux situations opposées, un même zéro. La date de livraison prévue est dans
+ * le fichier depuis toujours, mais elle était collée dans une phrase d'observations jusqu'au
+ * 24/09 : les lignes importées avant ce jour n'en ont pas tant qu'on ne les redépose pas.
+ */
+$avecPromesse = computed(fn () => $this->requete(false)->reorder()
+    ->whereNotNull('date_livraison_prevue')->count());
 
 $page = computed(function () {
     $dernier = max(1, (int) ceil($this->total / $this->parPage));
@@ -143,14 +180,14 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
         </div>
     </div>
 
-    <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSites" :site-filtre="$siteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
         masquer-activite />
 
     {{-- L'écart est le chiffre qui compte : entrées moins sorties, c'est ce qui est encore
          immobilisé. Le laisser calculer de tête, c'est le laisser non calculé. --}}
-    <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:16px;">
         <x-kpi-card label="Entrées" :value="number_format($this->entrees, 0, ',', ' ')"
             sub="véhicules reçus sur la période" />
         <x-kpi-card label="Sorties" :value="number_format($this->sorties, 0, ',', ' ')"
@@ -160,6 +197,17 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
         <x-kpi-card label="Sans atelier affecté" :value="number_format($this->sansAtelier, 0, ',', ' ')"
             :sub="$this->sansAtelier > 0 ? 'à rattacher — voir « À traiter »' : 'tout est rattaché'"
             :accent="$this->sansAtelier > 0" />
+        {{-- La promesse faite au client, et ce qu'elle est devenue. Elle était dans le
+             fichier depuis le début — les 147 mouvements repris en portent tous une — mais
+             collée dans une phrase, où rien ne pouvait la comparer à aujourd'hui. --}}
+        <x-kpi-card label="Promesse de sortie dépassée"
+            :value="$this->avecPromesse === 0 ? '—' : number_format($this->enRetard, 0, ',', ' ')"
+            :sub="$this->avecPromesse === 0
+                ? 'aucune date de livraison connue : redéposez le fichier, elle y est'
+                : ($this->enRetard > 0
+                    ? 'entrés, livraison prévue passée, aucune sortie enregistrée'
+                    : 'sur '.number_format($this->avecPromesse, 0, ',', ' ').' date(s) connue(s), aucune n’est dépassée')"
+            :accent="$this->enRetard > 0" />
     </div>
 
     <div class="carte">
@@ -187,6 +235,16 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
             </div>
         </div>
 
+        {{-- La case ne s'affiche que lorsqu'elle a quelque chose à filtrer : une case qui
+             ne change jamais rien apprend à ne plus lire les cases. --}}
+        @if ($this->avecPromesse > 0)
+            <label style="display:inline-flex; align-items:center; gap:7px; font-size:13px; margin-bottom:14px;">
+                <input type="checkbox" wire:model.live="promesseDepassee" @checked($promesseDepassee)>
+                Promesse de sortie dépassée seulement
+                <span style="color:#6B6E76;">— entré, date de livraison passée, aucune sortie enregistrée</span>
+            </label>
+        @endif
+
         {{-- Les intitulés sont ceux du logiciel d'atelier, sans traduction : c'est ce qui
              permet de poser les deux écrans côte à côte et de vérifier ligne à ligne. --}}
         <div class="tableau-conteneur">
@@ -200,6 +258,10 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
                         <th>Marque</th>
                         <th>Modèle</th>
                         <th>Clients / assurances</th>
+                        <th>Motif de la venue</th>
+                        <th>Travaux à effectuer</th>
+                        <th>Propriétaire / déposant</th>
+                        <th>Date de livr. prévue</th>
                         <th>Atelier</th>
                     </tr>
                 </thead>
@@ -213,12 +275,63 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
                             </td>
                             <td>{{ $mouvement->date?->format('d/m/Y') ?? '—' }}</td>
                             <td>
-                                <x-numero-ligne :ligne="$mouvement" :numero="$mouvement->numero_fiche" />
+                                {{-- Le numéro ouvre la fiche du parc, d'où se lisent le devis,
+                                     la facture et l'autre mouvement : c'est la seule clé
+                                     commune aux états du logiciel d'atelier. --}}
+                                @if (PisteDeLaFiche::peutOuvrir(auth()->user()))
+                                    <a href="{{ route('parc-fiche.numero', ['numero' => $mouvement->numero_fiche]) }}"
+                                        wire:navigate style="color:inherit; text-decoration:none;">
+                                        <x-numero-ligne :ligne="$mouvement" :numero="$mouvement->numero_fiche" />
+                                    </a>
+                                @else
+                                    <x-numero-ligne :ligne="$mouvement" :numero="$mouvement->numero_fiche" />
+                                @endif
                             </td>
                             <td style="font-weight:600;">{{ $mouvement->immatriculation ?: '—' }}</td>
                             <td>{{ $mouvement->marque ?: '—' }}</td>
                             <td>{{ $mouvement->modele ?: '—' }}</td>
                             <td>{{ $mouvement->client ?: '—' }}</td>
+                            <td>{{ $mouvement->motif ?: '—' }}</td>
+                            {{-- Les travaux courent parfois sur plusieurs lignes dans la
+                                 cellule d'origine : on montre le début et on donne le reste
+                                 au survol, plutôt que de déformer toute la rangée. --}}
+                            {{-- La largeur se tient sur un bloc intérieur, pas sur la cellule :
+                                 `max-width` sur un `<td>` n'est qu'un avis, et le texte
+                                 débordait sur les deux colonnes suivantes. --}}
+                            <td>
+                                <div style="width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                                            color:#4B4E55;" title="{{ $mouvement->travaux }}">
+                                    {{ $mouvement->travaux ? preg_replace('/\s+/u', ' ', $mouvement->travaux) : '—' }}
+                                </div>
+                            </td>
+                            <td>
+                                @php $tronque = 'width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'; @endphp
+                                @if ($mouvement->proprietaire || $mouvement->deposant)
+                                    @if ($mouvement->proprietaire)
+                                        <div style="{{ $tronque }} font-size:12.5px; color:#4B4E55;"
+                                            title="{{ $mouvement->proprietaire }}">{{ $mouvement->proprietaire }}</div>
+                                    @endif
+                                    @if ($mouvement->deposant)
+                                        <div style="{{ $tronque }} font-size:11.5px; color:#6B6E76;"
+                                            title="{{ $mouvement->deposant }}">Déposant : {{ $mouvement->deposant }}</div>
+                                    @endif
+                                @elseif ($mouvement->observations)
+                                    {{-- Les lignes importées avant le 24/09 portent encore la
+                                         phrase composée : elle reste lisible jusqu'au prochain
+                                         dépôt de leur fichier, qui la remplacera. --}}
+                                    <div style="{{ $tronque }} font-size:12.5px; color:#9A9DA5;"
+                                        title="{{ $mouvement->observations }}">{{ $mouvement->observations }}</div>
+                                @else
+                                    <span style="color:#9A9DA5;">—</span>
+                                @endif
+                            </td>
+                            @php
+                                $depassee = $mouvement->sens === MouvementVehicule::ENTREE
+                                    && $mouvement->date_livraison_prevue?->isPast();
+                            @endphp
+                            <td style="white-space:nowrap; {{ $depassee ? 'color:#C8102E; font-weight:700;' : '' }}">
+                                {{ $mouvement->date_livraison_prevue?->format('d/m/Y') ?? '—' }}
+                            </td>
                             <td>
                                 @if ($mouvement->site)
                                     {{ $mouvement->site->nom }}
@@ -230,7 +343,7 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="8"
+                        <x-table-vide :colspan="12"
                             texte="Aucun mouvement sur cette période. Les entrées et sorties viennent de l'import — déposez « Liste véhicules entrées » et « Liste véhicules sorties »." />
                     @endforelse
                 </tbody>

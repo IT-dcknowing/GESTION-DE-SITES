@@ -99,6 +99,8 @@ $retour = computed(fn () => route('mes-prospections'));
                 <tr><th style="text-align:left;">Date</th><td>{{ $p->date?->format('d/m/Y') }}</td></tr>
                 <tr><th style="text-align:left;">Clients visités</th><td>{{ $p->client }}</td></tr>
                 <tr><th style="text-align:left;">Localisation</th><td>{{ $p->localisation ?? '—' }}</td></tr>
+                <tr><th style="text-align:left;">Véhicule</th><td>{{ $p->immatriculation ?? '—' }}</td></tr>
+                <tr><th style="text-align:left;">N° de fiche</th><td>{{ $p->n_fiche_reception ?? '—' }}</td></tr>
                 <tr><th style="text-align:left;">Moyen</th><td>{{ $p->moyen }}</td></tr>
                 <tr><th style="text-align:left;">Activité</th><td>{{ $p->activite }}</td></tr>
                 <tr>

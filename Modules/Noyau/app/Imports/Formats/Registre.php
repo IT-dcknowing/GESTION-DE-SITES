@@ -33,7 +33,19 @@ class Registre
         // règlements, or un règlement n'a de sens qu'en regard d'une facture.
         'impayes' => FormatDesImpayes::class,
         'fournisseurs' => FormatDesFournisseurs::class,
+        // Les deux exports du logiciel comptable viennent après le classeur tenu à la
+        // main, et ne s'y mêlent pas : celui-là dit ce que l'atelier croit devoir, ceux-ci
+        // ce que la comptabilité a enregistré. C'est l'écart entre les deux qu'on cherche
+        // quand un fournisseur réclame.
+        'balance-fournisseurs' => FormatDeLaBalanceFournisseur::class,
+        'reglements-fournisseurs' => FormatDesReglementsFournisseurs::class,
         'caisse' => FormatDeLaCaisse::class,
+        // Le journal de caisse imprimé vient juste après le classeur tenu à la main : ils
+        // décrivent la même caisse par deux bouts, et ce sont deux villes différentes qui
+        // en dépendent — Abidjan tient un classeur, Bouaké et San-Pédro n'ont que ce
+        // journal. Seul format lu dans un PDF, et c'est assumé : le logiciel comptable ne
+        // sort pas cet état autrement.
+        'journal-caisse' => FormatDuJournalDeCaisse::class,
         // Les entrées et les sorties viennent en dernier : elles enrichissent des fiches
         // que le parc a déjà posées, elles ne les fondent pas.
         'entrees' => FormatDesEntrees::class,
@@ -43,14 +55,30 @@ class Registre
     /**
      * Ce qui reste à écrire.
      *
-     * **Vide, et c'est le but atteint.** Les huit types de fichiers du logiciel sont
-     * désormais lus. Cette liste reste en place parce qu'elle a une fonction : elle dit
+     * **Vide, et c'est le but atteint.** Les dix types de fichiers sont désormais lus — les
+     * huit du logiciel d'atelier, plus la balance et les règlements fournisseurs exportés du
+     * logiciel comptable, écrits le 21/09/2026. Cette liste reste en place parce qu'elle a une fonction : elle dit
      * honnêtement ce qui manque plutôt que de laisser croire que tout est couvert. Le jour
      * où un nouveau fichier apparaît, il s'y déclare avant d'être écrit.
      *
      * @var array<string, array{libelle: string, source: string, note: string}>
      */
     public const ANNONCES = [];
+
+    /*
+     * Les fichiers qu'on a regardés puis écartés ne figurent pas ici, et n'ont pas de
+     * catégorie à eux.
+     *
+     * On leur en avait donné une le 24/09, affichée sur l'écran de dépôt — les fiches de
+     * réception, écartées le 18/09 parce que la situation du parc porte les mêmes fiches
+     * avec dix-sept colonnes. Le propriétaire l'a retirée le jour même : la décision est
+     * prise, et l'écran de dépôt doit répondre à « qu'est-ce que je dépose ? », pas
+     * énumérer ce qu'on ne déposera jamais. Une ligne de plus à lire à chaque visite pour
+     * une question qui ne se repose pas.
+     *
+     * La décision et son motif restent écrits dans ETAT-DES-LIEUX.md, où l'on va chercher
+     * pourquoi plutôt que quoi déposer.
+     */
 
     public static function connait(string $cle): bool
     {

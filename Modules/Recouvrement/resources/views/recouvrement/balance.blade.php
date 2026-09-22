@@ -36,7 +36,11 @@ $periode = computed(fn () => PeriodeDeTravail::depuis($this->moisFiltre, $this->
 
 $arrete = computed(fn () => Recouvrement::arrete($this->periode->arreteIso()));
 
-$ouvertes = computed(fn () => Recouvrement::facturesOuvertes($this->arrete));
+/*
+ * Lues telles que la base les rend, sans en faire des objets : cet écran additionne les
+ * créances ouvertes, il n'en affiche aucune ligne à ligne. Voir lignesOuvertes().
+ */
+$ouvertes = computed(fn () => Recouvrement::lignesOuvertes($this->arrete));
 
 $lignes = computed(function () {
     $recherche = trim(mb_strtolower($this->recherche));

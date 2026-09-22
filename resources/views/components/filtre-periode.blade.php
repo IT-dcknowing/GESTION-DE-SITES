@@ -3,6 +3,16 @@
     'sites' => null, 'siteFiltre' => null,
     'moisFiltre' => null, 'semaineFiltre' => null, 'jourFiltre' => null,
     'masquerActivite' => false, 'commerciaux' => null, 'commercialFiltre' => null,
+    /*
+     * Les deux bornes du mode « Période ».
+     *
+     * Elles n'étaient pas déclarées : le gabarit les lisait sans que personne ne les lui
+     * passe, et l'onglet « Période » tombait donc sur « Undefined variable $dateDebut » dès
+     * qu'on cliquait dessus. Aucun test ne l'avait vu parce qu'aucun n'ouvrait cet onglet —
+     * l'écran s'affichait toujours en mode « Calendrier ». C'est la panne qui se cachait
+     * derrière la demande d'un filtre « du … au … » : il existait, il ne s'ouvrait pas.
+     */
+    'dateDebut' => null, 'dateFin' => null,
 ])
 
 @php
@@ -98,6 +108,11 @@
             @endif
         </select>
     @endif
+
+    {{-- Ce qu'un écran veut poser sur la même ligne que ses filtres : un bouton qui mène
+         ailleurs, une mention. Vide par défaut, et donc sans effet sur les onze écrans qui
+         n'en passent pas. --}}
+    {{ $slot }}
 </div>
 
 @if ($periode === 'calendrier')
@@ -128,10 +143,38 @@
         </select>
     </div>
 @else
-    <div style="display:flex; gap:12px; align-items:center; margin:-4px 0 20px; font-size:14px;">
+    {{-- Au jour, et non au mois.
+         « Du 3 au 17 mars » était impossible : on ne pouvait demander qu'un mois entier,
+         alors que c'est précisément l'intervalle exact qu'on cherche pour rapprocher une
+         caisse ou vérifier une journée. Les bornes écrites au mois (`Y-m`) restent lues —
+         voir PeriodeCalculateur::borne() — mais l'affichage les ramène au jour, sans quoi
+         un champ de date resterait vide devant une valeur qu'il ne sait pas relire. --}}
+    @php
+        $auJour = function (?string $valeur, bool $versLaFin) use ($anneeEnCours) {
+            $valeur = trim((string) $valeur);
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valeur)) {
+                return $valeur;
+            }
+
+            if (preg_match('/^\d{4}-\d{2}$/', $valeur)) {
+                $mois = Carbon::createFromFormat('Y-m', $valeur);
+
+                return ($versLaFin ? $mois->endOfMonth() : $mois->startOfMonth())->format('Y-m-d');
+            }
+
+            return $versLaFin
+                ? Carbon::today()->format('Y-m-d')
+                : Carbon::create($anneeEnCours, 1, 1)->format('Y-m-d');
+        };
+    @endphp
+
+    <div style="display:flex; gap:12px; align-items:center; margin:-4px 0 20px; font-size:14px; flex-wrap:wrap;">
         <label style="color:var(--th-gris,#6B6E76); font-weight:600;">Du</label>
-        <input type="month" wire:model.live="dateDebut" value="{{ $dateDebut }}" min="{{ $anneeEnCours }}-01" max="{{ $anneeEnCours }}-12" class="champ" style="width:auto;">
+        <input type="date" wire:model.live="dateDebut" value="{{ $auJour($dateDebut, false) }}"
+            class="champ" style="width:auto;">
         <label style="color:var(--th-gris,#6B6E76); font-weight:600;">Au</label>
-        <input type="month" wire:model.live="dateFin" value="{{ $dateFin }}" min="{{ $anneeEnCours }}-01" max="{{ $anneeEnCours }}-12" class="champ" style="width:auto;">
+        <input type="date" wire:model.live="dateFin" value="{{ $auJour($dateFin, true) }}"
+            class="champ" style="width:auto;">
     </div>
 @endif

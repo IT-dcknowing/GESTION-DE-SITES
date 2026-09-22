@@ -32,7 +32,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
  */
 #[Fillable([
     'entreprise_id', 'ville_id', 'site_id', 'user_id',
-    'code', 'libelle', 'occurrences', 'est_actif',
+    'code', 'libelle', 'nom', 'prenom', 'fonction', 'occurrences', 'est_actif',
 ])]
 class CodeAgent extends Model
 {
@@ -114,5 +114,16 @@ class CodeAgent extends Model
     public function estRenseigne(): bool
     {
         return $this->ville_id !== null;
+    }
+
+    /**
+     * Le nom de celui qui porte le code, tel qu'on l'écrirait sur une liste.
+     *
+     * Rendu vide plutôt que « null null » quand on ne le connaît pas encore : un code sans
+     * nom est le cas de départ, pas une anomalie.
+     */
+    public function nomComplet(): string
+    {
+        return trim(trim((string) $this->nom).' '.trim((string) $this->prenom));
     }
 }

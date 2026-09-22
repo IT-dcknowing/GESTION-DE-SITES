@@ -63,6 +63,10 @@ class ProspectionCoherenceEtHistoriqueTest extends TestCase
             ->set('prosCommercialId', $this->commercial->id)
             ->set('prosDevisApres', true)
             ->set('prosDateDevis', '2026-08-10')
+            // Depuis le 22/09/2026, déclarer un passage en devis oblige à en donner le
+            // numéro : c'est l'instant où le devis existe, et le donner alors évite tout le
+            // rapprochement qui suivrait.
+            ->set('prosNDevis', 'PR-MT-11434')
             ->call('ajouterProspection')
             ->assertHasNoErrors();
 
@@ -72,6 +76,23 @@ class ProspectionCoherenceEtHistoriqueTest extends TestCase
         $this->assertSame('2026-08-10', $p->date_passage->toDateString());
         $this->assertTrue($p->devis_apres_passage);
         $this->assertSame('2026-08-10', $p->date_devis->toDateString());
+        $this->assertSame('PR-MT-11434', $p->n_devis);
+    }
+
+    public function test_un_passage_en_devis_sans_son_numero_est_refuse(): void
+    {
+        $this->actingAs($this->responsable);
+
+        Volt::test('saisie.saisie-du-jour')
+            ->set('prosClient', 'Garage Y')
+            ->set('prosCommercialId', $this->commercial->id)
+            ->set('prosDevisApres', true)
+            ->set('prosDateDevis', '2026-08-10')
+            ->set('prosNDevis', '')
+            ->call('ajouterProspection')
+            ->assertHasErrors('prosNDevis');
+
+        $this->assertNull(Prospection::where('client', 'Garage Y')->first());
     }
 
     public function test_la_modification_est_journalisee_avec_l_auteur_et_visible_dans_le_detail(): void

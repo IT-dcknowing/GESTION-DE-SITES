@@ -114,6 +114,33 @@ body { font-size: 16px; }
 .tableau-conteneur { overflow-x: auto; width: 100%; }
 
 
+/* --------------------------------- La dernière colonne reste collée au bord droit
+
+   Constaté le 21/09/2026 en trésorerie : les décaissements portent sept colonnes dont un
+   libellé d'opération entier, dans une carte qui n'occupe que la moitié de l'écran. Le
+   tableau dépassait, et le bouton « Détail » — la dernière colonne — se trouvait hors de
+   vue sans qu'on puisse l'y ramener (voir aussi « .carte » plus bas, qui empêchait le
+   conteneur de défiler).
+
+   La colonne se colle donc au bord droit : elle reste visible pendant que le reste défile
+   dessous. Le fond est recopié rang par rang, sinon le texte qui passe dessous se lirait
+   au travers.
+
+   Même remède pour le montant de la caisse : dernière des sept colonnes, il sortait de
+   l'écran, et c'est pourtant le chiffre qu'on vient lire. */
+.tableau th.colonne-collee,
+.tableau td.colonne-collee {
+    position: sticky;
+    right: 0;
+    background: #fff;
+    box-shadow: -7px 0 7px -7px rgba(0, 0, 0, .18);
+}
+
+.tableau thead th.colonne-collee { background: var(--th-ink); }
+.tableau tbody tr:nth-child(even) td.colonne-collee { background: #FAF9F5; }
+.tableau tbody tr:hover td.colonne-collee { background: #F4F3EF; }
+
+
 /* ------------------------------------------------- Les nombres ne se coupent pas
 
    « 9 004 » réparti sur deux lignes se lit « 9 ». L'espace des milliers est une espace
@@ -137,6 +164,15 @@ th.num,
     border: 1px solid var(--th-ligne);
     border-radius: 10px;
     padding: 16px;
+
+    /* Une carte posée dans une grille doit pouvoir se rétrécir.
+
+       Sans cette ligne, un élément de grille prend pour largeur minimale celle de son
+       contenu : un large tableau élargissait donc sa colonne au-delà de la page, et le
+       « overflow-x: auto » du conteneur ne servait plus à rien puisque le conteneur
+       n'était jamais trop étroit. C'est ce qui rendait le bouton « Détail » des
+       décaissements inatteignable. Hors grille et hors flex, la règle ne change rien. */
+    min-width: 0;
 }
 
 /* Carte KPI : liseré coloré en haut (acier / rouge si alerte / vert si bon). */

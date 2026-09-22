@@ -3,6 +3,7 @@
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
+use Modules\Noyau\Exploitation\Services\CommissionCommerciale;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use function Livewire\Volt\{state, computed, mount};
 
@@ -21,8 +22,8 @@ state([
 ]);
 
 mount(function () {
-    $this->dateDebut ??= now()->startOfYear()->format('Y-m');
-    $this->dateFin ??= now()->format('Y-m');
+    $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
+    $this->dateFin ??= now()->format('Y-m-d');
 });
 
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; };
@@ -43,10 +44,71 @@ $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->u
 $optionsCommerciaux = computed(fn () => Commercial::actifs()->where('est_spontane', false)
     ->whereIn('ville_id', $this->idsVilles)->orderBy('nom')->get());
 
+/**
+ * Le gérant seul voit la commission.
+ *
+ * Elle dit ce que quelqu'un touchera à la fin du mois. Un responsable de site qui lit le
+ * classement de ses commerciaux n'a pas à y lire leur rémunération, et un commercial encore
+ * moins celle de son voisin.
+ */
+$voitLesCommissions = computed(fn () => auth()->user()->hasRole('gerant'));
+
+/**
+ * Le chiffre d'affaires facturé, mois par mois, pour chaque commercial.
+ *
+ * **Une seule requête, et le regroupement en PHP.** Extraire l'année et le mois d'une date
+ * ne s'écrit pas de la même façon sur MySQL et sur SQLite ; le faire ici évite d'avoir deux
+ * versions de la même règle, et le volume reste celui d'une année de facturation.
+ *
+ * L'intervalle va du 1er janvier de l'année de fin jusqu'à la fin de la période : il couvre
+ * à la fois la période affichée et le cumul annuel, qui n'a pas de raison d'être demandé
+ * deux fois.
+ */
+$caMensuel = computed(function () {
+    [$debut, $fin] = $this->plage;
+    $depuis = $fin->copy()->startOfYear()->min($debut);
+
+    $lignes = Facture::query()
+        ->whereNotNull('commercial_id')
+        ->whereIn('site_id', $this->idsSites)
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->whereBetween('date', [$depuis, $fin])
+        ->get(['commercial_id', 'date', 'montant']);
+
+    $parCommercial = [];
+
+    foreach ($lignes as $ligne) {
+        $mois = $ligne->date->format('Y-m');
+        $parCommercial[$ligne->commercial_id][$mois] ??= 0;
+        $parCommercial[$ligne->commercial_id][$mois] += (int) $ligne->montant;
+    }
+
+    return $parCommercial;
+});
+
+/**
+ * Combien de factures de la période portent un commercial — et combien n'en portent pas.
+ *
+ * Sans ce compte, une commission à zéro se lit comme « il n'a rien vendu » alors qu'elle dit
+ * « on ne sait pas qui a vendu ». Les deux méritaient d'être distinguées à l'écran.
+ */
+$couvertureCommerciale = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    $base = Facture::query()
+        ->whereIn('site_id', $this->idsSites)
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->whereBetween('date', [$debut, $fin]);
+
+    $total = (clone $base)->count();
+
+    return ['total' => $total, 'attribuees' => $total === 0 ? 0 : (clone $base)->whereNotNull('commercial_id')->count()];
+});
+
 $classement = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    $commerciaux = Commercial::actifs()->where('est_spontane', false)->with('ville')
+    $commerciaux = Commercial::actifs()->where('est_spontane', false)->with(['ville', 'utilisateur'])
         ->whereIn('ville_id', $this->idsVilles)
         ->when($this->commercialFiltre, fn ($q) => $q->where('id', $this->commercialFiltre))
         ->get();
@@ -64,7 +126,15 @@ $classement = computed(function () {
         ->groupBy('sites.ville_id')
         ->pluck('total', 'ville_id');
 
-    return $commerciaux->map(function ($commercial) use ($debut, $fin, $caParVille) {
+    $caMensuel = $this->caMensuel;
+    $moisDeLaPeriode = [];
+    for ($curseur = $debut->copy()->startOfMonth(); $curseur <= $fin; $curseur->addMonth()) {
+        $moisDeLaPeriode[] = $curseur->format('Y-m');
+    }
+    $anneeDeFin = $fin->format('Y');
+    $entrepriseId = auth()->user()->entreprise_id;
+
+    return $commerciaux->map(function ($commercial) use ($debut, $fin, $caParVille, $caMensuel, $moisDeLaPeriode, $anneeDeFin, $entrepriseId) {
         $lignesFactures = Facture::where('commercial_id', $commercial->id)
             ->whereIn('site_id', $this->idsSites)
             ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
@@ -74,8 +144,42 @@ $classement = computed(function () {
         $ecart = $realisation - $objectifProrata;
         $caVille = (int) ($caParVille[$commercial->ville_id] ?? 0);
 
+        /*
+         * La commission, mois par mois — jamais sur la période entière.
+         *
+         * Le barème est mensuel : appliquer son taux au chiffre d'un trimestre le ferait
+         * entrer dans une tranche qu'il n'a jamais atteinte en un mois. Chaque mois est donc
+         * calculé pour lui-même, avec la grille en vigueur ce mois-là.
+         */
+        // La grille n'est pas choisie ici : c'est elle qui dit quels rôles elle rémunère,
+        // et le gérant coche cette liste à l'écran.
+        $moisDuCommercial = $caMensuel[$commercial->id] ?? [];
+
+        $periode = CommissionCommerciale::surLesMois(
+            $entrepriseId, $commercial->utilisateur,
+            array_intersect_key($moisDuCommercial, array_flip($moisDeLaPeriode)),
+        );
+
+        // Le cumul court sur l'année civile de la fin de période : c'est la façon dont on
+        // suit une rémunération, et non sur les douze derniers mois glissants.
+        $cumul = CommissionCommerciale::surLesMois(
+            $entrepriseId, $commercial->utilisateur,
+            array_filter($moisDuCommercial, fn ($mois) => str_starts_with($mois, $anneeDeFin), ARRAY_FILTER_USE_KEY),
+        );
+
+        // Le taux affiché est celui du dernier mois de la période : un taux moyen sur
+        // plusieurs mois ne correspondrait à aucune ligne du barème.
+        $dernierMois = end($moisDeLaPeriode) ?: null;
+        $dernier = $dernierMois !== null ? ($periode['mois'][$dernierMois] ?? null) : null;
+
         return [
             'commercial' => $commercial,
+            'commission' => $periode['commission'],
+            'commissionCumul' => $cumul['commission'],
+            'tauxBareme' => $dernier['taux'] ?? null,
+            'caDuDernierMois' => $dernier['ca'] ?? 0,
+            'moisSansGrille' => $periode['sansGrille'],
+            'moisSansTranche' => $periode['sansTranche'],
             'objectif' => $objectifProrata,
             'objectifMecanique' => (int) round(PeriodeCalculateur::objectifProrata((float) $commercial->objectif_mecanique, $debut, $fin)),
             'objectifSinistre' => (int) round(PeriodeCalculateur::objectifProrata((float) $commercial->objectif_sinistre, $debut, $fin)),
@@ -129,10 +233,18 @@ $graphique = computed(fn () => [
     <x-titre-ecran titre="Commerciaux"
         sous-titre="L'activité de chacun, de la prospection à la facture." />
 
-    <x-filtre-periode :periode="$periode" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
-        :commerciaux="$this->optionsCommerciaux" :commercial-filtre="$commercialFiltre" />
+        :commerciaux="$this->optionsCommerciaux" :commercial-filtre="$commercialFiltre">
+        {{-- Sur la même ligne que les filtres, et pour le seul gérant : le barème dit ce
+             que quelqu'un touchera à la fin du mois, et se règle depuis cet écran-là
+             puisque c'est là qu'on lit les commissions. --}}
+        @if ($this->voitLesCommissions)
+            <a href="{{ route('bareme-commission') }}" wire:navigate class="bouton bouton-secondaire"
+                style="padding:8px 14px; white-space:nowrap;">Barème de commission</a>
+        @endif
+    </x-filtre-periode>
 
     <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Commerciaux — {{ $this->libellePerimetre }}" :value="$this->kpis['nombre']" />
@@ -153,6 +265,26 @@ $graphique = computed(fn () => [
 
     <div class="carte">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Classement des commerciaux par performance</h3>
+
+        @if ($this->voitLesCommissions)
+            @php $couverture = $this->couvertureCommerciale; @endphp
+            <p style="margin:-6px 0 14px; font-size:12.5px; color:#6B6E76;">
+                La commission est calculée <b>mois par mois</b> sur le chiffre d'affaires
+                <b>facturé</b> du commercial, avec la grille en vigueur ce mois-là — voir
+                <a href="{{ route('bareme-commission') }}" wire:navigate style="color:#C8102E; font-weight:600;">Barème de commission</a>.
+                @if ($couverture['total'] > 0 && $couverture['attribuees'] < $couverture['total'])
+                    {{-- Une commission à zéro se lit « il n'a rien vendu » ; il faut pouvoir
+                         lire « on ne sait pas qui a vendu ». Le chiffre le dit. --}}
+                    <b style="color:#B45309;">
+                        Sur {{ number_format($couverture['total'], 0, ',', ' ') }} facture(s) de la période,
+                        {{ number_format($couverture['attribuees'], 0, ',', ' ') }} seulement portent un commercial :
+                        les autres ne sont comptées à personne.
+                    </b>
+                    L'écran <a href="{{ route('rapprochement.prospections-devis') }}" wire:navigate style="color:#C8102E; font-weight:600;">Rapprochement prospections / devis</a>
+                    sert à combler cet écart.
+                @endif
+            </p>
+        @endif
         <div class="tableau-conteneur">
             <table class="tableau">
                 <thead>
@@ -170,6 +302,11 @@ $graphique = computed(fn () => [
                         <th>Écart</th>
                         <th>Taux de Réalisation</th>
                         <th>Contribution au CA de la ville</th>
+                        @if ($this->voitLesCommissions)
+                            <th>Barème</th>
+                            <th>Commission de la période</th>
+                            <th>Cumul {{ $this->plage[1]->format('Y') }}</th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody>
@@ -200,9 +337,28 @@ $graphique = computed(fn () => [
                             <td style="font-variant-numeric:tabular-nums; color:{{ $ligne['ecart'] >= 0 ? '#0E9F6E' : '#C8102E' }};">{{ ae($ligne['ecart']) }}</td>
                             <td style="font-weight:700; color:{{ ($ligne['taux'] ?? 0) >= 1 ? '#0E9F6E' : '#D97706' }};">{{ an($ligne['taux']) }}</td>
                             <td style="font-variant-numeric:tabular-nums;">{{ an($ligne['contribution']) }}</td>
+                            @if ($this->voitLesCommissions)
+                                <td style="white-space:nowrap;">
+                                    @if ($ligne['moisSansGrille'] > 0)
+                                        {{-- Pas de grille n'est pas zéro pour cent : c'est qu'on
+                                             n'a rien à quoi se référer. --}}
+                                        <span style="color:#B45309; font-size:12px;">aucune grille</span>
+                                    @elseif ($ligne['tauxBareme'] === null)
+                                        <span style="color:#C8102E; font-size:12px;">hors tranche</span>
+                                    @else
+                                        <b>{{ rtrim(rtrim(number_format($ligne['tauxBareme'], 2, ',', ' '), '0'), ',') }} %</b>
+                                        <span style="color:#6B6E76; font-size:11px;">sur {{ ae($ligne['caDuDernierMois']) }}</span>
+                                    @endif
+                                </td>
+                                <td style="font-variant-numeric:tabular-nums; font-weight:700; color:#1E7B34;">
+                                    {{ ae($ligne['commission']) }}
+                                </td>
+                                <td style="font-variant-numeric:tabular-nums;">{{ ae($ligne['commissionCumul']) }}</td>
+                            @endif
                         </tr>
                     @empty
-                        <x-table-vide :colspan="count($this->idsVilles) > 1 ? 10 : 9" texte="Aucun commercial actif pour ce filtre." />
+                        <x-table-vide :colspan="(count($this->idsVilles) > 1 ? 10 : 9) + ($this->voitLesCommissions ? 3 : 0)"
+                            texte="Aucun commercial actif pour ce filtre." />
                     @endforelse
                 </tbody>
             </table>

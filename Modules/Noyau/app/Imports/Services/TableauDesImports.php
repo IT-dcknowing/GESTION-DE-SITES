@@ -5,6 +5,7 @@ namespace Modules\Noyau\Imports\Services;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Modeles\LotImport;
 
@@ -46,7 +47,7 @@ class TableauDesImports
             ->get()
             ->groupBy('format');
 
-        $toutesLesVilles = \Modules\Noyau\Entreprises\Modeles\Ville::withoutGlobalScopes()
+        $toutesLesVilles = Ville::withoutGlobalScopes()
             ->where('entreprise_id', $this->entrepriseId)
             ->where('est_actif', true)
             ->orderBy('nom')
@@ -74,8 +75,17 @@ class TableauDesImports
         'impayes' => 'factures',
         'fournisseurs' => 'factures_fournisseurs',
         'caisse' => 'mouvements_caisse',
-        // Les entrées et sorties ont bien leur table, mais aucun lecteur : les fichiers
-        // sortent du logiciel en PDF. Rien à compter tant que l'export Excel manque.
+        // Le journal imprimé alimente la même table que le classeur tenu à la main : ce sont
+        // deux sources pour une seule caisse, et c'est bien la même caisse qu'on compte.
+        'journal-caisse' => 'mouvements_caisse',
+        // Les deux exports du logiciel comptable, entrés les 21 et 22/09. Sans eux, trois
+        // des onze types n'affichaient aucun compteur — or la question de cet écran est
+        // « qu'est-ce qui manque encore ? ».
+        'balance-fournisseurs' => 'soldes_fournisseur',
+        'reglements-fournisseurs' => 'reglements_fournisseur',
+        // Les entrées et sorties ont leurs deux lecteurs depuis qu'un export Excel existe :
+        // le commentaire qui disait ici « aucun lecteur, les fichiers sortent en PDF »
+        // était resté en place après eux.
         'entrees' => 'mouvements_vehicules',
         'sorties' => 'mouvements_vehicules',
     ];

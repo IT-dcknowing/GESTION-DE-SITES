@@ -3,7 +3,9 @@
 namespace Modules\Noyau\Commun\Services;
 
 use App\Models\User;
+use Modules\Import\Support\AccesImport;
 use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 
 /**
  * Construit le menu du bandeau supérieur selon le rôle de l'utilisateur connecté.
@@ -95,6 +97,21 @@ class MenuNavigation
                 // décrochait le téléphone sans pouvoir lire ce qu'un client devait.
                 // Consultation seulement — voir AccesRecouvrement.
                 ['label' => 'Recouvrement', 'route' => 'recouvrement.tableau-de-bord', 'actifPattern' => 'recouvrement.'],
+                /*
+                 * Les indicateurs faits de ses propres écritures, qui lui étaient fermés :
+                 * il tenait la caisse sans pouvoir lire l'état de cette caisse, ni la
+                 * trésorerie qu'il alimente, ni ce que l'entreprise doit. Lecture seule —
+                 * aucune de ces pages n'écrit — et dans son périmètre, comme pour tous.
+                 */
+                // « Caisse par véhicule » n'est pas listée ici, et c'est voulu : elle ne
+                // répond pas à une question qu'on se pose en arrivant, mais à une question
+                // qu'on se pose **devant une plaque**. Elle s'ouvre donc depuis l'écran de
+                // caisse, là où la plaque est sous les yeux. Un menu qui énumère tout finit
+                // par ne plus rien mettre en avant.
+                ['label' => 'Caisse', 'route' => 'caisse'],
+                ['label' => 'Trésorerie', 'route' => 'tresorerie'],
+                ['label' => 'Charges', 'route' => 'charges'],
+                ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
                 ['label' => 'Messages', 'route' => 'messages'],
                 ['label' => 'Notifications', 'route' => 'mes-notifications'],
                 ['label' => 'Paramètres', 'route' => 'mon-espace'],
@@ -108,7 +125,7 @@ class MenuNavigation
          * ouvertes, et le premier onglet auquel il a droit est sa page d'arrivée.
          */
         if ($utilisateur->hasRole('superviseur_recouvrement') || $utilisateur->hasRole('agent_recouvrement')) {
-            $pages = \Modules\Recouvrement\Support\AccesRecouvrement::pagesDe($utilisateur);
+            $pages = AccesRecouvrement::pagesDe($utilisateur);
 
             /*
              * Le tableau de bord se détache du reste : c'est la page d'arrivée, celle qui
@@ -167,7 +184,7 @@ class MenuNavigation
          * l'encours est la moitié qu'on ne lui montrait pas. AccesRecouvrement décide de ce
          * que chacun y trouve ; ici on se contente d'ouvrir la porte à qui en a une.
          */
-        if (\Modules\Recouvrement\Support\AccesRecouvrement::ouvertA($utilisateur)) {
+        if (AccesRecouvrement::ouvertA($utilisateur)) {
             $onglets[] = ['label' => 'Recouvrement', 'route' => 'recouvrement.tableau-de-bord', 'actifPattern' => 'recouvrement.'];
         }
 
@@ -176,7 +193,7 @@ class MenuNavigation
          * superviseur de ville arrivent sur le dépôt, la comptabilité sur le journal —
          * elle consulte les imports sans en faire.
          */
-        $pagesImport = \Modules\Import\Support\AccesImport::pagesDe($utilisateur);
+        $pagesImport = AccesImport::pagesDe($utilisateur);
 
         if ($pagesImport !== []) {
             $onglets[] = [
@@ -191,6 +208,9 @@ class MenuNavigation
             'groupe' => [
                 ['label' => 'Prospects', 'route' => 'prospects'],
                 ['label' => 'Devis', 'route' => 'devis'],
+                // Entre les deux, l'écran qui les relie : une prospection sans devis et un
+                // devis sans commercial sont le même trou, vu de ses deux bords.
+                ['label' => 'Rapprochement prospections / devis', 'route' => 'rapprochement.prospections-devis'],
                 ['label' => 'Parc véhicules', 'route' => 'parc-vehicules'],
                 ['label' => 'Entrées / sorties', 'route' => 'mouvements-vehicules'],
                 ['label' => 'Clients', 'route' => 'clients'],
@@ -208,6 +228,10 @@ class MenuNavigation
                 // La caisse et les fournisseurs suivent la trésorerie : ce sont les deux
                 // faces de la même question — ce qui sort en espèces, et ce qu'on doit
                 // encore. Toutes deux viennent d'un fichier du logiciel d'atelier.
+                // « Caisse par véhicule » répond à « cette plaque, on a payé quoi dessus » :
+                // une question qu'on se pose devant une plaque, pas en ouvrant un menu. Elle
+                // garde sa page et son adresse, et s'ouvre depuis l'écran de caisse — d'un
+                // bouton en tête, ou en cliquant l'immatriculation d'une ligne.
                 ['label' => 'Caisse', 'route' => 'caisse'],
                 ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
                 ['label' => 'Commerciaux', 'route' => 'commerciaux'],
@@ -217,6 +241,12 @@ class MenuNavigation
         $general = [
             ['label' => 'Ajouter un accès', 'route' => 'acces.creer'],
         ];
+
+        // Le barème décide de ce qu'un commercial touche à la fin du mois : il n'est
+        // proposé qu'au gérant, comme l'écran lui-même.
+        if ($utilisateur->hasRole('gerant')) {
+            $general[] = ['label' => 'Barème de commission', 'route' => 'bareme-commission'];
+        }
 
         /*
          * Sa performance individuelle, pour qui vend. Un responsable de ville et un

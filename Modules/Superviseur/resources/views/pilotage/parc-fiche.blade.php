@@ -1,6 +1,8 @@
 <?php
 
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
+use Modules\Noyau\Imports\Modeles\MouvementVehicule;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 
 use function Livewire\Volt\{computed, mount, state};
@@ -49,6 +51,25 @@ $fiche = computed(function () {
 
     return $dossier;
 });
+
+/**
+ * Tout ce que ce numéro de fiche relie — le devis, la facture, l'entrée, la sortie.
+ *
+ * **C'est la seule clé commune aux fichiers du logiciel d'atelier**, et jusqu'ici chacun
+ * était lu de son côté : on voyait qu'un devis existait sans pouvoir dire si le véhicule
+ * était ressorti, ni si la facture avait suivi. Le rapprochement se fait sur l'égalité du
+ * numéro — mesuré le 24/09, elle donne exactement le même résultat qu'une forme
+ * normalisée, parce que le logiciel écrit le numéro de la même façon partout.
+ *
+ * Le périmètre est relu de l'identité du lecteur, jamais de l'adresse.
+ */
+$piste = computed(fn () => $this->fiche === null
+    ? null
+    : PisteDeLaFiche::pour(
+        (int) auth()->user()->entreprise_id,
+        $this->fiche->numero_fiche,
+        PerimetreSites::idsVillesRetenus(auth()->user(), null),
+    ));
 
 ?>
 
@@ -105,7 +126,7 @@ $fiche = computed(function () {
             </p>
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:2px;">
-                @foreach ($f->champsDuLogiciel() as $intitule => $valeur)
+                @foreach ($f->champsDuFichier() as $intitule => $valeur)
                     @php
                         // Les deux champs de texte long tiennent sur toute la largeur : les
                         // travaux à effectuer courent parfois sur plusieurs lignes.
@@ -121,6 +142,91 @@ $fiche = computed(function () {
                     </div>
                 @endforeach
             </div>
+        </x-carte-section>
+
+        {{-- ------------------------------------------- ce que ce numéro relie ailleurs --}}
+        <x-carte-section titre="Ce que cette fiche a produit" icone="liste">
+            <p style="margin:0 0 14px; color:#6B6E76; font-size:12.5px;">
+                Le n° de fiche est la seule clé commune aux états du logiciel d'atelier : il
+                se retrouve sur le devis, sur la facture, et dans les entrées et sorties de
+                véhicules. Ce qui manque est dit en toutes lettres — une page vide se
+                confondrait avec une panne.
+            </p>
+
+            @php $piste = $this->piste; @endphp
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px;">
+                <div>
+                    <div style="font-size:11px; font-weight:700; letter-spacing:.4px; color:#6B6E76;
+                                text-transform:uppercase; margin-bottom:6px;">Devis ({{ $piste['devis']->count() }})</div>
+                    @forelse ($piste['devis'] as $devis)
+                        <div style="padding:6px 0; border-bottom:1px solid var(--th-ligne,#E2E0D8); font-size:12.5px;">
+                            <b>{{ $devis->numero ?: '—' }}</b>
+                            <span style="color:#6B6E76;"> · {{ $devis->date_emission?->format('d/m/Y') ?? $devis->date_reception?->format('d/m/Y') ?? '—' }}</span>
+                            <div style="color:#6B6E76;">
+                                {{ $devis->statut ?: 'statut inconnu' }} ·
+                                <b style="font-variant-numeric:tabular-nums;">{{ ae((int) $devis->montant_devis) }}</b>
+                            </div>
+                        </div>
+                    @empty
+                        <div style="font-size:12.5px; color:#9A9DA5;">Aucun devis ne cite cette fiche.</div>
+                    @endforelse
+                </div>
+
+                <div>
+                    <div style="font-size:11px; font-weight:700; letter-spacing:.4px; color:#6B6E76;
+                                text-transform:uppercase; margin-bottom:6px;">Factures ({{ $piste['factures']->count() }})</div>
+                    @forelse ($piste['factures'] as $facture)
+                        <div style="padding:6px 0; border-bottom:1px solid var(--th-ligne,#E2E0D8); font-size:12.5px;">
+                            <b>{{ $facture->n_facture ?: ($facture->numero ?: '—') }}</b>
+                            <span style="color:#6B6E76;"> · {{ $facture->date?->format('d/m/Y') ?? '—' }}</span>
+                            <div style="color:#6B6E76;">
+                                {{ $facture->client ?: '—' }} ·
+                                <b style="font-variant-numeric:tabular-nums;">{{ ae((int) $facture->montant) }}</b>
+                            </div>
+                        </div>
+                    @empty
+                        <div style="font-size:12.5px; color:#9A9DA5;">Aucune facture ne cite cette fiche.</div>
+                    @endforelse
+                </div>
+
+                <div>
+                    <div style="font-size:11px; font-weight:700; letter-spacing:.4px; color:#6B6E76;
+                                text-transform:uppercase; margin-bottom:6px;">Entrées & sorties ({{ $piste['mouvements']->count() }})</div>
+                    @forelse ($piste['mouvements'] as $mouvement)
+                        <div style="padding:6px 0; border-bottom:1px solid var(--th-ligne,#E2E0D8); font-size:12.5px;">
+                            <b>{{ $mouvement->sens === MouvementVehicule::ENTREE ? 'Entrée' : 'Sortie' }}</b>
+                            <span style="color:#6B6E76;"> · {{ $mouvement->date?->format('d/m/Y') ?? '—' }}</span>
+                            @if ($mouvement->date_livraison_prevue)
+                                <div style="color:{{ $mouvement->sens === MouvementVehicule::ENTREE && $mouvement->date_livraison_prevue->isPast() ? '#C8102E' : '#6B6E76' }};">
+                                    Livraison prévue : {{ $mouvement->date_livraison_prevue->format('d/m/Y') }}
+                                </div>
+                            @endif
+                        </div>
+                    @empty
+                        <div style="font-size:12.5px; color:#9A9DA5;">Aucun mouvement n'est enregistré pour cette fiche.</div>
+                    @endforelse
+                </div>
+            </div>
+
+            @php $manques = PisteDeLaFiche::cequiManque($piste); @endphp
+
+            @if ($manques !== [])
+                <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--th-ligne,#E2E0D8);">
+                    <div style="font-size:11px; font-weight:700; letter-spacing:.4px; color:#6B6E76;
+                                text-transform:uppercase; margin-bottom:5px;">Ce qui manque à la piste</div>
+                    @foreach ($manques as $manque)
+                        <div style="font-size:12.5px; color:#4B4E55;">· {{ $manque }}</div>
+                    @endforeach
+                    <p style="margin:9px 0 0; font-size:12px; color:#9A9DA5;">
+                        Un manque n'est pas forcément une anomalie : chaque état est une
+                        extraction à une date, et deux extractions ne couvrent pas la même
+                        période. Sur les 3 318 fiches reprises, 628 n'ont encore ni devis,
+                        ni facture, ni mouvement.
+                    </p>
+                </div>
+            @endif
+
         </x-carte-section>
 
         {{-- ------------------------------------------------------- d'où vient cette ligne --}}
