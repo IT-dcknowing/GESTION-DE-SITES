@@ -198,26 +198,27 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
                         <tr><th>Quand</th><th>Qui</th><th>Geste</th><th>Avant → après</th></tr>
                     </thead>
                     <tbody>
+                        @php $nomsDesLieux = \Modules\Noyau\Tracabilite\Services\JournalLisible::nomsDesLieux($this->historique); @endphp
                         @forelse ($this->historique as $trace)
                             @php
-                                $avant = $trace->properties['old'] ?? [];
-                                $apres = $trace->properties['attributes'] ?? [];
+                                /* Le journal se lit sans connaître la base : « updated »
+                                   devient « Modifiée », « ville_id : — → 1 » devient
+                                   « Ville : vide → Abidjan », et les dates prennent le
+                                   format d'ici. Voir JournalLisible. */
+                                $changements = \Modules\Noyau\Tracabilite\Services\JournalLisible::changements($trace, $nomsDesLieux);
                             @endphp
                             <tr>
                                 <td style="white-space:nowrap;">{{ $trace->created_at?->format('d/m/Y H:i') }}</td>
                                 <td>{{ $trace->causer?->name ?? 'import' }}</td>
-                                <td>{{ $trace->description }}</td>
+                                <td>{{ \Modules\Noyau\Tracabilite\Services\JournalLisible::geste($trace) }}</td>
                                 <td style="font-size:12.5px;">
-                                    @forelse ($avant as $champ => $valeur)
-                                        @if (($apres[$champ] ?? null) !== $valeur)
-                                            <div>
-                                                <strong>{{ $champ }}</strong> :
-                                                {{ is_scalar($valeur) ? \Illuminate\Support\Str::limit((string) $valeur, 60) : '—' }}
-                                                → {{ is_scalar($apres[$champ] ?? null) ? \Illuminate\Support\Str::limit((string) $apres[$champ], 60) : '—' }}
-                                            </div>
-                                        @endif
+                                    @forelse ($changements as $changement)
+                                        <div>
+                                            <strong>{{ $changement['champ'] }}</strong> :
+                                            {{ $changement['avant'] }} → {{ $changement['apres'] }}
+                                        </div>
                                     @empty
-                                        —
+                                        <span style="color:#9A9DA5;">rien de visible n'a changé</span>
                                     @endforelse
                                 </td>
                             </tr>

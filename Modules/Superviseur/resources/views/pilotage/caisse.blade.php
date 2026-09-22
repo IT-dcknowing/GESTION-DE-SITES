@@ -468,6 +468,10 @@ $detail = computed(fn () => (clone $this->requete)
             </table>
         </div>
 
-        <div style="margin-top:12px;">{{ $this->detail->links() }}</div>
+        {{-- Paginé par `$set` et non par un lien : le paginateur d'Eloquent rend de vraies
+             ancres `?pageDetail=2`, qui rechargent la page et la ramènent en haut — on
+             perdait la ligne qu'on était en train de lire à chaque page tournée. --}}
+        <x-pagination :page="$this->detail->currentPage()" :total="$this->detail->total()"
+            prop="pageDetail" :par-page="25" />
     </div>
 </div>

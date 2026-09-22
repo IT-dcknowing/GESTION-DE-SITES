@@ -33,8 +33,7 @@ class TableauDesImports
      * Où en est chaque type d'import.
      *
      * @return Collection<int, array{
-     *     cle: string, libelle: string, disponible: bool, ecarte: bool,
-     *     source: string|null, note: string|null,
+     *     cle: string, libelle: string, disponible: bool, source: string|null, note: string|null,
      *     table: string|null, lignes_en_base: int|null,
      *     dernier: LotImport|null, lots: int, villes: list<string>, manquantes: list<string>
      * }>
@@ -63,25 +62,6 @@ class TableauDesImports
 
         foreach (Registre::ANNONCES as $cle => $meta) {
             $lignes->push($this->ligne($cle, $meta['libelle'], false, $lots, $toutesLesVilles, $meta));
-        }
-
-        /*
-         * Ce qu'on a regardé puis écarté figure ici, et pas ailleurs.
-         *
-         * Celui qui tient un export de fiches de réception vient sur cet écran : ne rien y
-         * trouver ne lui dit pas si c'est un oubli ou une décision. Il redemande, ou il
-         * attend. Une décision qui ne se lit nulle part se reprend tous les trois mois.
-         */
-        foreach (Registre::ECARTES as $cle => $meta) {
-            $lignes->push($this->ligne(
-                $cle,
-                $meta['libelle'],
-                false,
-                $lots,
-                $toutesLesVilles,
-                ['source' => $meta['source'], 'note' => $meta['pourquoi']],
-                true,
-            ));
         }
 
         return $lignes;
@@ -117,7 +97,6 @@ class TableauDesImports
         Collection $lots,
         array $toutesLesVilles,
         ?array $meta = null,
-        bool $ecarte = false,
     ): array {
         $siens = $lots->get($cle, collect())->filter(fn (LotImport $l) => $l->etat === 'termine');
         $villes = $siens->pluck('ville.nom')->filter()->unique()->values()->all();
@@ -127,7 +106,6 @@ class TableauDesImports
             'cle' => $cle,
             'libelle' => $libelle,
             'disponible' => $disponible,
-            'ecarte' => $ecarte,
             'source' => $meta['source'] ?? null,
             'note' => $meta['note'] ?? null,
             'table' => $table,

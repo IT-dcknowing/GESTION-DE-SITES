@@ -145,6 +145,18 @@ $enRetard = computed(fn () => MouvementVehicule::promesseDepassee(
     $this->requete(false)->reorder(),
 )->count());
 
+/**
+ * Combien de mouvements portent une date de livraison prévue.
+ *
+ * **Sans ce compteur, « 0 promesse dépassée » se lit de travers.** Il peut vouloir dire
+ * « tout est tenu » ou « le fichier n'a pas encore été redéposé, donc aucune date n'est
+ * connue » — deux situations opposées, un même zéro. La date de livraison prévue est dans
+ * le fichier depuis toujours, mais elle était collée dans une phrase d'observations jusqu'au
+ * 24/09 : les lignes importées avant ce jour n'en ont pas tant qu'on ne les redépose pas.
+ */
+$avecPromesse = computed(fn () => $this->requete(false)->reorder()
+    ->whereNotNull('date_livraison_prevue')->count());
+
 $page = computed(function () {
     $dernier = max(1, (int) ceil($this->total / $this->parPage));
 
@@ -188,10 +200,13 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
         {{-- La promesse faite au client, et ce qu'elle est devenue. Elle était dans le
              fichier depuis le début — les 147 mouvements repris en portent tous une — mais
              collée dans une phrase, où rien ne pouvait la comparer à aujourd'hui. --}}
-        <x-kpi-card label="Promesse de sortie dépassée" :value="number_format($this->enRetard, 0, ',', ' ')"
-            :sub="$this->enRetard > 0
-                ? 'entrés, livraison prévue passée, aucune sortie enregistrée'
-                : 'aucune promesse dépassée sur la période'"
+        <x-kpi-card label="Promesse de sortie dépassée"
+            :value="$this->avecPromesse === 0 ? '—' : number_format($this->enRetard, 0, ',', ' ')"
+            :sub="$this->avecPromesse === 0
+                ? 'aucune date de livraison connue : redéposez le fichier, elle y est'
+                : ($this->enRetard > 0
+                    ? 'entrés, livraison prévue passée, aucune sortie enregistrée'
+                    : 'sur '.number_format($this->avecPromesse, 0, ',', ' ').' date(s) connue(s), aucune n’est dépassée')"
             :accent="$this->enRetard > 0" />
     </div>
 
@@ -220,10 +235,15 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
             </div>
         </div>
 
-        <label style="display:inline-flex; align-items:center; gap:7px; font-size:13px; margin-bottom:14px;">
-            <input type="checkbox" wire:model.live="promesseDepassee" @checked($promesseDepassee)>
-            Promesse de sortie dépassée seulement
-        </label>
+        {{-- La case ne s'affiche que lorsqu'elle a quelque chose à filtrer : une case qui
+             ne change jamais rien apprend à ne plus lire les cases. --}}
+        @if ($this->avecPromesse > 0)
+            <label style="display:inline-flex; align-items:center; gap:7px; font-size:13px; margin-bottom:14px;">
+                <input type="checkbox" wire:model.live="promesseDepassee" @checked($promesseDepassee)>
+                Promesse de sortie dépassée seulement
+                <span style="color:#6B6E76;">— entré, date de livraison passée, aucune sortie enregistrée</span>
+            </label>
+        @endif
 
         {{-- Les intitulés sont ceux du logiciel d'atelier, sans traduction : c'est ce qui
              permet de poser les deux écrans côte à côte et de vérifier ligne à ligne. --}}
@@ -275,26 +295,34 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
                             {{-- Les travaux courent parfois sur plusieurs lignes dans la
                                  cellule d'origine : on montre le début et on donne le reste
                                  au survol, plutôt que de déformer toute la rangée. --}}
-                            <td style="max-width:260px; color:#4B4E55;" title="{{ $mouvement->travaux }}">
-                                {{ $mouvement->travaux ? \Illuminate\Support\Str::limit(preg_replace('/\s+/u', ' ', $mouvement->travaux), 70) : '—' }}
+                            {{-- La largeur se tient sur un bloc intérieur, pas sur la cellule :
+                                 `max-width` sur un `<td>` n'est qu'un avis, et le texte
+                                 débordait sur les deux colonnes suivantes. --}}
+                            <td>
+                                <div style="width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                                            color:#4B4E55;" title="{{ $mouvement->travaux }}">
+                                    {{ $mouvement->travaux ? preg_replace('/\s+/u', ' ', $mouvement->travaux) : '—' }}
+                                </div>
                             </td>
-                            <td style="max-width:220px; color:#4B4E55; font-size:12.5px;">
+                            <td>
+                                @php $tronque = 'width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'; @endphp
                                 @if ($mouvement->proprietaire || $mouvement->deposant)
                                     @if ($mouvement->proprietaire)
-                                        <div>{{ $mouvement->proprietaire }}</div>
+                                        <div style="{{ $tronque }} font-size:12.5px; color:#4B4E55;"
+                                            title="{{ $mouvement->proprietaire }}">{{ $mouvement->proprietaire }}</div>
                                     @endif
                                     @if ($mouvement->deposant)
-                                        <div style="color:#6B6E76;">Déposant : {{ $mouvement->deposant }}</div>
+                                        <div style="{{ $tronque }} font-size:11.5px; color:#6B6E76;"
+                                            title="{{ $mouvement->deposant }}">Déposant : {{ $mouvement->deposant }}</div>
                                     @endif
                                 @elseif ($mouvement->observations)
                                     {{-- Les lignes importées avant le 24/09 portent encore la
-                                         phrase composée : elle reste lisible jusqu'au
-                                         prochain dépôt de leur fichier, qui la remplacera. --}}
-                                    <span style="color:#9A9DA5;" title="{{ $mouvement->observations }}">
-                                        {{ \Illuminate\Support\Str::limit($mouvement->observations, 60) }}
-                                    </span>
+                                         phrase composée : elle reste lisible jusqu'au prochain
+                                         dépôt de leur fichier, qui la remplacera. --}}
+                                    <div style="{{ $tronque }} font-size:12.5px; color:#9A9DA5;"
+                                        title="{{ $mouvement->observations }}">{{ $mouvement->observations }}</div>
                                 @else
-                                    —
+                                    <span style="color:#9A9DA5;">—</span>
                                 @endif
                             </td>
                             @php

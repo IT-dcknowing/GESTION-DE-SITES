@@ -457,14 +457,28 @@ $enregistrer = function () {
                 <div class="tableau-conteneur">
                     <table class="tableau">
                         <thead>
-                            <tr><th>Quand</th><th>Qui</th><th>Quoi</th></tr>
+                            <tr><th>Quand</th><th>Qui</th><th>Quoi</th><th>Avant → après</th></tr>
                         </thead>
                         <tbody>
+                            @php $nomsDesLieux = \Modules\Noyau\Tracabilite\Services\JournalLisible::nomsDesLieux($this->historique); @endphp
                             @foreach ($this->historique as $trace)
                                 <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                                     <td style="white-space:nowrap;">{{ $trace->created_at?->format('d/m/Y H:i') }}</td>
-                                    <td>{{ $trace->causer?->name ?? '—' }}</td>
-                                    <td>{{ $trace->description }}</td>
+                                    <td>{{ $trace->causer?->name ?? 'import' }}</td>
+                                    {{-- Le geste dans les mots de l'application, et ce qui a
+                                         changé champ par champ : « updated » et « ville_id »
+                                         ne se lisent que si l'on connaît la base. --}}
+                                    <td>{{ \Modules\Noyau\Tracabilite\Services\JournalLisible::geste($trace) }}</td>
+                                    <td style="font-size:12.5px;">
+                                        @forelse (\Modules\Noyau\Tracabilite\Services\JournalLisible::changements($trace, $nomsDesLieux) as $changement)
+                                            <div>
+                                                <strong>{{ $changement['champ'] }}</strong> :
+                                                {{ $changement['avant'] }} → {{ $changement['apres'] }}
+                                            </div>
+                                        @empty
+                                            <span style="color:#9A9DA5;">rien de visible n'a changé</span>
+                                        @endforelse
+                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>

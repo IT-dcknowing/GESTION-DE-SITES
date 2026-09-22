@@ -103,8 +103,12 @@ class MenuNavigation
                  * trésorerie qu'il alimente, ni ce que l'entreprise doit. Lecture seule —
                  * aucune de ces pages n'écrit — et dans son périmètre, comme pour tous.
                  */
+                // « Caisse par véhicule » n'est pas listée ici, et c'est voulu : elle ne
+                // répond pas à une question qu'on se pose en arrivant, mais à une question
+                // qu'on se pose **devant une plaque**. Elle s'ouvre donc depuis l'écran de
+                // caisse, là où la plaque est sous les yeux. Un menu qui énumère tout finit
+                // par ne plus rien mettre en avant.
                 ['label' => 'Caisse', 'route' => 'caisse'],
-                ['label' => 'Caisse par véhicule', 'route' => 'caisse.vehicule'],
                 ['label' => 'Trésorerie', 'route' => 'tresorerie'],
                 ['label' => 'Charges', 'route' => 'charges'],
                 ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
@@ -224,10 +228,11 @@ class MenuNavigation
                 // La caisse et les fournisseurs suivent la trésorerie : ce sont les deux
                 // faces de la même question — ce qui sort en espèces, et ce qu'on doit
                 // encore. Toutes deux viennent d'un fichier du logiciel d'atelier.
+                // « Caisse par véhicule » répond à « cette plaque, on a payé quoi dessus » :
+                // une question qu'on se pose devant une plaque, pas en ouvrant un menu. Elle
+                // garde sa page et son adresse, et s'ouvre depuis l'écran de caisse — d'un
+                // bouton en tête, ou en cliquant l'immatriculation d'une ligne.
                 ['label' => 'Caisse', 'route' => 'caisse'],
-                // La caisse répond à « combien est entré cette semaine » ; celle-ci à
-                // « cette plaque, on a payé quoi dessus » — deux questions, deux écrans.
-                ['label' => 'Caisse par véhicule', 'route' => 'caisse.vehicule'],
                 ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
                 ['label' => 'Commerciaux', 'route' => 'commerciaux'],
             ],

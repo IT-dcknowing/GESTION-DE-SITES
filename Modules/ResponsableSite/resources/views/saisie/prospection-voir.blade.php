@@ -42,7 +42,12 @@ $formaterValeur = computed(fn () => fn ($v) => match (true) {
         <h1 style="font-family:'Barlow Condensed',sans-serif; font-size:23px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; margin:0;">
             Prospection {{ $this->prospection->numero }}
         </h1>
-        <a href="{{ route('saisie-du-jour') }}" wire:navigate class="bouton bouton-secondaire">← Retour à la saisie du jour</a>
+        {{-- Le retour va à la **liste** des prospections, et non à l'écran de saisie :
+             on arrive ici depuis une liste, et c'est là qu'on veut revenir pour ouvrir la
+             suivante. Renvoyer vers la saisie obligeait à refaire le chemin à chaque fiche.
+             « Prospects » est la bonne liste pour les quatre rôles qui peuvent ouvrir cette
+             fiche : c'est exactement la même habilitation. --}}
+        <a href="{{ route('prospects') }}" wire:navigate class="bouton bouton-secondaire">← Retour à la liste des prospections</a>
     </div>
 
     {{-- Qui a tranché, quand, d'où : le même bloc que sur la fiche du commercial. --}}

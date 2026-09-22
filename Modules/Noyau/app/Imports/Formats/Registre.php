@@ -65,31 +65,20 @@ class Registre
      */
     public const ANNONCES = [];
 
-    /**
-     * Les fichiers qu'on a décidé de **ne pas** lire, et pourquoi.
+    /*
+     * Les fichiers qu'on a regardés puis écartés ne figurent pas ici, et n'ont pas de
+     * catégorie à eux.
      *
-     * **Une troisième catégorie, et elle manquait.** Le registre disait ce qu'on sait lire
-     * et ce qu'on saura lire ; il ne disait rien de ce qu'on a regardé puis écarté. Celui
-     * qui tient un export de fiches de réception vient sur l'écran de dépôt, ne le trouve
-     * nulle part, et n'a aucun moyen de savoir si c'est un oubli ou une décision. Il
-     * redemande, ou pire, il attend.
+     * On leur en avait donné une le 24/09, affichée sur l'écran de dépôt — les fiches de
+     * réception, écartées le 18/09 parce que la situation du parc porte les mêmes fiches
+     * avec dix-sept colonnes. Le propriétaire l'a retirée le jour même : la décision est
+     * prise, et l'écran de dépôt doit répondre à « qu'est-ce que je dépose ? », pas
+     * énumérer ce qu'on ne déposera jamais. Une ligne de plus à lire à chaque visite pour
+     * une question qui ne se repose pas.
      *
-     * Une décision qui ne se lit nulle part se reprend tous les trois mois.
+     * La décision et son motif restent écrits dans ETAT-DES-LIEUX.md, où l'on va chercher
+     * pourquoi plutôt que quoi déposer.
      */
-    public const ECARTES = [
-        'fiches-reception' => [
-            'libelle' => 'Fiches de réception — non repris, et c’est voulu',
-            'source' => 'Logiciel d’atelier — « Liste des fiches de réception »',
-            'pourquoi' => 'La situation du parc porte les mêmes fiches avec davantage de colonnes : '
-                .'dix-sept, dont les travaux à effectuer, le statut et les sept dates. Deux tableaux '
-                .'pour la même chose seraient deux vérités à tenir d’accord. Seul le code client '
-                .'manque au parc — décidé le 18/09 : on ne l’attend pas. L’obtenir suppose que '
-                .'l’éditeur l’ajoute ou ouvre ses API ; d’ici là le rapprochement se fait par le nom '
-                .'ramené à une forme comparable et, pour un véhicule, par l’immatriculation. Mesuré '
-                .'le 24/09 : le code client n’est renseigné que sur 2 377 des 11 332 factures — il '
-                .'ne tiendrait donc pas lieu de clé.',
-        ],
-    ];
 
     public static function connait(string $cle): bool
     {
@@ -124,8 +113,6 @@ class Registre
             return self::DISPONIBLES[$cle]::libelle();
         }
 
-        return self::ANNONCES[$cle]['libelle']
-            ?? self::ECARTES[$cle]['libelle']
-            ?? $cle;
+        return self::ANNONCES[$cle]['libelle'] ?? $cle;
     }
 }

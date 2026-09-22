@@ -225,10 +225,13 @@ $detail = computed(function () {
             :mecanique="$activiteFiltre ? null : ae($this->kpis['differenciationMecanique'] !== null ? (int) $this->kpis['differenciationMecanique'] : null)"
             :sinistre="$activiteFiltre ? null : ae($this->kpis['differenciationSinistre'] !== null ? (int) $this->kpis['differenciationSinistre'] : null)" />
         <x-kpi-card label="Délai moyen d'envoi — {{ $this->libellePerimetre }}"
-            :value="$this->kpis['delaiEnvoi'] !== null ? $this->kpis['delaiEnvoi'].' j' : '—'"
+            {{-- En jours **et** heures : une moyenne arrondie au jour affiche « 0 j » aussi
+                 bien pour six heures que pour vingt, et le délai visé est de vingt-quatre
+                 heures. Une demi-journée, elle, ne veut rien dire pour personne. --}}
+            :value="StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoi'])"
             sub="Réception → émission"
-            :mecanique="$activiteFiltre ? null : ($this->kpis['delaiEnvoiMecanique'] !== null ? $this->kpis['delaiEnvoiMecanique'].' j' : '—')"
-            :sinistre="$activiteFiltre ? null : ($this->kpis['delaiEnvoiSinistre'] !== null ? $this->kpis['delaiEnvoiSinistre'].' j' : '—')" />
+            :mecanique="$activiteFiltre ? null : StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoiMecanique'])"
+            :sinistre="$activiteFiltre ? null : StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoiSinistre'])" />
     </div>
 
     <div style="margin-bottom:20px;">
