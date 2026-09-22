@@ -36,6 +36,18 @@ state(['volet' => 'prospections'])->url(except: 'prospections');
 state(['fenetreFacture' => RapprochementDevisFacture::FENETRE_EN_JOURS])->url(except: RapprochementDevisFacture::FENETRE_EN_JOURS);
 state(['motifFiltre' => ''])->url(except: '');
 state(['villeFiltre' => ''])->url(except: '');
+/*
+ * La sélection, et la page affichée.
+ *
+ * **Pourquoi cocher.** Les deux boutons d'ensemble ne proposaient que tout ou rien : « les
+ * certains » d'un côté, ligne à ligne de l'autre. Entre les deux manquait le geste
+ * ordinaire — je regarde vingt lignes, j'en reconnais douze, je les confirme ensemble.
+ *
+ * La clé est « prospection-devis » et non l'un des deux seuls : une même prospection peut
+ * se voir proposer deux devis, et une même ligne de devis deux prospections.
+ */
+state(['selection' => []]);
+state(['page' => 1]);
 state(['message' => '']);
 state(['erreur' => '']);
 
@@ -43,6 +55,7 @@ $updatedFenetre = function () { $this->oublier(); };
 $updatedFenetreFacture = function () { $this->oublier(); };
 $updatedVolet = function () { $this->motifFiltre = ''; $this->oublier(); };
 $updatedMotifFiltre = function () { $this->oublier(); };
+$updatedPage = function () { $this->selection = []; };
 $updatedVilleFiltre = function () { $this->oublier(); };
 
 /** Les listes du bandeau, ramenées à ce qu'attend une liste déroulante. */
@@ -198,6 +211,112 @@ $confirmerLesFacturesCertaines = function () {
         : $faits.' facture(s) rattachée(s)'.($refuses > 0 ? ', '.$refuses.' écartée(s) par un contrôle.' : '.');
 };
 
+/** Le nombre de lignes par page — assez pour comparer, pas assez pour se perdre. */
+$parPage = 25;
+
+/** Les lignes de la page affichée, pour le volet ouvert. */
+$page = computed(function () {
+    $lignes = $this->volet === 'factures' ? $this->propositionsFactures : $this->propositions;
+    $dernier = max(1, (int) ceil($lignes->count() / 25));
+
+    return min(max(1, (int) $this->page), $dernier);
+});
+
+$lignesDeLaPage = computed(function () {
+    $lignes = $this->volet === 'factures' ? $this->propositionsFactures : $this->propositions;
+
+    return $lignes->forPage($this->page, 25);
+});
+
+/** La clé d'une proposition : les deux pièces, et non l'une des deux. */
+$cleDe = protect(fn (array $ligne) => $this->volet === 'factures'
+    ? $ligne['facture']->id.'-'.$ligne['devis']->id
+    : $ligne['prospection']->id.'-'.$ligne['devis']->id);
+
+$basculer = function (string $cle) {
+    $this->selection = in_array($cle, $this->selection, true)
+        ? array_values(array_diff($this->selection, [$cle]))
+        : array_merge($this->selection, [$cle]);
+};
+
+/**
+ * Cocher tout ce que la page montre — et non tout ce que le filtre trouve.
+ *
+ * Cocher cinq cents lignes qu'on n'a pas lues n'est pas une sélection, c'est un « tout
+ * confirmer » déguisé : celui-là existe déjà, il s'appelle « Confirmer les certains » et il
+ * dit ce qu'il fait.
+ */
+$toutCocher = function () {
+    $this->selection = $this->lignesDeLaPage->map(fn ($l) => $this->cleDe($l))->values()->all();
+};
+
+$cocherLesCertains = function () {
+    $certains = $this->volet === 'factures'
+        ? RapprochementDevisFacture::MOTIFS_CERTAINS
+        : RapprochementProspectionDevis::MOTIFS_CERTAINS;
+
+    $this->selection = $this->lignesDeLaPage
+        ->filter(fn ($l) => in_array($l['motif'], $certains, true))
+        ->map(fn ($l) => $this->cleDe($l))
+        ->values()
+        ->all();
+};
+
+$viderLaSelection = function () {
+    $this->selection = [];
+};
+
+/**
+ * Confirmer les lignes cochées, l'une après l'autre.
+ *
+ * Chaque confirmation passe par le même chemin qu'un clic isolé : rien n'est écrit en lot
+ * par une requête de masse. Un rapprochement porte un devis à un commercial — donc une
+ * commission — et une écriture groupée qui échoue à mi-parcours laisserait la moitié des
+ * lignes rattachées sans qu'on sache lesquelles.
+ */
+$confirmerLaSelection = function () {
+    $choisies = $this->selection;
+
+    if ($choisies === []) {
+        $this->erreur = 'Aucune ligne cochée.';
+
+        return;
+    }
+
+    $faits = 0;
+    $refuses = [];
+
+    foreach ($this->lignesDeLaPage as $ligne) {
+        if (! in_array($this->cleDe($ligne), $choisies, true)) {
+            continue;
+        }
+
+        // Chaque ligne passe par le même chemin qu'un clic isolé, refus compris : une
+        // sélection ne doit pas ouvrir une porte que le geste unitaire refuse.
+        $refus = $this->volet === 'factures'
+            ? RapprochementDevisFacture::confirmer(
+                auth()->user(), $ligne['facture']->id, $ligne['devis']->id, $this->idsSitesDuCompte,
+            )
+            : RapprochementProspectionDevis::confirmer(
+                auth()->user(), $ligne['prospection']->id, $ligne['devis']->id, $this->idsSitesDuCompte,
+            );
+
+        if ($refus !== null) {
+            $refuses[] = $refus;
+
+            continue;
+        }
+
+        $faits++;
+    }
+
+    $this->selection = [];
+    $this->oublier();
+    // Ce qui a été refusé se dit, et ne se tait pas derrière un compte de réussites.
+    $this->erreur = $refuses === [] ? '' : implode(' ', array_unique($refuses));
+    $this->message = $faits > 0 ? $faits.' rapprochement(s) confirmé(s).' : '';
+};
+
 /**
  * Confirmer d'un coup les rapprochements qui ne s'interprètent pas.
  *
@@ -273,6 +392,23 @@ $confirmerLesCertains = function () {
                     Confirmer les {{ $this->propositions->whereIn('motif', \Modules\Noyau\Exploitation\Services\RapprochementProspectionDevis::MOTIFS_CERTAINS)->count() }} certains
                 </button>
             @endif
+
+            {{-- Les quatre gestes d'ensemble sur la même ligne : cocher, décocher, cocher ce
+                 qui est certain, confirmer ce qui est coché. Entre « tout » et « ligne à
+                 ligne » manquait le geste ordinaire — je lis la page, j'en reconnais douze,
+                 je les confirme ensemble. --}}
+            <button type="button" wire:click="toutCocher" class="bouton bouton-secondaire"
+                style="padding:9px 14px; white-space:nowrap;">Tout cocher</button>
+            <button type="button" wire:click="cocherLesCertains" class="bouton bouton-secondaire"
+                style="padding:9px 14px; white-space:nowrap;">Cocher les certains</button>
+            @if ($selection !== [])
+                <button type="button" wire:click="viderLaSelection" class="bouton bouton-secondaire"
+                    style="padding:9px 14px; white-space:nowrap;">Décocher</button>
+                <button type="button" wire:click="confirmerLaSelection" class="bouton bouton-sombre"
+                    style="padding:9px 16px; white-space:nowrap;">
+                    Confirmer {{ count($selection) }} ligne(s) cochée(s)
+                </button>
+            @endif
         </div>
 
         @if ($message !== '')
@@ -306,6 +442,7 @@ $confirmerLesCertains = function () {
             <table class="tableau">
                 <thead>
                     <tr>
+                        <th style="width:34px;"></th>
                         <th>Prospection</th>
                         <th>Date</th>
                         <th>Commercial</th>
@@ -320,13 +457,18 @@ $confirmerLesCertains = function () {
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse ($this->propositions as $ligne)
+                    @forelse ($this->lignesDeLaPage as $ligne)
                         @php
                             $prospection = $ligne['prospection'];
                             $devis = $ligne['devis'];
                             $certain = in_array($ligne['motif'], \Modules\Noyau\Exploitation\Services\RapprochementProspectionDevis::MOTIFS_CERTAINS, true);
+                            $cle = $prospection->id.'-'.$devis->id;
                         @endphp
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                            {{-- La case est en tête de ligne : c'est là qu'on la cherche, et
+                                 c'est là qu'on la coche en descendant la liste. --}}
+                            <td><input type="checkbox" wire:click="basculer('{{ $cle }}')"
+                                @checked(in_array($cle, $selection, true))></td>
                             <td style="font-weight:700;">{{ $prospection->numero }}</td>
                             <td>{{ $prospection->date->format('d/m/Y') }}</td>
                             <td>{{ $prospection->commercial?->nom ?? '—' }}</td>
@@ -360,12 +502,16 @@ $confirmerLesCertains = function () {
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="11"
+                        <x-table-vide :colspan="12"
                             texte="Aucun rapprochement à proposer. Soit chaque prospection a déjà son devis, soit aucune plaque ni aucun nom ne se répond dans la fenêtre choisie — élargissez-la pour chercher plus loin." />
                     @endforelse
                 </tbody>
             </table>
         </div>
+
+        {{-- Le tableau n'était pas paginé : il peut porter plusieurs centaines de lignes, et
+             on n'en confirme jamais plusieurs centaines d'affilée. --}}
+        <x-pagination :page="$this->page" :total="$this->propositions->count()" prop="page" :par-page="25" />
     </div>
     @endif
 
@@ -391,6 +537,19 @@ $confirmerLesCertains = function () {
                         Confirmer les {{ $this->propositionsFactures->whereIn('motif', \Modules\Noyau\Exploitation\Services\RapprochementDevisFacture::MOTIFS_CERTAINS)->count() }} certains
                     </button>
                 @endif
+                <button type="button" wire:click="toutCocher" class="bouton bouton-secondaire"
+                    style="padding:9px 14px; white-space:nowrap;">Tout cocher</button>
+                <button type="button" wire:click="cocherLesCertains" class="bouton bouton-secondaire"
+                    style="padding:9px 14px; white-space:nowrap;">Cocher les certains</button>
+                @if ($selection !== [])
+                    <button type="button" wire:click="viderLaSelection" class="bouton bouton-secondaire"
+                        style="padding:9px 14px; white-space:nowrap;">Décocher</button>
+                    <button type="button" wire:click="confirmerLaSelection" class="bouton bouton-sombre"
+                        style="padding:9px 16px; white-space:nowrap;">
+                        Confirmer {{ count($selection) }} ligne(s) cochée(s)
+                    </button>
+                @endif
+
             </div>
 
             @if ($message !== '')
@@ -425,6 +584,7 @@ $confirmerLesCertains = function () {
                 <table class="tableau">
                     <thead>
                         <tr>
+                            <th style="width:34px;"></th>
                             <th>Facture</th>
                             <th>Date</th>
                             <th>Client facturé</th>
@@ -439,13 +599,18 @@ $confirmerLesCertains = function () {
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse ($this->propositionsFactures as $ligne)
+                        @forelse ($this->lignesDeLaPage as $ligne)
                             @php
                                 $facture = $ligne['facture'];
                                 $devis = $ligne['devis'];
+                                $cle = $facture->id.'-'.$devis->id;
                                 $certain = in_array($ligne['motif'], \Modules\Noyau\Exploitation\Services\RapprochementDevisFacture::MOTIFS_CERTAINS, true);
                             @endphp
                             <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                {{-- La case est en tête de ligne : c'est là qu'on la cherche
+                                     en descendant la liste. --}}
+                                <td><input type="checkbox" wire:click="basculer('{{ $cle }}')"
+                                    @checked(in_array($cle, $selection, true))></td>
                                 <td style="font-weight:700;">{{ $facture->n_facture ?: $facture->numero }}</td>
                                 <td>{{ $facture->date?->format('d/m/Y') ?? '—' }}</td>
                                 <td>{{ $facture->client }}</td>
@@ -480,12 +645,14 @@ $confirmerLesCertains = function () {
                                 </td>
                             </tr>
                         @empty
-                            <x-table-vide :colspan="11"
+                            <x-table-vide :colspan="12"
                                 texte="Aucun rapprochement à proposer. Soit chaque facture a déjà son devis, soit rien ne se répond dans la fenêtre choisie — élargissez-la pour chercher plus loin." />
                         @endforelse
                     </tbody>
                 </table>
             </div>
+
+            <x-pagination :page="$this->page" :total="$this->propositionsFactures->count()" prop="page" :par-page="25" />
         </div>
     @endif
 </div>

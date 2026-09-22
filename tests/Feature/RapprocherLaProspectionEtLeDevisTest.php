@@ -331,6 +331,51 @@ class RapprocherLaProspectionEtLeDevisTest extends TestCase
         $this->assertSame($prospection->id, $devis->fresh()->prospection_id);
     }
 
+    public function test_les_lignes_cochees_se_confirment_ensemble(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        $premiere = $this->prospection('2026-03-02', ['immatriculation' => '1234 AB 01']);
+        $devisUn = $this->devis('2026-03-06', 'FR-AB 010136', 'Client un');
+        $this->fiche('FR-AB 010136', '1234 AB 01');
+
+        $seconde = $this->prospection('2026-03-03', ['numero' => 'P-0002', 'immatriculation' => '5678 CD 01']);
+        $devisDeux = $this->devis('2026-03-07', 'FR-AB 010137', 'Client deux');
+        $this->fiche('FR-AB 010137', '5678 CD 01');
+
+        // Entre « tout confirmer » et « ligne à ligne » manquait le geste ordinaire : je
+        // lis la page, j'en reconnais deux, je les confirme ensemble.
+        Volt::actingAs($gerant)->test('pilotage.rapprochement-prospections-devis')
+            ->call('basculer', $premiere->id.'-'.$devisUn->id)
+            ->call('basculer', $seconde->id.'-'.$devisDeux->id)
+            ->call('confirmerLaSelection')
+            ->assertSee('2 rapprochement(s) confirmé(s)');
+
+        $this->assertSame($premiere->id, $devisUn->fresh()->prospection_id);
+        $this->assertSame($seconde->id, $devisDeux->fresh()->prospection_id);
+    }
+
+    public function test_une_ligne_decochee_n_est_pas_confirmee(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        $prospection = $this->prospection('2026-03-02', ['immatriculation' => '1234 AB 01']);
+        $devis = $this->devis('2026-03-06', 'FR-AB 010136', 'Client du devis');
+        $this->fiche('FR-AB 010136', '1234 AB 01');
+
+        // Cocher puis décocher doit laisser la ligne intacte : une case qui garde sa coche
+        // après le second clic confirmerait ce qu'on venait d'écarter.
+        Volt::actingAs($gerant)->test('pilotage.rapprochement-prospections-devis')
+            ->call('basculer', $prospection->id.'-'.$devis->id)
+            ->call('basculer', $prospection->id.'-'.$devis->id)
+            ->call('confirmerLaSelection')
+            ->assertSee('Aucune ligne cochée');
+
+        $this->assertNull($devis->fresh()->prospection_id);
+    }
+
     public function test_la_confirmation_en_lot_ne_touche_pas_les_rapprochements_par_le_nom(): void
     {
         $gerant = $this->compte('gerant');
