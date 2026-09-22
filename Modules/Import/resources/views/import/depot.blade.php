@@ -217,7 +217,7 @@ $abandonner = function () {
 
         {{-- ===================================================== LA ZONE DE DÉPÔT ===== --}}
         <div class="imp-carte">
-            <h2>Déposer un fichier <span class="chip">.xls · .xlsx · .xlsm — 40 Mo au plus</span></h2>
+            <h2>Déposer un fichier <span class="chip">.xls · .xlsx · .xlsm · .pdf — 40 Mo au plus</span></h2>
 
             <form method="POST" action="{{ route('import.deposer') }}" enctype="multipart/form-data"
                   id="frm-depot">
@@ -230,7 +230,7 @@ $abandonner = function () {
                         <span class="det">ou choisissez-le sur votre ordinateur :</span>
 
                         <input type="file" id="fichier" name="fichier"
-                               accept=".xls,.xlsx,.xlsm" class="imp-zone-champ" required>
+                               accept=".xls,.xlsx,.xlsm,.pdf" class="imp-zone-champ" required>
                     </div>
                 </div>
 

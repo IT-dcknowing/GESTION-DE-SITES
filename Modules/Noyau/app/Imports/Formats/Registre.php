@@ -40,6 +40,12 @@ class Registre
         'balance-fournisseurs' => FormatDeLaBalanceFournisseur::class,
         'reglements-fournisseurs' => FormatDesReglementsFournisseurs::class,
         'caisse' => FormatDeLaCaisse::class,
+        // Le journal de caisse imprimé vient juste après le classeur tenu à la main : ils
+        // décrivent la même caisse par deux bouts, et ce sont deux villes différentes qui
+        // en dépendent — Abidjan tient un classeur, Bouaké et San-Pédro n'ont que ce
+        // journal. Seul format lu dans un PDF, et c'est assumé : le logiciel comptable ne
+        // sort pas cet état autrement.
+        'journal-caisse' => FormatDuJournalDeCaisse::class,
         // Les entrées et les sorties viennent en dernier : elles enrichissent des fiches
         // que le parc a déjà posées, elles ne les fondent pas.
         'entrees' => FormatDesEntrees::class,

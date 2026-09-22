@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **23 septembre 2026**.*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026**.*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 707 tests, 700 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 733 tests, 726 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -100,8 +100,13 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 
 ### Les formats d'import (dans l'ordre où il faut les déposer)
 
-`parc` → `devis` → `factures` (CATTC) → `impayes` → `fournisseurs` → `caisse` → `entrees` →
-`sorties`. Source : `Registre::DISPONIBLES`.
+`parc` → `devis` → `factures` (CATTC) → `impayes` → `fournisseurs` →
+`balance-fournisseurs` → `reglements-fournisseurs` → `caisse` → `journal-caisse` →
+`entrees` → `sorties`. Source : `Registre::DISPONIBLES`.
+
+**Un seul format n'est pas un tableur** : `journal-caisse` lit un **PDF**, parce que le
+logiciel comptable ne sort pas cet état autrement et que Bouaké et San-Pédro n'ont que lui.
+Voir `LecteurPdf`.
 
 ---
 
@@ -139,6 +144,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 | 22/09 | `5698290` | **creances** | retours du propriétaire : le n° de devis exigé au passage en devis ; barème refait et cloisonné par exercice ; balance et règlements ont leur page, avec l'écart entre solde annoncé et recalcul |
 | 23/09 | `2156dfc` | **creances** | vitesse : les jours ne se comptent plus par Carbon, et les consolidations ne construisent plus d'objets (« Clients & tiers » 4,8 s → 0,7 s) ; « Où vous joindre » demande son numéro à qui n'en a pas ; section **Code-import** sur l'écran des codes — un code se déclare à la main, s'aligne dans un tableau et sert aux imports comme n'importe quel autre ; le suivi fournisseur entre en entier — feuille `DETAIL`, 40 colonnes, deux classeurs fondus sans doublon |
 | 23/09 | `5bb665e` | **creances** | seconde passe de vitesse : les créances ouvertes se lisent aussi sans objets — synthèse 1,5 s → 0,66 s, balance âgée 1,15 s → 0,59 s, tableau de bord 2,2 s → 1,64 s ; un test confronte les deux lectures |
+| 24/09 | voir `git log` | **creances** | le **journal de caisse imprimé** entre : lecteur de PDF, format `journal-caisse`, 533 mouvements à Bouaké et 571 à San-Pédro, zéro écart sur la chaîne des soldes ; l'écran *Caisse* refait sur les colonnes du fichier (n° de pièce, motif, remettant/bénéficiaire, solde progressif, nom de la caisse, solde avant période) ; le classeur d'Abidjan livre enfin son « SOLDE D'OUVERTURE » |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -351,6 +357,83 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
 
 **Reste à faire sur ce point** : rien. Le registre garde ses soldées, et c'est voulu.
 
+### Le journal de caisse imprimé — fait le 24 septembre
+
+**Le problème, posé le 21/09 et arbitré le même jour** : l'écran *Caisse* n'était alimenté
+que par le classeur Excel tenu à la main d'Abidjan. Bouaké et San-Pédro n'ont pas de
+classeur : elles n'ont qu'un **journal de caisse en PDF**, que rien ne lisait. Deux villes
+sur trois n'avaient donc pas de caisse dans l'application.
+
+**Il a fallu écrire un lecteur de PDF**, et c'est assumé : le logiciel comptable ne sort pas
+cet état autrement. `Modules/Noyau/app/Imports/Lecteurs/LecteurPdf.php` n'exécute rien — ni
+script, ni police, ni action — il ne lit que des positions et des caractères.
+
+**Ce qu'on y a appris, mesuré fichier en main.**
+
+- **Un PDF ne contient ni lignes ni colonnes**, seulement des morceaux de texte avec leur
+  position. On reconstitue les rangées en regroupant ce qui partage une hauteur, et les
+  colonnes en cherchant la rangée d'intitulés — la première dont toutes les cellules sont
+  des mots en capitales sans un chiffre. Un titre isolé n'en compte qu'une, la ligne de la
+  période porte des dates, celle du solde d'ouverture porte un montant : seule la bonne
+  satisfait les trois conditions.
+- **Les nombres sont alignés à droite.** « 1 » commence trente-trois points plus loin que
+  « 270 000 » dans la même colonne. Sans le jeu laissé au bord gauche de chaque colonne, un
+  petit montant bascule dans la colonne voisine — une entrée devient une sortie, en silence.
+- **Les deux fichiers ne sont pas écrits de la même façon.** San-Pédro pose son texte avec
+  `Td` et des chaînes littérales ; Bouaké avec `Tm`, dans une police à index dont il faut la
+  table `ToUnicode`, et en renversant d'abord l'axe vertical de la page. Les deux écritures
+  sont lues, et un test vérifie qu'elles donnent le même journal.
+- **Le défaut qui a failli passer** : on découpait le flux du PDF sur les lettres `BT`…`ET`.
+  Or « INTERNET » et « REMETTANT » contiennent `ET`. Toutes les lignes portant ces mots
+  étaient coupées et perdues — chez San-Pédro, qui écrit en clair. Le lecteur suit désormais
+  les opérateurs un à un, comme il faut.
+- **L'ancre d'un mouvement est la rangée qui porte sa date et son montant**, jamais la phrase
+  qui le décrit. C'est ce choix qui a rendu le défaut ci-dessus réparable : les mouvements
+  sont entrés avec leur montant juste et le solde d'accord, seuls leurs numéros manquaient.
+  Accrochés à leur phrase, ils auraient disparu sans laisser de trace.
+- **Une annulation reprend le numéro de la pièce qu'elle annule** et porte un montant
+  négatif dans sa colonne d'origine. Une entrée de −1 est enregistrée comme une sortie de 1 :
+  le montant reste positif, comme partout dans cette table, et les deux lignes cessent de
+  s'écraser.
+- **Le numéro de pièce ne suffit pas comme clé.** Deux couples de mouvements bien distincts
+  partagent un numéro chez San-Pédro (pièces 002410 et 003468) : deux sorties du même
+  montant, le même jour, à deux bénéficiaires et pour deux motifs différents. La clé est donc
+  la ligne entière — caisse, pièce, date, sens, montant, motif, tiers, libellé — mais **sans**
+  le solde ni la page, qui dépendent du tirage et non du mouvement.
+
+**La preuve que la lecture est juste, et elle est dans le document.** Chaque ligne affiche le
+solde de la caisse après elle. En partant du solde annoncé avant la période et en appliquant
+nos montants un par un, on doit retrouver chacun d'eux. Mesuré : **zéro écart sur 533
+mouvements à Bouaké, zéro sur 571 à San-Pédro**. Un second dépôt du même fichier ne recrée
+rien : 533 et 571 lignes inchangées.
+
+**L'écran *Caisse* liste désormais les colonnes du fichier**, comme la règle l'exige : n° de
+pièce, motif, remettant ou bénéficiaire sortis du libellé, solde progressif, nom de la caisse
+et solde avant la période. Une colonne que la source ne porte pas ne s'affiche pas — le
+classeur d'Abidjan n'a ni numéro ni motif, et lui réserver deux colonnes de tirets
+laisserait croire à une saisie manquante. Le bloc « Où part l'argent » groupe par **motif**
+là où il y en a un : grouper le détail libre donnerait quatre cent soixante-huit postes d'une
+ligne.
+
+**Le solde avant la période ne se devine pas.** Il part de ce que la source annonce — « SOLDE
+AVANT LA PERIODE : 31 260 » sur le journal, « SOLDE D'OUVERTURE » en quatrième ligne de
+chaque onglet du classeur — auquel s'ajoutent les mouvements survenus entre cette annonce et
+le premier jour regardé. Sans annonce, la page le reconstitue **et le dit** : la caisse vivait
+avant le premier fichier déposé.
+
+**Le classeur d'Abidjan livre enfin son solde d'ouverture**, qu'on passait depuis le 8/09 :
+décembre ouvre à 662 700, janvier à 293 700, février à **0** et mars à 263 100. Février n'est
+donc pas la suite de janvier — c'est une information, pas une erreur de lecture.
+
+Migration additive `2026_09_23_000001` : cinq colonnes nullables sur `mouvements_caisse`
+(`numero_piece`, `type_piece`, `motif`, `role_tiers`, `caisse`), la `page` du document,
+`libelle` élargi de 255 à 500, et la table neuve `ouvertures_caisse`. Tests :
+`LeJournalDeCaisseEntreTest` (19). `Classeur` accepte le PDF, reconnu à sa signature `%PDF-`
+et jamais à son extension.
+
+**Reste sur ce chantier** : rien pour la caisse. Le classeur d'Abidjan et le journal des deux
+autres villes sont tous deux lus, et l'écran montre ce qu'ils portent.
+
 ### Les fichiers tenus à la main, à reprendre comme les impayés
 
 - **Suivi fournisseur** : ✅ **Fait le 23/09.** Les deux classeurs ont été redéposés sur le
@@ -397,11 +480,12 @@ pastille verte, aussi visible qu'une pastille de relance quand le filtre est sur
   le n° de pièce, le motif, le remettant et le bénéficiaire y sont **empilés dans le
   libellé**. Les deux décrivent la même caisse par deux bouts différents.
 
-  **Arbitré par le propriétaire le 21/09** : en alignant l'écran sur le journal, **le sens
-  (entrée / sortie) reste une colonne à part** et ne redevient pas un montant signé, **la
-  ville reste**, **le montant reste**. Ce qui manque encore à l'écran, et que le journal
-  porte : le n° de pièce, le motif, le remettant ou bénéficiaire sortis du libellé, le solde
-  progressif, le nom de la caisse et le solde avant période. Chantier des jours 6-7.
+  **Arbitré par le propriétaire le 21/09, fait le 24/09** : en alignant l'écran sur le
+  journal, **le sens (entrée / sortie) reste une colonne à part** et ne redevient pas un
+  montant signé, **la ville reste**, **le montant reste**. Les six manques nommés — n° de
+  pièce, motif, remettant ou bénéficiaire sortis du libellé, solde progressif, nom de la
+  caisse, solde avant période — sont tous comblés, et le journal PDF lui-même est importé.
+  Voir la section « Le journal de caisse imprimé » ci-dessus.
 - **Fiches de réception** : pas d'import propre à écrire — la situation du parc porte les mêmes
   fiches avec plus de colonnes ; seul le code client lui manque. **Décidé le 18/09 : on n'attend
   pas le code client.** L'obtenir suppose que l'éditeur l'ajoute ou ouvre ses API ; d'ici là le

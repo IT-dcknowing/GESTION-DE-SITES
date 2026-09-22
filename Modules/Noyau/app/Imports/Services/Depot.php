@@ -74,7 +74,7 @@ class Depot
         // classeur ne mérite ni une place sur le disque ni une ligne en base.
         if (Classeur::format($chemin) === null) {
             throw new RuntimeException(
-                "Ce fichier n'est ni un classeur Excel récent (.xlsx, .xlsm) ni un classeur ancien (.xls)."
+                "Ce fichier n'est ni un classeur Excel (.xlsx, .xlsm, .xls) ni un document PDF."
             );
         }
 
@@ -197,7 +197,7 @@ class Depot
             if (count($this->villesOuvertes($deposant)) < 2) {
                 throw new RuntimeException(
                     "« Toutes les villes » ne s'ouvre qu'à qui dépose pour plusieurs villes. "
-                    ."Déposez au titre de la vôtre."
+                    .'Déposez au titre de la vôtre.'
                 );
             }
 
@@ -205,7 +205,7 @@ class Depot
         }
 
         if (! array_key_exists($villeId, $this->villesOuvertes($deposant))) {
-            throw new RuntimeException("Vous ne pouvez pas déposer de fichier pour cette ville.");
+            throw new RuntimeException('Vous ne pouvez pas déposer de fichier pour cette ville.');
         }
     }
 
@@ -239,7 +239,7 @@ class Depot
         }
 
         if (! array_key_exists($villeId, $this->villesOuvertes($deposant))) {
-            throw new RuntimeException("Vous ne pouvez pas déposer de fichier pour cet atelier.");
+            throw new RuntimeException('Vous ne pouvez pas déposer de fichier pour cet atelier.');
         }
 
         return (int) $site->id;

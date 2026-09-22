@@ -3,6 +3,7 @@
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Imports\Modeles\MouvementCaisse;
+use Modules\Noyau\Imports\Modeles\OuvertureCaisse;
 
 use function Livewire\Volt\{computed, mount, state};
 
@@ -24,6 +25,26 @@ use function Livewire\Volt\{computed, mount, state};
  * propre solde courant ; on le recopie sans le corriger. Un écart entre les deux n'est pas
  * une erreur de calcul de notre côté, c'est le signe qu'une ligne a été retouchée à la main
  * dans le classeur — et c'est précisément ce qu'on veut pouvoir montrer.
+ *
+ * **Refait le 23/09 sur les colonnes du journal.** L'écran avait été bâti sur le classeur
+ * tenu à la main d'Abidjan, seule source lue à l'époque. Depuis que le **journal de caisse
+ * imprimé** entre à son tour — c'est tout Bouaké et tout San-Pédro, 1 104 mouvements —,
+ * la page liste ce que les fichiers portent, et dans leur ordre : le **n° de pièce**, le
+ * **motif**, le **remettant ou le bénéficiaire** sortis du libellé, le **solde progressif**,
+ * le **nom de la caisse** et le **solde avant la période**. C'est la règle posée par le
+ * propriétaire : les colonnes d'une page listent d'abord celles du fichier d'origine.
+ *
+ * **Une colonne que la source ne porte pas ne s'affiche pas.** Le classeur d'Abidjan n'a ni
+ * numéro de pièce ni motif ; les lui réserver deux colonnes de tirets donnerait à croire
+ * qu'il manque une saisie, alors que le fichier ne le dit simplement pas. Les colonnes
+ * propres au journal n'apparaissent donc que si la période regardée en contient.
+ *
+ * **Le solde avant la période ne se devine pas.** Il part de ce que la source **annonce**
+ * — « SOLDE AVANT LA PERIODE : 31 260 » sur le journal, « SOLDE D'OUVERTURE » en
+ * quatrième ligne de chaque onglet du classeur — auquel on ajoute les mouvements survenus
+ * entre cette annonce et le début de la période regardée. Sans annonce, on le reconstitue
+ * à partir des seuls mouvements connus, **et la page le dit** : la caisse vivait avant le
+ * premier fichier déposé, et présenter un cumul partiel comme un solde serait faux.
  */
 state([
     'periode' => 'calendrier',
@@ -33,6 +54,7 @@ state([
     'semaineFiltre' => '',
     'jourFiltre' => '',
     'villeFiltre' => '',
+    'caisseFiltre' => '',
     'sensFiltre' => '',
     'recherche' => '',
     'pageDetail' => 1,
@@ -45,7 +67,8 @@ mount(function () {
 
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; $this->pageDetail = 1; };
 $updatedSemaineFiltre = function () { $this->jourFiltre = ''; $this->pageDetail = 1; };
-$updatedVilleFiltre = function () { $this->pageDetail = 1; };
+$updatedVilleFiltre = function () { $this->caisseFiltre = ''; $this->pageDetail = 1; };
+$updatedCaisseFiltre = function () { $this->pageDetail = 1; };
 $updatedSensFiltre = function () { $this->pageDetail = 1; };
 $updatedRecherche = function () { $this->pageDetail = 1; };
 
@@ -67,13 +90,39 @@ $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->u
  * « sorties seulement » ou au résultat d'une recherche donnerait un écart qui ne dirait
  * rien d'autre que « vous avez filtré ».
  */
-$perimetre = computed(function () {
-    [$debut, $fin] = $this->plage;
+$perimetre = computed(fn () => (clone $this->perimetreDeLaCaisse)
+    ->whereBetween('date', $this->plage));
 
-    return MouvementCaisse::query()
-        ->whereIn('ville_id', $this->idsVilles)
-        ->whereBetween('date', [$debut, $fin]);
-});
+/**
+ * La caisse et la ville, sans la période.
+ *
+ * Le solde d'avant se lit forcément **hors** de la période regardée : c'est tout son
+ * objet. Il lui faut donc un périmètre qui s'arrête à la ville et à la caisse.
+ */
+$perimetreDeLaCaisse = computed(fn () => MouvementCaisse::query()
+    ->whereIn('ville_id', $this->idsVilles)
+    ->when($this->caisseFiltre !== '', fn ($q) => $q->where('caisse', $this->caisseFiltre)));
+
+/** Les caisses que la ville regardée connaît — le journal les nomme, le classeur non. */
+$caisses = computed(fn () => MouvementCaisse::query()
+    ->whereIn('ville_id', $this->idsVilles)
+    ->whereNotNull('caisse')
+    ->distinct()
+    ->orderBy('caisse')
+    ->pluck('caisse')
+    ->all());
+
+/**
+ * Les colonnes que les fichiers de cette période portent réellement.
+ *
+ * Deux lectures en base, et elles évitent d'afficher trois colonnes vides à qui ne dépose
+ * qu'un classeur tenu à la main.
+ */
+$colonnesDuFichier = computed(fn () => [
+    'piece' => (clone $this->requete)->whereNotNull('numero_piece')->exists(),
+    'motif' => (clone $this->requete)->whereNotNull('motif')->exists(),
+    'caisse' => count($this->caisses) > 1,
+]);
 
 $requete = computed(fn () => (clone $this->perimetre)
     ->when($this->sensFiltre, fn ($q) => $q->where('sens', $this->sensFiltre))
@@ -82,8 +131,53 @@ $requete = computed(fn () => (clone $this->perimetre)
 
         $q->where(fn ($sous) => $sous->where('libelle', 'like', $terme)
             ->orWhere('beneficiaire', 'like', $terme)
+            ->orWhere('motif', 'like', $terme)
+            ->orWhere('numero_piece', 'like', $terme)
             ->orWhere('immatriculation', 'like', $terme));
     }));
+
+/**
+ * Ce que la caisse contenait avant le premier jour regardé.
+ *
+ * On part de l'annonce la plus récente qui précède la période — le document la donne, on
+ * ne la recalcule pas — puis on lui applique les mouvements qui séparent cette annonce du
+ * début de la période. Les deux bouts se rejoignent ainsi sans qu'on ait à supposer que
+ * notre base connaît toute la vie de la caisse, ce qu'elle ne fait pas.
+ *
+ * @return array{montant: int, annonce: OuvertureCaisse|null}
+ */
+$soldeAvant = computed(function () {
+    [$debut] = $this->plage;
+
+    $annonce = OuvertureCaisse::query()
+        ->whereIn('ville_id', $this->idsVilles)
+        ->when($this->caisseFiltre !== '', fn ($q) => $q->where('caisse', $this->caisseFiltre))
+        ->whereDate('debut', '<=', $debut)
+        ->orderByDesc('debut')
+        ->first();
+
+    $avant = (clone $this->perimetreDeLaCaisse)->whereDate('date', '<', $debut);
+
+    if ($annonce !== null) {
+        // Les mouvements d'avant l'annonce sont déjà compris dedans : les recompter les
+        // ferait compter deux fois.
+        $avant->whereDate('date', '>=', $annonce->debut);
+    }
+
+    $entrees = (int) (clone $avant)->where('sens', MouvementCaisse::ENTREE)->sum('montant');
+    $sorties = (int) (clone $avant)->where('sens', MouvementCaisse::SORTIE)->sum('montant');
+
+    return [
+        'montant' => (int) ($annonce->solde_avant ?? 0) + $entrees - $sorties,
+        'annonce' => $annonce,
+        'phrase' => $annonce === null
+            ? "Reconstitué à partir des seuls mouvements connus : aucun fichier ne l'annonce."
+            : sprintf(
+                'Annoncé par le fichier au %s, puis suivi mouvement par mouvement.',
+                $annonce->debut?->format('d/m/Y') ?? '—',
+            ),
+    ];
+});
 
 $kpis = computed(function () {
     $entrees = (int) (clone $this->requete)->where('sens', MouvementCaisse::ENTREE)->sum('montant');
@@ -159,11 +253,23 @@ $rapprochement = computed(function () {
     return compact('depart', 'arrivee', 'attendu', 'annonce', 'phrase') + ['ecart' => $annonce - $attendu];
 });
 
-/** Les plus grosses sorties : c'est là que se joue la caisse, pas dans les petites lignes. */
-$grossesSorties = computed(fn () => (clone $this->requete)
-    ->where('sens', MouvementCaisse::SORTIE)
-    ->selectRaw('libelle, count(*) as nombre, sum(montant) as total')
-    ->groupBy('libelle')->orderByDesc('total')->limit(8)->get());
+/**
+ * Les plus grosses sorties : c'est là que se joue la caisse, pas dans les petites lignes.
+ *
+ * **On groupe par motif quand la source en donne un.** Le journal imprimé range ses
+ * dépenses sous seize motifs — ACHATS DIVERS, CARBURANT, REGLEMENT — et écrit à côté le
+ * détail libre de l'opérateur. Grouper ce détail donnerait quatre cent soixante-huit
+ * postes d'une ligne chacun, c'est-à-dire aucun poste. Le classeur tenu à la main, lui,
+ * n'a pas de motif : son libellé **est** le poste, et c'est lui qu'on groupe.
+ */
+$grossesSorties = computed(function () {
+    $colonne = $this->colonnesDuFichier['motif'] ? 'motif' : 'libelle';
+
+    return (clone $this->requete)
+        ->where('sens', MouvementCaisse::SORTIE)
+        ->selectRaw($colonne.' as poste, count(*) as nombre, sum(montant) as total')
+        ->groupBy($colonne)->orderByDesc('total')->limit(8)->get();
+});
 
 $detail = computed(fn () => (clone $this->requete)
     ->with('ville')
@@ -187,9 +293,30 @@ $detail = computed(fn () => (clone $this->requete)
         :ville-filtre="$villeFiltre" :sites="null" :site-filtre="null"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
 
+    {{-- Le choix de la caisse ne s'affiche que là où il y en a plusieurs : ailleurs, une
+         liste à un seul élément fait croire qu'il existe un second choix caché. --}}
+    @if (count($this->caisses) > 1)
+        <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:14px;">
+            <span style="font-size:12.5px; color:#6B6E76;">Caisse</span>
+            <select wire:model.live="caisseFiltre" class="champ" style="min-width:220px;">
+                <option value="" @selected($caisseFiltre === '')>Toutes les caisses</option>
+                @foreach ($this->caisses as $uneCaisse)
+                    <option value="{{ $uneCaisse }}" @selected($caisseFiltre === $uneCaisse)>{{ $uneCaisse }}</option>
+                @endforeach
+            </select>
+        </div>
+    @endif
+
     {{-- Trois indicateurs, et un quatrième seulement quand le rapprochement a quelque
          chose à dire. La grille s'adapte d'elle-même au nombre de cartes. --}}
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
+        {{-- Ce que la caisse contenait avant le premier jour regardé. La phrase dit d'où
+             vient le nombre : une annonce du fichier, ou notre seul cumul — les deux n'ont
+             pas la même valeur, et les confondre serait présenter une reconstitution
+             partielle comme un relevé. --}}
+        <x-kpi-card label="Solde avant la période" :value="ae($this->soldeAvant['montant'])"
+            :sub="$this->soldeAvant['phrase']" />
+
         <x-kpi-card label="Entrées — {{ $this->libellePerimetre }}" :value="ae($this->kpis['entrees'])"
             :sub="$this->kpis['lignes'].' mouvement(s) sur la période'" />
         <x-kpi-card label="Sorties" :value="ae($this->kpis['sorties'])" couleur="#C8102E" />
@@ -199,6 +326,10 @@ $detail = computed(fn () => (clone $this->requete)
              qui faisait passer un fonds de caisse d'avant la période pour une anomalie. --}}
         <x-kpi-card label="Mouvement net de la période" :value="ae($this->kpis['solde'])"
             :couleur="$this->kpis['solde'] >= 0 ? '#0E9F6E' : '#C8102E'" sub="Entrées − sorties" />
+
+        <x-kpi-card label="Solde à la fin de la période"
+            :value="ae($this->soldeAvant['montant'] + $this->kpis['solde'])"
+            sub="Solde d'avant, plus le mouvement net" />
 
         @if ($this->rapprochement)
             <x-kpi-card label="Écart avec le fichier"
@@ -218,7 +349,7 @@ $detail = computed(fn () => (clone $this->requete)
                 <table class="tableau">
                     <thead>
                         <tr>
-                            <th>Libellé</th>
+                            <th>{{ $this->colonnesDuFichier['motif'] ? 'Motif' : 'Libellé' }}</th>
                             <th style="text-align:right;">Mouvements</th>
                             <th style="text-align:right;">Total</th>
                             <th style="text-align:right;">Part des sorties</th>
@@ -227,7 +358,7 @@ $detail = computed(fn () => (clone $this->requete)
                     <tbody>
                         @foreach ($this->grossesSorties as $poste)
                             <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                                <td>{{ $poste->libelle ?: '—' }}</td>
+                                <td>{{ $poste->poste ?: '—' }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ $poste->nombre }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $poste->total) }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
@@ -264,18 +395,36 @@ $detail = computed(fn () => (clone $this->requete)
                 <thead>
                     <tr>
                         <th>Date</th>
+                        @if ($this->colonnesDuFichier['piece'])
+                            <th>N° de pièce</th>
+                        @endif
                         <th>Sens</th>
+                        @if ($this->colonnesDuFichier['motif'])
+                            <th>Motif</th>
+                        @endif
                         <th>Libellé</th>
-                        <th>Bénéficiaire</th>
+                        <th>Remettant / bénéficiaire</th>
                         <th>Immatriculation</th>
+                        @if ($this->colonnesDuFichier['caisse'])
+                            <th>Caisse</th>
+                        @endif
                         <th>Ville</th>
-                        <th class="colonne-collee" style="text-align:right;">Montant</th>
+                        <th style="text-align:right;">Montant</th>
+                        {{-- Le solde que le fichier affiche après cette ligne. Recopié, jamais
+                             recalculé : c'est ce que la caisse déclarait à cet instant. --}}
+                        <th class="colonne-collee" style="text-align:right;">Solde</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse ($this->detail as $ligne)
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td style="white-space:nowrap;">{{ $ligne->date?->format('d/m/Y') ?? '—' }}</td>
+                            @if ($this->colonnesDuFichier['piece'])
+                                <td style="white-space:nowrap; font-variant-numeric:tabular-nums;"
+                                    title="{{ $ligne->type_piece ? $ligne->type_piece.' — page '.$ligne->page : '' }}">
+                                    {{ $ligne->numero_piece ?: '—' }}
+                                </td>
+                            @endif
                             <td>
                                 <span style="display:inline-block; padding:2px 8px; border-radius:20px; font-size:11.5px; font-weight:600;
                                     background:{{ $ligne->sens === 'entree' ? '#E5F2E8' : '#FCF0F2' }};
@@ -283,8 +432,11 @@ $detail = computed(fn () => (clone $this->requete)
                                     {{ $ligne->sens === 'entree' ? 'Entrée' : 'Sortie' }}
                                 </span>
                             </td>
+                            @if ($this->colonnesDuFichier['motif'])
+                                <td style="color:#4B4E55;">{{ $ligne->motif ?: '—' }}</td>
+                            @endif
                             <td>{{ $ligne->libelle ?: '—' }}</td>
-                            <td style="color:#6B6E76;">{{ $ligne->beneficiaire ?: '—' }}</td>
+                            <td style="color:#6B6E76;">{{ $ligne->tiers() ?: '—' }}</td>
                             <td style="color:#6B6E76;">
                                 @if ($ligne->immatriculation)
                                     {{-- La plaque mène au dossier du véhicule : c'est le geste
@@ -295,15 +447,21 @@ $detail = computed(fn () => (clone $this->requete)
                                     —
                                 @endif
                             </td>
+                            @if ($this->colonnesDuFichier['caisse'])
+                                <td style="color:#6B6E76;">{{ $ligne->caisse ?: '—' }}</td>
+                            @endif
                             <td style="color:#6B6E76;">{{ $ligne->ville?->nom ?? '—' }}</td>
-                            <td class="colonne-collee"
-                                style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $ligne->sens === 'entree' ? '#1E7B34' : '#C8102E' }};">
                                 {{ ae($ligne->montant) }}
                             </td>
+                            <td class="colonne-collee"
+                                style="text-align:right; font-variant-numeric:tabular-nums; color:#4B4E55;">
+                                {{ $ligne->solde_annonce === null ? '—' : ae($ligne->solde_annonce) }}
+                            </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="7"
+                        <x-table-vide :colspan="8 + count(array_filter($this->colonnesDuFichier))"
                             texte="Aucun mouvement de caisse sur cette période. Les états de caisse se déposent depuis le module Import." />
                     @endforelse
                 </tbody>

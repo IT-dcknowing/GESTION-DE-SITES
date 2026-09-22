@@ -2,8 +2,11 @@
 
 namespace Modules\Noyau\Imports\Formats;
 
+use DateTimeImmutable;
+use Illuminate\Support\Carbon;
 use Modules\Noyau\Imports\Lecteurs\Lecteur;
 use Modules\Noyau\Imports\Modeles\MouvementCaisse;
+use Modules\Noyau\Imports\Modeles\OuvertureCaisse;
 
 /**
  * Les états de caisse — un onglet par mois.
@@ -28,11 +31,22 @@ use Modules\Noyau\Imports\Modeles\MouvementCaisse;
  * Le solde annoncé par le fichier est recopié sans être vérifié. Ce n'est pas de la
  * paresse : c'est le solde tel que la caisse le déclarait ce jour-là, et le recalculer
  * effacerait justement l'écart qu'on voudrait pouvoir constater.
+ *
+ * **Le solde d'ouverture, lu depuis le 23/09.** Chaque onglet l'écrit en quatrième ligne,
+ * au-dessus des intitulés — « SOLDE D'OUVERTURE | 662 700 » —, et on passait dessus sans
+ * le voir : la lecture commençait à la ligne des colonnes. C'est pourtant ce que la caisse
+ * contenait avant le premier mouvement du mois, et aucun cumul de nos lignes ne peut le
+ * retrouver. Mesuré sur le classeur réel : décembre ouvre à 662 700, janvier à 293 700,
+ * février à **0** et mars à 263 100 — février n'est donc pas la suite de janvier, et c'est
+ * une information, pas une erreur de lecture.
  */
 class FormatDeLaCaisse extends Format
 {
     /** Là où l'en-tête se trouve dans chaque onglet, sous le titre et le solde d'ouverture. */
     private const LIGNE_D_ENTETE = 5;
+
+    /** Le nom d'une caisse que son fichier ne nomme pas. */
+    public const CAISSE_SANS_NOM = 'Caisse';
 
     public static function cle(): string
     {
@@ -159,14 +173,24 @@ class FormatDeLaCaisse extends Format
         ?\Closure $surAvancee,
     ): void {
         $entete = null;
+        $ouverture = null;
+        $premierJour = null;
+
+        // Le rattachement ne dépend d'aucune ligne : le fichier ne porte pas d'atelier, et
+        // c'est le dépôt qui le déclare. Le résoudre une fois par onglet plutôt qu'une fois
+        // par ligne, c'est mille cent cinquante résolutions de moins pour le même résultat.
+        $ou = $this->rattachement->resoudre(null, null, $villeDuDepot, null, false, $siteDuDepot);
 
         foreach ($lecteur->lignes($feuille) as $numero => $cellules) {
-            if ($numero < self::LIGNE_D_ENTETE) {
-                continue;
-            }
-
             if ($entete === null) {
-                $entete = $this->correspondance($cellules);
+                // Au-dessus des intitulés, l'onglet annonce ce que la caisse contenait
+                // avant son premier mouvement. On le lit au passage, plutôt que de sauter
+                // directement à la ligne des colonnes comme on le faisait.
+                $ouverture ??= $this->soldeDOuverture($cellules);
+
+                if ($numero >= self::LIGNE_D_ENTETE) {
+                    $entete = $this->correspondance($cellules);
+                }
 
                 continue;
             }
@@ -185,14 +209,7 @@ class FormatDeLaCaisse extends Format
                 continue;
             }
 
-            $ou = $this->rattachement->resoudre(
-                null,
-                null,
-                $villeDuDepot,
-                null,
-                false,
-                $siteDuDepot,
-            );
+            $premierJour ??= self::date($ligne['date'] ?? null);
 
             $resultat->compter($ecrire ? $this->ecrireLeMouvement($ligne, $ou, $lotId, $feuille) : 'ignore');
 
@@ -200,6 +217,67 @@ class FormatDeLaCaisse extends Format
                 $surAvancee($resultat->lues);
             }
         }
+
+        if ($ecrire && $ouverture !== null && $premierJour !== null) {
+            $this->noterLOuverture($ouverture, $premierJour, $feuille, $ou, $lotId);
+        }
+    }
+
+    /**
+     * Le solde d'ouverture annoncé par une rangée, ou null si ce n'en est pas une.
+     *
+     * Le montant est posé dans la colonne des soldes, à droite de la mention : on prend la
+     * dernière cellule chiffrée de la rangée, et non la première, qui serait la mention
+     * elle-même.
+     */
+    private function soldeDOuverture(array $cellules): ?int
+    {
+        $entier = implode(' ', array_map(
+            fn ($valeur) => $valeur instanceof DateTimeImmutable ? '' : (string) $valeur,
+            $cellules,
+        ));
+
+        if (preg_match('/SOLDE\s*D.?\s*OUVERTURE/ui', $entier) !== 1) {
+            return null;
+        }
+
+        foreach (array_reverse($cellules, true) as $valeur) {
+            $montant = self::montant($valeur);
+
+            if ($montant !== null && preg_match('/[0-9]/', (string) $valeur) === 1) {
+                return (int) round($montant);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Consigne l'ouverture du mois : une caisse, un mois, un solde de départ.
+     *
+     * Le classeur ne nomme pas sa caisse — son titre dit seulement « CAISSE DU MOIS DE
+     * DECEMBRE 2025 ». Elle s'appelle donc « Caisse », ce qu'elle est, et c'est la ville du
+     * dépôt qui la distingue de celle d'une autre ville. Lui inventer un nom que le fichier
+     * ne porte pas serait ajouter une donnée là où il n'y en a pas.
+     */
+    private function noterLOuverture(int $solde, Carbon $premierJour, string $feuille, array $ou, ?int $lotId): void
+    {
+        OuvertureCaisse::consigner(
+            [
+                'entreprise_id' => $this->entrepriseId,
+                'ville_id' => $ou['ville_id'],
+                'caisse' => self::CAISSE_SANS_NOM,
+                'debut' => $premierJour->copy()->startOfMonth()->toDateString(),
+                'fin' => $premierJour->copy()->endOfMonth()->toDateString(),
+            ],
+            [
+                'site_id' => $ou['site_id'],
+                'solde_avant' => $solde,
+                'source' => OuvertureCaisse::DU_CLASSEUR,
+                'feuille' => mb_substr($feuille, 0, 60),
+                'lot_import_id' => $lotId,
+            ],
+        );
     }
 
     /** Une ligne de caisse ne porte aucun numéro de fiche : il n'y a pas de code à en tirer. */
@@ -215,7 +293,7 @@ class FormatDeLaCaisse extends Format
         }
 
         if (self::date($ligne['date'] ?? null) === null) {
-            return "La date du mouvement est absente ou illisible.";
+            return 'La date du mouvement est absente ou illisible.';
         }
 
         if ($this->montantDuMouvement($ligne) === null) {
