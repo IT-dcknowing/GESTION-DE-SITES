@@ -2,6 +2,7 @@
 
 use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Spatie\Activitylog\Models\Activity;
@@ -55,6 +56,24 @@ $peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()))
 $verrouilles = computed(fn () => $this->piece === null
     ? []
     : EtatDesFournisseurs::champsVerrouilles($this->piece));
+
+/**
+ * La fiche du fournisseur, quand la liste du classeur le connaît.
+ *
+ * C'est elle qui répond « pour quand ? » sur les pièces dont la ligne ne porte pas
+ * d'échéance — la majorité. Elle est affichée telle quelle, et l'échéance qu'on en tire
+ * est dite attendue : elle ne s'écrit jamais sur la pièce.
+ */
+$fiche = computed(fn () => $this->piece === null
+    ? null
+    : ConditionsFournisseur::fiche(
+        ConditionsFournisseur::pour((int) auth()->user()->entreprise_id, [$this->piece]),
+        $this->piece,
+    ));
+
+$echeance = computed(fn () => $this->piece === null
+    ? ['date' => null, 'source' => 'aucune', 'terme' => null]
+    : ConditionsFournisseur::echeance($this->piece, $this->fiche));
 
 $historique = computed(fn () => $this->piece === null ? collect() : Activity::query()
     ->with('causer')
@@ -225,12 +244,76 @@ $enregistrer = function () {
             <x-kpi-card label="Reste à payer" :value="ae($reste)"
                 :couleur="$reste > 0 ? '#C8102E' : '#6B6E76'"
                 :sub="$reste > 0 ? 'Dette ouverte' : 'Pièce soldée'" />
+            {{-- Trois sous-titres pour trois situations, parce qu'elles ne s'équivalent
+                 pas : l'échéance du fichier, celle qu'on déduit du terme du fournisseur —
+                 annoncée comme telle — et l'absence des deux. Seule la première déclenche
+                 quoi que ce soit ailleurs dans l'application. --}}
             <x-kpi-card label="Ancienneté"
                 :value="$jours === null ? '—' : number_format((int) $jours, 0, ',', ' ').' j'"
-                :sub="$p->date_echeance
-                    ? 'Échéance au '.$p->date_echeance->format('d/m/Y')
-                    : 'Le fichier ne porte pas d\'échéance pour cette pièce'"
+                :sub="match ($this->echeance['source']) {
+                    'fichier' => 'Échéance au '.$this->echeance['date']->format('d/m/Y'),
+                    'terme' => 'Attendue au '.$this->echeance['date']->format('d/m/Y').' — terme « '.$this->echeance['terme'].' »',
+                    default => 'Ni le fichier ni le référentiel ne donnent d\'échéance',
+                }"
                 :accent="$reste > 0 && $p->date_echeance?->isPast()" />
+        </div>
+
+        {{-- Le fournisseur, et non la pièce : ce bloc ne vient pas de la ligne mais de la
+             feuille « Liste fournisseurs » du classeur. Il est affiché ici parce que c'est
+             ici qu'on se demande pour quand la facture est due, et qu'on ne va pas chercher
+             la réponse sur un autre écran. --}}
+        <div class="carte" style="margin-bottom:16px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 10px;">Ce que le référentiel dit du fournisseur</h3>
+
+            @if ($this->fiche === null)
+                <p style="margin:0; font-size:13px; color:#6B6E76;">
+                    <b>{{ $p->fournisseur ?: 'Ce fournisseur' }}</b> n'a pas de fiche dans la
+                    feuille « Liste fournisseurs » du classeur : ni terme de règlement, ni
+                    TVA. Aucune échéance ne peut donc en être déduite. La liste se complète
+                    dans le classeur, puis le dépôt la reprend —
+                    <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate>voir le référentiel</a>.
+                </p>
+            @else
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px 18px;">
+                    <div>
+                        <div style="font-size:11.5px; color:#9A9DA5; text-transform:uppercase; letter-spacing:.04em;">Terme de règlement</div>
+                        <div style="font-size:13.5px;">{{ $this->fiche->delai_reglement ?: '—' }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:11.5px; color:#9A9DA5; text-transform:uppercase; letter-spacing:.04em;">Échéance attendue</div>
+                        <div style="font-size:13.5px;">
+                            @if ($this->echeance['source'] === 'terme')
+                                {{ $this->echeance['date']->format('d/m/Y') }}
+                            @elseif ($this->echeance['source'] === 'fichier')
+                                <span style="color:#6B6E76;">le fichier la porte déjà</span>
+                            @else
+                                <span style="color:#D97706;">le terme ne permet pas de la compter</span>
+                            @endif
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:11.5px; color:#9A9DA5; text-transform:uppercase; letter-spacing:.04em;">TVA</div>
+                        <div style="font-size:13.5px;">
+                            {{ $this->fiche->assujetti_tva === null ? 'non renseignée' : ($this->fiche->assujetti_tva ? 'Assujetti' : 'Non assujetti') }}
+                        </div>
+                    </div>
+                    @if ($this->fiche->note)
+                        <div>
+                            <div style="font-size:11.5px; color:#9A9DA5; text-transform:uppercase; letter-spacing:.04em;">Note du classeur</div>
+                            <div style="font-size:13.5px;">{{ $this->fiche->note }}</div>
+                        </div>
+                    @endif
+                </div>
+
+                @if ($this->echeance['source'] === 'terme')
+                    <p style="margin:12px 0 0; font-size:12.5px; color:#6B6E76;">
+                        Cette date est <b>comptée</b>, pas lue : la ligne du fichier ne porte
+                        pas d'échéance. Elle n'est écrite nulle part et ne fait entrer la
+                        pièce ni dans le filtre « Échues » ni dans le montant échu — une
+                        relance se fonde sur ce que le fournisseur a écrit.
+                    </p>
+                @endif
+            @endif
         </div>
 
         @if ($enModification)

@@ -3,11 +3,14 @@
 namespace Modules\Superviseur\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Modules\Noyau\Commun\Services\Exportateur;
 use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
+use Modules\Noyau\Imports\Modeles\FournisseurReferentiel;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -78,11 +81,16 @@ class TelechargerLesFournisseurs
         // le fichier d'origine.
         $pieces = $lignes->with('ville')->orderBy('date_facture')->get();
 
+        // Les fiches fournisseurs en une requête, pour la même raison qu'à l'écran : une
+        // par ligne en ferait des milliers sur un export de sept mille pièces.
+        $fiches = ConditionsFournisseur::pour((int) auth()->user()->entreprise_id, $pieces);
+
         $corps = $pieces->map(fn (FactureFournisseur $p) => [
             (string) ($p->fournisseur ?: '—'),
             (string) ($p->numero_piece ?: '—'),
             EtatDesFournisseurs::libelleReport($p, $annee),
             $p->date_facture?->format('d/m/Y') ?? '—',
+            self::echeance($p, $fiches),
             $p->date_facture ? NombreDeJours::entre($p->date_facture, now()).' j' : '—',
             (string) ($p->imputation ?: '—'),
             (string) ($p->immatriculation ?: '—'),
@@ -106,12 +114,12 @@ class TelechargerLesFournisseurs
             .' · '.$pieces->count().' pièce(s)'
             .($recherche !== '' ? ' · recherche « '.$recherche.' »' : '');
 
-        $entetes = ['Fournisseur', 'N° pièce', 'Report', 'Date de facture', 'Ancienneté', 'Imputation',
-            'Immatriculation', 'Ville', 'Montant', 'Déjà payé', 'Reste à payer'];
+        $entetes = ['Fournisseur', 'N° pièce', 'Report', 'Date de facture', 'Échéance', 'Ancienneté',
+            'Imputation', 'Immatriculation', 'Ville', 'Montant', 'Déjà payé', 'Reste à payer'];
 
         // Le total refait le corps, et ne se recalcule pas à part : un pied qui ne
         // correspond pas à ses lignes finit toujours par être celui qu'on croit.
-        $total = ['TOTAL', '', '', '', '', '', '', '',
+        $total = ['TOTAL', '', '', '', '', '', '', '', '',
             (int) $pieces->sum('montant'),
             (int) $pieces->sum('montant_regle'),
             (int) $pieces->sum('reste_a_payer')];
@@ -122,6 +130,27 @@ class TelechargerLesFournisseurs
             'excel' => Exportateur::excel($nom, 'Fournisseurs', $entetes, $corps, ['total' => $total]),
             'word' => Exportateur::word($nom, 'Fournisseurs', $entetes, $corps, $chapeau, ['total' => $total]),
             default => Exportateur::pdf($nom, 'Fournisseurs', $entetes, $corps, $chapeau, ['total' => $total]),
+        };
+    }
+
+    /**
+     * L'échéance de la pièce, et d'où elle sort.
+     *
+     * Une date déduite du terme du fournisseur porte la mention « attendue » dans la
+     * cellule elle-même. Sur une feuille qui circule par courriel et se lit loin de
+     * l'application, une date muette serait prise pour une date du fichier — et servirait à
+     * relancer un fournisseur sur un délai qu'il n'a jamais écrit.
+     *
+     * @param  Collection<string, FournisseurReferentiel>  $fiches
+     */
+    private static function echeance(FactureFournisseur $piece, Collection $fiches): string
+    {
+        $echeance = ConditionsFournisseur::echeance($piece, ConditionsFournisseur::fiche($fiches, $piece));
+
+        return match ($echeance['source']) {
+            'fichier' => $echeance['date']->format('d/m/Y'),
+            'terme' => $echeance['date']->format('d/m/Y').' (attendue)',
+            default => '—',
         };
     }
 }

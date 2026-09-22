@@ -41,6 +41,16 @@ class Resultat
     /** Lignes qui contredisaient l'atelier déclaré au dépôt. */
     public int $desaccords = 0;
 
+    /**
+     * Fiches posées par une feuille annexe, hors des cinq compteurs.
+     *
+     * Le classeur du suivi fournisseurs porte une seconde feuille qui ne décrit pas des
+     * opérations mais les fournisseurs eux-mêmes. Ses lignes n'entrent pas dans `lues` :
+     * l'invariant « lues = créées + mises à jour + ignorées + rejetées » porte sur les
+     * pièces, et y verser 287 fiches ferait mentir le seul chiffre qu'on vérifie.
+     */
+    public int $fiches = 0;
+
     public function compter(string $issue): void
     {
         match ($issue) {
@@ -92,7 +102,24 @@ class Resultat
         }
 
         return $this->lues.' ligne'.($this->lues > 1 ? 's' : '').' lue'.($this->lues > 1 ? 's' : '')
-            .' : '.implode(', ', $morceaux).'.'.$this->avertissementDAtelier();
+            .' : '.implode(', ', $morceaux).'.'.$this->fichesPosees().$this->avertissementDAtelier();
+    }
+
+    /**
+     * Ce qu'une feuille annexe a appris, dit à part.
+     *
+     * À part, parce que ce ne sont pas des lignes du même genre : mélanger « 7 350 lignes
+     * lues » et « 287 fiches » dans la même phrase laisserait croire que le total des
+     * factures a changé.
+     */
+    private function fichesPosees(): string
+    {
+        if ($this->fiches === 0) {
+            return '';
+        }
+
+        return ' '.$this->fiches.' fiche'.($this->fiches > 1 ? 's' : '')
+            .' fournisseur'.($this->fiches > 1 ? 's' : '').' à jour (délai de règlement, TVA).';
     }
 
     /**

@@ -76,6 +76,7 @@ $totaux = computed(fn () => [
         sous-titre="Les comptes fournisseurs tels que le logiciel comptable les exporte. Le solde annoncé est conservé, et confronté au recalcul crédit − débit.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
             <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Suivi fournisseur</a>
+            <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Référentiel</a>
             <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements</a>
         </div>
     </x-titre-ecran>

@@ -2,7 +2,11 @@
 
 namespace Modules\Noyau\Imports\Formats;
 
+use Closure;
+use Modules\Noyau\Imports\Lecteurs\Lecteur;
+use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
+use Modules\Noyau\Imports\Modeles\FournisseurReferentiel;
 
 /**
  * Le suivi des factures fournisseurs — ce que l'entreprise doit.
@@ -125,6 +129,200 @@ class FormatDesFournisseurs extends Format
     public static function colonnesObligatoires(): array
     {
         return ['fournisseur', 'montant'];
+    }
+
+    /**
+     * L'intitulé qui reconnaît la feuille annexe, et lui seul.
+     *
+     * « Type de règlement » n'existe que là : la feuille `DETAIL` porte bien une colonne
+     * de délai, mais elle s'y appelle « délais de règlement ». Reconnaître la feuille à son
+     * nom aurait été plus court et moins sûr — le module choisit toujours sur le contenu,
+     * parce qu'un onglet se renomme et qu'on l'a déjà vu faire.
+     */
+    private const EN_TETE_DES_FICHES = 'TYPE DE REGLEMENT';
+
+    /**
+     * Le classeur porte deux feuilles utiles, et on n'en lisait qu'une.
+     *
+     * `DETAIL` donne les factures ; « Liste fournisseurs » donne les fournisseurs — à quel
+     * terme chacun se règle, s'il facture la TVA, et pour six d'entre eux le plafond
+     * d'encours négocié. Un seul dépôt renseigne donc les deux : demander à quelqu'un de
+     * déposer deux fois le même fichier en changeant de format dans une liste déroulante,
+     * c'est se garantir qu'il ne le fera qu'une.
+     *
+     * Les fiches sont comptées à part de `lues` : ce ne sont pas des pièces, et
+     * l'invariant des cinq compteurs ne porte que sur les pièces.
+     */
+    public function parcourir(
+        Lecteur $lecteur,
+        ?int $villeDuDepot,
+        ?int $lotId,
+        bool $ecrire = true,
+        ?Closure $surAvancee = null,
+        ?int $siteDuDepot = null,
+    ): Resultat {
+        $resultat = parent::parcourir($lecteur, $villeDuDepot, $lotId, $ecrire, $surAvancee, $siteDuDepot);
+
+        $this->lireLesFiches($lecteur, $lotId, $ecrire, $resultat);
+
+        return $resultat;
+    }
+
+    /**
+     * Parcourt la feuille annexe, quand le classeur en porte une.
+     *
+     * Son absence n'est pas une anomalie : les exports du logiciel comptable n'en ont pas,
+     * et un classeur tenu à la main peut très bien s'en passer. Rien n'est donc rejeté ni
+     * signalé — il n'y a simplement pas de fiches.
+     */
+    private function lireLesFiches(Lecteur $lecteur, ?int $lotId, bool $ecrire, Resultat $resultat): void
+    {
+        $ou = $this->feuilleDesFiches($lecteur);
+
+        if ($ou === null) {
+            return;
+        }
+
+        [$feuille, $rangDEnTete, $posDelai, $posTva] = $ou;
+
+        foreach ($lecteur->lignes($feuille) as $rang => $cellules) {
+            if ($rang <= $rangDEnTete) {
+                continue;
+            }
+
+            $nom = $this->nomDeLaFiche($cellules, $posDelai);
+
+            // Le tiret isolé de la deuxième ligne est la ligne « aucun fournisseur » du
+            // menu déroulant du classeur, pas un fournisseur qui s'appellerait « - ».
+            if ($nom === null || $nom === '-') {
+                continue;
+            }
+
+            $libelle = self::texte($cellules[$posDelai] ?? null, 60);
+            $terme = FournisseurReferentiel::lireLeTerme($libelle);
+
+            $resultat->fiches++;
+
+            if (! $ecrire) {
+                continue;
+            }
+
+            FournisseurReferentiel::consigner($this->entrepriseId, $nom, [
+                'lot_import_id' => $lotId,
+                'delai_reglement' => $libelle,
+                'jours_reglement' => $terme['jours'],
+                'fin_de_mois' => $terme['finDeMois'],
+                'assujetti_tva' => $this->assujetti($posTva === null ? null : ($cellules[$posTva] ?? null)),
+                'note' => $this->noteDeLaFiche($cellules, $posDelai, $posTva),
+                'source_feuille' => $feuille,
+            ]);
+        }
+    }
+
+    /**
+     * Où se trouvent les fiches : la feuille, la ligne d'en-tête, et les deux colonnes.
+     *
+     * @return array{0: string, 1: int, 2: int, 3: int|null}|null
+     */
+    private function feuilleDesFiches(Lecteur $lecteur): ?array
+    {
+        foreach ($lecteur->feuilles() as $feuille) {
+            $sondees = 0;
+
+            foreach ($lecteur->lignes($feuille) as $rang => $cellules) {
+                $delai = null;
+                $tva = null;
+
+                foreach ($cellules as $position => $valeur) {
+                    if (! is_string($valeur)) {
+                        continue;
+                    }
+
+                    $normalise = CorrespondanceImport::normaliser($valeur);
+
+                    if ($normalise === self::EN_TETE_DES_FICHES && $delai === null) {
+                        $delai = $position;
+                    }
+
+                    if ($normalise === 'TVA' && $tva === null) {
+                        $tva = $position;
+                    }
+                }
+
+                if ($delai !== null) {
+                    return [$feuille, $rang, $delai, $tva];
+                }
+
+                if (++$sondees >= self::LIGNES_SONDEES) {
+                    break;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Le nom du fournisseur : la première cellule remplie avant la colonne du terme.
+     *
+     * La colonne des noms **n'a pas d'en-tête** dans le fichier — la case au-dessus est
+     * vide dans les deux classeurs. On ne peut donc pas la reconnaître comme les autres, et
+     * coder « colonne A » supposerait que personne n'insérera jamais une colonne à gauche.
+     * La position relative, elle, tient : le nom précède le terme.
+     */
+    private function nomDeLaFiche(array $cellules, int $posDelai): ?string
+    {
+        for ($position = 0; $position < $posDelai; $position++) {
+            $nom = self::texte($cellules[$position] ?? null, 190);
+
+            if ($nom !== null && $nom !== '') {
+                return $nom;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Ce que la ligne dit de plus, recopié tel quel.
+     *
+     * Six fournisseurs portent, dans une colonne sans en-tête, leur plafond d'encours
+     * négocié — « Limite compte 12 500 000 FCFA ». Il n'est ni converti en nombre ni
+     * comparé à quoi que ce soit : l'un des six l'écrit « 10 00 000 », et deviner s'il
+     * s'agit d'un million ou de dix effacerait la faute au lieu de la montrer.
+     */
+    private function noteDeLaFiche(array $cellules, int $posDelai, ?int $posTva): ?string
+    {
+        $morceaux = [];
+
+        foreach ($cellules as $position => $valeur) {
+            if ($position <= $posDelai || $position === $posTva) {
+                continue;
+            }
+
+            $texte = self::texte($valeur, 255);
+
+            if ($texte !== null && $texte !== '') {
+                $morceaux[] = $texte;
+            }
+        }
+
+        return $morceaux === [] ? null : mb_substr(implode(' · ', $morceaux), 0, 255);
+    }
+
+    /**
+     * Assujetti à la TVA, non assujetti, ou inconnu.
+     *
+     * Trois états et non deux : la colonne est vide pour 33 des 282 noms d'Abidjan. Dire
+     * « non » à leur place serait une affirmation fiscale que le fichier ne fait pas.
+     */
+    private function assujetti(mixed $valeur): ?bool
+    {
+        return match (CorrespondanceImport::normaliser((string) self::texte($valeur, 20))) {
+            'OUI' => true,
+            'NON' => false,
+            default => null,
+        };
     }
 
     protected function colonneSite(array $ligne): ?string

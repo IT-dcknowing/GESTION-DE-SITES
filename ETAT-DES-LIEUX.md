@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (2e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (3e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 751 tests, 744 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 776 tests, 769 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -146,6 +146,7 @@ Voir `LecteurPdf`.
 | 23/09 | `5bb665e` | **creances** | seconde passe de vitesse : les créances ouvertes se lisent aussi sans objets — synthèse 1,5 s → 0,66 s, balance âgée 1,15 s → 0,59 s, tableau de bord 2,2 s → 1,64 s ; un test confronte les deux lectures |
 | 24/09 | voir `git log` | **creances** | le **journal de caisse imprimé** entre : lecteur de PDF, format `journal-caisse`, 533 mouvements à Bouaké et 571 à San-Pédro, zéro écart sur la chaîne des soldes ; l'écran *Caisse* refait sur les colonnes du fichier (n° de pièce, motif, remettant/bénéficiaire, solde progressif, nom de la caisse, solde avant période) ; le classeur d'Abidjan livre enfin son « SOLDE D'OUVERTURE » |
 | 24/09 | voir `git log` | **creances** | le **suivi fournisseur se tient par année**, comme l'état des impayés : report automatique de ce qui n'est pas soldé, colonne *Report*, page de détail par pièce (`/fournisseurs/piece/{id}`), saisie à la main d'une facture reçue entre deux dépôts |
+| 24/09 | voir `git log` | **creances** | la feuille **« Liste fournisseurs »** devient un référentiel : terme de règlement, TVA, plafond d'encours, lus au même dépôt que les factures ; l'échéance attendue apparaît là où le fichier n'en donne pas (5 184 pièces sur 7 350), sans jamais s'écrire ; page `/fournisseurs/referentiel`, qui nomme aussi les 45 fournisseurs facturés absents de la liste |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -497,8 +498,42 @@ autres villes sont tous deux lus, et l'écran montre ce qu'ils portent.
 
   Migration `2026_09_22_000003` : 24 colonnes ajoutées, `montant_refacture` et `marge`
   élargis au vide, `mode_reglement` porté à 200 caractères (le classeur y inscrit deux
-  chèques), clé unique élargie. Reste à faire : la feuille `Liste fournisseurs` (délai de
-  règlement, TVA) comme référentiel.
+  chèques), clé unique élargie.
+
+- **Référentiel fournisseurs (feuille « Liste fournisseurs »)** : ✅ **Fait le 24/09.** C'était
+  le reste à faire du chantier précédent, et il valait plus cher qu'annoncé. La colonne
+  *Échéance* de l'écran *Fournisseurs* était une colonne de tirets : mesuré en local, **aucune**
+  des 1 848 pièces ne portait de date d'échéance ni de délai — la colonne « délais de règlement »
+  n'existe que dans le classeur de San-Pédro, et ses lignes ne la remplissent pas. Le classeur
+  savait pourtant répondre : il le disait un onglet plus loin, fournisseur par fournisseur.
+
+  - **Lue au même dépôt que les factures**, et reconnue à son contenu (l'intitulé « Type de
+    règlement », qui n'existe que là) et non à son nom d'onglet. Demander de redéposer le même
+    fichier en changeant de format dans une liste aurait garanti qu'on ne le ferait qu'une fois.
+  - **287 fiches** pour les deux classeurs réunis — 282 à Abidjan, 216 à San-Pédro, 211 communes.
+    Sur ces 211, les deux feuilles ne se contredisent que **huit fois**, dont sept où l'une des
+    deux ne dit simplement rien : une valeur vide n'efface donc jamais une valeur déclarée.
+  - **Ce qui est lu** : le terme de règlement (195 fiches, quatre formes — « Comptant »,
+    « 30 jours », « 45 jours », « 30 jours fin de mois »), la TVA en **trois** états (67 oui,
+    186 non, 34 non renseignées — dire « non » à la place du fichier serait une affirmation
+    fiscale), et le plafond d'encours de six fournisseurs, recopié à la lettre : l'un l'écrit
+    « 10 00 000 », et deviner s'il s'agit d'un million ou de dix effacerait la faute.
+  - **L'échéance attendue**, enfin. Sur les 7 350 pièces des deux classeurs, **7 171** ont une
+    fiche et **5 184** gagnent une date qu'aucune ligne ne portait. Elle est comptée à
+    l'affichage et **ne s'écrit jamais** dans `date_echeance` : rangée là, elle deviendrait
+    indiscernable d'une échéance réelle et servirait à relancer un fournisseur sur un délai
+    qu'il n'a jamais écrit. Le filtre *Échues* et le KPI de l'échu continuent donc de ne
+    regarder que les dates déclarées ; l'écran, lui, l'affiche en gris sous la mention
+    « attendue », et l'export la marque « (attendue) » dans la cellule.
+  - **Aucun rapprochement approché.** Le nom normalisé est la seule clé — 287 noms donnent
+    287 clés distinctes, et 99 des 100 fournisseurs en base sont reconnus. « CFAO BABI » et
+    « CFAO BABI MOTORS » se ressemblent ; se ressembler n'autorise pas à attribuer un délai de
+    paiement. Les **45 fournisseurs facturés sans fiche (179 pièces)** sont donc *nommés* sur la
+    page du référentiel, pour que le classeur soit corrigé là où il est tenu.
+
+  Page `/fournisseurs/referentiel`, ouverte depuis l'écran *Fournisseurs* comme la balance et
+  les règlements. Migration additive `2026_09_24_000001` (table `referentiel_fournisseurs`).
+  Tests : `LeReferentielFournisseurEntreTest` (25).
 - **Caisse** : ✅ **Fait le 24/09.** Les deux sources sont lues — le classeur tenu à la main
   d'Abidjan et le journal imprimé de Bouaké et San-Pédro — et l'écran liste les colonnes des
   fichiers. Règle appliquée : **les colonnes d'une page listent d'abord celles du fichier
@@ -666,10 +701,11 @@ entier, pour que les liens mis en favori continuent de fonctionner.
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09 : **57 lignes terminées, 9 à faire, 1 à
+date de fin, une ligne par chantier. Au 24/09 : **61 lignes terminées, 8 à faire, 1 à
 valider** (l'envoi du courrier à M. Fofana) **et 1 sans objet**. Quatre sections se sont
 ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
-joindre), la caisse (le journal imprimé) et les fournisseurs (le registre par année).
+joindre), la caisse (le journal imprimé) et les fournisseurs — le registre par année, puis le
+référentiel et l’échéance attendue.
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans

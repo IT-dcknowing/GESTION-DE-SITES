@@ -72,6 +72,7 @@ $totaux = computed(fn () => [
         sous-titre="Les paiements enregistrés par la comptabilité. Le fichier est global : toutes les années y sont, et les deux bornes ne servent qu'à réduire ce qu'on regarde.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
             <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Suivi fournisseur</a>
+            <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Référentiel</a>
             <a href="{{ route('balance-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Balance</a>
         </div>
     </x-titre-ecran>

@@ -2,6 +2,7 @@
 
 use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
@@ -323,6 +324,18 @@ $detail = computed(fn () => (clone $this->requete)
     ->orderBy('date_facture')
     ->paginate(25, ['*'], 'pageDetail', $this->pageDetail));
 
+/**
+ * Les fiches des fournisseurs de la page affichée, en une requête.
+ *
+ * Elles servent à afficher une échéance là où le fichier n'en donne pas. Une requête par
+ * ligne en aurait fait vingt-cinq : c'est la leçon de la page « Clients & tiers », tombée
+ * à cinq secondes pour cette raison exacte.
+ */
+$fiches = computed(fn () => ConditionsFournisseur::pour(
+    (int) auth()->user()->entreprise_id,
+    $this->detail->items(),
+));
+
 ?>
 
 <div>
@@ -332,6 +345,7 @@ $detail = computed(fn () => (clone $this->requete)
              se pose la question, et c'est donc là que doivent être les réponses. --}}
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
             <x-champ label="Année de l'état" model="exercice" type="select" :options="$this->exercices" :live="true" width="130" />
+            <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Référentiel</a>
             <a href="{{ route('balance-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Balance fournisseurs</a>
             <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements fournisseurs</a>
             @if ($this->peutEcrire)
@@ -517,6 +531,15 @@ $detail = computed(fn () => (clone $this->requete)
                                 : null;
                             $vieille = $ligne->reste_a_payer > 0 && $jours !== null && $jours > 90;
                             $echue = $ligne->reste_a_payer > 0 && $ligne->date_echeance?->isPast();
+                            /* L'échéance attendue, quand le fichier n'en porte pas : elle
+                               vient du terme du fournisseur et se dit « attendue ». Elle
+                               n'entre pas dans le filtre « Échues » ni dans le KPI de
+                               l'échu — une relance se fonde sur ce que le fournisseur a
+                               écrit, pas sur ce que nous avons calculé pour lui. */
+                            $echeance = ConditionsFournisseur::echeance(
+                                $ligne,
+                                ConditionsFournisseur::fiche($this->fiches, $ligne),
+                            );
                         @endphp
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td>{{ $ligne->fournisseur ?: '—' }}</td>
@@ -534,7 +557,14 @@ $detail = computed(fn () => (clone $this->requete)
                             <td style="white-space:nowrap;">{{ $ligne->date_facture?->format('d/m/Y') ?? '—' }}</td>
                             {{-- Un tiret dit « le fichier ne le sait pas », jamais « à jour ». --}}
                             <td style="white-space:nowrap; {{ $echue ? 'color:#C8102E; font-weight:700;' : 'color:#6B6E76;' }}">
-                                {{ $ligne->date_echeance?->format('d/m/Y') ?? '—' }}
+                                @if ($echeance['source'] === 'fichier')
+                                    {{ $echeance['date']->format('d/m/Y') }}
+                                @elseif ($echeance['source'] === 'terme')
+                                    <span style="color:#9A9DA5;">{{ $echeance['date']->format('d/m/Y') }}</span>
+                                    <div style="font-size:11px; color:#9A9DA5;" title="Déduite du terme « {{ $echeance['terme'] }} » — le fichier ne porte pas d'échéance sur cette ligne.">attendue</div>
+                                @else
+                                    —
+                                @endif
                             </td>
                             <td style="white-space:nowrap; {{ $vieille ? 'color:#C8102E; font-weight:700;' : 'color:#6B6E76;' }}">
                                 {{ $jours === null ? '—' : number_format((int) $jours, 0, ',', ' ').' j' }}
