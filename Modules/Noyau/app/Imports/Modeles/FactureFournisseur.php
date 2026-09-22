@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Noyau\Commun\Concerns\AppartientAUneEntreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Imports\Concerns\MontreLesColonnesDuFichier;
+use Modules\Noyau\Imports\Formats\FormatDesFournisseurs;
 
 /**
  * Une facture fournisseur : ce que l'entreprise doit, et pour quand.
@@ -38,8 +40,46 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 class FactureFournisseur extends Model
 {
     use AppartientAUneEntreprise;
+    use MontreLesColonnesDuFichier;
 
     protected $table = 'factures_fournisseurs';
+
+    /**
+     * Les quarante et une colonnes de la pièce viennent de là, et la page les lit de là.
+     *
+     * La page de détail recopiait la liste à la main et en avait perdu sept — dont
+     * « TVA 2 », que l'import explique pourtant par écrit conserver exprès. Une liste
+     * recopiée diverge de sa source ; celle-ci ne peut plus.
+     */
+    public static function formatDOrigine(): string
+    {
+        return FormatDesFournisseurs::class;
+    }
+
+    /**
+     * Les colonnes en francs, pour qu'un montant s'affiche comme un montant.
+     *
+     * « RESULTAT INDICATIF » n'en est pas, malgré son nom : le classeur y écrit une
+     * appréciation — « Marge positive ». La page de détail la passait jusqu'ici dans le
+     * formateur de montants, et affichait donc « 0 F » pour toutes les pièces qui en
+     * portent une.
+     */
+    protected function colonnesEnFrancs(): array
+    {
+        return ['montant', 'montant_ht', 'tva', 'tva_2', 'montant_refacture', 'difference',
+            'montant_regle', 'reste_a_payer', 'montant_net_achat', 'montant_net_vente', 'marge'];
+    }
+
+    /**
+     * La colonne SITE ne devient pas une colonne : elle devient un rattachement.
+     *
+     * Elle se relit donc par la relation, et l'atelier passe avant la ville — c'est le
+     * plus précis des deux quand les deux sont connus.
+     */
+    protected function lecturesParticulieres(): array
+    {
+        return ['site' => fn (self $piece) => $piece->site?->nom ?? $piece->ville?->nom];
+    }
 
     protected function casts(): array
     {

@@ -6,9 +6,10 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Noyau\Commun\Concerns\AppartientAUneEntreprise;
-use Modules\Noyau\Imports\Formats\FormatDuParc;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Imports\Concerns\MontreLesColonnesDuFichier;
+use Modules\Noyau\Imports\Formats\FormatDuParc;
 
 /**
  * Une fiche de réception : un véhicule entré à l'atelier, et ce qu'il y est devenu.
@@ -29,6 +30,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 class DossierVehicule extends Model
 {
     use AppartientAUneEntreprise;
+    use MontreLesColonnesDuFichier;
 
     protected $table = 'dossiers_vehicules';
 
@@ -103,36 +105,16 @@ class DossierVehicule extends Model
     }
 
     /**
-     * La fiche telle que le logiciel d'atelier l'écrit : ses libellés, son ordre, toutes
-     * ses colonnes.
+     * D'où viennent les colonnes de cette fiche.
      *
-     * **L'ordre et les intitulés ne sont pas recopiés à la main ici : ils sont lus dans le
-     * format d'import.** C'est ce qui garantit qu'aucune colonne ne peut être oubliée à
-     * l'affichage — ajouter une colonne au format la fait apparaître ici sans que personne
-     * n'ait à y penser. La version précédente listait les champs un par un dans la vue, et
-     * en avait perdu deux en chemin : « DATE THEORIQUE ATELIER » et « INFORMATIONS SUR LA
-     * SITUATION ».
-     *
-     * **Les colonnes vides sont conservées**, avec un tiret. Une case vide dans le logiciel
-     * est une information — les travaux n'ont pas commencé, le devis n'est pas transmis — et
-     * la masquer donnerait à croire que le champ n'existe pas.
-     *
-     * @return array<string, string> intitulé du logiciel => valeur affichable
+     * Le rendu lui-même est dans {@see MontreLesColonnesDuFichier}, partagé avec les autres
+     * modèles issus d'un import. C'est ici que la règle est née : la vue listait les champs
+     * un par un et en avait perdu deux en chemin — « DATE THEORIQUE ATELIER » et
+     * « INFORMATIONS SUR LA SITUATION ». Depuis, les intitulés et l'ordre sont lus dans le
+     * format, et une colonne ajoutée au format apparaît sans que personne y pense.
      */
-    public function champsDuLogiciel(): array
+    public static function formatDOrigine(): string
     {
-        $champs = [];
-
-        foreach (FormatDuParc::colonnes() as $attribut => $intitule) {
-            $valeur = $this->{$attribut} ?? null;
-
-            $champs[$intitule] = match (true) {
-                $valeur === null, $valeur === '' => '—',
-                $valeur instanceof \DateTimeInterface => $valeur->format('d/m/Y'),
-                default => (string) $valeur,
-            };
-        }
-
-        return $champs;
+        return FormatDuParc::class;
     }
 }

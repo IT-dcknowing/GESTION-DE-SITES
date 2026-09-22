@@ -365,57 +365,47 @@ $enregistrer = function () {
 
             @php
                 /*
-                 * Toutes les colonnes, y compris vides — et c'est voulu sur cette page.
+                 * Les blocs nomment des colonnes du format, et non des valeurs.
                  *
-                 * Le tableau d'ensemble cache ce que la source ne porte pas ; ici on répond à
-                 * « qu'est-ce qu'on sait de cette pièce ? », et « rien » est une réponse.
+                 * La liste était écrite à la main ici, valeur par valeur, et elle avait
+                 * perdu sept colonnes du fichier en chemin — TVA 2, DIFFERENCE, les deux
+                 * montants nets, les deux n° de facture d'achat et de vente, et les
+                 * observations sur la facturation client. « TVA 2 » est la plus parlante :
+                 * l'import explique par écrit qu'il conserve les deux colonnes de TVA
+                 * exprès, et la page n'en montrait qu'une.
+                 *
+                 * Désormais les intitulés, l'ordre et les valeurs viennent du format, et
+                 * tout ce qu'aucun bloc ne réclame tombe dans un dernier bloc plutôt que
+                 * dans le vide. Une colonne peut être mal rangée ; elle ne peut plus
+                 * disparaître.
+                 *
+                 * Les colonnes vides sont conservées : sur une page qui répond à
+                 * « qu'est-ce qu'on sait de cette pièce ? », « rien » est une réponse.
                  */
-                $blocs = [
-                    'Identité' => [
-                        'Fournisseur' => $p->fournisseur,
-                        'N° de pièce' => $p->numero_piece,
-                        'Nature' => $p->nature_piece,
-                        'N° de bon de commande' => $p->numero_bc,
-                        'N° de facture client' => $p->numero_facture_client,
-                        'N° FEB' => $p->numero_feb,
-                        'Code pièce' => $p->code_piece,
-                    ],
-                    'Dates' => [
-                        'Facture' => $p->date_facture?->format('d/m/Y'),
-                        'Réception' => $p->date_reception?->format('d/m/Y'),
-                        'Échéance' => $p->date_echeance?->format('d/m/Y'),
-                        'Règlement' => $p->date_reglement?->format('d/m/Y'),
-                        'Délai de règlement' => $p->delai_reglement,
-                        'Arrivé à échéance' => $p->arrive_a_echeance,
-                    ],
-                    'Montants' => [
-                        'Montant' => $p->montant === null ? null : ae((int) $p->montant),
-                        'Montant HT' => $p->montant_ht === null ? null : ae((int) $p->montant_ht),
-                        'TVA' => $p->tva === null ? null : ae((int) $p->tva),
-                        'Réglé' => $p->montant_regle === null ? null : ae((int) $p->montant_regle),
-                        'Reste à payer' => ae((int) $p->reste_a_payer),
-                        'Mode de règlement' => $p->mode_reglement,
-                        'N° de chèque' => $p->numero_cheque,
-                    ],
-                    'Refacturation' => [
-                        'Montant refacturé' => $p->montant_refacture === null ? null : ae((int) $p->montant_refacture),
-                        'Marge' => $p->marge === null ? null : ae((int) $p->marge),
-                        'Quantité totale' => $p->quantite_totale,
-                        'Quantité refacturée' => $p->quantite_refacturee,
-                        'Taux' => $p->taux,
-                        'Résultat indicatif' => $p->resultat_indicatif === null ? null : ae((int) $p->resultat_indicatif),
-                    ],
-                    'Rattachement' => [
-                        'Ville' => $p->ville?->nom,
-                        'Atelier' => $p->site?->nom,
-                        'Section' => $p->section,
-                        'Imputation' => $p->imputation,
-                        'Véhicule' => $p->vehicule,
-                        'Immatriculation' => $p->immatriculation,
-                        'N° de fiche' => $p->numero_fiche,
-                        'Type de transaction' => $p->type_transaction,
-                    ],
-                ];
+                $blocs = $p->champsDuFichierParBloc([
+                    'Identité' => ['fournisseur', 'numero_piece', 'nature_piece', 'numero_bc',
+                        'numero_facture_client', 'numero_feb', 'code_piece', 'mois'],
+                    'Dates' => ['date_facture', 'date_reception', 'date_echeance',
+                        'date_reglement', 'delai_reglement', 'arrive_a_echeance'],
+                    'Montants' => ['montant', 'montant_ht', 'tva', 'tva_2', 'montant_regle',
+                        'reste_a_payer', 'mode_reglement', 'numero_cheque'],
+                    'Refacturation' => ['montant_refacture', 'difference', 'marge', 'taux',
+                        'quantite_totale', 'quantite_refacturee', 'montant_net_achat',
+                        'montant_net_vente', 'resultat_indicatif',
+                        'numero_facture_achat', 'numero_facture_vente'],
+                    'Rattachement' => ['site', 'section', 'imputation', 'vehicule',
+                        'immatriculation', 'type_transaction'],
+                ]);
+
+                /* La ville, l'atelier et le n° de fiche ne sont pas des colonnes du
+                   fichier : ce sont des rattachements que l'application a posés. Ils se
+                   lisent à part, pour qu'on ne les confonde pas avec ce que le fournisseur
+                   a écrit. */
+                $poses = array_filter([
+                    'Ville' => $p->ville?->nom,
+                    'Atelier' => $p->site?->nom,
+                    'N° de fiche' => $p->numero_fiche,
+                ]);
             @endphp
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:18px;">
@@ -433,6 +423,18 @@ $enregistrer = function () {
                     </div>
                 @endforeach
             </div>
+
+            @if ($poses !== [])
+                <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--th-ligne,#E2E0D8);">
+                    <div style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+                                color:#6B6E76; margin-bottom:7px;">Posé par l'application</div>
+                    <div style="display:flex; gap:20px; flex-wrap:wrap; font-size:12.5px;">
+                        @foreach ($poses as $intitule => $valeur)
+                            <div><span style="color:#6B6E76;">{{ $intitule }}</span> <b>{{ $valeur }}</b></div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
 
             @if ($p->observations || $p->commentaires || $p->actions_a_mener)
                 <div style="margin-top:16px;">

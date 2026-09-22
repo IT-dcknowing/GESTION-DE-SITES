@@ -80,7 +80,28 @@ abstract class FormatDesMouvementsDeVehicules extends Format
             'modele' => self::texte($ligne['modele'] ?? null, 60),
             'client' => self::texte($ligne['client'] ?? null, 160),
             'motif' => self::texte($ligne['motif'] ?? null, 60),
-            'observations' => $this->observations($ligne),
+
+            /*
+             * Chaque colonne du fichier garde la sienne, depuis le 24/09.
+             *
+             * Ces quatre-là n'avaient nulle part où aller et finissaient collées en une
+             * phrase dans `observations` : « TRAVAUX · Propriétaire : X · Déposant : Y ·
+             * Livraison prévue : 01/09/2026 ». Mesuré sur les 147 mouvements repris, la
+             * date de livraison prévue est renseignée **147 fois sur 147** — et rangée
+             * dans une phrase, elle ne se triait pas, ne se filtrait pas et ne se
+             * comparait pas à aujourd'hui. On ne pouvait donc pas poser la question du
+             * comptoir : « qu'est-ce qui devait sortir et est encore là ? »
+             *
+             * `observations` n'est volontairement plus écrite : le fichier n'a pas de
+             * colonne de ce nom, et les lignes qui portent déjà la phrase la gardent — la
+             * découper pour en répartir les morceaux supposerait qu'on sait la relire, or
+             * le déposant y porte des retours à la ligne et des numéros de téléphone.
+             */
+            'travaux' => self::texte($ligne['travaux'] ?? null, 500),
+            'proprietaire' => self::texte($ligne['proprietaire'] ?? null, 200),
+            'deposant' => self::texte($ligne['deposant'] ?? null, 200),
+            'date_livraison_prevue' => self::date($ligne['date_livraison_prevue'] ?? null),
+
             'code_agent' => $rattachement['code'],
         ];
 
@@ -112,25 +133,5 @@ abstract class FormatDesMouvementsDeVehicules extends Format
         $existant->save();
 
         return 'maj';
-    }
-
-    /**
-     * Ce que le fichier porte en plus, et qu'aucune colonne n'accueille.
-     *
-     * Le propriétaire et le déposant y figurent avec leur numéro de téléphone, sur deux
-     * lignes dans la même cellule. On les conserve tels quels : dans un atelier, c'est
-     * souvent le seul contact qu'on ait pour prévenir que le véhicule est prêt.
-     */
-    private function observations(array $ligne): ?string
-    {
-        $morceaux = array_filter([
-            ($t = self::texte($ligne['travaux'] ?? null, 500)) ? $t : null,
-            ($p = self::texte($ligne['proprietaire'] ?? null, 200)) ? "Propriétaire : {$p}" : null,
-            ($d = self::texte($ligne['deposant'] ?? null, 200)) ? "Déposant : {$d}" : null,
-            ($l = self::date($ligne['date_livraison_prevue'] ?? null))
-                ? 'Livraison prévue : '.$l->format('d/m/Y') : null,
-        ]);
-
-        return $morceaux === [] ? null : implode(' · ', $morceaux);
     }
 }

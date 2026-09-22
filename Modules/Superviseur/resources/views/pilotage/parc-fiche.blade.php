@@ -105,7 +105,7 @@ $fiche = computed(function () {
             </p>
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:2px;">
-                @foreach ($f->champsDuLogiciel() as $intitule => $valeur)
+                @foreach ($f->champsDuFichier() as $intitule => $valeur)
                     @php
                         // Les deux champs de texte long tiennent sur toute la largeur : les
                         // travaux à effectuer courent parfois sur plusieurs lignes.

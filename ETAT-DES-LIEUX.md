@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (3e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (4e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 776 tests, 769 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 792 tests, 785 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -147,6 +147,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | le **journal de caisse imprimé** entre : lecteur de PDF, format `journal-caisse`, 533 mouvements à Bouaké et 571 à San-Pédro, zéro écart sur la chaîne des soldes ; l'écran *Caisse* refait sur les colonnes du fichier (n° de pièce, motif, remettant/bénéficiaire, solde progressif, nom de la caisse, solde avant période) ; le classeur d'Abidjan livre enfin son « SOLDE D'OUVERTURE » |
 | 24/09 | voir `git log` | **creances** | le **suivi fournisseur se tient par année**, comme l'état des impayés : report automatique de ce qui n'est pas soldé, colonne *Report*, page de détail par pièce (`/fournisseurs/piece/{id}`), saisie à la main d'une facture reçue entre deux dépôts |
 | 24/09 | voir `git log` | **creances** | la feuille **« Liste fournisseurs »** devient un référentiel : terme de règlement, TVA, plafond d'encours, lus au même dépôt que les factures ; l'échéance attendue apparaît là où le fichier n'en donne pas (5 184 pièces sur 7 350), sans jamais s'écrire ; page `/fournisseurs/referentiel`, qui nomme aussi les 45 fournisseurs facturés absents de la liste |
+| 24/09 | voir `git log` | **creances** | **les colonnes d'une page listent d'abord celles du fichier** : les entrées et sorties reçoivent les quatre colonnes qui n'avaient nulle part où aller (travaux, propriétaire, déposant, **date de livraison prévue — 147 sur 147**), et l'indicateur « promesse de sortie dépassée » devient calculable — **60 véhicules** ; les pages de détail lisent désormais `colonnes()` du format, ce qui rend sept colonnes fournisseur oubliées, dont « TVA 2 » |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -698,14 +699,58 @@ Corrigé, et étendu : les bornes sont déclarées, passées par les douze écra
 jour** (`Y-m-d`). Les valeurs écrites au mois (`Y-m`) restent comprises et ouvertes au mois
 entier, pour que les liens mis en favori continuent de fonctionner.
 
+### Les colonnes d'une page listent d'abord celles du fichier
+
+✅ **Fait le 24/09.** La règle était écrite depuis le 18/09 et appliquée écran par écran, de
+mémoire. Le relevé automatique du 24/09 — comparer `colonnes()` de chaque format à ce que les
+pages nomment — dit ce que vaut la mémoire.
+
+**Ce qui tombait au dépôt.** Les fichiers d'entrées et de sorties portent onze colonnes ;
+**quatre n'avaient aucune colonne en base**. L'import ne les perdait pas tout à fait : il en
+faisait une phrase, recopiée dans `observations` — « REVISION COMPLETE · Propriétaire :
+LUSEO CI · Déposant : MR BETAKO · Livraison prévue : 01/09/2026 ». Le commentaire qui
+l'écrivait l'avouait : « ce que le fichier porte en plus, et qu'aucune colonne n'accueille ».
+
+Mesuré sur les deux fichiers réels redéposés en transaction annulée : 147 mouvements,
+**travaux 147/147, propriétaire 145, déposant 120, date de livraison prévue 147/147**. Une
+date rangée dans une phrase ne se trie pas, ne se filtre pas et ne se compare pas à
+aujourd'hui — on ne pouvait donc pas poser la question du comptoir. Elle se pose désormais :
+**60 véhicules** sont entrés, leur date de livraison promise est passée, et aucune sortie
+n'est enregistrée pour leur fiche. L'écran a l'indicateur et le filtre ; le rapprochement se
+fait sur l'absence de la ligne de sortie, et non sur le statut du parc — celui-là vient d'un
+autre fichier, donc d'un autre dépôt. Migration additive `2026_09_24_000002`.
+
+**L'écran des mouvements** montrait six des onze colonnes ; il les montre toutes (motif,
+travaux, propriétaire/déposant, livraison prévue). Les lignes importées avant ce jour gardent
+leur phrase, affichée telle quelle : la découper pour en répartir les morceaux supposerait
+qu'on sait la relire, or le déposant y porte des retours à la ligne et des numéros de
+téléphone. Le prochain dépôt du fichier remplit les colonnes.
+
+**La règle est devenue un mécanisme.** La page de détail d'une pièce fournisseur recopiait la
+liste des colonnes à la main et en avait perdu **sept sur quarante et une** — « TVA 2 »,
+« DIFFERENCE », les deux montants nets, les deux n° de facture d'achat et de vente, les
+observations sur la facturation client. « TVA 2 » est la plus parlante : l'import explique par
+écrit qu'il conserve les deux colonnes de TVA exprès, et la page n'en montrait qu'une. Une
+liste recopiée à la main diverge de sa source ; c'est sa nature.
+
+Le trait `MontreLesColonnesDuFichier` retire la recopie : intitulés, ordre et valeurs viennent
+de `colonnes()` du format. Les blocs (Identité, Dates, Montants…) nomment des **clés**, et tout
+ce qu'aucun bloc ne réclame tombe dans « Autres colonnes du fichier ». Une colonne peut être
+mal rangée ; elle ne peut plus disparaître — un test l'exige. La fiche du parc, qui avait
+inventé ce procédé après avoir perdu deux colonnes, passe au trait partagé. Corrigé au passage :
+« RESULTAT INDICATIF » n'est pas un montant malgré son nom — le classeur y écrit « Marge
+positive » — et la page l'affichait à travers le formateur de francs, donc « 0 F ».
+
+Tests : `LesColonnesDuFichierSeRetrouventALEcranTest` (16).
+
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09 : **61 lignes terminées, 8 à faire, 1 à
-valider** (l'envoi du courrier à M. Fofana) **et 1 sans objet**. Quatre sections se sont
+date de fin, une ligne par chantier. Au 24/09 : **65 lignes terminées, 7 à faire, 1 à
+valider** (l'envoi du courrier à M. Fofana) **et 1 sans objet**. Cinq sections se sont
 ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
-joindre), la caisse (le journal imprimé) et les fournisseurs — le registre par année, puis le
-référentiel et l’échéance attendue.
+joindre), la caisse (le journal imprimé), les fournisseurs — le registre par année, puis le
+référentiel et l’échéance attendue — et les colonnes du fichier, écran par écran.
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans
