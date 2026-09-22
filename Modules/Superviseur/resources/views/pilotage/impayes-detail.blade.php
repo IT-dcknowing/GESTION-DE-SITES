@@ -31,8 +31,16 @@ mount(function (int $creance) {
 $creance = computed(function () {
     $sites = PerimetreSites::idsRetenus(auth()->user(), '', '');
 
+    /*
+     * Toute facture s'ouvre ici, portée à l'état ou non.
+     *
+     * La page n'acceptait que les factures portées à l'état des impayés. Or c'est la même
+     * facture des deux côtés : depuis le 24/09, le tableau du chiffre d'affaires ouvre lui
+     * aussi cette page, et refuser une facture non portée aurait fait répondre « introuvable »
+     * à une facture qui est sous les yeux. La page dit à la place qu'elle n'est pas à l'état.
+     */
     return EtatDesImpayes::dansLePerimetre(
-        Facture::query()->whereNotNull('exercice_impayes')->withSum('encaissements', 'montant'),
+        Facture::query()->withSum('encaissements', 'montant'),
         $sites,
         EtatDesImpayes::villesDesSites($sites),
     )
@@ -79,10 +87,20 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px;
                     flex-wrap:wrap; margin:0 0 16px;">
             <div>
-                <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes]) }}" wire:navigate
-                   style="color:#6B6E76; text-decoration:none; font-size:12.5px; font-weight:600;">
-                    ‹ État des impayés {{ $f->exercice_impayes }}
-                </a>
+                {{-- Le retour mène là d'où l'on vient : l'état des impayés quand la facture y
+                     est portée, le chiffre d'affaires sinon — c'est le seul tableau qui
+                     ouvre cette page pour une facture non portée. --}}
+                @if ($f->exercice_impayes)
+                    <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes]) }}" wire:navigate
+                       class="bouton bouton-secondaire" style="text-decoration:none; padding:5px 12px; font-size:12.5px;">
+                        ← Retour à l'état des impayés {{ $f->exercice_impayes }}
+                    </a>
+                @else
+                    <a href="{{ route('chiffre-affaires') }}" wire:navigate
+                       class="bouton bouton-secondaire" style="text-decoration:none; padding:5px 12px; font-size:12.5px;">
+                        ← Retour au chiffre d'affaires
+                    </a>
+                @endif
                 <h1 style="font-family:'Barlow Condensed',sans-serif; font-size:27px; font-weight:800;
                            margin:3px 0 0; letter-spacing:.5px;">
                     {{ $f->numero }} — facture n° {{ $f->n_facture }}
@@ -92,8 +110,16 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
                 </div>
             </div>
 
-            <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes, 'modifier' => $f->id]) }}" wire:navigate
-               class="bouton" style="padding:9px 16px; text-decoration:none;">Modifier</a>
+            @if ($f->exercice_impayes)
+                <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes, 'modifier' => $f->id]) }}" wire:navigate
+                   class="bouton" style="padding:9px 16px; text-decoration:none;">Modifier</a>
+            @else
+                {{-- Une facture qui n'est pas à l'état ne se corrige pas d'ici : elle s'y
+                     porte d'abord, et c'est un geste qui appartient à l'état des impayés. --}}
+                <span style="font-size:12.5px; color:#B9791C; font-weight:700; align-self:center;">
+                    Pas encore portée à l'état des impayés
+                </span>
+            @endif
         </div>
 
         <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">

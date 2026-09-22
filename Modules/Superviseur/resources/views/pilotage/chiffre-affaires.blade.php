@@ -32,6 +32,7 @@ state([
      * rattaché. Voir PeutVenirDUnImport.
      */
     'origineFiltre' => '',
+    'etatImpayesFiltre' => '',
     'pageDetail' => 1,
 ]);
 
@@ -189,6 +190,14 @@ $requeteDetail = computed(function () {
         $q->saisieManuelle();
     }
 
+    /* Portée à l'état, ou réglée : ce sont les deux états d'une facture vue depuis le
+       recouvrement, et on ne porte à l'état que ce qui reste dû. */
+    if ($this->etatImpayesFiltre === 'portee') {
+        $q->whereNotNull('exercice_impayes');
+    } elseif ($this->etatImpayesFiltre === 'reglee') {
+        $q->whereNull('exercice_impayes');
+    }
+
     return $q;
 });
 
@@ -199,6 +208,12 @@ $requeteDetail = computed(function () {
 $peutPorter = computed(fn () => auth()->user()->hasAnyRole(['gerant', 'responsable_ville', 'responsable_site']));
 
 $nombreDetail = computed(fn () => (clone $this->requeteDetail)->count());
+
+/* Combien de lignes derrière chaque choix, pour que le filtre annonce ce qu'il va trouver. */
+$comptesParEtat = computed(fn () => [
+    'portee' => (clone $this->requeteBase)->whereNotNull('exercice_impayes')->count(),
+    'reglee' => (clone $this->requeteBase)->whereNull('exercice_impayes')->count(),
+]);
 
 /**
  * Seule la page affichée se charge : dix factures, et non toutes celles de la période.
@@ -275,6 +290,19 @@ $comptesParOrigine = computed(fn () => [
             </select>
             {{-- Le décompte est dans l'intitulé de chaque choix : un filtre qui annonce
                  « 0 » avant qu'on le choisisse évite le clic qui ne trouve rien. --}}
+            {{-- L'état des impayés a deux valeurs et pas trois : une facture y est portée, ou
+                 elle ne l'est pas — auquel cas elle est réglée, puisqu'on ne porte à l'état
+                 que ce qui reste dû. Le filtre reprend donc les mots de l'écran des impayés,
+                 et non un vocabulaire de plus. --}}
+            <select wire:model.live="etatImpayesFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
+                <option value="" @selected($etatImpayesFiltre === '')>État : toutes</option>
+                <option value="portee" @selected($etatImpayesFiltre === 'portee')>
+                    Portées à l'état ({{ $this->comptesParEtat['portee'] }})
+                </option>
+                <option value="reglee" @selected($etatImpayesFiltre === 'reglee')>
+                    Réglées ({{ $this->comptesParEtat['reglee'] }})
+                </option>
+            </select>
             <select wire:model.live="origineFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
                 <option value="" @selected($origineFiltre === '')>Origine : toutes</option>
                 <option value="import" @selected($origineFiltre === 'import')>
@@ -310,6 +338,7 @@ $comptesParOrigine = computed(fn () => [
                         @if ($this->peutPorter)
                             <th>État des impayés</th>
                         @endif
+                        <th class="colonne-collee"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -373,9 +402,23 @@ $comptesParOrigine = computed(fn () => [
                                     @endif
                                 </td>
                             @endif
+                            {{-- Le détail s'ouvre dans sa page, et non sous la ligne : déplié
+                                 ici, il pousserait les quinze colonnes vers le bas et se
+                                 perdrait au premier changement de page. C'est la même page
+                                 que celle d'une créance — c'est la même facture. --}}
+                            <td class="colonne-collee" style="text-align:right;">
+                                {{-- La page de détail vit dans l'état des impayés, qui n'est pas
+                                     ouvert au responsable commercial : un bouton qui répond
+                                     « interdit » vaut moins qu'un bouton absent. --}}
+                                @if ($this->peutPorter)
+                                    <a href="{{ route('impayes.detail', $ligne->id) }}" wire:navigate
+                                        class="bouton bouton-secondaire"
+                                        style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="(count($this->idsSites) > 1 ? 16 : 15) + ($this->peutPorter ? 1 : 0)" texte="Aucune facture enregistrée sur cette période." />
+                        <x-table-vide :colspan="(count($this->idsSites) > 1 ? 17 : 16) + ($this->peutPorter ? 1 : 0)" texte="Aucune facture enregistrée sur cette période." />
                     @endforelse
                 </tbody>
             </table>
