@@ -12,6 +12,7 @@ state([
     'chgDate' => null,
     'chgTypeOp' => 'Charges',
     'chgLibelle' => 'Achats pièces',
+    'chgMotif' => '',
     'chgMoyen' => 'Espèces',
     'chgMontant' => '',
     'chgTiers' => '',
@@ -73,13 +74,18 @@ $ajouterCharge = function () {
         'chgDate' => ['required', 'date'],
         'chgTypeOp' => ['required', 'in:Charges,Décaissements'],
         'chgLibelle' => ['required', 'string'],
+        /* Le motif est obligatoire, et il n'est pas le libellé : celui-ci range la dépense
+           dans une catégorie comptable choisie dans une liste, celui-là dit ce qui s'est
+           passé ce jour-là. Trois mois plus tard, devant un relevé, c'est le second qu'on
+           cherche. */
+        'chgMotif' => ['required', 'string', 'max:190'],
         'chgMoyen' => ['required', Rule::in(array_keys($this->optionsMoyenPaiement))],
         'chgMontant' => ['required', 'numeric', 'min:1'],
         'chgTiers' => ['nullable', 'string', 'max:255'],
         'chgActivite' => ['nullable', 'in:Mécanique,Sinistre'],
         'chgReference' => ['nullable', 'string', 'max:60'],
         'chgObs' => ['nullable', 'string'],
-    ], [], ['chgMontant' => 'montant', 'chgLibelle' => "libellé d'opération"]);
+    ], [], ['chgMontant' => 'montant', 'chgLibelle' => "libellé d'opération", 'chgMotif' => 'motif']);
 
     $typeOperation = 'Charges';
     if ($donnees['chgTypeOp'] === 'Décaissements') {
@@ -93,6 +99,7 @@ $ajouterCharge = function () {
         'type_operation' => $typeOperation,
         'activite' => $donnees['chgActivite'] ?: null,
         'libelle' => $donnees['chgLibelle'],
+        'motif' => $donnees['chgMotif'],
         'moyen' => $donnees['chgMoyen'],
         'montant' => (int) $donnees['chgMontant'],
         'tiers' => $donnees['chgTiers'] ?: null,
@@ -101,7 +108,7 @@ $ajouterCharge = function () {
         'cree_par' => auth()->id(),
     ]);
 
-    $this->reset(['chgMontant', 'chgTiers', 'chgObs', 'chgActivite', 'chgReference']);
+    $this->reset(['chgMontant', 'chgMotif', 'chgTiers', 'chgObs', 'chgActivite', 'chgReference']);
     $this->chgTypeOp = 'Charges';
     $this->chgLibelle = 'Achats pièces';
     $this->chgMoyen = 'Espèces';
@@ -141,6 +148,8 @@ $ajouterCharge = function () {
                 <x-champ label="Date" model="chgDate" type="date" live="true" width="150" />
                 <x-champ label="Type d'opération" model="chgTypeOp" type="select" live="true" :options="['Charges' => 'Charges', 'Décaissements' => 'Décaissements']" width="160" />
                 <x-champ label="Libellé d'opération" model="chgLibelle" type="select" :options="array_combine($this->libellesOperation, $this->libellesOperation)" width="220" />
+                <x-champ label="Motif" model="chgMotif" :requis="true" width="260"
+                    placeholder="Ce qui s'est passé ce jour-là" />
                 <x-champ label="Moyens" model="chgMoyen" type="select" :options="$this->optionsMoyenPaiement" width="150" />
                 <x-champ label="Montant (FCFA)" model="chgMontant" type="number" width="150" />
                 <x-champ label="Tiers" model="chgTiers" placeholder="Ex : fournisseur, bénéficiaire…" />
@@ -161,7 +170,7 @@ $ajouterCharge = function () {
                 <table class="tableau">
                     <thead>
                         <tr>
-                            <th>N°</th><th>Type d'opération</th><th>Activité</th><th>Libellé</th><th>Moyens</th>
+                            <th>N°</th><th>Type d'opération</th><th>Activité</th><th>Libellé</th><th>Motif</th><th>Moyens</th>
                             <th>Montant</th><th>Tiers</th><th>Origine / référence</th><th>Observations</th>
                         </tr>
                     </thead>
@@ -172,6 +181,9 @@ $ajouterCharge = function () {
                                 <td>{{ $c->type_operation }}</td>
                                 <td>{{ $c->activite ?? '—' }}</td>
                                 <td>{{ $c->libelle }}</td>
+                                {{-- Les lignes d'avant le 24/09 n'ont pas de motif : on ne
+                                     leur en invente pas un. --}}
+                                <td>{{ $c->motif ?: '—' }}</td>
                                 <td>{{ $c->moyen }}</td>
                                 <td style="font-weight:700; color:#C8102E; font-variant-numeric:tabular-nums;">{{ ae($c->montant) }}</td>
                                 <td>{{ $c->tiers ?? '—' }}</td>
@@ -179,7 +191,7 @@ $ajouterCharge = function () {
                                 <td style="color:#6B6E76;">{{ $c->observations ?? '—' }}</td>
                             </tr>
                         @empty
-                            <x-table-vide :colspan="8" texte="Aucun décaissement pour cette journée." />
+                            <x-table-vide :colspan="10" texte="Aucun décaissement pour cette journée." />
                         @endforelse
                     </tbody>
                 </table>

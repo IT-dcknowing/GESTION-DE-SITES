@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Modules\Noyau\Commun\Concerns\AppartientAUneEntreprise;
+use Spatie\Activitylog\Contracts\Activity;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 /**
  * Ce que l'entreprise sait d'un fournisseur, indépendamment de ses factures.
@@ -37,8 +40,98 @@ use Modules\Noyau\Commun\Concerns\AppartientAUneEntreprise;
 class FournisseurReferentiel extends Model
 {
     use AppartientAUneEntreprise;
+    use LogsActivity;
 
     protected $table = 'referentiel_fournisseurs';
+
+    /**
+     * Ce que le journal retient d'une fiche corrigée à la main.
+     *
+     * **La fiche est corrigeable depuis le 24/09**, et c'est précisément pour cela qu'elle
+     * se journalise. Jusque-là elle ne venait que du classeur : la corriger à l'écran
+     * crée une seconde source, et une seconde source sans trace est un chiffre dont plus
+     * personne ne sait d'où il sort. Le nom normalisé n'y figure pas — il se déduit du nom
+     * et n'est jamais saisi.
+     */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly([
+                'nom', 'delai_reglement', 'jours_reglement', 'fin_de_mois',
+                'assujetti_tva', 'note',
+            ])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
+
+    /**
+     * Ce que le journal garde en plus du « qui » et du « quoi » : d'où, et sur quel écran.
+     *
+     * Le propriétaire l'a demandé en ouvrant la correction à la main : savoir qui a
+     * changé quoi ne suffit pas s'il faut ensuite demander à la personne d'où elle l'a
+     * fait. Le « poste » est ce que le navigateur déclare de lui-même — un serveur ne
+     * connaît pas le nom de la machine qui l'appelle — et l'écran vient du référent HTTP.
+     * L'heure, elle, est celle de la trace.
+     */
+    public function tapActivity(Activity $trace, string $evenement): void
+    {
+        $requete = request();
+
+        $trace->properties = $trace->properties->merge([
+            'ip' => $requete?->ip(),
+            'poste' => mb_substr((string) $requete?->userAgent(), 0, 255) ?: null,
+            'ecran' => mb_substr((string) $requete?->headers->get('referer', ''), 0, 255) ?: null,
+        ]);
+    }
+
+    /**
+     * Corrige une fiche à la main, et laisse la trace de ce geste.
+     *
+     * **Le nom d'une fiche venue d'un classeur ne se corrige pas ici.** C'est la clé qui
+     * relie la fiche à ses factures : la changer orpheline la fiche, et le prochain dépôt
+     * en recréerait une sous l'ancien nom — deux fiches pour un fournisseur, dont une que
+     * plus rien n'alimente. C'est la même règle que les quatre champs verrouillés d'une
+     * pièce fournisseur importée, et pour la même raison. La correction du nom se fait
+     * dans le classeur, qui la reposera au dépôt suivant.
+     *
+     * **Les jours et le « fin de mois » ne se saisissent pas davantage** : ils sont la
+     * lecture du libellé, relue ici comme à l'import. Les laisser saisir permettrait
+     * d'écrire « Comptant » et « 30 jours » sur la même fiche.
+     *
+     * @param  array{delai_reglement: string|null, assujetti_tva: bool|null, note: string|null, nom?: string|null}  $valeurs
+     */
+    public function corriger(array $valeurs): self
+    {
+        $libelle = trim((string) ($valeurs['delai_reglement'] ?? '')) ?: null;
+        $terme = self::lireLeTerme($libelle);
+
+        // Le nom n'est modifiable que sur une fiche saisie à la main : aucun fichier ne
+        // viendra la revendiquer, donc rien ne se désappariera.
+        if ($this->lot_import_id === null && array_key_exists('nom', $valeurs)) {
+            $nom = trim((string) $valeurs['nom']);
+
+            if ($nom !== '') {
+                $this->nom = $nom;
+                $this->nom_normalise = self::clePour($nom);
+            }
+        }
+
+        $this->delai_reglement = $libelle;
+        $this->jours_reglement = $terme['jours'];
+        $this->fin_de_mois = $terme['finDeMois'];
+        $this->assujetti_tva = $valeurs['assujetti_tva'];
+        $this->note = trim((string) ($valeurs['note'] ?? '')) ?: null;
+
+        $this->save();
+
+        return $this;
+    }
+
+    /** Les champs qu'une fiche venue d'un classeur ne laisse pas corriger ici. */
+    public function champsVerrouilles(): array
+    {
+        return $this->lot_import_id === null ? [] : ['nom'];
+    }
 
     protected function casts(): array
     {

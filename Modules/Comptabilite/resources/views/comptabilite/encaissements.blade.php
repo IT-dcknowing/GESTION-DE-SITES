@@ -15,6 +15,7 @@ state([
     'recherche' => '',
     'factureId' => null,
     'montant' => '',
+    'motif' => '',
     'moyen' => 'Espèces',
     'message' => null,
     'pageAttente' => 1,
@@ -57,7 +58,7 @@ $choisirFacture = function (int $id) {
 };
 
 $annuler = function () {
-    $this->reset(['factureId', 'montant']);
+    $this->reset(['factureId', 'montant', 'motif']);
     $this->moyen = 'Espèces';
 };
 
@@ -66,7 +67,12 @@ $encaisser = function () {
         'factureId' => ['required', 'integer'],
         'montant' => ['required', 'numeric', 'min:1'],
         'moyen' => ['required', Rule::in(array_keys($this->optionsMoyenPaiement))],
-    ], [], ['montant' => 'montant', 'moyen' => 'moyen de paiement']);
+        /* Le motif est obligatoire : une facture se règle en plusieurs fois, et savoir
+           pourquoi celui-ci arrive aujourd'hui — un acompte convenu, un déblocage
+           d'assurance, une remise de chèque — est ce qu'on cherche trois mois plus tard
+           devant un relevé. Le numéro de facture dit sur quoi, pas pourquoi. */
+        'motif' => ['required', 'string', 'max:190'],
+    ], [], ['montant' => 'montant', 'moyen' => 'moyen de paiement', 'motif' => 'motif']);
 
     $montant = (int) $donnees['montant'];
     $encaissement = null;
@@ -94,6 +100,7 @@ $encaisser = function () {
             // c'est ce qui rend la ligne ventilable et rapprochable plus tard.
             'activite' => $facture->activite,
             'moyen' => $donnees['moyen'],
+            'motif' => $donnees['motif'],
             'montant' => $montant,
             'client' => $facture->client,
             'reference_origine' => $facture->n_facture,
@@ -120,7 +127,7 @@ $encaisser = function () {
         lien: route('tresorerie'),
     );
 
-    $this->reset(['factureId', 'montant']);
+    $this->reset(['factureId', 'montant', 'motif']);
     $this->moyen = 'Espèces';
     unset($this->facturesEnAttente, $this->mesEncaissementsDuJour);
     $this->message = 'Encaissement enregistré — visible aussitôt chez le responsable du site.';
@@ -209,6 +216,15 @@ $encaisser = function () {
                     @endforeach
                 </select>
 
+                <label class="champ-libelle">Motif <span style="color:var(--th-accent);">*</span></label>
+                <input type="text" wire:model="motif" value="{{ $motif }}" class="champ" style="margin-bottom:4px;"
+                    placeholder="Acompte convenu, déblocage assurance, remise de chèque…">
+                @error('motif') <div style="color:#C8102E; font-size:13.5px; margin-bottom:8px;">{{ $message }}</div> @enderror
+                <p style="font-size:12px; color:#9A9DA5; margin:0 0 14px;">
+                    Le n° de facture dit sur quoi porte ce règlement ; le motif dit pourquoi il arrive
+                    aujourd'hui. C'est le second qu'on cherche devant un relevé, trois mois plus tard.
+                </p>
+
                 <div style="display:flex; gap:10px;">
                     <button type="button" wire:click="encaisser" class="bouton">Valider l'encaissement</button>
                     <button type="button" wire:click="annuler" class="bouton bouton-secondaire">Annuler</button>
@@ -223,13 +239,16 @@ $encaisser = function () {
         <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Mes encaissements du jour</h3>
         <div class="tableau-conteneur">
             <table class="tableau">
-                <thead><tr><th>N° encaissement</th><th>N° facture</th><th>Client</th><th>Moyen</th><th>Montant</th></tr></thead>
+                <thead><tr><th>N° encaissement</th><th>N° facture</th><th>Client</th><th>Motif</th><th>Moyen</th><th>Montant</th></tr></thead>
                 <tbody>
                     @forelse ($this->mesEncaissementsDuJour->forPage($pageDuJour, 10) as $e)
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td><x-numero-ligne :ligne="$e" /></td>
                             <td style="font-weight:700;">{{ $e->facture?->n_facture ?? '—' }}</td>
                             <td>{{ $e->client ?? '—' }}</td>
+                            {{-- Les lignes d'avant le 24/09 n'ont pas de motif : on ne leur
+                                 en invente pas un. --}}
+                            <td>{{ $e->motif ?: '—' }}</td>
                             <td>{{ $e->moyen }}</td>
                             <td style="font-weight:700; color:#0E9F6E; font-variant-numeric:tabular-nums;">{{ ae($e->montant) }}</td>
                         </tr>

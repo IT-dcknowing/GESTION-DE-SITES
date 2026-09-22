@@ -18,6 +18,7 @@ use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Modeles\FournisseurReferentiel;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Services\Executeur;
+use Spatie\Activitylog\Models\Activity;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\ConstruitDesClasseurs;
 use Tests\TestCase;
@@ -350,6 +351,105 @@ class LeReferentielFournisseurEntreTest extends TestCase
 
         Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs')
             ->assertSee('attendue');
+    }
+
+    // ------------------------------------------------- la correction à la main
+
+    public function test_une_fiche_se_corrige_et_la_trace_reste(): void
+    {
+        $this->importer();
+        $fiche = $this->fiche('CFAO TOYOTA');
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.referentiel-fournisseurs')
+            ->call('corriger', $fiche->id)
+            ->set('delai', '45 jours')
+            ->set('tva', 'non')
+            ->set('note', 'Limite compte 12 500 000 FCFA')
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        $fiche = $fiche->fresh();
+        $this->assertSame('45 jours', $fiche->delai_reglement);
+        // Les jours se relisent du libellé, ils ne se saisissent pas : deux saisies pour
+        // une même chose finissent par se contredire.
+        $this->assertSame(45, $fiche->jours_reglement);
+        $this->assertFalse($fiche->assujetti_tva);
+
+        $trace = Activity::query()
+            ->where('subject_type', (new FournisseurReferentiel)->getMorphClass())
+            ->where('subject_id', $fiche->id)
+            ->latest('id')
+            ->firstOrFail();
+
+        // Qui, quoi, quand — et d'où : c'est ce dernier point qui était demandé.
+        $this->assertSame('30 jours', $trace->properties['old']['delai_reglement']);
+        $this->assertSame('45 jours', $trace->properties['attributes']['delai_reglement']);
+        $this->assertArrayHasKey('ip', $trace->properties->toArray());
+        $this->assertArrayHasKey('poste', $trace->properties->toArray());
+        $this->assertNotNull($trace->created_at);
+    }
+
+    public function test_le_nom_d_une_fiche_venue_d_un_classeur_est_verrouille(): void
+    {
+        $this->importer();
+        $fiche = $this->fiche('CFAO TOYOTA');
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.referentiel-fournisseurs')
+            ->call('corriger', $fiche->id)
+            ->set('nom', 'CFAO TOYOTA CI')
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        // Le nom est la clé qui relie la fiche à ses factures : le changer l'orphelinerait,
+        // et le prochain dépôt en recréerait une sous l'ancien nom.
+        $this->assertSame('CFAO TOYOTA', $fiche->fresh()->nom);
+    }
+
+    public function test_une_fiche_saisie_a_la_main_laisse_corriger_son_nom(): void
+    {
+        $fiche = FournisseurReferentiel::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'nom' => 'BERNABE CI',
+            'nom_normalise' => FournisseurReferentiel::clePour('BERNABE CI'),
+        ]);
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.referentiel-fournisseurs')
+            ->call('corriger', $fiche->id)
+            ->set('nom', 'BERNABE COTE D\'IVOIRE')
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        // Aucun fichier ne viendra la revendiquer : rien ne se désapparie.
+        $fiche = $fiche->fresh();
+        $this->assertSame('BERNABE COTE D\'IVOIRE', $fiche->nom);
+        $this->assertSame(FournisseurReferentiel::clePour('BERNABE COTE D\'IVOIRE'), $fiche->nom_normalise);
+    }
+
+    public function test_le_responsable_d_atelier_lit_le_referentiel_sans_le_corriger(): void
+    {
+        $this->importer();
+        $fiche = $this->fiche('CFAO TOYOTA');
+
+        // Une route protégée ne protège que l'entrée : l'action se revérifie.
+        Volt::actingAs($this->compte('responsable_site'))->test('pilotage.referentiel-fournisseurs')
+            ->call('corriger', $fiche->id)
+            ->assertForbidden();
+    }
+
+    public function test_un_terme_qu_on_ne_sait_pas_lire_se_conserve_sans_produire_de_date(): void
+    {
+        $this->importer();
+        $fiche = $this->fiche('CFAO TOYOTA');
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.referentiel-fournisseurs')
+            ->call('corriger', $fiche->id)
+            ->set('delai', '30 jours après réception')
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        $fiche = $fiche->fresh();
+        $this->assertSame('30 jours après réception', $fiche->delai_reglement);
+        $this->assertNull($fiche->jours_reglement);
     }
 
     public function test_la_page_du_referentiel_s_ouvre(): void
