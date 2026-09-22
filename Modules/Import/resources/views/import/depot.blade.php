@@ -508,9 +508,18 @@ $abandonner = function () {
                                 @if ($ligne['source'])
                                     <div style="color:#6B6E76; font-size:11.5px; margin-top:3px;">{{ $ligne['source'] }}</div>
                                 @endif
+                                @if ($ligne['ecarte'] && $ligne['note'])
+                                    {{-- La raison, et pas seulement le refus : sans elle, la
+                                         décision se reprend tous les trois mois. --}}
+                                    <div style="color:#6B6E76; font-size:11.5px; margin-top:5px; line-height:1.45;">
+                                        {{ $ligne['note'] }}
+                                    </div>
+                                @endif
                             </td>
                             <td style="white-space:nowrap;">
-                                @if ($ligne['dernier'])
+                                @if ($ligne['ecarte'])
+                                    <span class="pastille pTermine">décidé le 18/09</span>
+                                @elseif ($ligne['dernier'])
                                     {{ $ligne['dernier']->created_at?->format('d/m/Y') }}
                                     <div style="color:#6B6E76; font-size:11.5px;">
                                         {{ $ligne['lots'] }} dépôt(s) · {{ $ligne['dernier']->deposant }}
@@ -521,7 +530,10 @@ $abandonner = function () {
                             </td>
                             <td style="font-size:11.5px;">{{ $ligne['villes'] ? implode(', ', $ligne['villes']) : '—' }}</td>
                             <td style="font-size:11.5px;">
-                                @if ($ligne['disponible'] && $ligne['manquantes'])
+                                @if ($ligne['ecarte'])
+                                    {{-- Ni retard ni manque : ce fichier n'est pas attendu. --}}
+                                    <span style="color:#6B6E76;">sans objet</span>
+                                @elseif ($ligne['disponible'] && $ligne['manquantes'])
                                     <span class="pastille pVide">{{ implode(', ', $ligne['manquantes']) }}</span>
                                 @elseif ($ligne['manquantes'])
                                     <span style="color:#6B6E76;">{{ implode(', ', $ligne['manquantes']) }}</span>
@@ -530,7 +542,9 @@ $abandonner = function () {
                                 @endif
                             </td>
                             <td class="num">
-                                @if ($ligne['lignes_en_base'] === null)
+                                @if ($ligne['ecarte'])
+                                    <span style="color:#6B6E76;">—</span>
+                                @elseif ($ligne['lignes_en_base'] === null)
                                     <span style="color:#C8102E; font-size:11.5px; font-family:var(--font-sans);">table à créer</span>
                                 @else
                                     {{ number_format($ligne['lignes_en_base'], 0, ',', ' ') }}

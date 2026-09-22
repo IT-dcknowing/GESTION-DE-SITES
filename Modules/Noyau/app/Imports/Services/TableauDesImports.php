@@ -5,6 +5,7 @@ namespace Modules\Noyau\Imports\Services;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Modeles\LotImport;
 
@@ -32,7 +33,8 @@ class TableauDesImports
      * Où en est chaque type d'import.
      *
      * @return Collection<int, array{
-     *     cle: string, libelle: string, disponible: bool, source: string|null, note: string|null,
+     *     cle: string, libelle: string, disponible: bool, ecarte: bool,
+     *     source: string|null, note: string|null,
      *     table: string|null, lignes_en_base: int|null,
      *     dernier: LotImport|null, lots: int, villes: list<string>, manquantes: list<string>
      * }>
@@ -46,7 +48,7 @@ class TableauDesImports
             ->get()
             ->groupBy('format');
 
-        $toutesLesVilles = \Modules\Noyau\Entreprises\Modeles\Ville::withoutGlobalScopes()
+        $toutesLesVilles = Ville::withoutGlobalScopes()
             ->where('entreprise_id', $this->entrepriseId)
             ->where('est_actif', true)
             ->orderBy('nom')
@@ -63,6 +65,25 @@ class TableauDesImports
             $lignes->push($this->ligne($cle, $meta['libelle'], false, $lots, $toutesLesVilles, $meta));
         }
 
+        /*
+         * Ce qu'on a regardé puis écarté figure ici, et pas ailleurs.
+         *
+         * Celui qui tient un export de fiches de réception vient sur cet écran : ne rien y
+         * trouver ne lui dit pas si c'est un oubli ou une décision. Il redemande, ou il
+         * attend. Une décision qui ne se lit nulle part se reprend tous les trois mois.
+         */
+        foreach (Registre::ECARTES as $cle => $meta) {
+            $lignes->push($this->ligne(
+                $cle,
+                $meta['libelle'],
+                false,
+                $lots,
+                $toutesLesVilles,
+                ['source' => $meta['source'], 'note' => $meta['pourquoi']],
+                true,
+            ));
+        }
+
         return $lignes;
     }
 
@@ -74,8 +95,17 @@ class TableauDesImports
         'impayes' => 'factures',
         'fournisseurs' => 'factures_fournisseurs',
         'caisse' => 'mouvements_caisse',
-        // Les entrées et sorties ont bien leur table, mais aucun lecteur : les fichiers
-        // sortent du logiciel en PDF. Rien à compter tant que l'export Excel manque.
+        // Le journal imprimé alimente la même table que le classeur tenu à la main : ce sont
+        // deux sources pour une seule caisse, et c'est bien la même caisse qu'on compte.
+        'journal-caisse' => 'mouvements_caisse',
+        // Les deux exports du logiciel comptable, entrés les 21 et 22/09. Sans eux, trois
+        // des onze types n'affichaient aucun compteur — or la question de cet écran est
+        // « qu'est-ce qui manque encore ? ».
+        'balance-fournisseurs' => 'soldes_fournisseur',
+        'reglements-fournisseurs' => 'reglements_fournisseur',
+        // Les entrées et sorties ont leurs deux lecteurs depuis qu'un export Excel existe :
+        // le commentaire qui disait ici « aucun lecteur, les fichiers sortent en PDF »
+        // était resté en place après eux.
         'entrees' => 'mouvements_vehicules',
         'sorties' => 'mouvements_vehicules',
     ];
@@ -87,6 +117,7 @@ class TableauDesImports
         Collection $lots,
         array $toutesLesVilles,
         ?array $meta = null,
+        bool $ecarte = false,
     ): array {
         $siens = $lots->get($cle, collect())->filter(fn (LotImport $l) => $l->etat === 'termine');
         $villes = $siens->pluck('ville.nom')->filter()->unique()->values()->all();
@@ -96,6 +127,7 @@ class TableauDesImports
             'cle' => $cle,
             'libelle' => $libelle,
             'disponible' => $disponible,
+            'ecarte' => $ecarte,
             'source' => $meta['source'] ?? null,
             'note' => $meta['note'] ?? null,
             'table' => $table,

@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (5e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (6e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 805 tests, 798 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 813 tests, 806 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -149,6 +149,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | la feuille **« Liste fournisseurs »** devient un référentiel : terme de règlement, TVA, plafond d'encours, lus au même dépôt que les factures ; l'échéance attendue apparaît là où le fichier n'en donne pas (5 184 pièces sur 7 350), sans jamais s'écrire ; page `/fournisseurs/referentiel`, qui nomme aussi les 45 fournisseurs facturés absents de la liste |
 | 24/09 | voir `git log` | **creances** | **les colonnes d'une page listent d'abord celles du fichier** : les entrées et sorties reçoivent les quatre colonnes qui n'avaient nulle part où aller (travaux, propriétaire, déposant, **date de livraison prévue — 147 sur 147**), et l'indicateur « promesse de sortie dépassée » devient calculable — **60 véhicules** ; les pages de détail lisent désormais `colonnes()` du format, ce qui rend sept colonnes fournisseur oubliées, dont « TVA 2 » |
 | 24/09 | voir `git log` | **creances** | le **n° de fiche de réception** devient la clé qui relie les états : la fiche du parc montre son devis, sa facture et ses mouvements, et le numéro s'ouvre d'un clic depuis les devis, le chiffre d'affaires et les entrées/sorties. Le rapprochement se fait par égalité — mesuré identique à une forme normalisée, donc aucune colonne de plus |
+| 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -306,7 +307,8 @@ migration `2026_09_16_000002` est passée sur le serveur). Fusionnée aussi dans
 - `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.pdf` (7 pages) — ce qui est en service, les onze
   chantiers, les fichiers tenus à la main, l'inventaire du dossier IMPORT, le barème et le
   déroulé de la semaine.
-- `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` — le même plan pour le suivi : un chantier par
+- `plan-a-jour.xlsx` (nommé `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` jusqu'au 24/09,
+  renommé à la demande du propriétaire) — le même plan pour le suivi : un chantier par
   ligne, groupés par module avec une ligne vide entre deux modules, colonne **Statut** à liste
   déroulante (À faire · En cours · Bloqué · À valider · Terminé · Abandonné) et colonnes
   **Début** / **Fin** au format date.
@@ -333,7 +335,7 @@ ce qu'on voulait dire.
 | 3 | **Extrait de compte** | ✅ **Fait le 21/09.** Date de facturation (qui dit enfin laquelle), date de dépôt, n° de sinistre, et le tiers « pour le compte de » — à l'écran **et** dans le fichier emporté, qui n'en avait aucune |
 | 4 | **Prospection → devis → facture** | ✅ **Fait les 21 et 22/09, les deux maillons.** **Tranché autrement le 22/09** : quand le commercial coche « devis après passage », il tient le devis — le **n° du devis devient obligatoire à cet instant** (`prospections.n_devis`, migration `2026_09_22_000001`), et le rapprochement n'a plus rien à deviner. Le numéro du devis plutôt que celui de la fiche, parce qu'il désigne **un** devis quand une fiche peut en porter plusieurs ; le champ accepte néanmoins un n° de fiche, pour ne pas bloquer qui n'a que lui. La piste « devis déclaré » passe en tête du rapprochement, devant la fiche, la plaque et le nom. La prospection porte `immatriculation` et `n_fiche_reception`, tous deux facultatifs (migration additive `2026_09_21_000003`). `RapprochementProspectionDevis` propose trois pistes, de la plus sûre à la plus faible — même fiche, même plaque (lue sur la fiche du devis), même client — dans une fenêtre réglable (15 jours par défaut, jamais vers le passé). Écran `/rapprochement-prospections-devis` : on confirme ou l'on écarte, ligne par ligne ; le refus se garde avec son auteur (`rapprochements_ecartes`). Confirmer porte le devis au commercial de la prospection. Fermé au commercial lui-même. **Second maillon ajouté le soir** : `RapprochementDevisFacture` relie la facture à son devis (par la fiche que `reference_devis` contient réellement, par le numéro du devis, ou par la plaque) et lui porte son commercial — c'est ce geste qui fait exister la commission. Second volet du même écran, table `ecarts_devis_facture` (migration `2026_09_21_000005`) |
 | 5 | **Deux gestes** | ✅ **Fait le 21/09.** `SuppressionDUneCreance` : gérant seul, rien de réglé, rien d'importé, confirmation sur la ligne, ligne entière au journal. Filtre « du … au … » au jour sur les douze écrans — **et réparé** : voir l'encadré |
-| 6 | **N° de fiche de réception** | Relevé fait : présent partout sauf chez les fournisseurs — parc, entrées, sorties, fiches, devis, factures ; dans le libellé pour la caisse. Depuis le 21/09 il est aussi **saisissable sur la prospection**, où il manquait ; c'est le seul endroit où il servait de clé et n'existait pas |
+| 6 | **N° de fiche de réception** | ✅ **Fait le 24/09** — voir « Le n° de fiche de réception, clé de rapprochement » plus bas. Relevé corrigé : présent dans le parc, les entrées, les sorties, les fiches, les devis et les factures ; **absent chez les fournisseurs et absent de la caisse** — le relevé du 18/09 l'annonçait « dans le libellé pour la caisse », or aucun des 1 155 libellés ni aucun des motifs n'en porte. Depuis le 21/09 il est aussi **saisissable sur la prospection**, où il manquait ; c'est le seul endroit où il servait de clé et n'existait pas |
 | 7 | **Caisse par véhicule** | ✅ **Fait le 21/09.** Page `/caisse/vehicule` : la plaque ramène sa fiche de réception, ses mouvements de caisse, ses factures avec leur reste à payer, et ses notes. Table `notes_vehicule` (migration `2026_09_21_000002`) : les notes s'empilent, chacune avec son auteur |
 | 8 | **Trésorerie** | ✅ **Fait le 21/09.** Bouton *Détail* sur chaque encaissement et décaissement (référence, origine — saisie avec son code auteur ou fichier importé —, atelier, facture réglée) ; bloc « Ce que “Autres” recouvre », poste par poste. `PeutVenirDUnImport` gagne la relation `lot()`, qui manquait |
 | 9 | **Fournisseurs** | ✅ **Fait le 21/09.** « Déjà payé » et sa part de l'engagé dans le tableau de tête ; export créé (`fournisseurs.telecharger`) — l'écran était le seul tableau sans aucun téléchargement |
@@ -792,15 +794,49 @@ situation étant une extraction à une date.
 Tests : `LeNumeroDeFicheRelieLesEtatsTest` (13). Aucune migration : ce chantier n'ajoute pas
 une colonne.
 
+### Un fichier écarté le dit, et dit pourquoi
+
+✅ **Fait le 24/09.** La décision datait du 18/09 : ne pas écrire d'import pour les fiches de
+réception, puisque la situation du parc porte les mêmes fiches avec dix-sept colonnes — dont
+les travaux à effectuer, le statut et les sept dates. Elle était juste, et **invisible** :
+écrite ici, dans le dépôt de code, et nulle part dans l'application.
+
+Or celui qui tient un export de fiches de réception vient sur l'écran de dépôt. N'y trouvant
+rien, il ne peut pas savoir si c'est un oubli ou une décision : il redemande, ou il attend.
+**Une décision qui ne se lit nulle part se reprend tous les trois mois.**
+
+Le registre des formats avait deux catégories — ce qu'on sait lire, ce qu'on saura lire — et
+il en fallait une troisième : **ce qu'on a regardé puis écarté**. `Registre::ECARTES` la porte,
+avec pour chaque entrée sa source et sa raison, et le tableau de bord des imports l'affiche.
+Un écarté n'y est **ni un retard ni un manque** : la colonne « villes manquantes » dit « sans
+objet » au lieu de peindre trois villes en rouge, et le compteur affiche un tiret au lieu de
+« table à créer ».
+
+Le code client reste le seul manque du parc, et **décidé le 18/09 : on ne l'attend pas**.
+Mesuré le 24/09, il ne tiendrait de toute façon pas lieu de clé — il n'est renseigné que sur
+**2 377 des 11 332 factures**.
+
+**Deux affirmations périmées corrigées au passage**, toutes deux dans le tableau de bord des
+imports :
+
+- les entrées et sorties y portaient un commentaire disant qu'elles n'avaient « aucun lecteur,
+  les fichiers sortent en PDF ». Les deux lecteurs existent ;
+- **trois des onze types n'affichaient aucun compteur** — journal de caisse, balance et
+  règlements fournisseurs — faute de destination déclarée, et affichaient donc « table à
+  créer » en rouge alors que leurs tables sont pleines. Un test exige désormais que tout
+  format importable sache où il écrit.
+
+Tests : `UnFichierEcarteLeDitEtDitPourquoiTest` (8). Aucune migration.
+
 ### Où en est le plan
 
-Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09 : **69 lignes terminées, 6 à faire, 1 à
-valider** (l'envoi du courrier à M. Fofana), **1 abandonnée et 1 sans objet**. Six sections
+Le classeur `plan-a-jour.xlsx` porte le suivi : statut, date de début,
+date de fin, une ligne par chantier. Au 24/09 : **72 lignes terminées, 5 à faire, 1 à
+valider** (l'envoi du courrier à M. Fofana), **1 abandonnée et 1 sans objet**. Sept sections
 se sont ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
 joindre), la caisse (le journal imprimé), les fournisseurs — le registre par année, puis le
 référentiel et l’échéance attendue —, les colonnes du fichier écran par écran, et le n° de
-fiche comme clé de rapprochement.
+fiche comme clé de rapprochement, et ce qu'on a écarté.
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans
