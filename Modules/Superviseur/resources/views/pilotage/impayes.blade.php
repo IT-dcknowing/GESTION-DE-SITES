@@ -85,6 +85,38 @@ state(['recherche' => ''])->url(except: '');
 state(['dateDebut' => ''])->url(except: '');
 state(['dateFin' => ''])->url(except: '');
 
+/*
+ * Le mois, choisi dans l'année de l'état.
+ *
+ * **Il ne porte pas d'année, et c'est le point.** L'année est déjà choisie plus haut, dans
+ * le sélecteur d'exercice : la redemander ici en ferait deux à tenir d'accord, et le jour
+ * où elles divergent l'écran montre un mois qui n'est pas celui de l'état qu'on lit.
+ *
+ * Choisir un mois pose les deux bornes du « du … au … » : ce sont les mêmes bornes, prises
+ * d'un geste plutôt que de deux. Les saisir à la main ensuite rouvre le choix libre.
+ */
+state(['moisFiltre' => ''])->url(except: '');
+
+$updatedMoisFiltre = function () {
+    if ($this->moisFiltre === '') {
+        $this->dateDebut = '';
+        $this->dateFin = '';
+
+        return;
+    }
+
+    $premier = \Illuminate\Support\Carbon::create($this->annee, (int) $this->moisFiltre, 1);
+
+    $this->dateDebut = $premier->format('Y-m-d');
+    $this->dateFin = $premier->copy()->endOfMonth()->format('Y-m-d');
+};
+
+/** Les douze mois, dans les mots d'ici. */
+$moisDeLAnnee = computed(fn () => [
+    1 => 'Janvier', 2 => 'Février', 3 => 'Mars', 4 => 'Avril', 5 => 'Mai', 6 => 'Juin',
+    7 => 'Juillet', 8 => 'Août', 9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre',
+]);
+
 state([
     'page' => 1,
     'formulaireOuvert' => false,
@@ -176,7 +208,16 @@ on(['facture-portee' => function (int $exercice, string $texte) {
 
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; $this->page = 1; };
 $updatedSiteFiltre = function () { $this->page = 1; };
-$updatedExercice = function () { $this->page = 1; };
+$updatedExercice = function () {
+    $this->page = 1;
+
+    /* Changer d'exercice déplace le mois choisi dans la nouvelle année : le mois reste le
+       même, l'année suit l'état. Sans cela, on lirait l'état 2025 avec les bornes de 2026,
+       et le tableau serait vide sans qu'on comprenne pourquoi. */
+    if ($this->moisFiltre !== '') {
+        $this->updatedMoisFiltre();
+    }
+};
 $updatedStatutFiltre = function () { $this->page = 1; };
 $updatedReportFiltre = function () { $this->page = 1; };
 $updatedRecherche = function () { $this->page = 1; };
@@ -736,9 +777,16 @@ $basculerPortage = function () {
             <x-champ label="Origine de la ligne" model="reportFiltre" type="select" :live="true" width="190"
                 :options="['reportees' => 'Reportées d\'avant', 'annee' => 'Nées dans l\'année']" vide="Toutes" />
 
-            {{-- Le « du … au … » de l'état : sur le dépôt, sinon l'édition. Laissé vide, il ne
-                 retire rien — l'année de l'état reste le registre entier. --}}
-            <x-champ label="Déposée du" model="dateDebut" type="date" :live="true" width="150" />
+            {{-- Le mois pose les deux bornes d'un geste, dans l'année de l'état choisie
+                 plus haut. Il ne porte pas d'année à lui : deux années sur un même écran
+                 finissent par diverger. --}}
+            <x-champ label="Mois de {{ $this->annee }}" model="moisFiltre" type="select" :live="true" width="160"
+                :options="$this->moisDeLAnnee" vide="Toute l'année" />
+
+            {{-- Le « du … au … » de l'état : la date retenue est celle du dépôt quand elle
+                 existe, sinon celle de l'édition. Laissé vide, il ne retire rien — l'année
+                 de l'état reste le registre entier. --}}
+            <x-champ label="Du" model="dateDebut" type="date" :live="true" width="150" />
             <x-champ label="au" model="dateFin" type="date" :live="true" width="150" />
 
             <x-champ label="Recherche" model="recherche" :live="true"
