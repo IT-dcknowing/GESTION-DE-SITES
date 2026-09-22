@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
@@ -46,6 +47,27 @@ state(['villeFiltre' => ''])->url(except: '');
  * La clé est « prospection-devis » et non l'un des deux seuls : une même prospection peut
  * se voir proposer deux devis, et une même ligne de devis deux prospections.
  */
+/*
+ * Les bornes de temps, comme sur les autres écrans.
+ *
+ * L'écran ne se bornait que par la fenêtre entre les deux pièces — trois à quinze jours —
+ * et regardait toujours tout l'historique. On ne pouvait donc pas reprendre le mois écoulé,
+ * qui est pourtant le geste : on solde les rapprochements du mois avant d'arrêter les
+ * commissions.
+ *
+ * Par défaut, les bornes couvrent **l'exercice regardé**, comme sur tous les autres écrans :
+ * c'est la période dont on répond. Une proposition plus ancienne se retrouve en élargissant
+ * les bornes — elle n'est pas perdue, elle n'est pas de cet exercice.
+ */
+state([
+    'periode' => 'calendrier',
+    'dateDebut' => null,
+    'dateFin' => null,
+    'moisFiltre' => '',
+    'semaineFiltre' => '',
+    'jourFiltre' => '',
+]);
+
 state(['selection' => []]);
 state(['page' => 1]);
 state(['message' => '']);
@@ -56,6 +78,17 @@ $updatedFenetreFacture = function () { $this->oublier(); };
 $updatedVolet = function () { $this->motifFiltre = ''; $this->oublier(); };
 $updatedMotifFiltre = function () { $this->oublier(); };
 $updatedPage = function () { $this->selection = []; };
+$updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; $this->oublier(); };
+$updatedSemaineFiltre = function () { $this->jourFiltre = ''; $this->oublier(); };
+$updatedJourFiltre = function () { $this->oublier(); };
+$updatedPeriode = function () { $this->oublier(); };
+$updatedDateDebut = function () { $this->oublier(); };
+$updatedDateFin = function () { $this->oublier(); };
+
+$plage = computed(fn () => PeriodeCalculateur::plage(
+    $this->periode, $this->dateDebut, $this->dateFin,
+    $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null,
+));
 $updatedVilleFiltre = function () { $this->oublier(); };
 
 /** Les listes du bandeau, ramenées à ce qu'attend une liste déroulante. */
@@ -72,7 +105,9 @@ $idsSites = computed(fn () => PerimetreSites::idsRetenus(auth()->user(), $this->
 $idsSitesDuCompte = computed(fn () => PerimetreSites::idsRetenus(auth()->user(), '', ''));
 
 $propositions = computed(function () {
-    $lignes = RapprochementProspectionDevis::propositions($this->idsSites, (int) $this->fenetre);
+    $lignes = RapprochementProspectionDevis::propositions(
+        $this->idsSites, (int) $this->fenetre, 200, $this->plage,
+    );
 
     if ($this->motifFiltre !== '') {
         $lignes = $lignes->where('motif', $this->motifFiltre)->values();
@@ -88,7 +123,9 @@ $propositions = computed(function () {
  * facture le porte jusqu'au barème. L'un sans l'autre ne rémunère personne.
  */
 $propositionsFactures = computed(function () {
-    $lignes = RapprochementDevisFacture::propositions($this->idsSites, (int) $this->fenetreFacture);
+    $lignes = RapprochementDevisFacture::propositions(
+        $this->idsSites, (int) $this->fenetreFacture, 200, $this->plage,
+    );
 
     if ($this->motifFiltre !== '') {
         $lignes = $lignes->where('motif', $this->motifFiltre)->values();
@@ -370,6 +407,12 @@ $confirmerLesCertains = function () {
             2 — Devis → facture
         </button>
     </div>
+
+    {{-- Les bornes valent pour les deux volets : on solde le mois écoulé d'un bout à
+         l'autre, prospections puis factures. --}}
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin"
+        :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
+        masquer-activite />
 
     @if ($volet === 'prospections')
     <div class="carte" style="margin-bottom:16px;">
