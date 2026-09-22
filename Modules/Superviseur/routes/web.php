@@ -39,8 +39,13 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
  * **Le comptable y entre, et c'est le sens du chantier 11.** Il tenait la caisse sans
  * pouvoir lire l'état de cette caisse, ni la trésorerie qu'il alimente, ni ce que
  * l'entreprise doit à ses fournisseurs : trois écrans faits de ses propres écritures, et
- * fermés à lui. Ce sont des pages de lecture — aucune n'écrit quoi que ce soit — et son
- * périmètre s'y applique comme à tout le monde : il ne voit que sa ville.
+ * fermés à lui. Son périmètre s'y applique comme à tout le monde : il ne voit que sa ville.
+ *
+ * **Depuis le 24/09, l'une d'elles écrit.** Le suivi fournisseur reçoit une saisie — une
+ * facture arrivée entre deux dépôts n'avait nulle part où aller. Tout le monde n'a pas à
+ * engager l'entreprise auprès d'un fournisseur : le responsable d'atelier continue de lire
+ * la page, il n'y écrit pas. La règle est dans `EtatDesFournisseurs::peutEcrire()`, et elle
+ * est vérifiée dans l'action autant qu'ici — une route ne protège que l'entrée.
  *
  * **Ils restent fermés au responsable commercial.** Animer une équipe de vente ne donne
  * aucun titre à lire ce que l'entreprise dépense — et l'ouvrir « parce qu'il est
@@ -67,6 +72,10 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
      * réunir dans un seul tableau reviendrait à mélanger deux sources et à perdre la seule
      * chose qu'on cherche — leur écart.
      */
+    // La pièce, en entier : une quarantaine de colonnes que le tableau d'ensemble ne peut
+    // pas montrer, et qu'il fallait pouvoir lire — et corriger — quelque part.
+    Volt::route('/fournisseurs/piece/{piece}', 'pilotage.fournisseur-piece')
+        ->name('fournisseurs.piece')->whereNumber('piece');
     Volt::route('/fournisseurs/balance', 'pilotage.balance-fournisseurs')->name('balance-fournisseurs');
     Volt::route('/fournisseurs/reglements', 'pilotage.reglements-fournisseurs')->name('reglements-fournisseurs');
     // Emporter le même tableau, avec les mêmes filtres : l'habilitation est celle de

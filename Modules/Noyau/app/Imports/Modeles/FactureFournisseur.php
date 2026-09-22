@@ -2,6 +2,7 @@
 
 namespace Modules\Noyau\Imports\Modeles;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,7 +19,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
  * existante dans toute la chaîne.
  */
 #[Fillable([
-    'entreprise_id', 'ville_id', 'site_id', 'lot_import_id',
+    'entreprise_id', 'ville_id', 'site_id', 'lot_import_id', 'user_id',
     'numero_piece', 'nature_piece', 'numero_bc', 'fournisseur',
     'date_facture', 'date_reception', 'date_echeance', 'date_reglement',
     'montant', 'montant_regle', 'reste_a_payer', 'montant_refacture', 'marge',
@@ -81,6 +82,17 @@ class FactureFournisseur extends Model
     public function lot(): BelongsTo
     {
         return $this->belongsTo(LotImport::class, 'lot_import_id');
+    }
+
+    /**
+     * Qui a saisi cette pièce à la main — vide pour une ligne venue d'un fichier.
+     *
+     * Les deux relations se lisent ensemble : un lot et pas d'auteur, c'est un import ;
+     * un auteur et pas de lot, c'est une saisie. Aucune ligne n'a les deux.
+     */
+    public function auteur(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     /** Vrai quand la dette est éteinte. */

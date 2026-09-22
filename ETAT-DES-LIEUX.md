@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026**.*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (2e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 733 tests, 726 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 751 tests, 744 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -145,6 +145,7 @@ Voir `LecteurPdf`.
 | 23/09 | `2156dfc` | **creances** | vitesse : les jours ne se comptent plus par Carbon, et les consolidations ne construisent plus d'objets (« Clients & tiers » 4,8 s → 0,7 s) ; « Où vous joindre » demande son numéro à qui n'en a pas ; section **Code-import** sur l'écran des codes — un code se déclare à la main, s'aligne dans un tableau et sert aux imports comme n'importe quel autre ; le suivi fournisseur entre en entier — feuille `DETAIL`, 40 colonnes, deux classeurs fondus sans doublon |
 | 23/09 | `5bb665e` | **creances** | seconde passe de vitesse : les créances ouvertes se lisent aussi sans objets — synthèse 1,5 s → 0,66 s, balance âgée 1,15 s → 0,59 s, tableau de bord 2,2 s → 1,64 s ; un test confronte les deux lectures |
 | 24/09 | voir `git log` | **creances** | le **journal de caisse imprimé** entre : lecteur de PDF, format `journal-caisse`, 533 mouvements à Bouaké et 571 à San-Pédro, zéro écart sur la chaîne des soldes ; l'écran *Caisse* refait sur les colonnes du fichier (n° de pièce, motif, remettant/bénéficiaire, solde progressif, nom de la caisse, solde avant période) ; le classeur d'Abidjan livre enfin son « SOLDE D'OUVERTURE » |
+| 24/09 | voir `git log` | **creances** | le **suivi fournisseur se tient par année**, comme l'état des impayés : report automatique de ce qui n'est pas soldé, colonne *Report*, page de détail par pièce (`/fournisseurs/piece/{id}`), saisie à la main d'une facture reçue entre deux dépôts |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -436,7 +437,39 @@ autres villes sont tous deux lus, et l'écran montre ce qu'ils portent.
 
 ### Les fichiers tenus à la main, à reprendre comme les impayés
 
-- **Suivi fournisseur** : ✅ **Fait le 23/09.** Les deux classeurs ont été redéposés sur le
+- **Suivi fournisseur, repris comme les impayés** : ✅ **Fait le 24/09.** L'écran listait
+  toutes les pièces depuis 2023 dans une seule suite ; on ne peut pas arrêter un exercice sur
+  une liste sans fin. Il se tient désormais par année, avec la règle de l'état des impayés :
+  l'année choisie montre ce qui y a été facturé **plus ce qui traîne depuis avant**.
+
+  **La reconduction ne recopie rien et ne déplace rien.** Une pièce garde l'année de sa
+  facture, pour toujours. Recopier la ligne compterait la dette deux fois dans un total ;
+  la déplacer viderait l'état de l'année passée. Le report se défait de lui-même le jour où
+  la pièce est réglée — aucune bascule à lancer au 1er janvier, aucune tâche à surveiller.
+
+  **L'année est celle de la facture, et non une colonne de plus** : les impayés ont besoin
+  d'un marqueur propre parce qu'une créance peut être *portée* à l'état d'une autre année ;
+  une facture fournisseur, non. Mesuré sur les 1 848 pièces reprises en local : aucune n'est
+  sans date de facture. Vérifié en base (MySQL) : état 2026 → 51 pièces, toutes reportées,
+  61 797 581 F dus ; état 2025 → 1 566 pièces dont 14 reportées de 2024 ; et le reste de
+  l'état 2026 retombe **exactement** sur la somme de toutes les pièces encore ouvertes.
+
+  **Trois ajouts à l'écran** : une colonne *Report* (« Reporté 2025 », déduite et jamais
+  stockée), un bouton **Détail** par ligne — `/fournisseurs/piece/{id}`, où les quarante
+  colonnes du fichier se lisent enfin, la refacturation et les commentaires compris —, et un
+  bouton **+ Ajouter une pièce** pour une facture reçue entre deux dépôts.
+
+  **La saisie ouvre une porte, et elle est gardée.** L'écran était en lecture seule, et
+  c'est à ce titre qu'il avait été ouvert au comptable ; le responsable d'atelier continue
+  de lire mais n'écrit pas (`EtatDesFournisseurs::peutEcrire()`, vérifié à la route **et**
+  dans l'action). Le doublon est refusé à la frappe sur la clé de l'import — fournisseur,
+  numéro, date, montant. Une ligne venue d'un fichier garde ces quatre champs verrouillés :
+  les retoucher ferait qu'un prochain dépôt ne reconnaîtrait plus la ligne et la recréerait,
+  et la dette compterait double. Le reste à payer ne se saisit jamais : il se déduit du
+  montant et du réglé. Migration additive `2026_09_23_000002` (`factures_fournisseurs.user_id`).
+  Tests : `LeSuiviFournisseurSeTientParAnneeTest` (18).
+
+- **Suivi fournisseur, l'import** : ✅ **Fait le 23/09.** Les deux classeurs ont été redéposés sur le
   poste et s'ouvrent. Ce qu'ils ont appris, et qui démentait ce qu'on avait conclu d'un
   échantillon :
 
@@ -633,10 +666,10 @@ entier, pour que les liens mis en favori continuent de fonctionner.
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09 : **53 lignes terminées, 10 à faire, 1 à
-valider** (l'envoi du courrier à M. Fofana) **et 1 sans objet**. Trois sections se sont
+date de fin, une ligne par chantier. Au 24/09 : **57 lignes terminées, 9 à faire, 1 à
+valider** (l'envoi du courrier à M. Fofana) **et 1 sans objet**. Quatre sections se sont
 ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
-joindre), et la caisse (le journal imprimé).
+joindre), la caisse (le journal imprimé) et les fournisseurs (le registre par année).
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans
