@@ -2,6 +2,7 @@
 
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Imports\Modeles\MouvementVehicule;
 
 use function Livewire\Volt\{computed, mount, state};
@@ -254,7 +255,17 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
                             </td>
                             <td>{{ $mouvement->date?->format('d/m/Y') ?? '—' }}</td>
                             <td>
-                                <x-numero-ligne :ligne="$mouvement" :numero="$mouvement->numero_fiche" />
+                                {{-- Le numéro ouvre la fiche du parc, d'où se lisent le devis,
+                                     la facture et l'autre mouvement : c'est la seule clé
+                                     commune aux états du logiciel d'atelier. --}}
+                                @if (PisteDeLaFiche::peutOuvrir(auth()->user()))
+                                    <a href="{{ route('parc-fiche.numero', ['numero' => $mouvement->numero_fiche]) }}"
+                                        wire:navigate style="color:inherit; text-decoration:none;">
+                                        <x-numero-ligne :ligne="$mouvement" :numero="$mouvement->numero_fiche" />
+                                    </a>
+                                @else
+                                    <x-numero-ligne :ligne="$mouvement" :numero="$mouvement->numero_fiche" />
+                                @endif
                             </td>
                             <td style="font-weight:600;">{{ $mouvement->immatriculation ?: '—' }}</td>
                             <td>{{ $mouvement->marque ?: '—' }}</td>

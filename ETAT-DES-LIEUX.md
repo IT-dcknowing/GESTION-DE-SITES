@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (4e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (5e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -26,7 +26,7 @@ ateliers, Bouaké, San-Pédro).
 | Pile | Laravel 13, Livewire 4, Volt (composants mono-fichier), `nwidart/laravel-modules` |
 | Droits | Spatie laravel-permission **par équipe** (`entreprise_id`) ; équipe `0` = plateforme |
 | Base | MySQL en ligne ; SQLite en mémoire pour les tests |
-| Tests | `php artisan test` — 792 tests, 785 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
+| Tests | `php artisan test` — 805 tests, 798 réussis, **0 échec** ; les 7 erreurs WebPush (courbe P-256 absente du poste) sont connues et sans conséquence |
 | Dépôts | `IT-dcknowing/GESTION-DE-SITES` et `meledjeabrahamagnimel-lgtm/GESTION-DE-SITES` (deux URL de push sur `origin`) |
 | Production | `gestionsites.dc-knowing.com` — `~/public_html/GESTION-DE-SITES` |
 | Développement | `gestion-dev.dc-knowing.com` — `~/public_html/gestion-dev/GESTION-DE-SITES`, copie de la base de production, protégé par mot de passe navigateur |
@@ -148,6 +148,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | le **suivi fournisseur se tient par année**, comme l'état des impayés : report automatique de ce qui n'est pas soldé, colonne *Report*, page de détail par pièce (`/fournisseurs/piece/{id}`), saisie à la main d'une facture reçue entre deux dépôts |
 | 24/09 | voir `git log` | **creances** | la feuille **« Liste fournisseurs »** devient un référentiel : terme de règlement, TVA, plafond d'encours, lus au même dépôt que les factures ; l'échéance attendue apparaît là où le fichier n'en donne pas (5 184 pièces sur 7 350), sans jamais s'écrire ; page `/fournisseurs/referentiel`, qui nomme aussi les 45 fournisseurs facturés absents de la liste |
 | 24/09 | voir `git log` | **creances** | **les colonnes d'une page listent d'abord celles du fichier** : les entrées et sorties reçoivent les quatre colonnes qui n'avaient nulle part où aller (travaux, propriétaire, déposant, **date de livraison prévue — 147 sur 147**), et l'indicateur « promesse de sortie dépassée » devient calculable — **60 véhicules** ; les pages de détail lisent désormais `colonnes()` du format, ce qui rend sept colonnes fournisseur oubliées, dont « TVA 2 » |
+| 24/09 | voir `git log` | **creances** | le **n° de fiche de réception** devient la clé qui relie les états : la fiche du parc montre son devis, sa facture et ses mouvements, et le numéro s'ouvre d'un clic depuis les devis, le chiffre d'affaires et les entrées/sorties. Le rapprochement se fait par égalité — mesuré identique à une forme normalisée, donc aucune colonne de plus |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -743,14 +744,63 @@ positive » — et la page l'affichait à travers le formateur de francs, donc �
 
 Tests : `LesColonnesDuFichierSeRetrouventALEcranTest` (16).
 
+### Le n° de fiche de réception, clé de rapprochement
+
+✅ **Fait le 24/09.** Une affaire commence par une fiche de réception, et son numéro se
+retrouve ensuite dans la situation du parc, dans les entrées et sorties, sur le devis et sur
+la facture. Chacun de ces états était lu de son côté : on pouvait voir qu'un devis existait
+sans pouvoir dire si le véhicule était ressorti, ni si la facture avait suivi.
+
+**Ce que le relevé du 24/09 a établi.** Le numéro s'écrit `FR-XX N° nnnnn`, où `XX` désigne
+l'atelier : 3 318 des 3 323 fiches du parc ont cette forme, 147 mouvements sur 147, 2 422
+devis sur 2 670 et 2 336 factures sur 2 386 — le reste étant le jeu de démonstration local,
+qui écrit « FR-ABJ-1-422 ». Surtout : **rapprocher par égalité exacte donne exactement le même
+résultat que rapprocher par forme normalisée** — 1 169 devis, 1 914 factures, 124 mouvements
+dans les deux cas. Le logiciel écrit le numéro de la même façon partout.
+
+**Aucune colonne normalisée n'est donc stockée, et aucune ligne n'est réécrite.** Une seconde
+écriture du même numéro serait une seconde vérité à tenir à jour, pour un gain mesuré à zéro.
+La normalisation existe dans `PisteDeLaFiche` mais ne sert qu'à reconnaître qu'une saisie est
+un numéro — et à pouvoir constater le jour où les écritures divergeront.
+
+**La fiche du parc porte la piste.** Une section « Ce que cette fiche a produit » y montre les
+devis, les factures et les mouvements, avec leurs montants et leurs dates. Et **ce qui manque
+est dit en toutes lettres** — « aucune facture ne cite cette fiche », « aucune sortie n'est
+enregistrée » — parce qu'une page vide se confond avec une panne : 628 des 3 318 fiches n'ont
+encore ni devis, ni facture, ni mouvement.
+
+**Le numéro s'ouvre d'un clic** depuis les écrans *Devis*, *Chiffre d'affaires* et *Entrées &
+sorties*, par la route `/parc-vehicules/fiche/{numero}` : la résoudre au clic évite la requête
+par ligne affichée qu'aurait coûtée un lien direct. Le responsable commercial, à qui le parc
+n'est pas ouvert, lit le numéro sans qu'il soit cliquable — un lien qui répond « interdit » est
+une façon désagréable de dire non. Un numéro introuvable au parc dit pourquoi : 1 191 numéros
+de devis et 384 de facture désignent une fiche que la situation du parc ne porte pas, cette
+situation étant une extraction à une date.
+
+**Deux constats qui corrigent le plan.**
+
+- **La caisse ne porte pas ce numéro.** Le plan l'annonçait « dans le libellé pour la caisse ».
+  Vérifié sur les 1 155 mouvements repris : **aucun** libellé et **aucun** motif n'en contient.
+  Le rapprochement caisse ↔ fiche n'existe pas, et le chercher aurait coûté une requête par
+  page pour ne jamais rien trouver.
+- **Le parc interdit déjà deux fiches sous le même numéro** : `dossiers_vehicules` porte une
+  clé unique sur (entreprise, n° de fiche). La page avait prévu d'annoncer « l'affaire a été
+  rouverte » dans ce cas ; le message ne pouvait jamais s'afficher, et la requête qui le
+  nourrissait cherchait ce qu'on tenait déjà. C'est un test qui l'a montré, et les deux ont
+  été retirés.
+
+Tests : `LeNumeroDeFicheRelieLesEtatsTest` (13). Aucune migration : ce chantier n'ajoute pas
+une colonne.
+
 ### Où en est le plan
 
 Le classeur `PLAN-DE-TRAVAIL-ARTISAN-2026-09-18.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09 : **65 lignes terminées, 7 à faire, 1 à
-valider** (l'envoi du courrier à M. Fofana) **et 1 sans objet**. Cinq sections se sont
-ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
+date de fin, une ligne par chantier. Au 24/09 : **69 lignes terminées, 6 à faire, 1 à
+valider** (l'envoi du courrier à M. Fofana), **1 abandonnée et 1 sans objet**. Six sections
+se sont ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
 joindre), la caisse (le journal imprimé), les fournisseurs — le registre par année, puis le
-référentiel et l’échéance attendue — et les colonnes du fichier, écran par écran.
+référentiel et l’échéance attendue —, les colonnes du fichier écran par écran, et le n° de
+fiche comme clé de rapprochement.
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans

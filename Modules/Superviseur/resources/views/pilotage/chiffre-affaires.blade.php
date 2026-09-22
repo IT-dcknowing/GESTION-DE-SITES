@@ -7,6 +7,7 @@ use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use function Livewire\Volt\{state, computed, mount};
 
 state([
@@ -325,7 +326,17 @@ $comptesParOrigine = computed(fn () => [
                             <td>{{ $ligne->date?->format('d/m/Y') ?? '—' }}</td>
                             <td>{{ $ligne->n_facture ?? '—' }}</td>
                             <td>{{ $ligne->n_sticker ?? '—' }}</td>
-                            <td>{{ $ligne->reference_devis ?? '—' }}</td>
+                            <td>
+                                @if ($ligne->reference_devis && PisteDeLaFiche::peutOuvrir(auth()->user()))
+                                    {{-- Le n° de fiche relie les états entre eux : d'ici on
+                                         ouvre la fiche du parc, et de là le devis, la facture,
+                                         l'entrée et la sortie. --}}
+                                    <a href="{{ route('parc-fiche.numero', ['numero' => $ligne->reference_devis]) }}"
+                                        wire:navigate style="color:inherit;">{{ $ligne->reference_devis }}</a>
+                                @else
+                                    {{ $ligne->reference_devis ?? '—' }}
+                                @endif
+                            </td>
                             <td>{{ $ligne->n_sinistre ?? '—' }}</td>
                             <td>{{ $ligne->immatriculation ?? '—' }}</td>
                             {{-- Marque et modèle sont deux colonnes du fichier que l'import

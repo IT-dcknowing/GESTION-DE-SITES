@@ -5,6 +5,7 @@ use Livewire\Volt\Volt;
 use Modules\Noyau\Commun\Controleurs\TelechargerAnnuaire;
 use Modules\Noyau\Commun\Services\Exportateur;
 use Modules\Superviseur\Http\Controllers\AccesController;
+use Modules\Superviseur\Http\Controllers\OuvrirLaFicheParSonNumero;
 use Modules\Superviseur\Http\Controllers\TelechargerLesFournisseurs;
 
 /*
@@ -108,7 +109,19 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     Volt::route('/entrees-sorties', 'pilotage.mouvements-vehicules')->name('mouvements-vehicules');
     // La fiche a son adresse propre : elle se met en favori et se transmet, ce qu'un volet
     // replié sous un tableau ne permet pas.
-    Volt::route('/parc-vehicules/{dossier}', 'pilotage.parc-fiche')->name('parc-fiche');
+    Volt::route('/parc-vehicules/{dossier}', 'pilotage.parc-fiche')->name('parc-fiche')->whereNumber('dossier');
+    /*
+     * La même fiche, atteinte par son numéro.
+     *
+     * Le n° de fiche est la seule clé commune aux états du logiciel d'atelier : il figure
+     * sur le devis, sur la facture et sur les entrées et sorties. Le rendre cliquable
+     * depuis ces écrans sans cette route coûterait une requête par ligne affichée — ici
+     * elle n'a lieu qu'au clic. Le périmètre y est relu, et un numéro introuvable dit
+     * pourquoi plutôt que de laisser croire à une panne.
+     */
+    Route::get('/parc-vehicules/fiche/{numero}', OuvrirLaFicheParSonNumero::class)
+        ->name('parc-fiche.numero')
+        ->where('numero', '[A-Za-z0-9\s\-\x{00B0}]{1,40}');
 
     /*
      * L'état des impayés, et ce qui va avec.

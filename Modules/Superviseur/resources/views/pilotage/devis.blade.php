@@ -4,6 +4,7 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Exploitation\Services\StatistiquesDevis;
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use function Livewire\Volt\{state, computed, mount};
 
@@ -316,7 +317,17 @@ $detail = computed(function () {
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td><x-numero-ligne :ligne="$ligne" /></td>
                             <td>{{ $ligne->date_reception?->format('d/m/Y') ?? '—' }}</td>
-                            <td>{{ $ligne->n_fiche_reception ?? '—' }}</td>
+                            <td>
+                                @if ($ligne->n_fiche_reception && PisteDeLaFiche::peutOuvrir(auth()->user()))
+                                    {{-- Le n° de fiche relie les états entre eux : d'ici on
+                                         ouvre la fiche du parc, et de là le devis, la facture,
+                                         l'entrée et la sortie. --}}
+                                    <a href="{{ route('parc-fiche.numero', ['numero' => $ligne->n_fiche_reception]) }}"
+                                        wire:navigate style="color:inherit;">{{ $ligne->n_fiche_reception }}</a>
+                                @else
+                                    {{ $ligne->n_fiche_reception ?? '—' }}
+                                @endif
+                            </td>
                             <td>{{ $ligne->client }}</td>
                             <td>{{ $ligne->date_emission->format('d/m/Y') }}</td>
                             <td style="font-weight:700; color:{{ $delaiHeures === null ? 'inherit' : ($delaiDepasse ? '#C8102E' : '#0E9F6E') }};">
