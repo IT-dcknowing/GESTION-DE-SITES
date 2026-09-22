@@ -188,45 +188,93 @@ class LeBaremeDeCommissionTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | Chaque exercice a sa grille, et elle vaut pour tout l'exercice
+    | Un barème court jusqu'à ce qu'un autre le remplace
     |--------------------------------------------------------------------------
+    | **Tranché par le propriétaire le 24/09, et cela revient sur le 22/09.** On avait
+    | cloisonné le barème par exercice : une grille valait pour son année, et la corriger
+    | recalculait l'année entière. Deux conséquences que l'usage a montrées — il fallait
+    | reposer une grille chaque 1er janvier, et corriger en novembre recalculait les dix
+    | mois déjà annoncés aux commerciaux.
+    |
+    | La règle est donc : la grille qui répond pour un mois est la dernière posée avant ce
+    | mois-là. Elle vaut pour les années suivantes sans action humaine, et une modification
+    | ne vaut que pour la suite.
     */
 
-    public function test_la_grille_d_un_exercice_ne_touche_pas_a_celle_d_un_autre(): void
+    public function test_une_grille_vaut_pour_les_annees_suivantes_sans_qu_on_la_repose(): void
     {
-        $ancienne = $this->grille('commercial', 2025, [[0, null, 2.0]]);
-        $nouvelle = $this->grille('commercial', 2026, [[0, null, 5.0]]);
+        $this->grille('commercial', 2026, [[0, null, 2.0]], '2026-01-01');
 
-        $this->assertSame($ancienne->id, CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial', 2025)->id);
-        $this->assertSame($nouvelle->id, CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial', 2026)->id);
+        // Personne n'a rien fait au 1er janvier 2027, et c'est le but : une grille oubliée
+        // ne doit pas faire tomber toutes les commissions à zéro sans prévenir.
+        $resultat = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), [
+            '2027-03' => 10_000_000,
+        ]);
+
+        $this->assertSame(200_000, $resultat['commission']);
     }
 
-    public function test_une_grille_corrigee_vaut_aussitot_pour_les_mois_deja_passes_de_son_exercice(): void
+    public function test_une_grille_corrigee_ne_touche_pas_aux_mois_deja_arretes(): void
     {
-        $gerant = $this->compte('gerant');
-        $grille = $this->grille('commercial', 2026, [[0, null, 2.0]]);
+        $ancienne = $this->grille('commercial', 2026, [[0, null, 2.0]], '2026-01-01');
 
-        // Un mois de janvier, déjà écoulé, calculé avec la grille de l'exercice.
+        // Janvier, arrêté sous la grille à 2 %.
         $avant = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), ['2026-01' => 10_000_000]);
         $this->assertSame(200_000, $avant['commission']);
 
-        // Le gérant corrige la grille en septembre.
-        CommissionCommerciale::enregistrer($gerant, 'commercial', 2026, [
-            ['plancher' => 0, 'plafond' => null, 'taux' => 3.0],
-        ]);
+        // Le gérant pose une nouvelle grille au 1er novembre.
+        $this->grille('commercial', 2026, [[0, null, 3.0]], '2026-11-01');
 
-        /*
-         * Janvier suit, et c'est ce qui a été demandé le 22/09 : « la commission est
-         * appliquée par exercice, donc elle doit être cloisonnée dans son exercice et
-         * s'appliquer directement même sur les anciens exercices ». Une date d'effet aurait
-         * laissé janvier à 2 %.
-         */
+        // Janvier ne bouge pas : une rémunération annoncée ne se recalcule pas dix mois
+        // plus tard. C'est ce que la règle du 22/09 faisait, et c'est ce qu'on corrige.
         $apres = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), ['2026-01' => 10_000_000]);
-        $this->assertSame(300_000, $apres['commission']);
+        $this->assertSame(200_000, $apres['commission']);
 
-        // Et c'est bien la même grille qu'on a corrigée, non une seconde posée à côté.
+        // Novembre, lui, suit la nouvelle.
+        $novembre = CommissionCommerciale::surLesMois($this->entreprise->id, $this->vendeur(), ['2026-11' => 10_000_000]);
+        $this->assertSame(300_000, $novembre['commission']);
+
+        // Et les deux grilles coexistent : remplacer n'est pas écraser.
+        $this->assertSame(2, BaremeCommission::where('cible', 'commercial')->count());
+        $this->assertNotNull($ancienne->fresh());
+    }
+
+    public function test_la_grille_en_vigueur_est_la_derniere_posee_avant_la_date(): void
+    {
+        $ancienne = $this->grille('commercial', 2025, [[0, null, 2.0]], '2025-01-01');
+        $nouvelle = $this->grille('commercial', 2026, [[0, null, 5.0]], '2026-07-01');
+
+        $this->assertSame($ancienne->id, CommissionCommerciale::grilleDeLaCible(
+            $this->entreprise->id, 'commercial', Carbon::parse('2026-06-30'),
+        )->id);
+
+        $this->assertSame($nouvelle->id, CommissionCommerciale::grilleDeLaCible(
+            $this->entreprise->id, 'commercial', Carbon::parse('2026-07-01'),
+        )->id);
+    }
+
+    public function test_aucune_grille_ne_repond_avant_la_premiere(): void
+    {
+        $this->grille('commercial', 2026, [[0, null, 2.0]], '2026-01-01');
+
+        // Un mois antérieur à toute grille n'est pas commissionné à zéro : aucune grille ne
+        // le couvre, et l'écran doit pouvoir dire « on ne sait pas » plutôt que « rien ».
+        $this->assertNull(CommissionCommerciale::grilleDeLaCible(
+            $this->entreprise->id, 'commercial', Carbon::parse('2025-12-31'),
+        ));
+    }
+
+    public function test_enregistrer_deux_fois_le_meme_jour_corrige_la_meme_version(): void
+    {
+        $gerant = $this->compte('gerant');
+
+        CommissionCommerciale::enregistrer($gerant, 'commercial', 2026, [['plancher' => 0, 'plafond' => null, 'taux' => 2.0]]);
+        CommissionCommerciale::enregistrer($gerant, 'commercial', 2026, [['plancher' => 0, 'plafond' => null, 'taux' => 3.0]]);
+
+        // On se reprend en saisissant, et cela ne fait pas deux décisions.
         $this->assertSame(1, BaremeCommission::where('cible', 'commercial')->count());
-        $this->assertSame($grille->id, BaremeCommission::where('cible', 'commercial')->value('id'));
+        $this->assertSame(3.0, (float) BaremeCommission::where('cible', 'commercial')->firstOrFail()
+            ->tranches()->value('taux'));
     }
 
     public function test_la_commission_se_calcule_mois_par_mois_et_non_sur_la_periode_entiere(): void
@@ -396,15 +444,16 @@ class LeBaremeDeCommissionTest extends TestCase
     }
 
     /** @param  list<array{0: int, 1: int|null, 2: float}>  $tranches */
-    private function grille(string $cible, int $exercice, array $tranches): BaremeCommission
+    private function grille(string $cible, int $exercice, array $tranches, ?string $dateEffet = null): BaremeCommission
     {
         $bareme = BaremeCommission::create([
             'entreprise_id' => $this->entreprise->id,
             'cible' => $cible,
             'exercice' => $exercice,
             'libelle' => 'Grille '.$cible.' '.$exercice,
-            // Tenue au 1er janvier de l'exercice : elle ne choisit plus rien.
-            'date_effet' => $exercice.'-01-01',
+            // La date d'effet redit tout depuis le 24/09 : une grille court jusqu'à ce
+            // qu'une autre la remplace, et l'exercice ne cloisonne plus rien.
+            'date_effet' => $dateEffet ?? $exercice.'-01-01',
             'assiette' => 'global',
         ]);
 

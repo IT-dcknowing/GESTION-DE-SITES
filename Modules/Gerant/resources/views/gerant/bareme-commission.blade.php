@@ -41,7 +41,6 @@ state(['nouveauPlafond' => '']);
 state(['nouveauTaux' => '']);
 
 // Les notes, repliées ; elles s'ouvrent section par section.
-state(['notesOuvertes' => null]);
 
 state(['message' => '']);
 state(['erreur' => '']);
@@ -68,7 +67,9 @@ $enregistrees = computed(function () {
 
     foreach (array_keys(BaremeCommission::CIBLES) as $cible) {
         $trouvees[$cible] = CommissionCommerciale::grilleDeLaCible(
-            auth()->user()->entreprise_id, $cible, (int) $this->exercice,
+            auth()->user()->entreprise_id,
+            $cible,
+            CommissionCommerciale::jourDeReference((int) $this->exercice),
         );
     }
 
@@ -90,9 +91,6 @@ $updatedExercice = function () {
     $this->chargerLesGrilles();
 };
 
-$ouvrirLesNotes = function (string $cible) {
-    $this->notesOuvertes = $this->notesOuvertes === $cible ? null : $cible;
-};
 
 $ouvrirLAjout = function (string $cible) {
     $this->ajoutOuvert = $this->ajoutOuvert === $cible ? null : $cible;
@@ -264,9 +262,17 @@ $notes = computed(fn () => [
                        color:#C8102E; text-align:center; margin:0 0 4px; letter-spacing:.01em;">
                 Grille de commission* (CA mensuel)
             </h2>
+            {{-- Les deux grilles portent le même titre : sans la catégorie juste en dessous,
+                 on ne sait pas laquelle on corrige. L'astérisque du document renvoyait à une
+                 mention placée tout en bas, trop loin pour servir. --}}
+            <p style="text-align:center; margin:0 0 6px; font-size:13.5px; font-weight:700; color:#B45309;">
+                *{{ $libelleCible }}
+            </p>
             <p style="text-align:center; margin:0 0 16px; font-size:12.5px; color:#6B6E76;">
                 @if ($estEnregistree)
-                    Grille enregistrée pour l'exercice {{ $exercice }}.
+                    En vigueur depuis le
+                    <b>{{ ($this->enregistrees[$cible]->date_effet)->format('d/m/Y') }}</b>,
+                    et jusqu'à ce qu'une autre la remplace.
                 @else
                     {{-- On n'affiche jamais un écran vide : la grille de référence est là,
                          prête à être corrigée puis enregistrée. --}}
@@ -342,8 +348,16 @@ $notes = computed(fn () => [
                 <button type="button" class="bouton bouton-secondaire" wire:click="ouvrirLAjout('{{ $cible }}')">
                     {{ $ajoutOuvert === $cible ? 'Fermer' : '+ Ajouter' }}
                 </button>
-                <button type="button" class="bouton bouton-secondaire" wire:click="ouvrirLesNotes('{{ $cible }}')">
-                    {{ $notesOuvertes === $cible ? 'Masquer les notes' : 'Notes' }}
+                {{-- Les notes s'ouvrent en boîte et non en volet : dépliées sous le
+                     tableau, elles le poussaient vers le bas au moment même où l'on
+                     comparait les tranches. On les lit, on referme, le tableau n'a pas
+                     bougé. --}}
+                <button type="button" class="bouton bouton-secondaire"
+                    data-confirmer-mode="information"
+                    data-confirmer-titre="Notes — {{ $libelleCible }}"
+                    data-confirmer="{{ $this->notes[$cible][0] ?? '' }}"
+                    data-confirmer-detail="{{ implode(' ', array_slice($this->notes[$cible], 1)) }}">
+                    Notes
                 </button>
             </div>
 
@@ -352,8 +366,10 @@ $notes = computed(fn () => [
                 <div style="margin-top:14px; background:#F7F5EF; border-radius:8px; padding:12px 14px;">
                     <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
                         <x-champ label="Plancher (FCFA, atteint)" model="nouveauPlancher" type="number" width="190" />
+                        {{-- La consigne est dans la case, et non sous elle : posée en
+                             dessous, elle se lit après coup, quand on a déjà tapé. --}}
                         <x-champ label="Plafond (FCFA, exclu)" model="nouveauPlafond" type="number" width="190"
-                            aide="Vide = et au-delà" />
+                            placeholder="Vide = et au-delà" />
                         <x-champ label="Taux (%)" model="nouveauTaux" type="number" width="120" />
                         <button type="button" class="bouton bouton-sombre" wire:click="validerLAjout">Valider</button>
                         <button type="button" class="bouton bouton-secondaire" wire:click="annulerLAjout">Annuler</button>
@@ -361,16 +377,6 @@ $notes = computed(fn () => [
                 </div>
             @endif
 
-            @if ($notesOuvertes === $cible)
-                <div style="margin-top:14px; background:#FDF3E3; border:1px solid #F0D9A8; border-radius:8px; padding:12px 16px;">
-                    <b style="font-size:13px; color:#B45309;">Notes — {{ $libelleCible }}</b>
-                    <ul style="margin:8px 0 0; padding-left:18px; font-size:13px; color:#7C4A08; line-height:1.55;">
-                        @foreach ($this->notes[$cible] as $note)
-                            <li>{{ $note }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
         </div>
     @endforeach
 
