@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Entreprises\Support;
 
 use App\Models\User;
+use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 
 /**
