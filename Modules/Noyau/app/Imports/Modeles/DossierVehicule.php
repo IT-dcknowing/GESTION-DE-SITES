@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Noyau\Commun\Concerns\AppartientAUneEntreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Imports\Concerns\MontreLesColonnesDuFichier;
 use Modules\Noyau\Imports\Formats\FormatDuParc;
 
@@ -23,6 +24,7 @@ use Modules\Noyau\Imports\Formats\FormatDuParc;
     'source_rattachement', 'rattachement_presume', 'lot_import_id',
     'numero_fiche', 'immatriculation', 'marque', 'modele',
     'client', 'proprietaire', 'motif', 'statut', 'travaux', 'informations',
+    'commercial_saisi', 'commercial_id', 'commercial_source',
     'date_fiche', 'date_fin_prevue', 'date_theorique_atelier',
     'date_transmission_devis', 'date_traitement_feb',
     'date_effective_travaux', 'date_fin_travaux',
@@ -80,6 +82,17 @@ class DossierVehicule extends Model
     public function site(): BelongsTo
     {
         return $this->belongsTo(Site::class);
+    }
+
+    /**
+     * Le commercial nommé en tête de la colonne « INFORMATIONS SUR LA SITUATION ».
+     *
+     * Nul tant que personne ne l'a écrit, ou tant que ce qui a été écrit n'a pas été
+     * reconnu : un vide se lit « on ne sait pas », jamais « personne ».
+     */
+    public function commercial(): BelongsTo
+    {
+        return $this->belongsTo(Commercial::class, 'commercial_id');
     }
 
     public function lot(): BelongsTo

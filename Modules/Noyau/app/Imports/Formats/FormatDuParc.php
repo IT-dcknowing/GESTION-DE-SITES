@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Imports\Formats;
 
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
+use Modules\Noyau\Imports\Services\CommercialDeLaFiche;
 
 /**
  * « Situation du parc » — les fiches de réception.
@@ -37,6 +38,14 @@ class FormatDuParc extends Format
 
     /** @var array<string, true>|null les numéros déjà en base, chargés une seule fois */
     private ?array $numerosConnus = null;
+
+    /**
+     * La lecture du commercial nommé dans la colonne libre, instanciée une fois par import.
+     *
+     * Elle porte le référentiel des commerciaux en mémoire : le relire à chaque ligne
+     * ferait deux mille requêtes pour onze noms.
+     */
+    private ?CommercialDeLaFiche $lectureDuCommercial = null;
 
     public static function cle(): string
     {
@@ -168,6 +177,11 @@ class FormatDuParc extends Format
         return $this->dernierDossier;
     }
 
+    private function lectureDuCommercial(): CommercialDeLaFiche
+    {
+        return $this->lectureDuCommercial ??= new CommercialDeLaFiche($this->entrepriseId);
+    }
+
     protected function ecrire(array $ligne, array $rattachement, ?int $lotId): string
     {
         $numero = self::texte($ligne['numero_fiche'] ?? null, 40);
@@ -197,6 +211,30 @@ class FormatDuParc extends Format
             'date_effective_travaux' => self::date($ligne['date_effective_travaux'] ?? null),
             'date_fin_travaux' => self::date($ligne['date_fin_travaux'] ?? null),
         ];
+
+        /*
+         * Le commercial nommé en tête de la colonne libre, quand il y en a un.
+         *
+         * **Ce que cela relie.** Un devis du logiciel d'atelier cite son numéro de fiche ;
+         * la fiche, elle, peut nommer le commercial qui a décroché l'affaire. C'est le
+         * chemin arbitré avec la direction pour rattacher les devis importés aux
+         * prospections, sans demander une colonne de plus au logiciel d'atelier.
+         *
+         * **Rien n'est deviné.** Un nom qui ne correspond pas exactement au référentiel
+         * n'est pas rapproché : il est consigné comme une question, posée sur l'écran des
+         * traitements, et la réponse vaut pour tous les dépôts suivants. Ce qui a été lu
+         * reste écrit dans `commercial_saisi` — le fichier reçu ne se réécrit jamais.
+         */
+        $lu = $this->lectureDuCommercial()->lire($valeurs['informations']);
+
+        $valeurs['commercial_saisi'] = $lu['saisi'];
+
+        // Un rattachement déjà posé ne se retire pas parce qu'un dépôt suivant ne sait
+        // plus le lire : on écrit ce qu'on a trouvé, on n'efface pas ce qu'on n'a pas.
+        if ($lu['commercial_id'] !== null) {
+            $valeurs['commercial_id'] = $lu['commercial_id'];
+            $valeurs['commercial_source'] = $lu['source'];
+        }
 
         $dossier = $this->dossierDe($numero);
 

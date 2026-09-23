@@ -3,9 +3,12 @@
 namespace Modules\Import\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Modules\Import\Support\AccesImport;
+use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 use Modules\Noyau\Imports\Modeles\LotImport;
+use Modules\Noyau\Imports\Services\CommercialDeLaFiche;
 use Modules\Noyau\Imports\Services\SuiviDuTraitement;
 
 /**
@@ -19,6 +22,69 @@ use Modules\Noyau\Imports\Services\SuiviDuTraitement;
  */
 class TraitementsController
 {
+    /**
+     * Reconnaître les commerciaux nommés sur les fiches de réception.
+     *
+     * **Pourquoi ici, et pas sur l'écran de dépôt.** La lecture d'un fichier démarre au
+     * dépôt et se poursuit sur cette page ; c'est donc ici qu'on apprend qu'un nom n'a pas
+     * été reconnu, et ici qu'on doit pouvoir répondre. Poser la question sur l'écran de
+     * dépôt obligerait à y revenir alors qu'on vient de le quitter.
+     *
+     * **Ce que ce geste écrit.** Une correspondance, et les fiches déjà lues sous ce
+     * libellé. La correspondance vaut pour tous les dépôts suivants : une faute de frappe
+     * ne se demande qu'une fois. Rien d'autre ne bouge — ni les devis, ni les prospections,
+     * qui se rapprochent sur leur propre écran, avec leur propre confirmation.
+     *
+     * **Un formulaire qui poste.** Comme le dépôt et comme l'annuaire des codes : un écran
+     * de référentiel n'a aucune raison de dépendre de la couche interactive.
+     */
+    public function reconnaitreLesCommerciaux(Request $requete): RedirectResponse
+    {
+        $utilisateur = $requete->user();
+
+        if (! AccesImport::peutArbitrer($utilisateur)) {
+            return back()->withErrors([
+                'commerciaux' => 'Reconnaître un commercial relève du gérant ou du superviseur de ville.',
+            ]);
+        }
+
+        $donnees = $requete->validate([
+            'reponses' => ['required', 'array'],
+            'reponses.*' => ['nullable', 'integer'],
+        ], [
+            'reponses.required' => 'Aucune réponse à enregistrer.',
+        ]);
+
+        $entrepriseId = (int) $utilisateur->entreprise_id;
+        $service = new CommercialDeLaFiche($entrepriseId);
+
+        $libelles = CorrespondanceImport::withoutGlobalScopes()
+            ->where('entreprise_id', $entrepriseId)
+            ->where('domaine', CommercialDeLaFiche::DOMAINE)
+            ->where('est_resolue', false)
+            ->pluck('valeur_source', 'id');
+
+        $reconnus = 0;
+        $fiches = 0;
+
+        foreach ($donnees['reponses'] as $correspondanceId => $commercialId) {
+            // Laissé vide, c'est « je ne sais pas encore » : la question reste posée. Y
+            // répondre à moitié vaut mieux que d'être obligé de tout trancher d'un coup.
+            if (! $commercialId || ! isset($libelles[(int) $correspondanceId])) {
+                continue;
+            }
+
+            $reprises = $service->repondre($libelles[(int) $correspondanceId], (int) $commercialId);
+
+            $reconnus++;
+            $fiches += $reprises;
+        }
+
+        return back()->with('message-commerciaux', $reconnus === 0
+            ? "Rien n'a été enregistré : aucun nom n'a reçu de réponse."
+            : $reconnus.' nom(s) reconnu(s), '.$fiches.' fiche(s) rattachée(s).');
+    }
+
     /**
      * L'état des traitements, en JSON — de quoi prévenir n'importe quel écran.
      *

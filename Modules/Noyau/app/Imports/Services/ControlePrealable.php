@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Imports\Services;
 
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Imports\Formats\Format;
 use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Lecteurs\Classeur;
 use Modules\Noyau\Imports\Modeles\CodeAgent;
@@ -64,6 +65,7 @@ class ControlePrealable
      *     ville_probable: ?string,
      *     ville_conforme: bool,
      *     codes_etrangers: array<string, string>,
+     *     villes_etrangeres: list<string>,
      *     couverture_insuffisante: bool,
      *     avertissements: list<string>,
      * }
@@ -81,6 +83,7 @@ class ControlePrealable
             'ville_probable' => null,
             'ville_conforme' => true,
             'codes_etrangers' => [],
+            'villes_etrangeres' => [],
             'couverture_insuffisante' => false,
             'avertissements' => [],
         ];
@@ -199,14 +202,18 @@ class ControlePrealable
         $etrangers = [];
         $rattaches = 0;
 
+        // Les villes d'où viennent les codes qui ne sont pas d'ici, chacune une fois.
+        $villesEtrangeres = [];
+
         foreach ($connus as $agent) {
             $vues = $codes[$agent->code] ?? 0;
             $rattaches += $vues;
             $parVille[(int) $agent->ville_id] = ($parVille[(int) $agent->ville_id] ?? 0) + $vues;
 
             if ((int) $agent->ville_id !== $villeId) {
-                $etrangers[$agent->code] = trim(($agent->libelle ?: 'employé non nommé')
-                    .' — '.($this->nomDeVille((int) $agent->ville_id) ?? 'ville inconnue'));
+                $ailleurs = $this->nomDeVille((int) $agent->ville_id) ?? 'ville inconnue';
+                $etrangers[$agent->code] = trim(($agent->libelle ?: 'employé non nommé').' — '.$ailleurs);
+                $villesEtrangeres[$ailleurs] = true;
             }
         }
 
@@ -234,13 +241,27 @@ class ControlePrealable
 
         if ($etrangeres / $rattaches >= self::PART_MINIMALE_D_ALERTE) {
             $rapport['codes_etrangers'] = $etrangers;
+            $rapport['villes_etrangeres'] = array_keys($villesEtrangeres);
+
+            /*
+             * **La phrase nommait la mauvaise ville, et se contredisait.** Elle annonçait
+             * `ville_probable`, c'est-à-dire la ville *dominante* du fichier. Or quand la
+             * dominante est celle du dépôt — 280 lignes d'Abidjan contre 117 de Bouaké —
+             * on lisait « vous déposez au titre d'Abidjan, mais 117 lignes portent des
+             * codes rattachés à Abidjan ». Le lecteur y voyait, à juste titre, que sa
+             * correction n'avait servi à rien : la phrase disait le contraire d'elle-même.
+             *
+             * Ce qu'il faut nommer, ce sont les villes **des codes en cause**. C'est la
+             * seule information qui aide : elle dit où l'on devrait déposer, ou qui a été
+             * muté sans que son code suive.
+             */
             $rapport['avertissements'][] = sprintf(
                 'Vous déposez au titre de %s, mais %d ligne(s) sur %d portent des codes rattachés à %s (%s). '
                 ."S'il ne s'agit pas d'une mutation, c'est la ville du dépôt qu'il faut corriger.",
                 $rapport['ville_declaree'] ?? 'cette ville',
                 $etrangeres,
                 $rattaches,
-                $rapport['ville_probable'] ?? 'une autre ville',
+                $villesEtrangeres === [] ? 'une autre ville' : implode(' et ', array_keys($villesEtrangeres)),
                 implode(', ', array_slice(array_keys($etrangers), 0, 6)),
             );
         }
@@ -248,7 +269,7 @@ class ControlePrealable
         return $rapport;
     }
 
-    private function instancier(string $cle): \Modules\Noyau\Imports\Formats\Format
+    private function instancier(string $cle): Format
     {
         $classe = Registre::classe($cle);
 

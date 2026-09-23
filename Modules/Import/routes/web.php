@@ -49,6 +49,13 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
          */
         Route::get('/traitements/etat', [TraitementsController::class, 'etat'])
             ->name('traitements.etat')->withoutMiddleware(VerifiePageImport::class);
+        /*
+         * Reconnaître les commerciaux nommés sur les fiches de réception. Un vrai POST,
+         * comme le dépôt et l'annuaire des codes : la question se pose là où l'on suit la
+         * lecture, et la réponse se donne sans dépendre de la couche interactive.
+         */
+        Route::post('/traitements/commerciaux', [TraitementsController::class, 'reconnaitreLesCommerciaux'])
+            ->name('traitements.commerciaux')->middleware(VerifiePageImport::class.':traitements');
         Volt::route('/journal', 'import.lots')
             ->name('lots')->middleware(VerifiePageImport::class.':lots');
         Volt::route('/journal/{lot}', 'import.lot')
