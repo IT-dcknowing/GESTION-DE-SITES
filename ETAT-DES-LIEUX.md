@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **23 septembre 2026** (7e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (8e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -151,6 +151,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | le **n° de fiche de réception** devient la clé qui relie les états : la fiche du parc montre son devis, sa facture et ses mouvements, et le numéro s'ouvre d'un clic depuis les devis, le chiffre d'affaires et les entrées/sorties. Le rapprochement se fait par égalité — mesuré identique à une forme normalisée, donc aucune colonne de plus |
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
+| 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -922,12 +923,15 @@ texte, elles ne se trieraient pas. La liste déroulante suit jusqu'à la derniè
 ### Où en est le plan
 
 Le classeur `plan-a-jour.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09 : **72 lignes terminées, 5 à faire, 1 à
-valider** (l'envoi du courrier à M. Fofana), **1 abandonnée et 1 sans objet**. Sept sections
+date de fin, une ligne par chantier. Au 24/09, après la seconde série de retours : **79
+lignes terminées, 3 à faire, 1 abandonnée et 1 sans objet** — plus rien n'attend de
+validation, le courrier à M. Fofana étant parti. Les trois qui restent ne dépendent plus de
+nous : deux questions à la direction, et deux réglages d'hébergement. Huit sections
 se sont ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
 joindre), la caisse (le journal imprimé), les fournisseurs — le registre par année, puis le
 référentiel et l’échéance attendue —, les colonnes du fichier écran par écran, et le n° de
-fiche comme clé de rapprochement, et ce qu'on a écarté.
+fiche comme clé de rapprochement, ce qu'on a écarté, et la seconde série de retours du
+propriétaire.
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans
@@ -941,6 +945,70 @@ qu'il soit rejouable sans rien empiler : il retire les doublons qu'une exécutio
 aurait laissés, repère la ligne de colonnes par son intitulé plutôt que par son rang, et
 repose ses deux sections entières. Il ne s'écrase pas tant qu'un tableur le tient ouvert,
 auquel cas la version à jour attend à côté.
+
+### La seconde série de retours du 24/09
+
+Sept points, relevés écran par écran sur la version en service. Chacun disait une gêne
+réelle ; ce qui suit dit ce qu'on en a fait, et pourquoi.
+
+**La boîte de confirmation ne s'ouvrait plus.** `Failed to execute 'showModal' … The element
+is not in a Document`. Le script retenait la boîte au premier chargement et la rappelait
+ensuite ; or `wire:navigate` remplace le corps de la page sans recharger le document, si
+bien qu'au deuxième écran le script tenait un élément qui n'existait plus. Les éléments sont
+désormais retrouvés **au moment du clic**, et l'écoute vit sur le document, qui survit aux
+navigations. La boîte gagne au passage un mode *information* — un seul bouton « Fermer » —
+qui sert aux notes du barème.
+
+**Le barème mêlait ses deux rôles.** On avait lu « aucune commission sous 25 millions »
+comme une contradiction de la grille des commerciaux, qui commence à 20. Le propriétaire a
+tranché : ce sont **deux postes et deux seuils** — 20 M pour le commercial, 25 M pour le
+responsable et son adjoint. Le document était cohérent ; notre lecture ne l'était pas.
+Restait un vrai trou, que le propriétaire a trouvé lui-même : entre 25 et 30 M le document
+ne dit rien alors qu'il annonce une commission dès 25. Un responsable à 27 M ne touchait
+donc rien tout en ayant dépassé le seuil écrit au-dessus de sa propre grille. **1 %** y est
+posé. C'est une donnée : elle se corrigera à l'écran, sans déploiement.
+
+**« Tout cocher » ne cochait que la page affichée.** Le propriétaire n'était pas d'accord, et
+il a raison : le tableau étant paginé, on ne voit jamais tout, et cocher vingt-cinq lignes à
+la fois oblige à tourner chaque page. Ce qui borne la sélection, ce sont les filtres — ils
+sont au-dessus du tableau et ils se lisent. « Tout cocher » et « cocher les certains »
+portent maintenant sur tout ce que les filtres retiennent.
+
+**Un geste réussi se dit.** Confirmer un rapprochement vide la ligne du tableau ; sans un
+mot, on ne sait pas si c'est le geste qui a réussi ou le filtre qui a changé. Un bandeau vert
+de trois secondes l'annonce, ici comme après chaque enregistrement des pages de modification
+(pièce fournisseur, fiche fournisseur, référentiel).
+
+**Une création n'est pas une modification.** Le journal d'une créance affichait
+« Ville : vide → Abidjan » sur la ligne de création, ce qui décrit un geste que personne n'a
+fait : la fiche est née avec Abidjan, elle n'a remplacé aucun vide. Une création n'a pas
+d'avant — **c'est elle, l'avant**. Elle se lit donc comme un état posé, sans flèche, et les
+champs restés vides ne s'y énumèrent pas. Une trace sans changement visible le dit : « rien
+n'a été modifié ». `commercial_id` rejoint les identifiants traduits en noms, avec la ville,
+l'atelier et le compte. Les trois écrans qui affichent ce journal passent par un composant
+commun, `x-journal-changements` — la règle venait de se corriger, et écrite trois fois elle
+se serait corrigée une fois et demie.
+
+**Les filtres du tableau de bord du recouvrement rechargeaient la page.** C'étaient les
+champs d'un formulaire GET : changer un mois redemandait feuilles de style, scripts, menu et
+bandeau pour ne changer qu'une ligne du tableau. Ils sont liés au composant ; seule la partie
+qui change est renvoyée, et la position dans la page est conservée. Le formulaire reste, avec
+ses `name` et son bouton `<noscript>` : **le chemin sans script n'est pas fermé**. La
+correction vaut pour les sept écrans du module, qui partagent ce bloc de filtres. La
+pagination suit : elle tournait la page par `wire:navigate`, qui remontait le composant entier
+et ramenait le lecteur en haut. Et tout filtre **ramène à la première page** — filtrer depuis
+la page cinq rendait une page cinq qui n'existe plus, donc un tableau vide, qu'on lit
+« aucun dossier ».
+
+**Et le temps de calcul, mesuré.** La demande de vitesse du 23/09 laissait cet écran à
+1,64 s. Mesuré au 24/09 : **3,2 s** de calcul pur. Deux causes, les mêmes que partout —
+sept mille sept cents règlements construits en objets Eloquent (438 ms), les sept mille
+factures qu'ils citent construites de même (586 ms) puis relues attribut par attribut
+(315 ms), et un Carbon par règlement dans le seul graphique mensuel (305 ms). Lus tels que
+la base les rend, sur les quatre colonnes utiles : **3,2 s → 0,55 s**. La règle du payeur ne
+change pas d'un iota — c'est la même `Facture::tiersPayantParmi()` — et un test a confronté
+les deux lectures ligne à ligne avant de garder la seconde : repères, courbe mensuelle et
+cent vingt-neuf lignes **identiques**.
 
 ### Pour le jour où les API répondront
 

@@ -200,7 +200,9 @@ $enregistrer = function () {
     $this->enModification = false;
     unset($this->piece, $this->historique);
 
-    session()->flash('message', 'La pièce est à jour.');
+    /* Le bandeau vert de trois secondes, comme partout ailleurs : un enregistrement qui
+       ne dit rien laisse douter qu'il ait eu lieu. */
+    $this->dispatch('annonce', texte: 'La pièce est à jour.', ton: 'succes');
 };
 
 ?>
@@ -457,10 +459,10 @@ $enregistrer = function () {
                 <div class="tableau-conteneur">
                     <table class="tableau">
                         <thead>
-                            <tr><th>Quand</th><th>Qui</th><th>Quoi</th><th>Avant → après</th></tr>
+                            <tr><th>Quand</th><th>Qui</th><th>Quoi</th><th>Ce qui a changé</th></tr>
                         </thead>
                         <tbody>
-                            @php $nomsDesLieux = \Modules\Noyau\Tracabilite\Services\JournalLisible::nomsDesLieux($this->historique); @endphp
+                            @php $nomsDuJournal = \Modules\Noyau\Tracabilite\Services\JournalLisible::noms($this->historique); @endphp
                             @foreach ($this->historique as $trace)
                                 <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                                     <td style="white-space:nowrap;">{{ $trace->created_at?->format('d/m/Y H:i') }}</td>
@@ -470,14 +472,9 @@ $enregistrer = function () {
                                          ne se lisent que si l'on connaît la base. --}}
                                     <td>{{ \Modules\Noyau\Tracabilite\Services\JournalLisible::geste($trace) }}</td>
                                     <td style="font-size:12.5px;">
-                                        @forelse (\Modules\Noyau\Tracabilite\Services\JournalLisible::changements($trace, $nomsDesLieux) as $changement)
-                                            <div>
-                                                <strong>{{ $changement['champ'] }}</strong> :
-                                                {{ $changement['avant'] }} → {{ $changement['apres'] }}
-                                            </div>
-                                        @empty
-                                            <span style="color:#9A9DA5;">rien de visible n'a changé</span>
-                                        @endforelse
+                                        <x-journal-changements
+                                            :changements="\Modules\Noyau\Tracabilite\Services\JournalLisible::changements($trace, $nomsDuJournal)"
+                                            :creation="\Modules\Noyau\Tracabilite\Services\JournalLisible::estUneCreation($trace)" />
                                     </td>
                                 </tr>
                             @endforeach

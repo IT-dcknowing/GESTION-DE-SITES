@@ -221,31 +221,26 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
             <div class="tableau-conteneur">
                 <table class="tableau">
                     <thead>
-                        <tr><th>Quand</th><th>Qui</th><th>Geste</th><th>Avant → après</th></tr>
+                        <tr><th>Quand</th><th>Qui</th><th>Geste</th><th>Ce qui a changé</th></tr>
                     </thead>
                     <tbody>
-                        @php $nomsDesLieux = \Modules\Noyau\Tracabilite\Services\JournalLisible::nomsDesLieux($this->historique); @endphp
+                        @php $nomsDuJournal = \Modules\Noyau\Tracabilite\Services\JournalLisible::noms($this->historique); @endphp
                         @forelse ($this->historique as $trace)
                             @php
                                 /* Le journal se lit sans connaître la base : « updated »
                                    devient « Modifiée », « ville_id : — → 1 » devient
-                                   « Ville : vide → Abidjan », et les dates prennent le
-                                   format d'ici. Voir JournalLisible. */
-                                $changements = \Modules\Noyau\Tracabilite\Services\JournalLisible::changements($trace, $nomsDesLieux);
+                                   « Ville : Abidjan », « commercial_id : 41 » devient le
+                                   nom du commercial, et les dates prennent le format
+                                   d'ici. Voir JournalLisible. */
+                                $creation = \Modules\Noyau\Tracabilite\Services\JournalLisible::estUneCreation($trace);
+                                $changements = \Modules\Noyau\Tracabilite\Services\JournalLisible::changements($trace, $nomsDuJournal);
                             @endphp
                             <tr>
                                 <td style="white-space:nowrap;">{{ $trace->created_at?->format('d/m/Y H:i') }}</td>
                                 <td>{{ $trace->causer?->name ?? 'import' }}</td>
                                 <td>{{ \Modules\Noyau\Tracabilite\Services\JournalLisible::geste($trace) }}</td>
                                 <td style="font-size:12.5px;">
-                                    @forelse ($changements as $changement)
-                                        <div>
-                                            <strong>{{ $changement['champ'] }}</strong> :
-                                            {{ $changement['avant'] }} → {{ $changement['apres'] }}
-                                        </div>
-                                    @empty
-                                        <span style="color:#9A9DA5;">rien de visible n'a changé</span>
-                                    @endforelse
+                                    <x-journal-changements :changements="$changements" :creation="$creation" />
                                 </td>
                             </tr>
                         @empty

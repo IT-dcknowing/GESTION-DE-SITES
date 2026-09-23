@@ -61,6 +61,20 @@ $updatedRecherche = function () {
     $this->page = '1';
 };
 
+/*
+ * Le même raisonnement vaut pour les listes déroulantes, et il manquait.
+ *
+ * Tant que les filtres renvoyaient le formulaire, le numéro de page repartait avec eux :
+ * choisir un niveau de relance depuis la page cinq rendait une page cinq qui n'existait
+ * plus, donc un tableau vide — et un tableau vide après un filtre se lit « aucun dossier
+ * à ce niveau », ce qui est faux. Chaque filtre ramène donc au début de la liste.
+ */
+$updatedMoisFiltre = fn () => $this->page = '1';
+$updatedSemaineFiltre = fn () => $this->page = '1';
+$updatedJourFiltre = fn () => $this->page = '1';
+$updatedNiveauFiltre = fn () => $this->page = '1';
+$updatedVue = fn () => $this->page = '1';
+
 $periode = computed(fn () => PeriodeDeTravail::depuis($this->moisFiltre, $this->semaineFiltre, $this->jourFiltre));
 
 $arrete = computed(fn () => Recouvrement::arrete($this->periode->arreteIso()));
@@ -220,7 +234,7 @@ $lien = function (array $changements = []): string {
                        letter-spacing:.7px; color:#5A6472; font-weight:700; margin-bottom:3px;">
                     Portefeuille
                 </label>
-                <select id="p-vue" name="vue"
+                <select id="p-vue" name="vue" wire:model.live="vue"
                         style="border:1px solid #E3E0D8; border-radius:6px; padding:6px 9px; font-size:13px;
                                background:var(--th-champ,#FFFBEA); font-family:inherit;">
                     @if ($this->estEncadrant)
@@ -246,7 +260,7 @@ $lien = function (array $changements = []): string {
                        letter-spacing:.7px; color:#5A6472; font-weight:700; margin-bottom:3px;">
                     Niveau
                 </label>
-                <select id="p-niveau" name="niveauFiltre"
+                <select id="p-niveau" name="niveauFiltre" wire:model.live="niveauFiltre"
                         style="border:1px solid #E3E0D8; border-radius:6px; padding:6px 9px; font-size:13px;
                                background:var(--th-champ,#FFFBEA); font-family:inherit;">
                     <option value="" @selected($niveauFiltre === '')>Tous les niveaux</option>
@@ -596,7 +610,13 @@ $lien = function (array $changements = []): string {
                                          margin-top:13px; padding-top:12px; border-top:1px solid #EFEDE6;">
 
                 @if ($this->pageCourante > 1)
-                    <a href="{{ $this->lien(['page' => $this->pageCourante - 1]) }}" wire:navigate
+                    {{-- `wire:navigate` remontait le composant entier et replaçait le
+                         lecteur en haut de la page : on tournait la page et l'on perdait
+                         le tableau de vue. `$set` ne renvoie que ce qui change, et la
+                         position dans la page est conservée. Le `href` reste : sans
+                         script, le lien est un lien, et il se transmet tel quel. --}}
+                    <a href="{{ $this->lien(['page' => $this->pageCourante - 1]) }}"
+                       wire:click.prevent="$set('page', '{{ $this->pageCourante - 1 }}')"
                        style="{{ $bouton }}" rel="prev" aria-label="Page précédente">←</a>
                 @else
                     <span style="{{ $mort }}">←</span>
@@ -610,7 +630,8 @@ $lien = function (array $changements = []): string {
                         <span style="{{ $mort }}">…</span>
                     @endif
 
-                    <a href="{{ $this->lien(['page' => $numero]) }}" wire:navigate
+                    <a href="{{ $this->lien(['page' => $numero]) }}"
+                       wire:click.prevent="$set('page', '{{ $numero }}')"
                        style="{{ $numero === $this->pageCourante ? $actif : $bouton }}"
                        @if ($numero === $this->pageCourante) aria-current="page" @endif>
                         {{ $numero }}
@@ -620,7 +641,8 @@ $lien = function (array $changements = []): string {
                 @endforeach
 
                 @if ($this->pageCourante < $this->pages)
-                    <a href="{{ $this->lien(['page' => $this->pageCourante + 1]) }}" wire:navigate
+                    <a href="{{ $this->lien(['page' => $this->pageCourante + 1]) }}"
+                       wire:click.prevent="$set('page', '{{ $this->pageCourante + 1 }}')"
                        style="{{ $bouton }}" rel="next" aria-label="Page suivante">→</a>
                 @else
                     <span style="{{ $mort }}">→</span>

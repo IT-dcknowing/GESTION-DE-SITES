@@ -64,35 +64,40 @@
 
 <script data-navigate-once>
 (function () {
-    var boite = document.getElementById('boite-confirmation');
-
-    if (! boite || typeof boite.showModal !== 'function') {
-        return; // Navigateur sans <dialog> : le geste part directement, comme sans script.
-    }
-
-    var titre = document.getElementById('boite-confirmation-titre');
-    var message = document.getElementById('boite-confirmation-message');
-    var detail = document.getElementById('boite-confirmation-detail');
-    var bande = document.getElementById('boite-confirmation-bande');
-    var valider = document.getElementById('boite-confirmation-valider');
-    var annuler = document.getElementById('boite-confirmation-annuler');
+    /*
+     * Les éléments sont relus à chaque ouverture, et jamais gardés en mémoire.
+     *
+     * **La panne qu'on corrige.** `wire:navigate` remplace le corps de la page sans
+     * recharger les scripts — c'est tout son intérêt. Le script, lui, retenait la boîte
+     * trouvée au premier chargement : après une seule navigation, cette boîte-là n'était
+     * plus dans le document, et le clic suivant levait « Failed to execute 'showModal' on
+     * 'HTMLDialogElement': The element is not in a Document ». Plus aucune confirmation ne
+     * s'ouvrait tant qu'on ne rechargeait pas la page à la main.
+     *
+     * Chercher l'élément au moment du clic coûte un `getElementById` et rend le script
+     * indifférent au nombre de navigations.
+     */
+    var boite = function () { return document.getElementById('boite-confirmation'); };
+    var par = function (suffixe) { return document.getElementById('boite-confirmation-' + suffixe); };
 
     // L'élément qu'on relancera si la personne confirme. On repose le geste tel quel
     // plutôt que de le simuler : un formulaire se soumet, un lien se suit.
     var enAttente = null;
 
     var fermer = function () {
+        var dialogue = boite();
+
         enAttente = null;
-        boite.close();
+
+        if (dialogue && dialogue.open) {
+            dialogue.close();
+        }
     };
 
-    annuler.addEventListener('click', fermer);
-    boite.addEventListener('cancel', function () { enAttente = null; });
-
-    valider.addEventListener('click', function () {
+    var relancer = function () {
         var cible = enAttente;
-        enAttente = null;
-        boite.close();
+
+        fermer();
 
         if (! cible) { return; }
 
@@ -117,36 +122,72 @@
         } else {
             formulaire.submit();
         }
-    });
+    };
 
+    /*
+     * Un seul écouteur sur le document, posé une fois pour toutes.
+     *
+     * Les boutons de la boîte sont eux aussi remplacés à chaque navigation : leur attacher
+     * un écouteur au chargement le perdrait au premier `wire:navigate`. On écoute donc le
+     * document, qui ne change pas, et l'on reconnaît le bouton à son identifiant.
+     */
     document.addEventListener('click', function (evenement) {
+        var valider = evenement.target.closest('#boite-confirmation-valider');
+
+        if (valider) {
+            evenement.preventDefault();
+            relancer();
+
+            return;
+        }
+
+        if (evenement.target.closest('#boite-confirmation-annuler')) {
+            evenement.preventDefault();
+            fermer();
+
+            return;
+        }
+
         var cible = evenement.target.closest('[data-confirmer]');
 
         if (! cible || cible === enAttente) { return; }
 
+        var dialogue = boite();
+
+        // Navigateur sans <dialog>, ou boîte absente de cette mise en page : le geste part
+        // directement, comme sans script. Mieux vaut un bouton qui agit qu'un bouton mort.
+        if (! dialogue || typeof dialogue.showModal !== 'function') { return; }
+
         evenement.preventDefault();
         evenement.stopPropagation();
 
-        titre.textContent = cible.getAttribute('data-confirmer-titre') || 'Confirmer';
-        message.textContent = cible.getAttribute('data-confirmer');
+        par('titre').textContent = cible.getAttribute('data-confirmer-titre') || 'Confirmer';
+        par('message').textContent = cible.getAttribute('data-confirmer');
 
         var complement = cible.getAttribute('data-confirmer-detail');
-        detail.textContent = complement || '';
-        detail.hidden = ! complement;
+        par('detail').textContent = complement || '';
+        par('detail').hidden = ! complement;
 
         var alerte = cible.getAttribute('data-confirmer-ton') === 'alerte';
-        bande.style.background = alerte ? '#C8102E' : '#191B20';
-        valider.style.background = alerte ? '#C8102E' : '#191B20';
+        par('bande').style.background = alerte ? '#C8102E' : '#191B20';
+        par('valider').style.background = alerte ? '#C8102E' : '#191B20';
 
         var information = cible.getAttribute('data-confirmer-mode') === 'information';
         // « Annuler » n'a pas de sens devant une note : il n'y a rien à annuler.
-        annuler.hidden = information;
-        valider.textContent = cible.getAttribute('data-confirmer-libelle')
+        par('annuler').hidden = information;
+        par('valider').textContent = cible.getAttribute('data-confirmer-libelle')
             || (information ? 'Fermer' : 'Confirmer');
 
         enAttente = cible;
-        boite.showModal();
-        valider.focus();
+        dialogue.showModal();
+        par('valider').focus();
+    }, true);
+
+    // La touche Échap ferme la boîte : le geste en attente ne doit pas lui survivre.
+    document.addEventListener('cancel', function (evenement) {
+        if (evenement.target && evenement.target.id === 'boite-confirmation') {
+            enAttente = null;
+        }
     }, true);
 })();
 </script>

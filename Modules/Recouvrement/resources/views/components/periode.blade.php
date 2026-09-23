@@ -52,7 +52,7 @@
 
     <div>
         <label for="p-mois" style="{{ $etiquette }}">Exercice {{ $periode->annee }}</label>
-        <select id="p-mois" name="moisFiltre" style="{{ $champ }}">
+        <select id="p-mois" name="moisFiltre" wire:model.live="moisFiltre" style="{{ $champ }}">
             <option value="" @selected($periode->mois === null)>Tous les mois</option>
             @foreach ($mois as $numero => $libelle)
                 <option value="{{ $numero }}" @selected($periode->mois === $numero)>{{ $libelle }}</option>
@@ -64,7 +64,8 @@
          tout ne veut rien dire, et un champ actif qui ne fait rien se lit comme une panne. --}}
     <div>
         <label for="p-semaine" style="{{ $etiquette }}">Semaine</label>
-        <select id="p-semaine" name="semaineFiltre" style="{{ $champ }}" @disabled($periode->mois === null)>
+        <select id="p-semaine" name="semaineFiltre" wire:model.live="semaineFiltre"
+                style="{{ $champ }}" @disabled($periode->mois === null)>
             <option value="" @selected($periode->semaine === null)>Toutes les semaines</option>
             @foreach ($semaines as $semaine)
                 <option value="{{ $semaine['numero'] }}" @selected($periode->semaine === (int) $semaine['numero'])>
@@ -76,7 +77,8 @@
 
     <div>
         <label for="p-jour" style="{{ $etiquette }}">Jour</label>
-        <select id="p-jour" name="jourFiltre" style="{{ $champ }}" @disabled($periode->mois === null)>
+        <select id="p-jour" name="jourFiltre" wire:model.live="jourFiltre"
+                style="{{ $champ }}" @disabled($periode->mois === null)>
             <option value="" @selected($periode->jour === null)>Tous les jours</option>
             @foreach ($jours as $j)
                 <option value="{{ $j }}" @selected($periode->jour === $j)>Jour {{ $j }}</option>
@@ -129,27 +131,43 @@
     </div>
 
     @if ($periode->mois !== null || ($recherche !== null && $recherche !== ''))
-        <a href="{{ route($route, $parametres) }}"
+        <a href="{{ route($route, $parametres) }}" wire:navigate
            style="font-size:12px; color:#C8102E; font-weight:700; text-decoration:none; padding-bottom:8px;">
             Tout voir
         </a>
     @endif
 
-    {{-- Le filtre part de lui-même au changement. La recherche, elle, part à la touche
-         Entrée : recharger la page à chaque lettre ferait perdre le curseur.
+    {{-- Le filtre part de lui-même au changement, et le reste de la page suit.
 
-         **Pourquoi une écoute déléguée et non un branchement sur chaque liste.** Le script
-         portait `data-navigate-once`, qui le fait tourner une seule fois pour toute la
-         durée du document. Or on arrive sur ces écrans par le menu, et le menu navigue sans
-         recharger la page : au deuxième écran, le script était sauté, plus aucune liste
-         n'était branchée, et choisir un mois ne faisait plus rien du tout. L'écoute est donc
-         posée une fois sur le document — qui, lui, survit à toutes les navigations — et
-         retrouve le formulaire au moment du changement plutôt qu'à l'avance. --}}
+         **Ce qui a changé le 24/09, et pourquoi.** Chaque liste renvoyait le formulaire,
+         donc rechargeait la page entière : feuilles de style, scripts, menu, bandeau, tout
+         était redemandé pour changer un mois. Le propriétaire l'a mesuré à l'usage — « ils
+         font recharger la page et on a un temps de latence » — et il avait raison : sur le
+         tableau de bord du recouvrement, chaque clic sur un filtre coûtait une page neuve.
+         Les listes sont désormais liées au composant (`wire:model.live`) : seule la partie
+         qui change est renvoyée, l'adresse se met à jour, et la position dans la page est
+         conservée.
+
+         **Le chemin sans script reste ouvert**, et c'est la raison d'être du formulaire :
+         les `name` sont intacts, le bouton « Appliquer » de `<noscript>` l'envoie, et les
+         mêmes paramètres arrivent dans l'adresse. Les deux chemins mènent au même endroit.
+
+         **L'écoute déléguée subsiste pour les listes non liées** — un écran qui poserait
+         ici un filtre à lui sans le brancher sur un composant. Elle est posée une fois sur
+         le document, qui survit aux navigations : branchée liste par liste au chargement,
+         elle était sautée au deuxième écran ouvert depuis le menu, et plus aucun filtre ne
+         partait. Une liste déjà liée à Livewire est laissée tranquille : envoyer le
+         formulaire par-dessus rechargerait justement la page qu'on vient d'éviter. --}}
     <script data-navigate-once>
         document.addEventListener('change', function (evenement) {
             var champ = evenement.target;
 
             if (! champ || champ.tagName !== 'SELECT') { return; }
+
+            // Liée au composant : Livewire s'en charge, et mieux.
+            for (var i = 0; i < champ.attributes.length; i++) {
+                if (champ.attributes[i].name.indexOf('wire:model') === 0) { return; }
+            }
 
             var formulaire = champ.closest('form[data-filtre-auto]');
 

@@ -314,7 +314,7 @@ $enregistrer = function () {
 
     unset($this->perimetre, $this->requete, $this->detail, $this->kpis, $this->principaux, $this->exercices);
 
-    session()->flash('message', 'La pièce '.$numero.' est enregistrée.');
+    $this->dispatch('annonce', texte: 'La pièce '.$numero.' est enregistrée.', ton: 'succes');
 };
 
 $detail = computed(fn () => (clone $this->requete)
