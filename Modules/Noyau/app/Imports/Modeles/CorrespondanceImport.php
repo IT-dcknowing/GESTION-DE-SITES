@@ -42,6 +42,9 @@ class CorrespondanceImport extends Model
         'imputation' => 'Imputations comptables',
         'statut' => 'Statuts de dossier',
         'motif' => 'Motifs de venue',
+        // La colonne libre de la fiche de réception, quand elle nomme le commercial qui a
+        // décroché l'affaire. Voir CommercialDeLaFiche.
+        'commercial' => 'Commerciaux nommés sur la fiche de réception',
     ];
 
     protected function casts(): array

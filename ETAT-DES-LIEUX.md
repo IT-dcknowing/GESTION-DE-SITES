@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (8e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (9e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -923,15 +924,15 @@ texte, elles ne se trieraient pas. La liste déroulante suit jusqu'à la derniè
 ### Où en est le plan
 
 Le classeur `plan-a-jour.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09, après la seconde série de retours : **79
+date de fin, une ligne par chantier. Au 24/09, après la liaison devis / prospections : **85
 lignes terminées, 3 à faire, 1 abandonnée et 1 sans objet** — plus rien n'attend de
 validation, le courrier à M. Fofana étant parti. Les trois qui restent ne dépendent plus de
-nous : deux questions à la direction, et deux réglages d'hébergement. Huit sections
+nous : deux questions à la direction, et deux réglages d'hébergement. Neuf sections
 se sont ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
 joindre), la caisse (le journal imprimé), les fournisseurs — le registre par année, puis le
 référentiel et l’échéance attendue —, les colonnes du fichier écran par écran, et le n° de
-fiche comme clé de rapprochement, ce qu'on a écarté, et la seconde série de retours du
-propriétaire.
+fiche comme clé de rapprochement, ce qu'on a écarté, la seconde série de retours du
+propriétaire, et la liaison des devis du logiciel aux prospections.
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans
@@ -1010,9 +1011,100 @@ change pas d'un iota — c'est la même `Facture::tiersPayantParmi()` — et un 
 les deux lectures ligne à ligne avant de garder la seconde : repères, courbe mensuelle et
 cent vingt-neuf lignes **identiques**.
 
+### La fiche de réception nomme son commercial
+
+✅ **Fait le 24/09.** Arbitré par le propriétaire avec la direction, et c'est la réponse au
+trou mesuré le 21/09 : sur 2 673 devis, **2 432 viennent de l'import et ne portent aucun
+commercial**. Le chiffre de celui qui a décroché l'affaire ne les compte pas, et la
+prospection reste « sans suite » alors qu'elle en a eu une.
+
+**Le moyen ne demande aucune colonne nouvelle au logiciel d'atelier.** La fiche de réception
+porte déjà une colonne libre, « INFORMATIONS SUR LA SITUATION », qui remonte telle quelle
+dans l'export du parc. Quand la venue fait suite à une prospection, le saisisseur y met le
+commercial **en première position** — son nom, son code de deux lettres, ou le code de
+l'application — séparé du reste par une virgule, un point-virgule, un point, un tiret ou un
+blanc souligné. Le reste de la colonne continue de servir à ce qu'il servait.
+
+**La ponctuation ne coupe pas les noms.** Pris au pied de la lettre, le tiret couperait
+« Marie-Claire Aya » en deux et `C-0001` par le milieu. Un tiret ou un blanc souligné ne
+sépare donc qu'entouré d'espaces ou répété ; la virgule et le point-virgule, eux, séparent
+toujours — on ne les rencontre pas dans un nom.
+
+**Rien n'est deviné.** « KOFI YAO » pour « Koffi Yao » : un rapprochement automatique se
+tromperait un jour, et ce jour-là il attribuerait le chiffre d'un commercial à un autre sans
+qu'une ligne ne s'affiche. Ce qui ne correspond pas exactement devient une **question**,
+posée sur l'écran des traitements avec les noms du référentiel classés du plus proche au plus
+lointain. La réponse est retenue dans `correspondances_import` : une même faute de frappe ne
+se demande jamais deux fois, et les fiches déjà lues sont reprises sans qu'on redépose le
+fichier. Un plancher de ressemblance évite que « RAS » ou « véhicule livré » deviennent des
+questions — une liste où neuf sur dix n'en sont pas ne se lit plus.
+
+**Ce que cela relie.** Le devis importé cite son numéro de fiche ; la fiche nomme le
+commercial ; la prospection est de ce commercial. Une piste de plus au rapprochement
+prospection/devis, placée après la plaque et **hors des pistes confirmables en lot** — la
+fiche désigne une personne, pas une affaire, et un commercial a plusieurs prospections.
+
+**Mesure à garder en tête** : au 24/09, sur les 3 323 fiches en base, **3 seulement** portent
+quelque chose dans cette colonne, et aucune ne nomme un commercial. La lecture ne rendra donc
+rien tant que les saisisseurs n'auront pas pris l'habitude. C'est attendu : on prépare la
+lecture pour que l'habitude porte dès le premier fichier. Migration `2026_09_25_000001`,
+trois colonnes nullables.
+
+### Ce qui a été corrigé autour de l'import, le 24/09
+
+**Le code de saisie suit la personne.** On avait déplacé une employée de Bouaké à Abidjan
+depuis l'écran des accès : son compte a suivi, sa fiche commerciale aussi, ses
+responsabilités ont été reprises — et son **code du logiciel d'atelier est resté à Bouaké**.
+Au dépôt suivant, le contrôle annonçait donc que 117 lignes sur 397 portaient un code d'une
+autre ville. Le message était juste, la correction avait pourtant été faite : elle n'avait
+pas été faite partout. La règle du déplacement d'un code n'existe plus qu'à un seul endroit,
+et les deux chemins — l'écran des accès et la réaffectation — y passent. Les fiches déjà
+rédigées ne bougent pas : elles appartiennent à l'atelier où elles ont été faites.
+
+**La phrase du contrôle se contredisait.** Elle nommait la ville *dominante* du fichier :
+quand la dominante était celle du dépôt — 280 lignes d'Abidjan contre 117 de Bouaké — on
+lisait « vous déposez au titre d'Abidjan, mais 117 lignes portent des codes rattachés à
+Abidjan ». Elle nomme désormais les villes **des codes en cause**, la seule information qui
+aide.
+
+**Le dépôt atterrit sur la page « Traitement ».** La lecture démarre d'elle-même au dépôt et
+la barre avançait sur l'écran de dépôt : deux écrans montraient la même barre, et c'est celui
+qui porte le titre « Traitement » qu'on abandonnait. Rien ne ralentit — le processus détaché
+est déjà parti quand la réponse s'écrit, on change l'adresse d'arrivée, pas le moment où la
+lecture commence. Le fichier qu'on vient de déposer y est encadré, et la page se rafraîchit à
+la seconde tant qu'on le suit.
+
+**Le message de cette page était statique.** « Tout ce qui a été déposé a été lu »
+s'affichait aussi bien sur une plateforme où personne n'avait jamais rien déposé que juste
+après un import tombé en échec. Il dit maintenant ce qui vient de se passer : rien de déposé,
+dernier traitement arrêté, lecture interrompue, simulation, ou lecture terminée avec ses
+compteurs.
+
+### Ce qui suit une personne, et ce qui reste où le travail a eu lieu
+
+Question du propriétaire le 24/09 : « si je modifie une personne étant à Bouaké à San Pédro,
+ses prospections suivront ? » **Oui**, et c'est tenu par un test. Une prospection appartient à
+un **commercial**, pas à une ville : la fiche commerciale ne change pas d'identifiant quand on
+la déplace, donc tout ce qui pointe dessus la suit sans qu'une ligne soit réécrite.
+
+La distinction tient en une phrase. Ce qui suit la personne décrit **où elle travaille
+maintenant** : son compte, sa fiche commerciale, son code de saisie. Ce qui ne suit pas décrit
+**où un travail a eu lieu** : le lieu inscrit sur une prospection déjà saisie reste celui du
+jour où elle a été saisie. Déplacer l'un fausserait deux ateliers d'un coup, celui qu'on vide
+et celui qu'on gonfle.
+
+Le **rattachement facultatif au site** (branche `modif-site-precis`, déjà fusionnée dans
+`main`) a été relu : le site ne se pose que s'il appartient à la ville choisie, il retombe
+quand on ramène le commercial à la ville seule, et le formulaire ne propose que les ateliers
+de la ville. Huit tests le tiennent désormais.
+
 ### Pour le jour où les API répondront
 
 Demandé par le propriétaire le 24/09, à garder pour ce moment-là et pas avant.
+
+À ajouter à la liste le 24/09 : la colonne « informations sur la situation » devra se lire
+**directement** depuis l'API, sans passer par l'export. La reconnaissance du commercial et la
+table des correspondances ne changent pas — c'est la source qui change, pas la règle.
 
 Quand les données arriveront par une API plutôt que par un fichier, les **codes** qu'elles
 portent — code employé, code client — seront reconnus à la lecture. Il faudra alors

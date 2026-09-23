@@ -65,7 +65,9 @@ class DepotFormulaireTest extends TestCase
         $lot = LotImport::withoutGlobalScopes()->first();
 
         $this->assertNotNull($lot, 'Le dépôt doit aboutir sans la moindre ligne de JavaScript.');
-        $reponse->assertRedirect(route('import.depot', ['lot' => $lot->id]));
+        // On atterrit sur la page des traitements : c'est elle qui suit la lecture depuis
+        // le 24/09, et non plus l'écran de dépôt, qui montrait la même barre.
+        $reponse->assertRedirect(route('import.traitements', ['lot' => $lot->id]));
         $this->assertSame($this->siteUn->id, $lot->site_id);
         Queue::assertPushed(TraiterUnLot::class);
     }

@@ -6,14 +6,14 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
-use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Entreprises\Support\ChoixDeLieu;
 use Modules\Noyau\Entreprises\Support\ChoixDeVille;
 use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
-use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
+use Modules\Noyau\Imports\Services\AffectationDesCodes;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -84,6 +84,7 @@ class ModifierAcces
 
                 $ville = $this->poserLePerimetre($compte, $ancienRole, $donnees, $changements);
                 $this->accorderLaFiche($compte, $ancienRole, $ville, $donnees, $changements);
+                $this->faireSuivreLeCode($compte, $changements);
 
                 return $changements;
             }
@@ -108,6 +109,7 @@ class ModifierAcces
             $this->poserLeRole($compte, $role, $entrepriseId);
             $ville = $this->poserLePerimetre($compte, $role, $donnees, $changements);
             $this->accorderLaFiche($compte, $role, $ville, $donnees, $changements);
+            $this->faireSuivreLeCode($compte, $changements);
 
             return $changements;
         });
@@ -209,6 +211,30 @@ class ModifierAcces
         $changements['périmètre'] = ChoixDeVille::libelle($compte->refresh()) ?: $ville->nom;
 
         return $ville;
+    }
+
+    /**
+     * Le code du logiciel d'atelier suit la personne, comme tout le reste.
+     *
+     * **Ce qui manquait, et ce que cela coûtait.** Déplacer quelqu'un ici mettait à jour
+     * son compte, sa fiche commerciale et ses désignations — mais pas son code de saisie.
+     * Au dépôt suivant, le contrôle préalable avertissait que les lignes de cette personne
+     * portaient un code d'une autre ville : le message était juste, et la correction avait
+     * pourtant été faite. Deux écrans qui décrivent le même fait doivent le décrire
+     * ensemble, sinon on corrige d'un côté et l'on s'étonne de l'autre.
+     *
+     * Les fiches déjà rédigées sous ce code **ne bougent pas** : elles appartiennent à
+     * l'atelier où elles ont été faites. Seules les suivantes partent au nouveau lieu.
+     *
+     * @param  array<string, string>  $changements
+     */
+    private function faireSuivreLeCode(User $compte, array &$changements): void
+    {
+        $code = (new AffectationDesCodes((int) $compte->entreprise_id))->suivreLaPersonne($compte->refresh());
+
+        if ($code !== null && $code->wasChanged(['ville_id', 'site_id'])) {
+            $changements['code de saisie'] = $code->code.' suit la personne';
+        }
     }
 
     /**

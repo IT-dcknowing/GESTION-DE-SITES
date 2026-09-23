@@ -252,6 +252,51 @@ class AffectationDesCodes
         return $agent;
     }
 
+    /**
+     * Replace le code d'une personne là où cette personne travaille désormais.
+     *
+     * **Le défaut qu'elle répare, constaté le 24/09 sur le serveur de recette.** On avait
+     * changé la ville d'une employée depuis l'écran des accès — Bouaké → Abidjan. Son
+     * compte a suivi, sa fiche commerciale aussi, ses responsabilités ont été reprises.
+     * Son **code du logiciel d'atelier**, lui, est resté à Bouaké. Au dépôt suivant, le
+     * contrôle a donc averti que 117 lignes sur 397 portaient un code d'une autre ville —
+     * et il avait raison, au sens strict, alors que la personne avait bel et bien été
+     * déplacée. Corriger dans un endroit et pas dans l'autre, c'est ne rien corriger.
+     *
+     * La règle est la même que celle d'`attribuerA()` : l'atelier commande la ville quand
+     * il est connu, sinon la ville du compte. Ici comme là, **les fiches déjà rédigées ne
+     * bougent pas** — elles appartiennent à l'atelier où elles ont été faites. Seules les
+     * suivantes iront au nouveau lieu.
+     *
+     * Rend le code déplacé, ou null quand cette personne n'en porte aucun. Le caller lit
+     * `wasChanged()` pour savoir s'il y avait quelque chose à déplacer.
+     */
+    public function suivreLaPersonne(User $utilisateur): ?CodeAgent
+    {
+        $code = CodeAgent::withoutGlobalScopes()
+            ->where('entreprise_id', $this->entrepriseId)
+            ->where('user_id', $utilisateur->id)
+            ->first();
+
+        if ($code === null) {
+            return null;
+        }
+
+        $site = $utilisateur->site_id
+            ? Site::withoutGlobalScopes()
+                ->where('entreprise_id', $this->entrepriseId)
+                ->whereKey($utilisateur->site_id)
+                ->first()
+            : null;
+
+        $code->forceFill([
+            'ville_id' => $site?->ville_id ?? ($utilisateur->ville_id ? (int) $utilisateur->ville_id : null),
+            'site_id' => $site?->id,
+        ])->save();
+
+        return $code;
+    }
+
     /** Détache le code d'un compte sans effacer ce que les imports en savent. */
     public function detacherDe(User $utilisateur): void
     {

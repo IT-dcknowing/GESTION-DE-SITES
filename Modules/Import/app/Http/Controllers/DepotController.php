@@ -142,9 +142,23 @@ class DepotController
 
         $this->oublierLeFichierGarde($requete);
 
+        /*
+         * **On atterrit sur la page des traitements, et non sur celle du dépôt.**
+         *
+         * Demandé par le propriétaire le 24/09, et l'observation est juste : la lecture
+         * démarre d'elle-même au dépôt, la barre avançait sur la page de dépôt, et la page
+         * « Traitement » ne servait plus à rien. Deux écrans qui montrent la même barre,
+         * c'est un écran de trop — et c'est celui qui porte le titre « Traitement » qu'on
+         * abandonnait.
+         *
+         * **Rien ne ralentit.** Le processus détaché est déjà parti quand cette réponse
+         * s'écrit ; on change l'adresse d'arrivée, pas le moment où la lecture commence.
+         * La page de dépôt garde sa capacité à suivre un lot : un lien ancien continue de
+         * fonctionner.
+         */
         return redirect()
-            ->route('import.depot', ['lot' => $lot->id])
-            ->with('annonce-import', 'Fichier reçu. La lecture se poursuit en arrière-plan.');
+            ->route('import.traitements', ['lot' => $lot->id])
+            ->with('annonce-import', 'Fichier reçu. La lecture se poursuit ici, en arrière-plan.');
     }
 
     /** Le contrôle préalable ; rend une réponse quand il faut s'arrêter pour demander. */

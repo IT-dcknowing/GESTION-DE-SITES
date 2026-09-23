@@ -110,6 +110,27 @@ $piste = computed(fn () => $this->fiche === null
                         · code employé <b>{{ $f->code_agent }}</b>
                     @endif
                 </div>
+
+                {{-- Le commercial que la colonne libre de la fiche nomme, et **par quel
+                     chemin** on l'a reconnu. Un rattachement dont on ne sait plus s'il a
+                     été lu ou décidé ne se défend pas devant celui à qui on retire le
+                     chiffre. Ce qui a été saisi reste affiché quand rien n'a été reconnu :
+                     c'est la seule façon de comprendre pourquoi. --}}
+                @if ($f->commercial_id || $f->commercial_saisi)
+                    <div style="color:#6B6E76; font-size:13px; margin-top:3px;">
+                        @if ($f->commercial_id)
+                            Commercial : <b>{{ $f->commercial?->nom ?? '—' }}</b>
+                            <span style="font-size:11.5px;">
+                                ({{ \Modules\Noyau\Imports\Services\CommercialDeLaFiche::SOURCES[$f->commercial_source] ?? 'origine inconnue' }})
+                            </span>
+                        @else
+                            Commercial lu sur la fiche : <b>{{ $f->commercial_saisi }}</b>
+                            <span style="color:#B9791C; font-weight:700; font-size:11.5px;">
+                                — ne correspond à personne du référentiel ; la question est posée sur l’écran des traitements
+                            </span>
+                        @endif
+                    </div>
+                @endif
             </div>
 
             <span style="display:inline-block; padding:5px 13px; border-radius:20px; font-size:12.5px;

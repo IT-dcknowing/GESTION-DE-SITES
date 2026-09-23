@@ -9,6 +9,7 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\LibellesRoles;
 use Modules\Noyau\Imports\Modeles\CodeAgent;
+use Modules\Noyau\Imports\Services\AffectationDesCodes;
 use RuntimeException;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -110,7 +111,7 @@ class ReaffecterUnEmploye
             $this->retirerLesResponsabilitesAnciennes($employe, $avant, $site?->id, $villeFinale);
             $this->poserLesResponsabilitesNouvelles($employe, $roleVise, $site?->id, $villeFinale);
 
-            $code = $this->deplacerLeCode($employe, $villeFinale, $site?->id);
+            $code = $this->deplacerLeCode($employe);
 
             return Reaffectation::withoutGlobalScopes()->create([
                 'entreprise_id' => $this->entrepriseId,
@@ -162,20 +163,12 @@ class ReaffecterUnEmploye
      * Les fiches déjà rédigées sous ce code gardent leur atelier : c'est là qu'elles ont
      * été faites. Seules les suivantes iront au nouveau lieu.
      */
-    private function deplacerLeCode(User $employe, ?int $villeId, ?int $siteId): ?CodeAgent
+    private function deplacerLeCode(User $employe): ?CodeAgent
     {
-        $code = CodeAgent::withoutGlobalScopes()
-            ->where('entreprise_id', $this->entrepriseId)
-            ->where('user_id', $employe->id)
-            ->first();
-
-        if ($code === null) {
-            return null;
-        }
-
-        $code->forceFill(['ville_id' => $villeId, 'site_id' => $siteId])->save();
-
-        return $code;
+        // Le compte vient d'être écrit avec son nouveau lieu : le service le relit plutôt
+        // que de recevoir la ville une seconde fois. La règle du déplacement d'un code
+        // n'existe qu'à un seul endroit, et l'écran des accès l'appelle aussi.
+        return (new AffectationDesCodes($this->entrepriseId))->suivreLaPersonne($employe);
     }
 
     private function retirerLesResponsabilitesAnciennes(User $employe, array $avant, ?int $siteApres, ?int $villeApres): void
