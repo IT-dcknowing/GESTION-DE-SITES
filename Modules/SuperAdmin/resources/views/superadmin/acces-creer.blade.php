@@ -213,6 +213,17 @@ $optionsSite = computed(fn () => $this->entrepriseId
     ? ChoixDeLieu::options((int) $this->entrepriseId)
     : []);
 
+/** Sites précis de la ville choisie pour un commercial, sans rendre ce choix obligatoire. */
+$optionsSiteCommercial = computed(fn () => $this->roleActif === 'commercial' && $this->villeChoix
+    ? Site::withoutGlobalScopes()
+        ->where('entreprise_id', (int) $this->entrepriseId)
+        ->where('ville_id', (int) $this->villeChoix)
+        ->where('est_actif', true)
+        ->orderBy('nom')
+        ->pluck('nom', 'id')
+        ->all()
+    : []);
+
 /*
  * La liste des rôles suit celle que le provisionneur crée réellement en base : un rôle
  * proposé ici mais absent de l'entreprise ferait échouer l'affectation au moment
@@ -293,6 +304,10 @@ $enregistrer = function (\Modules\Noyau\Entreprises\Actions\ModifierAcces $actio
         $regles['siteChoix'] = ['required', 'in:'.implode(',', array_keys($this->optionsSite))];
     } elseif ($this->roleActif !== 'gerant') {
         $regles['villeChoix'] = ['required', 'in:'.implode(',', array_keys($this->optionsVille))];
+
+        if ($this->roleActif === 'commercial') {
+            $regles['siteChoix'] = ['nullable', 'in:'.implode(',', array_keys($this->optionsSiteCommercial))];
+        }
     }
 
     if ($this->roleAvecObjectifs) {
@@ -371,6 +386,10 @@ $creer = function (CreerAcces $action) {
         $regles['siteChoix'] = ['required', 'in:'.implode(',', array_keys($this->optionsSite))];
     } elseif ($this->roleActif !== 'gerant') {
         $regles['villeChoix'] = ['required', 'in:'.implode(',', array_keys($this->optionsVille))];
+
+        if ($this->roleActif === 'commercial') {
+            $regles['siteChoix'] = ['nullable', 'in:'.implode(',', array_keys($this->optionsSiteCommercial))];
+        }
     }
 
     if ($this->roleAvecObjectifs) {
@@ -397,7 +416,7 @@ $creer = function (CreerAcces $action) {
         'email' => $donnees['email'],
         'mot_de_passe' => $donnees['motDePasse'],
         'ville_id' => $donnees['villeChoix'] ?? null,
-        'site_id' => $donnees['siteChoix'] ?? null,
+        'site_id' => $this->roleActif === 'commercial' ? ($donnees['siteChoix'] ?? null) : null,
         'objectif_mecanique' => $this->objectifMecanique,
         'objectif_sinistre' => $this->objectifSinistre,
         'est_actif' => $this->ouverture === 'actif',
@@ -556,13 +575,26 @@ $creer = function (CreerAcces $action) {
                 @error('siteChoix') <div style="color:#C8102E; font-size:13.5px; margin-top:6px;">{{ $message }}</div> @enderror
             @elseif ($roleActif !== 'gerant')
                 <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">Ville</label>
-                <select wire:model="villeChoix" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid #E2E0D8; border-radius:8px; font-size:15.5px;">
+                <select wire:model.live="villeChoix" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid #E2E0D8; border-radius:8px; font-size:15.5px;">
                     <option value="" @selected($villeChoix === '')>— Choisir une ville —</option>
                     @foreach ($this->optionsVille as $id => $nom)
                         <option value="{{ $id }}" @selected((string) $villeChoix === (string) $id)>{{ $nom }}</option>
                     @endforeach
                 </select>
                 @error('villeChoix') <div style="color:#C8102E; font-size:13.5px; margin-top:6px;">{{ $message }}</div> @enderror
+
+                @if ($roleActif === 'commercial' && count($this->optionsSiteCommercial) > 1)
+                    <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">
+                        Site <span style="font-weight:400; color:#6B6E76;">(facultatif)</span>
+                    </label>
+                    <select wire:model="siteChoix" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid #E2E0D8; border-radius:8px; font-size:15.5px;">
+                        <option value="" @selected($siteChoix === '')>— Toute la ville —</option>
+                        @foreach ($this->optionsSiteCommercial as $id => $nom)
+                            <option value="{{ $id }}" @selected((string) $siteChoix === (string) $id)>{{ $nom }}</option>
+                        @endforeach
+                    </select>
+                    @error('siteChoix') <div style="color:#C8102E; font-size:13.5px; margin-top:6px;">{{ $message }}</div> @enderror
+                @endif
             @endif
 
             @if ($this->roleAvecObjectifs)

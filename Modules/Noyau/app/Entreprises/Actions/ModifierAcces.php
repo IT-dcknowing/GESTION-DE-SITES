@@ -195,7 +195,8 @@ class ModifierAcces
             $choixVille = null;
         }
 
-        $ville = ChoixDeVille::poser((int) $compte->entreprise_id, $compte, $choixVille);
+        $siteId = $role === 'commercial' ? ($donnees['site_id'] ?? null) : null;
+        $ville = ChoixDeVille::poser((int) $compte->entreprise_id, $compte, $choixVille, $siteId);
 
         if (! $ville) {
             return null;

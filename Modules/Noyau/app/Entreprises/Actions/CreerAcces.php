@@ -253,7 +253,8 @@ class CreerAcces
          * commercial ou la colonne responsable_id : c'est ce qui permet de le retrouver
          * même après une purge des données, et de ne jamais réaffecter quelqu'un par défaut.
          */
-        $ville = ChoixDeVille::poser($entreprise->id, $utilisateur, $choixVille);
+        $siteId = $role === 'commercial' ? ($donnees['site_id'] ?? null) : null;
+        $ville = ChoixDeVille::poser($entreprise->id, $utilisateur, $choixVille, $siteId);
 
         if (! $ville) {
             throw (new ModelNotFoundException)->setModel(Ville::class);
