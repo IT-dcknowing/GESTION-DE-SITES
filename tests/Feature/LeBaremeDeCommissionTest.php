@@ -115,6 +115,36 @@ class LeBaremeDeCommissionTest extends TestCase
         $this->assertSame(0, CommissionCommerciale::commission($bareme, 12_000_000));
     }
 
+    public function test_les_deux_grilles_ont_deux_seuils_distincts(): void
+    {
+        $commercial = $this->grilleDuDocument('commercial');
+        $responsable = $this->grilleDuDocument('responsable');
+
+        /*
+         * On avait lu la phrase « aucune commission sous 25 millions » comme une
+         * contradiction de la grille des commerciaux, qui commence à 20. Elle ne la visait
+         * pas : ce sont deux postes, et deux seuils. Le propriétaire l'a tranché le 24/09,
+         * et ce test empêche de les remêler.
+         */
+        $this->assertSame(200_000, CommissionCommerciale::commission($commercial, 20_000_000));
+        $this->assertSame(0, CommissionCommerciale::commission($responsable, 20_000_000));
+        $this->assertSame(0, CommissionCommerciale::commission($responsable, 24_999_999));
+    }
+
+    public function test_le_trou_du_responsable_entre_25_et_30_millions_est_comble(): void
+    {
+        $bareme = $this->grilleDuDocument('responsable');
+
+        // Le document annonce une commission dès 25 M et ne disait rien avant 30 : un
+        // responsable à 27 M ne touchait rien tout en ayant dépassé le seuil écrit au-dessus
+        // de sa propre grille. 1 % y est posé depuis le 24/09.
+        $this->assertSame(250_000, CommissionCommerciale::commission($bareme, 25_000_000));
+        $this->assertSame(270_000, CommissionCommerciale::commission($bareme, 27_000_000));
+
+        // Et la tranche suivante reprend à 30 M, sans recouvrement.
+        $this->assertSame(450_000, CommissionCommerciale::commission($bareme, 30_000_000));
+    }
+
     public function test_le_plancher_est_atteint_et_le_plafond_exclu(): void
     {
         $bareme = $this->grilleDuDocument('commercial');

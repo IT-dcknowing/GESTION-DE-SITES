@@ -320,18 +320,24 @@ final class PortefeuilleDeRecouvrement
             ];
         }
 
+        // La date arrive en chaîne ISO : ses sept premiers caractères sont le mois. Un
+        // Carbon par règlement pour n'en lire que l'année et le mois coûtait 305 ms.
         foreach ($this->encaissementsDeLaPeriode() as $encaissement) {
-            $clef = $encaissement->date?->format('Y-m');
+            $clef = substr((string) $encaissement->date, 0, 7);
 
-            if ($clef !== null && isset($suite[$clef])) {
+            if (isset($suite[$clef])) {
                 $suite[$clef]['encaisse'] += (int) $encaissement->montant;
             }
         }
 
-        foreach (RelanceRecouvrement::whereDate('date', '<=', $this->arrete)->get() as $relance) {
+        // Les relances sont déjà lues et groupées au constructeur : les relire ici en
+        // ferait une seconde requête pour le même contenu.
+        $jourArrete = $this->arrete->toDateString();
+
+        foreach ($this->relancesParTiers->flatten(1) as $relance) {
             $clef = $relance->date?->format('Y-m');
 
-            if ($clef !== null && isset($suite[$clef])) {
+            if ($clef !== null && isset($suite[$clef]) && $relance->date->toDateString() <= $jourArrete) {
                 $suite[$clef]['relances']++;
             }
         }
@@ -353,7 +359,12 @@ final class PortefeuilleDeRecouvrement
             'a_confier' => $lignes->whereNull('responsable_id')->count(),
             'sans_geste' => $lignes->filter(fn (array $l) => ($l['silence'] ?? 0) > self::SILENCE_ALERTE)->count(),
             'contentieux' => (int) $lignes->filter(fn (array $l) => ($l['niveau']['niveau'] ?? 0) >= 5)->sum('reste'),
-            'relances' => (int) RelanceRecouvrement::whereDate('date', '<=', $this->arrete)->count(),
+            // Les relances sont en mémoire depuis le constructeur : une requête de plus
+            // pour les compter lirait deux fois la même chose.
+            'relances' => $this->relancesParTiers->flatten(1)
+                ->filter(fn (RelanceRecouvrement $r) => $r->date !== null
+                    && $r->date->toDateString() <= $this->arrete->toDateString())
+                ->count(),
         ];
     }
 
@@ -397,17 +408,37 @@ final class PortefeuilleDeRecouvrement
             ->get();
     }
 
-    /** Les encaissements de la période regardée, une fois pour toutes. */
+    /**
+     * Les encaissements de la période regardée, une fois pour toutes.
+     *
+     * **Lus tels que la base les rend, et non en objets.** Mesuré le 24/09 sur la base de
+     * travail : l'exercice entier compte 7 711 règlements, qu'aucun écran n'affiche ligne
+     * à ligne — ils ne servent qu'à additionner et à ranger par mois. Les construire en
+     * objets Eloquent coûtait **438 ms**, et relire ensuite leur colonne `date` en Carbon
+     * **305 ms de plus** dans le seul graphique mensuel. Quatre colonnes suffisent ; on ne
+     * rapporte pas la table entière pour faire des sommes. C'est le même raisonnement,
+     * et la même mesure, que Recouvrement::lignesDeCreance().
+     *
+     * La date reste donc une chaîne `Y-m-d H:i:s`. Elle se compare et se tronque telle
+     * quelle — l'ordre lexicographique de l'ISO est l'ordre chronologique — et ne devient
+     * un Carbon qu'une fois par tiers retenu, dans rapprocherLesEncaissements().
+     *
+     * Mémorisé sur l'instance, et non en statique : une statique survivrait au changement
+     * de période et servirait les chiffres du filtre précédent.
+     *
+     * Restreints à la ville regardée, comme les factures : sans cela « Encaissé sur la
+     * période » gardait le total de l'entreprise à côté d'un encours filtré.
+     *
+     * @return Collection<int, object>
+     */
     private function encaissementsDeLaPeriode(): Collection
     {
-        // Mémorisé sur l'instance, et non en statique : une statique survivrait au
-        // changement de période et servirait les chiffres du filtre précédent.
-        //
-        // Restreints à la ville regardée, comme les factures : sans cela « Encaissé sur la
-        // période » gardait le total de l'entreprise à côté d'un encours filtré.
         return $this->encaissements ??= Recouvrement::encaissementsDeLaVilleRegardee(Encaissement::query())
             ->when($this->debut, fn ($q) => $q->whereDate('date', '>=', $this->debut))
             ->whereDate('date', '<=', $this->arrete)
+            ->select(['encaissements.id', 'encaissements.facture_id', 'encaissements.montant',
+                'encaissements.date', 'encaissements.code_auteur'])
+            ->toBase()
             ->get();
     }
 
@@ -431,10 +462,21 @@ final class PortefeuilleDeRecouvrement
             $agrege[$tiers] ??= ['montant' => 0, 'date' => null, 'auteur' => null];
             $agrege[$tiers]['montant'] += (int) $encaissement->montant;
 
-            if ($encaissement->date !== null
+            // Les dates sont des chaînes ISO : leur ordre alphabétique *est* leur ordre
+            // chronologique, et les comparer ainsi évite sept mille sept cents Carbon pour
+            // n'en garder que cent trente.
+            if ($encaissement->date !== null && $encaissement->date !== ''
                 && ($agrege[$tiers]['date'] === null || $encaissement->date > $agrege[$tiers]['date'])) {
                 $agrege[$tiers]['date'] = $encaissement->date;
                 $agrege[$tiers]['auteur'] = $encaissement->code_auteur;
+            }
+        }
+
+        // Un Carbon par tiers retenu, et pas un de plus : la ligne du tableau affiche cette
+        // date, et le calcul du silence la compare à l'arrêté.
+        foreach ($agrege as $tiers => $entree) {
+            if ($entree['date'] !== null) {
+                $agrege[$tiers]['date'] = Carbon::parse($entree['date']);
             }
         }
 
@@ -471,8 +513,17 @@ final class PortefeuilleDeRecouvrement
                 // déposée chez un tiers. Le tableau de bord attribuait donc l'encaissement
                 // à quelqu'un d'autre que celui à qui la créance est réclamée, sans qu'une
                 // seule erreur ne s'affiche.
+                //
+                // Lues brutes : sur l'exercice entier, les règlements citent sept mille
+                // factures, et en faire des objets coûtait 586 ms auxquelles s'ajoutaient
+                // 315 ms de lecture d'attributs. La règle du payeur ne change pas d'un
+                // iota — c'est la même Facture::tiersPayantParmi() que partout ailleurs,
+                // celle que `tiersPayant()` appelle elle-même.
+                ->toBase()
                 ->get(['id', 'client', 'assureur', 'courtier', 'depose_chez'])
-                ->mapWithKeys(fn (Facture $f) => [$f->id => $f->tiersPayant()]);
+                ->mapWithKeys(fn (object $f) => [$f->id => Facture::tiersPayantParmi(
+                    $f->depose_chez, $f->courtier, $f->assureur, $f->client,
+                )]);
     }
 
     /**

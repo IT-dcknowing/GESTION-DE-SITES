@@ -22,9 +22,18 @@ use Spatie\Activitylog\Models\Activity;
  *
  * **Trois traductions, et rien de plus.** Le geste (`created` → « Créée »), le nom du champ
  * (`date_reception` → « Date de réception »), et la valeur — une date au format d'ici, un
- * booléen en oui/non, un vide en « vide », et surtout **un identifiant de ville ou
- * d'atelier remplacé par son nom**. Les noms sont lus en une requête pour toute la page :
- * une par ligne en ferait trente sur un historique de trente gestes.
+ * booléen en oui/non, un vide en « vide », et surtout **un identifiant de ville, d'atelier,
+ * de commercial ou de compte remplacé par son nom**. Les noms sont lus en une requête par
+ * table pour toute la page : une par ligne en ferait trente sur un historique de trente
+ * gestes.
+ *
+ * **La création n'est pas une modification.** Corrigé le 24/09 à la demande du
+ * propriétaire, et la remarque est juste : afficher « Ville : vide → Abidjan » sur la ligne
+ * de création laisse croire que quelqu'un a remplacé un vide par Abidjan, alors que
+ * personne n'a rien remplacé — la fiche vient de naître avec cette valeur. Une création
+ * n'a pas d'avant : **c'est elle, l'avant.** Elle se lit donc comme un état posé,
+ * « Ville : Abidjan », sans flèche et sans vide. Les modifications qui suivent se lisent,
+ * elles, en avant → après : ce sont les retouches de cette création.
  *
  * **Ce qui n'est pas traduit reste tel quel.** Un champ inconnu s'affiche sous son nom de
  * colonne, mis en forme mais non traduit : inventer un libellé pour un champ qu'on n'a pas
@@ -52,6 +61,7 @@ class JournalLisible
         'ville_id' => 'Ville',
         'site_id' => 'Atelier',
         'user_id' => 'Compte',
+        'commercial_id' => 'Commercial',
         'lot_import_id' => 'Fichier d’origine',
         'date_reception' => 'Date de réception',
         'date_facture' => 'Date de facture',
@@ -70,9 +80,27 @@ class JournalLisible
         'rattachement_presume' => 'Rattachement présumé',
         'observations' => 'Observations',
         'immatriculation' => 'Immatriculation',
+        'vehicule' => 'Véhicule',
+        'activite' => 'Activité',
         'mode_reglement' => 'Mode de règlement',
         'nature_piece' => 'Nature de la pièce',
         'numero_facture_client' => 'N° de facture client',
+    ];
+
+    /**
+     * Les champs qui portent un identifiant, et où lire le nom qui va avec.
+     *
+     * `commercial_id` y entre le 24/09 : la page de détail d'une créance affichait
+     * « Commercial id : 41 », ce qui ne désigne personne pour qui lit le journal.
+     *
+     * @var array<string, array{0: string, 1: string}> champ => [table, colonne du nom]
+     */
+    private const REFERENCES = [
+        'ville_id' => ['villes', 'nom'],
+        'site_id' => ['sites', 'nom'],
+        'commercial_id' => ['commerciaux', 'nom'],
+        // Les comptes portent `name` et non `nom` : c'est la table de Laravel.
+        'user_id' => ['users', 'name'],
     ];
 
     /** Le geste, dit en français — ou la description quand elle est déjà écrite pour nous. */
@@ -90,21 +118,59 @@ class JournalLisible
     }
 
     /**
+     * Une trace de naissance, par opposition à une retouche.
+     *
+     * L'événement Eloquent tranche quand il est là. Sinon — un journal posé à la main par
+     * un écran, sans événement — l'absence d'« avant » dit la même chose : on ne remplace
+     * rien puisqu'il n'y avait rien.
+     */
+    public static function estUneCreation(Activity $trace): bool
+    {
+        $evenement = (string) $trace->event;
+
+        if ($evenement !== '') {
+            return $evenement === 'created';
+        }
+
+        return ($trace->properties['old'] ?? []) === [];
+    }
+
+    /**
      * Les changements d'une trace, champ par champ, prêts à lire.
      *
-     * @param  array<string, string>  $noms  identifiant => nom, rendu par {@see nomsDesLieux()}
-     * @return list<array{champ: string, avant: string, apres: string}>
+     * Une création rend des lignes `pose = true` : la valeur est un état posé, et non le
+     * remplacement d'un vide, et l'écran l'affiche sans flèche. Les champs laissés vides à
+     * la création ne sont pas rendus — une naissance n'a pas à énumérer ce qu'elle n'a pas.
+     *
+     * @param  array<string, string>  $noms  identifiant => nom, rendu par {@see noms()}
+     * @return list<array{champ: string, avant: string, apres: string, pose: bool}>
      */
     public static function changements(Activity $trace, array $noms = []): array
     {
         $avant = $trace->properties['old'] ?? [];
         $apres = $trace->properties['attributes'] ?? [];
-
-        // À la création, il n'y a pas d'« avant » : ce sont les valeurs posées qu'on montre.
-        $champs = $avant === [] ? array_keys($apres) : array_keys($avant);
         $changements = [];
 
-        foreach ($champs as $champ) {
+        if (self::estUneCreation($trace)) {
+            foreach ($apres as $champ => $valeur) {
+                if ($valeur === null || $valeur === '') {
+                    continue;
+                }
+
+                $changements[] = [
+                    'champ' => self::champ($champ),
+                    'avant' => '',
+                    'apres' => self::valeur($champ, $valeur, $noms),
+                    'pose' => true,
+                ];
+            }
+
+            return $changements;
+        }
+
+        // L'union des deux jeux : un champ ajouté n'apparaît que dans « après », un champ
+        // vidé que dans « avant », et ni l'un ni l'autre ne doit se perdre.
+        foreach (array_keys($apres + $avant) as $champ) {
             $valeurAvant = $avant[$champ] ?? null;
             $valeurApres = $apres[$champ] ?? null;
 
@@ -116,6 +182,7 @@ class JournalLisible
                 'champ' => self::champ($champ),
                 'avant' => self::valeur($champ, $valeurAvant, $noms),
                 'apres' => self::valeur($champ, $valeurApres, $noms),
+                'pose' => false,
             ];
         }
 
@@ -149,9 +216,10 @@ class JournalLisible
             return $valeur ? 'oui' : 'non';
         }
 
-        // Un identifiant de ville ou d'atelier ne dit rien à personne : « 1 » devient
-        // « Abidjan ». Introuvable, il reste affiché — mieux vaut un numéro qu'un blanc.
-        if ($champ === 'ville_id' || $champ === 'site_id') {
+        // Un identifiant ne dit rien à personne : « 1 » devient « Abidjan », « 41 » devient
+        // le nom du commercial. Introuvable, il reste affiché — mieux vaut un numéro qu'un
+        // blanc, parce qu'on peut encore aller le chercher.
+        if (isset(self::REFERENCES[$champ])) {
             return $noms[$champ.':'.$valeur] ?? '#'.$valeur;
         }
 
@@ -178,37 +246,33 @@ class JournalLisible
     }
 
     /**
-     * Les noms des villes et des ateliers cités par ces traces, en une requête chacune.
+     * Les noms derrière les identifiants cités par ces traces, en une requête par table.
      *
      * @param  iterable<Activity>  $traces
      * @return array<string, string>
      */
-    public static function nomsDesLieux(iterable $traces): array
+    public static function noms(iterable $traces): array
     {
-        $villes = [];
-        $sites = [];
+        $paniers = [];
 
         foreach ($traces as $trace) {
             foreach ([$trace->properties['old'] ?? [], $trace->properties['attributes'] ?? []] as $jeu) {
-                foreach (['ville_id' => &$villes, 'site_id' => &$sites] as $champ => &$panier) {
+                foreach (array_keys(self::REFERENCES) as $champ) {
                     $valeur = $jeu[$champ] ?? null;
 
                     if (is_numeric($valeur)) {
-                        $panier[(int) $valeur] = true;
+                        $paniers[$champ][(int) $valeur] = true;
                     }
                 }
-                unset($panier);
             }
         }
 
         $noms = [];
 
-        foreach ([['ville_id', 'villes', $villes], ['site_id', 'sites', $sites]] as [$champ, $table, $ids]) {
-            if ($ids === []) {
-                continue;
-            }
+        foreach ($paniers as $champ => $ids) {
+            [$table, $colonne] = self::REFERENCES[$champ];
 
-            foreach (DB::table($table)->whereIn('id', array_keys($ids))->pluck('nom', 'id') as $id => $nom) {
+            foreach (DB::table($table)->whereIn('id', array_keys($ids))->pluck($colonne, 'id') as $id => $nom) {
                 $noms[$champ.':'.$id] = (string) $nom;
             }
         }

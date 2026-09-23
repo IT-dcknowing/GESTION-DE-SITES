@@ -221,7 +221,8 @@ $notes = computed(fn () => [
         "La commission estimée est calculée directement sur la tranche correspondante du chiffre d'affaires réalisé.",
     ],
     'responsable' => [
-        "Aucune commission n'est appliquée pour un chiffre d'affaires inférieur à 25 millions FCFA.",
+        "Aucune commission n'est appliquée pour un chiffre d'affaires inférieur à 25 millions FCFA — ce seuil est celui de ce poste, et non celui des commerciaux, qui commencent à 20 millions.",
+        "Entre 25 et 30 millions, le document ne disait rien : le taux d'entrée y est fixé à 1 % depuis le 24/09.",
         'Le taux augmente progressivement de 1 % à 5 %, ce qui permet de récompenser davantage les performances les plus élevées.',
         "La commission estimée est calculée directement sur la tranche correspondante du chiffre d'affaires réalisé.",
     ],

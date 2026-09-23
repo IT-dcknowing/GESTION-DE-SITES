@@ -178,6 +178,9 @@ $confirmer = function (int $prospectionId, int $devisId) {
     }
 
     $this->message = 'Rapprochement confirmé : le devis est porté au compte du commercial de la prospection.';
+    /* Le bandeau vert de trois secondes : la ligne disparaît du tableau, et sans un mot on
+       ne saurait pas si c'est le geste qui a réussi ou le filtre qui a changé. */
+    $this->dispatch('annonce', texte: 'Rapprochement confirmé : le devis est porté au commercial de la prospection.', ton: 'succes');
 };
 
 $ecarter = function (int $prospectionId, int $devisId) {
@@ -194,6 +197,7 @@ $ecarter = function (int $prospectionId, int $devisId) {
     }
 
     $this->message = 'Écarté : ce couple ne sera plus proposé.';
+    $this->dispatch('annonce', texte: 'Écarté : ce couple ne sera plus proposé.', ton: 'succes');
 };
 
 $confirmerLaFacture = function (int $factureId, int $devisId) {
@@ -210,6 +214,7 @@ $confirmerLaFacture = function (int $factureId, int $devisId) {
     }
 
     $this->message = 'Rapprochement confirmé : la facture est désormais comptée au commercial du devis.';
+    $this->dispatch('annonce', texte: 'Rapprochement confirmé : la facture est désormais comptée au commercial du devis.', ton: 'succes');
 };
 
 $ecarterLaFacture = function (int $factureId, int $devisId) {
@@ -226,6 +231,7 @@ $ecarterLaFacture = function (int $factureId, int $devisId) {
     }
 
     $this->message = 'Écarté : ce couple ne sera plus proposé.';
+    $this->dispatch('annonce', texte: 'Écarté : ce couple ne sera plus proposé.', ton: 'succes');
 };
 
 /** Comme pour le premier maillon : seulement ce qui ne s'interprète pas. */
@@ -276,15 +282,22 @@ $basculer = function (string $cle) {
         : array_merge($this->selection, [$cle]);
 };
 
+/** Toutes les propositions du volet ouvert, page affichée ou non. */
+$toutesLesLignes = computed(fn () => $this->volet === 'factures'
+    ? $this->propositionsFactures
+    : $this->propositions);
+
 /**
- * Cocher tout ce que la page montre — et non tout ce que le filtre trouve.
+ * Cocher porte sur tout ce que les filtres retiennent, et non sur la page affichée.
  *
- * Cocher cinq cents lignes qu'on n'a pas lues n'est pas une sélection, c'est un « tout
- * confirmer » déguisé : celui-là existe déjà, il s'appelle « Confirmer les certains » et il
- * dit ce qu'il fait.
+ * **Corrigé le 24/09 à la demande du propriétaire**, et il a raison : le tableau étant
+ * paginé, on ne voit jamais tout. Une case qui ne coche que les vingt-cinq lignes sous les
+ * yeux oblige à tourner chaque page pour cocher la suivante — c'est exactement le travail
+ * qu'on voulait éviter. Ce qui borne la sélection, ce sont les filtres : la fenêtre, la
+ * ville, la piste, la période. Ils sont au-dessus du tableau, et ils se lisent.
  */
 $toutCocher = function () {
-    $this->selection = $this->lignesDeLaPage->map(fn ($l) => $this->cleDe($l))->values()->all();
+    $this->selection = $this->toutesLesLignes->map(fn ($l) => $this->cleDe($l))->values()->all();
 };
 
 $cocherLesCertains = function () {
@@ -292,7 +305,7 @@ $cocherLesCertains = function () {
         ? RapprochementDevisFacture::MOTIFS_CERTAINS
         : RapprochementProspectionDevis::MOTIFS_CERTAINS;
 
-    $this->selection = $this->lignesDeLaPage
+    $this->selection = $this->toutesLesLignes
         ->filter(fn ($l) => in_array($l['motif'], $certains, true))
         ->map(fn ($l) => $this->cleDe($l))
         ->values()
@@ -323,7 +336,7 @@ $confirmerLaSelection = function () {
     $faits = 0;
     $refuses = [];
 
-    foreach ($this->lignesDeLaPage as $ligne) {
+    foreach ($this->toutesLesLignes as $ligne) {
         if (! in_array($this->cleDe($ligne), $choisies, true)) {
             continue;
         }
@@ -352,6 +365,13 @@ $confirmerLaSelection = function () {
     // Ce qui a été refusé se dit, et ne se tait pas derrière un compte de réussites.
     $this->erreur = $refuses === [] ? '' : implode(' ', array_unique($refuses));
     $this->message = $faits > 0 ? $faits.' rapprochement(s) confirmé(s).' : '';
+
+    /* Le bandeau qui s'efface au bout de trois secondes : le tableau se vide des lignes
+       confirmées, et sans un mot on ne saurait pas si c'est le geste qui a réussi ou le
+       filtre qui a changé. */
+    if ($faits > 0) {
+        $this->dispatch('annonce', texte: $faits.' rapprochement(s) confirmé(s).', ton: 'succes');
+    }
 };
 
 /**

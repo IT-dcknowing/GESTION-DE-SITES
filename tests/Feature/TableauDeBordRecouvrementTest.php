@@ -11,6 +11,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
+use Modules\Recouvrement\Support\PortefeuilleDeRecouvrement;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -182,7 +183,7 @@ class TableauDeBordRecouvrementTest extends TestCase
         $gerant = $this->compte('gerant', 'gerant@essai.test');
 
         // De quoi dépasser la page : PAR_PAGE tiers, plus un.
-        foreach (range(1, \Modules\Recouvrement\Support\PortefeuilleDeRecouvrement::PAR_PAGE + 3) as $rang) {
+        foreach (range(1, PortefeuilleDeRecouvrement::PAR_PAGE + 3) as $rang) {
             $this->facture('TIERS '.str_pad((string) $rang, 3, '0', STR_PAD_LEFT),
                 'F-'.$rang, 100_000 * $rang, now()->subDays(40));
         }
@@ -193,8 +194,74 @@ class TableauDeBordRecouvrementTest extends TestCase
         // onze clics, et l'on doit savoir où l'on est.
         $reponse->assertSee('aria-current="page"', escape: false);
 
-        // `wire:navigate` échange le contenu sur place : la page ne se recharge plus.
-        $reponse->assertSee('wire:navigate', escape: false);
+        // Tourner la page ne renvoie que le tableau : ni page rechargée, ni retour en
+        // haut de l'écran. Le `href` reste à côté, pour le lecteur sans script.
+        $reponse->assertSee("wire:click.prevent=\"\$set('page'", escape: false);
+        $reponse->assertSee('href="'.route('recouvrement.tableau-de-bord', ['page' => 2]).'"', escape: false);
+    }
+
+    /**
+     * Les filtres agissent, et sans recharger la page.
+     *
+     * **Ce qui a été corrigé le 24/09.** Ils étaient les champs d'un formulaire GET : le
+     * moindre changement redemandait la page entière — feuilles de style, scripts, menu,
+     * bandeau — pour ne changer qu'une ligne du tableau. Le propriétaire l'a mesuré à
+     * l'usage : « ils font recharger la page et on a un temps de latence ». Ils sont
+     * désormais liés au composant, et le test les actionne un par un — parce que la
+     * seconde moitié de la demande était « vérifie ceux qui ne sont pas fonctionnels ».
+     */
+    public function test_chaque_filtre_du_tableau_de_bord_agit_sur_le_tableau(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement', 'sup@essai.test');
+        $agent = $this->compte('agent_recouvrement', 'agent@essai.test');
+
+        // Deux dossiers d'âges différents, donc de niveaux de relance différents.
+        $this->facture('NSIA ASSURANCES', 'F-001', 1_000_000, now()->subDays(120));
+        $this->facture('ALLIANZ', 'F-002', 2_000_000, now()->subDays(5));
+        $this->relance($agent, 'NSIA ASSURANCES', 5);
+
+        $ecran = Volt::actingAs($superviseur)->test('recouvrement.tableau-de-bord');
+
+        // Le portefeuille regardé.
+        $ecran->set('vue', (string) $agent->id)
+            ->assertSee('NSIA ASSURANCES')
+            ->assertDontSee('ALLIANZ');
+
+        $ecran->set('vue', 'libres')
+            ->assertSee('ALLIANZ')
+            ->assertDontSee('NSIA ASSURANCES');
+
+        // Le niveau de relance.
+        $ecran->set('vue', '')->set('niveauFiltre', '5')
+            ->assertSee('NSIA ASSURANCES')
+            ->assertDontSee('ALLIANZ');
+
+        // La recherche par nom.
+        $ecran->set('niveauFiltre', '')->set('recherche', 'allianz')
+            ->assertSee('ALLIANZ')
+            ->assertDontSee('NSIA ASSURANCES');
+
+        // La période : le mois choisi change l'arrêté, qui est écrit en toutes lettres.
+        $ecran->set('recherche', '')->set('moisFiltre', '1')
+            ->assertSee('Encours arrêté au 31/01/'.now()->year);
+    }
+
+    public function test_un_filtre_ramene_a_la_premiere_page(): void
+    {
+        $gerant = $this->compte('gerant', 'gerant@essai.test');
+
+        foreach (range(1, PortefeuilleDeRecouvrement::PAR_PAGE + 3) as $rang) {
+            $this->facture('TIERS '.str_pad((string) $rang, 3, '0', STR_PAD_LEFT),
+                'F-'.$rang, 100_000 * $rang, now()->subDays(40));
+        }
+
+        // Filtrer depuis la page deux rendait une page deux qui n'existe plus, donc un
+        // tableau vide — qu'on lit « aucun dossier », ce qui est faux.
+        Volt::actingAs($gerant)->test('recouvrement.tableau-de-bord')
+            ->set('page', '2')
+            ->set('recherche', 'TIERS 001')
+            ->assertSet('page', '1')
+            ->assertSee('TIERS 001');
     }
 
     // ------------------------------------------------------------------ utilitaires

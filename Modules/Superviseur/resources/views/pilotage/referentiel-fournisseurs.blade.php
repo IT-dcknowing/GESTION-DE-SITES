@@ -115,7 +115,7 @@ $enregistrer = function () {
     $this->ficheId = null;
     unset($this->fiches, $this->totaux, $this->orphelins, $this->journal);
 
-    session()->flash('message', 'La fiche de '.$fiche->nom.' est corrigée.');
+    $this->dispatch('annonce', texte: 'La fiche de '.$fiche->nom.' est corrigée.', ton: 'succes');
 };
 
 /**
@@ -386,7 +386,7 @@ $orphelins = computed(fn () => ConditionsFournisseur::sansFiche(
                             <th>Quand</th>
                             <th>Qui</th>
                             <th>Fiche</th>
-                            <th>Avant → après</th>
+                            <th>Ce qui a changé</th>
                             <th class="colonne-collee">D'où</th>
                         </tr>
                     </thead>
@@ -397,12 +397,9 @@ $orphelins = computed(fn () => ConditionsFournisseur::sansFiche(
                                 <td>{{ $trace->causer?->name ?? 'import' }}</td>
                                 <td>{{ $trace->properties['attributes']['nom'] ?? $trace->properties['old']['nom'] ?? '—' }}</td>
                                 <td style="font-size:12.5px;">
-                                    @forelse (JournalLisible::changements($trace) as $changement)
-                                        <div><strong>{{ $changement['champ'] }}</strong> :
-                                            {{ $changement['avant'] }} → {{ $changement['apres'] }}</div>
-                                    @empty
-                                        <span style="color:#9A9DA5;">rien de visible n'a changé</span>
-                                    @endforelse
+                                    <x-journal-changements
+                                        :changements="JournalLisible::changements($trace)"
+                                        :creation="JournalLisible::estUneCreation($trace)" />
                                 </td>
                                 <td class="colonne-collee" style="font-size:11.5px; color:#6B6E76;">
                                     {{ $trace->properties['ip'] ?? '—' }}
