@@ -90,7 +90,7 @@ class ChoixDeVille
      * vit la fiche du vendeur qu'il est aussi, pas la limite de ce qu'il supervise — cette
      * limite-là est dans `couvre_toutes_les_villes`.
      */
-    public static function poser(int $entrepriseId, User $compte, mixed $choix): ?Ville
+    public static function poser(int $entrepriseId, User $compte, mixed $choix, mixed $siteId = null): ?Ville
     {
         if (self::estToutes($choix)) {
             $attache = Ville::withoutGlobalScopes()
@@ -121,11 +121,26 @@ class ChoixDeVille
             return null;
         }
 
+        $site = null;
+
+        if ($siteId !== null && $siteId !== '') {
+            $site = Site::withoutGlobalScopes()
+                ->whereKey((int) $siteId)
+                ->where('entreprise_id', $entrepriseId)
+                ->where('ville_id', $ville->id)
+                ->where('est_actif', true)
+                ->first();
+
+            if (! $site) {
+                return null;
+            }
+        }
+
         // Le drapeau retombe : quelqu'un ramené sur une seule ville ne doit pas continuer
         // de voir les autres parce qu'il les voyait hier.
         $compte->forceFill([
             'ville_id' => $ville->id,
-            'site_id' => null,
+            'site_id' => $site?->id,
             'couvre_toutes_les_villes' => false,
         ])->save();
 

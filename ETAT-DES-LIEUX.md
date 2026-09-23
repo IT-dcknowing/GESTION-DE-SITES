@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (7e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **23 septembre 2026** (7e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -151,6 +151,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | le **n° de fiche de réception** devient la clé qui relie les états : la fiche du parc montre son devis, sa facture et ses mouvements, et le numéro s'ouvre d'un clic depuis les devis, le chiffre d'affaires et les entrées/sorties. Le rapprochement se fait par égalité — mesuré identique à une forme normalisée, donc aucune colonne de plus |
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
+| 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
@@ -174,6 +175,9 @@ après la fusion de `import` seul, le menu *Indicateurs* du serveur n'a ni *Éta
 - Commande `impayes:ranger-les-colonnes` (constat par défaut, `--appliquer` pour écrire).
 - Migration `2026_09_15_000001` : dix colonnes nullables sur `factures`, type de compteur en
   texte.
+- **23/09 — hors impayés** : le formulaire des accès Super Admin permet désormais de rattacher
+  facultativement un commercial à un site précis de sa ville ; le choix vide conserve le
+  périmètre de la ville entière. Validation serveur ajoutée dans `ChoixDeVille`.
 
 ### Ce qui est décidé
 
