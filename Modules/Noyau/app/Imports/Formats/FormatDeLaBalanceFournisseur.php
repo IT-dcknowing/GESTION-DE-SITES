@@ -61,6 +61,12 @@ class FormatDeLaBalanceFournisseur extends Format
 
     /** Une balance ne cite ni fiche ni pièce : il n'y a pas de code agent à en tirer. */
     /** Un solde fournisseur appartient à l'entreprise, pas à un atelier : ce fichier ne porte aucun numéro de fiche, et aucun code n'a rien à y ranger. */
+    /** Un solde fournisseur se traîne d'un exercice à l'autre : la balance porte, par construction, ce qui n'a pas été soldé les années précédentes. */
+    public static function porteUnSeulExercice(): bool
+    {
+        return false;
+    }
+
     public static function ventileParLesCodes(): bool
     {
         return false;

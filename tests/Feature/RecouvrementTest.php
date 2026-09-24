@@ -329,6 +329,65 @@ class RecouvrementTest extends TestCase
         $this->assertNotContains('UN AUTRE TIERS', array_keys(Recouvrement::tiers($this->entreprise->id)));
     }
 
+    /**
+     * La facture créée porte son numéro de saisie — et sans lui, MySQL la refuse.
+     *
+     * **Le défaut, relevé par le propriétaire le 24/09 : « la création de la facture ne
+     * fonctionne pas ».** `factures.numero` est NOT NULL sans valeur par défaut, et le
+     * formulaire ne le posait pas. En production — MySQL en `STRICT_TRANS_TABLES` —
+     * l'insertion échoue : le bouton ne fait rien, sans un mot à l'écran.
+     *
+     * **Pourquoi aucun test ne l'avait vu.** La suite tourne sur SQLite, qui accepte cette
+     * même insertion sans broncher. Un test qui compte les lignes créées passait donc des
+     * deux côtés. Celui-ci regarde la **valeur** plutôt que le compte : il est vrai sur
+     * les deux moteurs, et c'est la seule forme qui protège.
+     */
+    public function test_la_facture_creee_porte_son_numero_de_saisie(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement');
+        $this->declarerLeTiers('NSIA ASSURANCES');
+
+        Volt::actingAs($superviseur)->test('recouvrement.saisie')
+            ->set('facTiers', 'NSIA ASSURANCES')
+            ->set('facSiteId', $this->site->id)
+            ->set('facDate', now()->toDateString())
+            ->set('facMontant', 750000)
+            ->call('creerFacture')
+            ->assertHasNoErrors();
+
+        $facture = Facture::withoutGlobalScopes()->firstOrFail();
+
+        $this->assertNotNull($facture->numero, 'sans numéro de saisie, MySQL refuse la ligne');
+        $this->assertStringStartsWith('F-', $facture->numero);
+
+        // Le n° de facture laissé vide se numérote tout seul : une créance saisie ici n'a
+        // pas toujours de document d'atelier derrière elle, et un numéro inventé à la main
+        // finit par se répéter.
+        $this->assertNotNull($facture->n_facture);
+        $this->assertStringStartsWith('NF-', $facture->n_facture);
+    }
+
+    public function test_la_description_d_une_facture_creee_est_conservee(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement');
+        $this->declarerLeTiers('NSIA ASSURANCES');
+
+        Volt::actingAs($superviseur)->test('recouvrement.saisie')
+            ->set('facTiers', 'NSIA ASSURANCES')
+            ->set('facSiteId', $this->site->id)
+            ->set('facDate', now()->toDateString())
+            ->set('facMontant', 750000)
+            ->set('facObservations', 'Reprise de garantie, facture introuvable au logiciel.')
+            ->call('creerFacture')
+            ->assertHasNoErrors();
+
+        // Six mois plus tard, personne ne se souvient pourquoi cette créance existe.
+        $this->assertSame(
+            'Reprise de garantie, facture introuvable au logiciel.',
+            Facture::withoutGlobalScopes()->firstOrFail()->observations,
+        );
+    }
+
     public function test_le_superviseur_cree_une_facture_sans_doublon_de_numero(): void
     {
         $superviseur = $this->compte('superviseur_recouvrement');

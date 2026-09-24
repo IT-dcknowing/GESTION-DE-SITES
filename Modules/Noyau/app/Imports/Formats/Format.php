@@ -442,6 +442,95 @@ abstract class Format
         return $codes;
     }
 
+    /**
+     * Ce fichier décrit-il **un exercice**, ou plusieurs ?
+     *
+     * **La question vient du propriétaire, le 24/09** : « tout ce qui s'importe doit être
+     * dans l'exercice en cours ; le jour où je fais un import dans un exercice qui ne
+     * correspond pas à l'année, le système doit le dire ».
+     *
+     * Il a lui-même posé les exceptions, et elles sont justes : **l'état des impayés et le
+     * suivi fournisseur portent un tableau initial de plusieurs années**. Leur reprocher de
+     * contenir 2024 serait leur reprocher d'être ce qu'ils sont. La balance fournisseurs
+     * est dans le même cas — un solde se traîne d'un exercice à l'autre.
+     *
+     * Les autres décrivent une période : une situation du parc, des devis, un chiffre
+     * d'affaires, une caisse. Déposer un fichier de 2025 sur l'exercice 2026 y range des
+     * lignes sous une année qui n'est pas la leur, et rien ne le dirait.
+     */
+    public static function porteUnSeulExercice(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Les années que porte la colonne de date de ce fichier, et leur poids.
+     *
+     * Lu sur un échantillon, sans rien écrire : c'est un contrôle de dépôt, pas un import.
+     * On ne conclut pas sur une ligne — un fichier de 2026 peut très bien contenir une
+     * reprise de décembre 2025, et ce n'est pas une erreur de dépôt.
+     *
+     * @return array<int, int> l'année, et le nombre de lignes qui la portent
+     */
+    public function anneesRencontrees(Lecteur $lecteur, int $lignesMaximum = 400): array
+    {
+        $colonne = static::colonneDeDate();
+
+        if ($colonne === null) {
+            return [];
+        }
+
+        $entete = null;
+        $annees = [];
+        $lues = 0;
+
+        foreach ($lecteur->lignes($this->feuilleProbable($lecteur)) as $cellules) {
+            if ($entete === null) {
+                $candidat = $this->correspondance($cellules);
+
+                if ($this->suffisante($candidat)) {
+                    $entete = $candidat;
+                }
+
+                continue;
+            }
+
+            $date = self::date($this->extraire($cellules, $entete)[$colonne] ?? null);
+
+            if ($date !== null) {
+                $annee = (int) $date->format('Y');
+                $annees[$annee] = ($annees[$annee] ?? 0) + 1;
+            }
+
+            if (++$lues >= $lignesMaximum) {
+                break;
+            }
+        }
+
+        arsort($annees);
+
+        return $annees;
+    }
+
+    /**
+     * La colonne qui date une ligne de ce fichier.
+     *
+     * Devinée plutôt que déclarée, et c'est assumé : toutes les colonnes de date de tous
+     * les formats commencent par `date`, la première déclarée est celle qui date la ligne
+     * — la date de la fiche, celle du devis, celle de la facture. Un format qui n'en aurait
+     * aucune rend null, et le contrôle se tait plutôt que de conclure sur rien.
+     */
+    public static function colonneDeDate(): ?string
+    {
+        foreach (array_keys(static::colonnes()) as $cle) {
+            if (str_starts_with((string) $cle, 'date')) {
+                return (string) $cle;
+            }
+        }
+
+        return null;
+    }
+
     /** La feuille qui ressemble le plus à ce format — sans journal ni effet de bord. */
     private function feuilleProbable(Lecteur $lecteur): ?string
     {

@@ -7,6 +7,7 @@ use Modules\Noyau\Entreprises\Modeles\Exercice;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
@@ -77,6 +78,9 @@ state([
     'facImmatriculation' => '',
     'facMontant' => '',
     'facActivite' => 'Sinistre',
+    // Pourquoi cette créance existe. Une facture saisie ici n'a pas toujours de document
+    // d'atelier derrière elle : sans un mot, six mois plus tard, personne ne sait.
+    'facObservations' => '',
 
     // Tiers (superviseur / gérant)
     'nouveauTiers' => '',
@@ -274,7 +278,7 @@ $enregistrerEncaissement = function () {
     $this->reset(['encFactureId', 'encMontant', 'encReference']);
     unset($this->ouvertes, $this->kpis, $this->tiersOuverts, $this->facturesDuTiersEncaissement, $this->factureVisee);
 
-    $this->dispatch('annonce', texte: 'Encaissement de '.Recouvrement::fr($montant)
+    $this->dispatch('annonce', ton: 'succes', texte: 'Encaissement de '.Recouvrement::fr($montant)
         .' affecté — la balance âgée et la trésorerie sont à jour.');
 };
 
@@ -345,7 +349,7 @@ $enregistrerRelance = function () {
     // autant qu'il soit lisible.
     $lourd = (int) $donnees['relNiveau'] >= 4;
 
-    $this->dispatch('annonce', texte: 'Relance N'.$donnees['relNiveau']
+    $this->dispatch('annonce', ton: 'succes', texte: 'Relance N'.$donnees['relNiveau']
         .' enregistrée pour '.$donnees['relTiers']
         .($lourd
             ? ' — '.((int) $donnees['relNiveau'] === 5 ? 'contentieux' : 'mise en demeure')
@@ -388,11 +392,15 @@ $creerFacture = function () {
         'facDeposeChez' => [Rule::in(['', ...$tiersConnus])],
         'facSiteId' => ['required', Rule::in(array_keys($this->sites))],
         'facDate' => ['required', 'date'],
-        'facNumero' => ['required', 'string', 'max:60'],
+        // Le n° de facture devient facultatif : laissé vide, l'application le numérote
+        // elle-même. Exigé, il obligeait à inventer un numéro pour une créance qu'aucune
+        // facture d'atelier ne porte — et un numéro inventé à la main se répète.
+        'facNumero' => ['nullable', 'string', 'max:60'],
         'facVehicule' => ['nullable', 'string', 'max:120'],
         'facImmatriculation' => ['nullable', 'string', 'max:30'],
         'facMontant' => ['required', 'numeric', 'min:1'],
         'facActivite' => ['required', Rule::in(array_keys($this->activites))],
+        'facObservations' => ['nullable', 'string', 'max:2000'],
     ], [], [
         'facTiers' => 'client', 'facSiteId' => 'site', 'facDate' => 'date facture',
         'facNumero' => 'n° facture', 'facMontant' => 'montant TTC',
@@ -400,13 +408,24 @@ $creerFacture = function () {
         'facDeposeChez' => 'dépositaire',
     ]);
 
+    /*
+     * **Le numéro de facture se génère quand on ne le donne pas.** Demandé par le
+     * propriétaire le 24/09. Une créance saisie ici n'a pas toujours de facture d'atelier
+     * derrière elle : exiger un numéro obligeait à en inventer un, et un numéro inventé à
+     * la main finit par se répéter. La série « NF » est celle qu'emploie déjà la saisie du
+     * jour du responsable de site — une seule numérotation pour toute la maison.
+     */
+    $numeroFacture = trim((string) ($donnees['facNumero'] ?? '')) !== ''
+        ? $donnees['facNumero']
+        : GenerateurNumero::suivant(auth()->user()->entreprise_id, 'nfa', $donnees['facDate']);
+
     // Un doublon de numéro pour le même client rend l'extrait de compte incontestable —
     // dans le mauvais sens : le client conteste, et on ne sait plus laquelle est la bonne.
     $existe = Facture::where('client', $donnees['facTiers'])
-        ->where('n_facture', $donnees['facNumero'])->exists();
+        ->where('n_facture', $numeroFacture)->exists();
 
     if ($existe) {
-        $this->addError('facNumero', 'Le n° '.$donnees['facNumero'].' existe déjà pour '.$donnees['facTiers'].'.');
+        $this->addError('facNumero', 'Le n° '.$numeroFacture.' existe déjà pour '.$donnees['facTiers'].'.');
 
         return;
     }
@@ -424,7 +443,17 @@ $creerFacture = function () {
         'entreprise_id' => auth()->user()->entreprise_id,
         'site_id' => (int) $donnees['facSiteId'],
         'date' => $donnees['facDate'],
-        'n_facture' => $donnees['facNumero'],
+        /*
+         * **`numero` manquait, et la création échouait en silence.** La colonne est NOT
+         * NULL sans valeur par défaut : le bouton « Créer la facture » butait donc sur la
+         * base à chaque clic, et l'écran ne montrait rien — d'où « la création ne
+         * fonctionne pas », relevé par le propriétaire le 24/09. C'est le numéro **de
+         * saisie**, celui que porte toute pièce de l'application ; `n_facture` est celui
+         * du document remis au client. Les deux existent, et ils ne disent pas la même
+         * chose.
+         */
+        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'fac', $donnees['facDate']),
+        'n_facture' => $numeroFacture,
         'client' => $donnees['facTiers'],
         'assureur' => $donnees['facAssureur'] ?: null,
         'courtier' => $donnees['facCourtier'] ?: null,
@@ -433,6 +462,8 @@ $creerFacture = function () {
         'immatriculation' => $donnees['facImmatriculation'] ?: null,
         'activite' => $donnees['facActivite'],
         'montant' => (int) $donnees['facMontant'],
+        // Ce qu'on veut pouvoir relire six mois plus tard : pourquoi cette créance existe.
+        'observations' => trim((string) ($donnees['facObservations'] ?? '')) ?: null,
         'cree_par' => auth()->id(),
     ]);
 
@@ -442,15 +473,16 @@ $creerFacture = function () {
             'assureur' => $donnees['facAssureur'] ?: null,
             'courtier' => $donnees['facCourtier'] ?: null,
             'depose_chez' => $donnees['facDeposeChez'] ?: null,
-            'numero' => $donnees['facNumero'],
+            'numero' => $numeroFacture,
             'montant' => (int) $donnees['facMontant'],
         ])
         ->log('Recouvrement — facture créée');
 
-    $this->reset(['facNumero', 'facVehicule', 'facImmatriculation', 'facMontant']);
+    $this->reset(['facNumero', 'facVehicule', 'facImmatriculation', 'facMontant', 'facObservations']);
     unset($this->ouvertes, $this->kpis, $this->tiers, $this->tiersOuverts);
 
-    $this->dispatch('annonce', texte: 'Facture n° '.$donnees['facNumero'].' créée — elle entre dans la balance âgée.');
+    $this->dispatch('annonce', ton: 'succes', texte: 'Facture n° '.$numeroFacture
+        .' créée — elle entre dans la balance âgée, l’extrait de compte et le chiffre d’affaires.');
 };
 
 $creerTiers = function () {
@@ -487,7 +519,7 @@ $creerTiers = function () {
     $this->nouveauTiers = '';
     unset($this->tiers);
 
-    $this->dispatch('annonce', texte: "Tiers « $nom » créé : il est proposé dans toutes les listes.");
+    $this->dispatch('annonce', ton: 'succes', texte: "Tiers « $nom » créé : il est proposé dans toutes les listes.");
 };
 
 ?>
@@ -701,8 +733,11 @@ $creerTiers = function () {
                         <input type="date" wire:model="facDate" value="{{ $facDate }}">
                     </div>
                     <div class="rec-fld">
-                        <label>N° facture</label>
-                        <input type="text" wire:model="facNumero" value="{{ $facNumero }}">
+                        <label>N° facture <span style="font-weight:400; color:#6B6E76;">(facultatif)</span></label>
+                        {{-- La consigne est dans la case plutôt que sous elle : posée
+                             dessous, elle se lit après avoir tapé, c'est-à-dire trop tard. --}}
+                        <input type="text" wire:model="facNumero" value="{{ $facNumero }}"
+                               placeholder="numéroté automatiquement si vide">
                     </div>
                     <div class="rec-fld">
                         <label>Véhicule</label>
@@ -723,6 +758,14 @@ $creerTiers = function () {
                     <div class="rec-fld">
                         <label>Montant TTC (F)</label>
                         <input type="number" min="0" wire:model="facMontant" value="{{ $facMontant }}">
+                    </div>
+                    {{-- Ce qu'on veut pouvoir relire six mois plus tard : pourquoi cette
+                         créance existe. Sur toute la largeur — une explication tient
+                         rarement sur la largeur d'un champ de date. --}}
+                    <div class="rec-fld" style="grid-column:1 / -1;">
+                        <label>Description <span style="font-weight:400; color:#6B6E76;">(facultatif)</span></label>
+                        <input type="text" wire:model="facObservations" value="{{ $facObservations }}"
+                               placeholder="Ex. : reprise de garantie, facture non retrouvée au logiciel…">
                     </div>
                 </div>
 

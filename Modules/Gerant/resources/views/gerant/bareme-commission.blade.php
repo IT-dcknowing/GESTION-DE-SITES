@@ -197,7 +197,22 @@ $retirerLaTranche = function (string $cible, int $rang) {
  * Les contrôles sont faits ici et non à la saisie de chaque case : on corrige un tableau,
  * pas une cellule, et refuser une valeur à mi-chemin empêcherait d'en réécrire deux.
  */
-$enregistrerLaGrille = function (string $cible, bool $premiereActivation = false) {
+/**
+ * Enregistre une grille — et le geste dit lequel des trois on pose.
+ *
+ * **Trois gestes, arrêtés par le propriétaire les 24/09 matin et soir.**
+ *
+ * - `$premiereActivation` : la grille court depuis le **1er janvier de l'exercice**. C'est
+ *   le démarrage, celui qui fait compter les imports déjà faits.
+ * - `$rectification` : on **récrit la grille en vigueur à sa propre date**, sans en créer
+ *   une seconde. C'est le geste du développeur ou du gérant qui s'aperçoit d'une faute de
+ *   saisie : la grille devient ce qu'elle aurait dû être depuis le début, et il n'y a
+ *   jamais eu deux barèmes. Rien n'est conservé de la version fautive, et c'est voulu —
+ *   garder l'erreur à côté de sa correction ferait croire à deux décisions.
+ * - Sans rien : c'est une **modification**, elle prend effet aujourd'hui, et la grille
+ *   d'avant reste derrière elle pour les mois déjà arrêtés.
+ */
+$enregistrerLaGrille = function (string $cible, bool $premiereActivation = false, bool $rectification = false) {
     if (! isset($this->grilles[$cible])) {
         return;
     }
@@ -245,9 +260,17 @@ $enregistrerLaGrille = function (string $cible, bool $premiereActivation = false
      * Une correction, elle, prend effet aujourd'hui : les mois déjà arrêtés gardent la
      * grille sous laquelle ils l'ont été. C'est la règle du 24/09, et elle ne change pas.
      */
-    $effet = $premiereActivation
-        ? Carbon::create((int) $this->exercice, 1, 1)->startOfDay()
-        : null;
+    $enVigueur = $this->enregistrees[$cible] ?? null;
+
+    if ($premiereActivation) {
+        $effet = Carbon::create((int) $this->exercice, 1, 1)->startOfDay();
+    } elseif ($rectification && $enVigueur !== null) {
+        // La date de la grille qu'on récrit : `enregistrer()` retrouve la ligne par sa
+        // date d'effet et la remplace. Aucune seconde version n'apparaît.
+        $effet = Carbon::parse($enVigueur->date_effet)->startOfDay();
+    } else {
+        $effet = null;
+    }
 
     CommissionCommerciale::enregistrer(
         auth()->user(), $cible, (int) $this->exercice, $lignes, dateEffet: $effet,
@@ -256,12 +279,20 @@ $enregistrerLaGrille = function (string $cible, bool $premiereActivation = false
     unset($this->enregistrees, $this->couvrentLeDebutDeLExercice);
     $this->chargerLesGrilles();
 
-    $this->message = 'Grille « '.(BaremeCommission::CIBLES[$cible] ?? $cible)."\u{a0}» "
-        .($premiereActivation
-            ? 'activée au 1er janvier '.$this->exercice.'. Elle couvre l\'exercice entier, '
-                .'imports compris, et court jusqu\'à ce qu\'une autre la remplace.'
-            : 'enregistrée, avec effet au '.now()->format('d/m/Y')
-                .'. Les mois déjà arrêtés gardent la grille sous laquelle ils l\'ont été.');
+    $entete = 'Grille « '.(BaremeCommission::CIBLES[$cible] ?? $cible)."\u{a0}» ";
+
+    if ($premiereActivation) {
+        $this->message = $entete.'activée au 1er janvier '.$this->exercice
+            .'. Elle couvre l\'exercice entier, imports compris, et court jusqu\'à ce qu\'une '
+            .'autre la remplace.';
+    } elseif ($rectification && $enVigueur !== null) {
+        $this->message = $entete.'rectifiée à sa date d\'origine, le '
+            .Carbon::parse($enVigueur->date_effet)->format('d/m/Y')
+            .'. Il n\'y a toujours qu\'une grille : c\'est celle-là, corrigée.';
+    } else {
+        $this->message = $entete.'modifiée, avec effet au '.now()->format('d/m/Y')
+            .'. Les mois déjà arrêtés gardent la grille sous laquelle ils l\'ont été.';
+    }
 };
 
 /**
@@ -283,7 +314,9 @@ $notes = computed(fn () => [
     ],
     'responsable' => [
         "Aucune commission n'est appliquée pour un chiffre d'affaires inférieur à 25 millions FCFA — ce seuil est celui de ce poste, et non celui des commerciaux, qui commencent à 20 millions.",
-        "Entre 25 et 30 millions, le document ne disait rien : le taux d'entrée y est fixé à 1 % depuis le 24/09.",
+        "Entre 25 et 30 millions, le document ne dit rien. Le taux d'entrée y est fixé à 1 %, "
+        ."comme pour les commerciaux : sans lui, un responsable à 27 millions ne toucherait rien "
+        ."tout en ayant dépassé le seuil écrit au-dessus de sa propre grille.",
         'Le taux augmente progressivement de 1 % à 5 %, ce qui permet de récompenser davantage les performances les plus élevées.',
         "La commission estimée est calculée directement sur la tranche correspondante du chiffre d'affaires réalisé.",
     ],
@@ -334,8 +367,14 @@ $notes = computed(fn () => [
             </p>
             <p style="text-align:center; margin:0 0 16px; font-size:12.5px; color:#6B6E76;">
                 @if ($estEnregistree)
-                    En vigueur depuis le
-                    <b>{{ ($this->enregistrees[$cible]->date_effet)->format('d/m/Y') }}</b>,
+                    {{-- « En vigueur depuis le … » se lisait comme une date de décision, et le
+                         propriétaire n'aimait pas cette phrase : un barème n'est pas daté du
+                         jour où on l'a tapé, il est la règle de la maison. La date reste — il
+                         la faut pour savoir ce qui s'applique à un import de février — mais
+                         elle est dite pour ce qu'elle est : le point à partir duquel cette
+                         grille-là commande le calcul. --}}
+                    Cette grille <b>commande le calcul à partir du
+                    {{ ($this->enregistrees[$cible]->date_effet)->format('d/m/Y') }}</b>,
                     et jusqu'à ce qu'une autre la remplace.
                 @else
                     {{-- On n'affiche jamais un écran vide : la grille de référence est là,
@@ -425,15 +464,42 @@ $notes = computed(fn () => [
                      rien à faire, et un bouton qui ne fait rien se clique quand même. --}}
                 @unless ($this->couvrentLeDebutDeLExercice[$cible] ?? false)
                     <button type="button" class="bouton bouton-sombre"
-                        wire:click="enregistrerLaGrille('{{ $cible }}', true)">
+                        wire:click="enregistrerLaGrille('{{ $cible }}', true)"
+                        data-confirmer-titre="Activer la grille « {{ $libelleCible }} »"
+                        data-confirmer="Faire courir cette grille depuis le 1er janvier {{ $exercice }} ?"
+                        data-confirmer-detail="Elle couvrira l’exercice entier, y compris les mois déjà importés : c’est le but. Un barème n’est pas une décision du jour, c’est la règle sur laquelle on se base depuis le début de l’année. Ensuite, une vraie modification se posera à sa date.">
                         Première activation
                     </button>
                 @endunless
 
+                {{-- **Rectifier n'est pas modifier**, et les deux boutons le disent.
+
+                     Rectifier récrit la grille en vigueur *à sa propre date* : on s'est
+                     trompé en la saisissant, elle devient ce qu'elle aurait dû être depuis
+                     le début, et il n'y a jamais eu deux barèmes. Modifier en pose une
+                     seconde, datée d'aujourd'hui, et laisse la première derrière elle pour
+                     les mois déjà arrêtés.
+
+                     Chacun demande confirmation, et la question dit ce qui va arriver —
+                     c'est une rémunération qui est au bout, et les deux gestes ne se
+                     rattrapent pas de la même façon. --}}
+                @if ($estEnregistree)
+                    <button type="button" class="bouton bouton-secondaire"
+                        wire:click="enregistrerLaGrille('{{ $cible }}', false, true)"
+                        data-confirmer-titre="Rectifier la grille « {{ $libelleCible }} »"
+                        data-confirmer="Récrire la grille en vigueur à sa date d’origine, le {{ ($this->enregistrees[$cible]->date_effet)->format('d/m/Y') }} ?"
+                        data-confirmer-detail="Tout ce qui a été calculé depuis cette date sera recalculé avec les taux corrigés, y compris les mois déjà annoncés. Aucune seconde grille n’est créée : c’est une faute de saisie qu’on répare, pas une décision nouvelle. Si le barème a réellement changé, utilisez « Enregistrer la modification ».">
+                        Rectification
+                    </button>
+                @endif
+
                 <button type="button"
                     class="bouton {{ ($this->couvrentLeDebutDeLExercice[$cible] ?? false) ? 'bouton-sombre' : 'bouton-secondaire' }}"
-                    wire:click="enregistrerLaGrille('{{ $cible }}')">
-                    Enregistrer
+                    wire:click="enregistrerLaGrille('{{ $cible }}')"
+                    data-confirmer-titre="Modifier la grille « {{ $libelleCible }} »"
+                    data-confirmer="Poser une nouvelle grille, applicable à partir d’aujourd’hui {{ now()->format('d/m/Y') }} ?"
+                    data-confirmer-detail="Les mois déjà arrêtés gardent la grille sous laquelle ils l’ont été : rien de ce qui a été annoncé aux commerciaux ne sera recalculé. L’ancienne grille reste consultable, et l’écran dit depuis quand court la nouvelle.">
+                    Enregistrer la modification
                 </button>
                 <button type="button" class="bouton bouton-secondaire" wire:click="ouvrirLAjout('{{ $cible }}')">
                     {{ $ajoutOuvert === $cible ? 'Fermer' : '+ Ajouter' }}

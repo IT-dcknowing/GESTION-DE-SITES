@@ -42,9 +42,30 @@ $adresse = function (string $nom): ?string {
         <h2>Ce que chaque import alimente <span class="chip">notice</span></h2>
 
         <div style="font-size:14px; line-height:1.7;">
-            Huit fichiers sortent du logiciel d'atelier. Chacun remplit des écrans précis, et
-            <strong>aucun écran ne se remplit tout seul</strong>. Ce tableau dit lequel dépose quoi,
-            dans quel ordre, et ce qu'il en coûte de sauter une étape.
+            Onze fichiers entrent dans l'application : huit du logiciel d'atelier, trois du
+            logiciel comptable — la balance et les règlements fournisseurs, et le journal de caisse
+            imprimé. Chacun remplit des écrans précis, et <strong>aucun écran ne se remplit tout
+            seul</strong>. Ce tableau dit lequel dépose quoi, dans quel ordre, et ce qu'il en coûte
+            de sauter une étape.
+        </div>
+
+        {{-- Deux confusions relevées le 24/09, et elles venaient toutes deux de ce
+             tableau. Elles sont dites ici, une fois, plutôt que d'attendre qu'on les
+             redécouvre écran par écran. --}}
+        <div class="imp-hint" style="margin-top:11px;">
+            <strong>Caisse et Trésorerie ne lisent pas la même chose.</strong>
+            <em>Caisse</em> montre ce que la caisse du logiciel comptable a enregistré — c'est là
+            qu'arrivent le classeur d'Abidjan et le journal imprimé de Bouaké et San-Pédro.
+            <em>Trésorerie</em> montre ce que l'application a elle-même encaissé et décaissé.
+            Déposer un journal de caisse ne remplit donc pas la Trésorerie, et c'est voulu : les
+            fondre ferait compter deux fois l'argent d'Abidjan, qui a les deux.
+        </div>
+
+        <div class="imp-hint" style="margin-top:11px;">
+            <strong>Deux formats pour la même caisse.</strong> « Le classeur tenu à la main » et
+            « Le journal imprimé par le logiciel » écrivent dans les mêmes tables et alimentent les
+            mêmes écrans. Ce qui les sépare est le document qu'on a en main : un fichier Excel pour
+            Abidjan, un PDF pour les deux autres villes. Choisissez celui que vous tenez.
         </div>
 
         <div class="imp-hint" style="margin-top:11px;">

@@ -116,6 +116,12 @@ class FormatDesImpayes extends Format
 
     /** Le numéro de facture de ce fichier est un simple entier : aucun code n'y est inscrit. */
     /** L'état des impayés porte des numéros de facture client, pas des numéros de fiche de réception : aucun code de deux lettres n'en sort. */
+    /** L'état des impayés **porte un tableau initial de plusieurs années** : c'est sa nature même, et lui reprocher de contenir 2024 reviendrait à lui reprocher d'être ce qu'il est. Exception posée par le propriétaire le 24/09. */
+    public static function porteUnSeulExercice(): bool
+    {
+        return false;
+    }
+
     public static function ventileParLesCodes(): bool
     {
         return false;

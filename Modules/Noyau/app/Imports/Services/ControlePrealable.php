@@ -51,6 +51,17 @@ class ControlePrealable
     /** Et il faut qu'un quart au moins des lignes portent un code dont on connaît la ville. */
     public const COUVERTURE_MINIMALE = 0.25;
 
+    /**
+     * Part des lignes d'une autre année au-delà de laquelle on avertit.
+     *
+     * Un fichier de 2026 contient légitimement quelques lignes de décembre 2025 — une
+     * reprise, une facture tardive. Ce n'est pas une erreur de dépôt. Un fichier dont
+     * **la moitié** des lignes sont d'une autre année, si : c'est l'exercice qu'on s'est
+     * trompé de sélectionner, et les lignes iront se ranger sous une année qui n'est pas
+     * la leur sans que rien ne le dise.
+     */
+    public const PART_D_UNE_AUTRE_ANNEE = 0.50;
+
     public function __construct(private int $entrepriseId) {}
 
     /**
@@ -66,11 +77,13 @@ class ControlePrealable
      *     ville_conforme: bool,
      *     codes_etrangers: array<string, string>,
      *     villes_etrangeres: list<string>,
+     *     exercice_declare: ?int,
+     *     annee_du_fichier: ?int,
      *     couverture_insuffisante: bool,
      *     avertissements: list<string>,
      * }
      */
-    public function examiner(string $chemin, string $formatDeclare, ?int $villeId): array
+    public function examiner(string $chemin, string $formatDeclare, ?int $villeId, ?int $exercice = null): array
     {
         $rapport = [
             'lisible' => false,
@@ -84,6 +97,8 @@ class ControlePrealable
             'ville_conforme' => true,
             'codes_etrangers' => [],
             'villes_etrangeres' => [],
+            'exercice_declare' => $exercice,
+            'annee_du_fichier' => null,
             'couverture_insuffisante' => false,
             'avertissements' => [],
         ];
@@ -127,7 +142,9 @@ class ControlePrealable
                 );
         }
 
-        return $this->examinerLaVille($rapport, $chemin, $formatDeclare, $villeId);
+        $rapport = $this->examinerLaVille($rapport, $chemin, $formatDeclare, $villeId);
+
+        return $this->examinerLExercice($rapport, $chemin, $formatDeclare, $exercice);
     }
 
     /**
@@ -265,6 +282,79 @@ class ControlePrealable
                 implode(', ', array_slice(array_keys($etrangers), 0, 6)),
             );
         }
+
+        return $rapport;
+    }
+
+    /**
+     * Le fichier parle-t-il bien de l'exercice sous lequel on le dépose ?
+     *
+     * **Demandé par le propriétaire le 24/09** : « toute activité doit être dans
+     * l'exercice en cours ; le jour où je fais un import dans un exercice qui ne
+     * correspond pas à l'année, le système doit émettre un message et demander de
+     * sélectionner la vraie année ».
+     *
+     * **Il avertit, il ne bloque pas** — comme le contrôle de ville, et pour la même
+     * raison : une reprise de fin d'exercice se dépose légitimement en janvier suivant, et
+     * refuser sur une ressemblance apprendrait surtout à contourner le refus. Le fichier
+     * est mis de côté, la question posée, et l'on confirme ou l'on corrige.
+     *
+     * **Trois formats en sont exemptés** parce qu'ils portent un tableau initial de
+     * plusieurs années : l'état des impayés, le suivi fournisseur et la balance
+     * fournisseurs. Voir Format::porteUnSeulExercice().
+     */
+    private function examinerLExercice(array $rapport, string $chemin, string $formatDeclare, ?int $exercice): array
+    {
+        if ($exercice === null || ! Registre::connait($formatDeclare)) {
+            return $rapport;
+        }
+
+        $classe = Registre::classe($formatDeclare);
+
+        if (! $classe::porteUnSeulExercice()) {
+            return $rapport;
+        }
+
+        $lecteur = Classeur::ouvrir($chemin);
+
+        try {
+            $annees = $this->instancier($formatDeclare)->anneesRencontrees($lecteur);
+        } catch (\Throwable) {
+            return $rapport;
+        } finally {
+            $lecteur->fermer();
+        }
+
+        $total = array_sum($annees);
+
+        // Sous vingt lignes datées, on ne mesure rien : on devine, et une devinette n'a
+        // pas à interrompre un dépôt. C'est le même seuil que pour les villes.
+        if ($annees === [] || $total < self::LIGNES_MINIMALES_POUR_CONCLURE) {
+            return $rapport;
+        }
+
+        $dominante = (int) array_key_first($annees);
+        $rapport['annee_du_fichier'] = $dominante;
+
+        if ($dominante === $exercice) {
+            return $rapport;
+        }
+
+        $ailleurs = $total - ($annees[$exercice] ?? 0);
+
+        if ($ailleurs / $total < self::PART_D_UNE_AUTRE_ANNEE) {
+            return $rapport;
+        }
+
+        $rapport['avertissements'][] = sprintf(
+            "Vous déposez sous l'exercice %d, mais %d ligne(s) sur %d datent de %d. "
+            ."Si ce n'est pas voulu, changez d'exercice en haut de l'écran avant d'importer : "
+            ."les lignes se rangeraient sous une année qui n'est pas la leur.",
+            $exercice,
+            $ailleurs,
+            $total,
+            $dominante,
+        );
 
         return $rapport;
     }

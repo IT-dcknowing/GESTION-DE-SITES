@@ -10,8 +10,13 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Imports\Formats\FormatDeLaBalanceFournisseur;
+use Modules\Noyau\Imports\Formats\FormatDesFournisseurs;
+use Modules\Noyau\Imports\Formats\FormatDesImpayes;
+use Modules\Noyau\Imports\Formats\FormatDuParc;
 use Modules\Noyau\Imports\Jobs\TraiterUnLot;
 use Modules\Noyau\Imports\Modeles\LotImport;
+use Modules\Noyau\Imports\Services\ControlePrealable;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -151,6 +156,62 @@ class DepotFormulaireTest extends TestCase
         ]);
 
         $this->assertNull(LotImport::withoutGlobalScopes()->first());
+    }
+
+    /**
+     * L'exercice déclaré et l'année du fichier doivent concorder.
+     *
+     * **Demandé par le propriétaire le 24/09** : « toute activité doit être dans
+     * l'exercice en cours ; le jour où je fais un import dans un exercice qui ne
+     * correspond pas à l'année, le système doit émettre un message ». Le fichier de
+     * référence porte 396 lignes de 2026 et 4 de 2025 : déposé sous 2025, il doit poser
+     * la question.
+     *
+     * Il **avertit**, il ne bloque pas : une reprise de fin d'exercice se dépose
+     * légitimement en janvier suivant, et refuser sur une ressemblance apprendrait surtout
+     * à contourner le refus.
+     */
+    public function test_un_fichier_d_une_autre_annee_que_l_exercice_declare_pose_la_question(): void
+    {
+        $rapport = (new ControlePrealable($this->entreprise->id))->examiner(
+            base_path('PLAN/MODULE-2/Abidjan_Situation du parc190826.xls'),
+            'parc',
+            $this->abidjan->id,
+            exercice: 2025,
+        );
+
+        $this->assertSame(2026, $rapport['annee_du_fichier']);
+        $this->assertNotEmpty($rapport['avertissements']);
+        $this->assertStringContainsString('datent de 2026', implode(' ', $rapport['avertissements']));
+    }
+
+    public function test_le_bon_exercice_ne_provoque_aucune_question(): void
+    {
+        $rapport = (new ControlePrealable($this->entreprise->id))->examiner(
+            base_path('PLAN/MODULE-2/Abidjan_Situation du parc190826.xls'),
+            'parc',
+            $this->abidjan->id,
+            exercice: 2026,
+        );
+
+        $this->assertSame(2026, $rapport['annee_du_fichier']);
+        $this->assertSame([], array_filter(
+            $rapport['avertissements'],
+            fn (string $texte) => str_contains($texte, 'exercice'),
+        ));
+    }
+
+    public function test_l_etat_des_impayes_echappe_au_controle_de_l_exercice(): void
+    {
+        // Il porte un tableau initial de plusieurs années : lui reprocher de contenir 2024
+        // reviendrait à lui reprocher d'être ce qu'il est. Exception posée par le
+        // propriétaire lui-même, avec le suivi fournisseur et la balance.
+        $this->assertFalse(FormatDesImpayes::porteUnSeulExercice());
+        $this->assertFalse(FormatDesFournisseurs::porteUnSeulExercice());
+        $this->assertFalse(FormatDeLaBalanceFournisseur::porteUnSeulExercice());
+
+        // Et ceux qui décrivent une période, eux, sont contrôlés.
+        $this->assertTrue(FormatDuParc::porteUnSeulExercice());
     }
 
     private function parc(): UploadedFile

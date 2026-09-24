@@ -651,8 +651,14 @@ $transmettreSelection = function () {
                 <table class="tableau">
                     <thead>
                         <tr>
+                            {{-- Tout champ du formulaire a sa colonne ici : demandé le
+                                 24/09, et c'est juste — saisir une information qu'on ne
+                                 retrouve nulle part revient à la saisir pour rien. Le n°
+                                 de fiche et le n° de devis manquaient, alors que ce sont
+                                 eux qui relient la prospection à ce qu'elle a produit. --}}
                             <th>✓</th><th>N°</th><th>Date</th><th>Clients visités</th><th>Localisation</th>
-                            <th>Véhicule</th><th>Moyens</th><th>Activité</th><th>Passage</th><th>Devis après passage</th>
+                            <th>Véhicule</th><th>N° de fiche</th><th>Moyens</th><th>Activité</th>
+                            <th>Passage</th><th>Devis après passage</th><th>N° du devis</th>
                             <th>Observations</th><th>Informations libres</th><th>Statut</th>
                             <th>Décision</th><th></th>
                         </tr>
@@ -676,11 +682,16 @@ $transmettreSelection = function () {
                                     <td>{{ $ligne->date->format('d/m/Y') }}</td>
                                     <td><input type="text" wire:model="eClient" value="{{ $eClient }}" class="champ" style="min-width:130px;"></td>
                                     <td><input type="text" wire:model="eLocalisation" value="{{ $eLocalisation }}" class="champ" style="min-width:110px;"></td>
-                                    <td style="white-space:normal; min-width:150px;">
+                                    {{-- Une colonne par champ, ici comme en lecture : les deux
+                                         rangées doivent s'aligner, sinon le tableau se décale
+                                         dès qu'une ligne passe en correction. --}}
+                                    <td style="white-space:normal; min-width:130px;">
                                         <input type="text" wire:model="eImmatriculation" value="{{ $eImmatriculation }}"
                                             class="champ" placeholder="1234 AB 01">
+                                    </td>
+                                    <td style="white-space:normal; min-width:130px;">
                                         <input type="text" wire:model="eNFicheReception" value="{{ $eNFicheReception }}"
-                                            class="champ" placeholder="N° de fiche" style="margin-top:4px;">
+                                            class="champ" placeholder="FR-…">
                                     </td>
                                     <td>
                                         <select wire:model="eMoyen" class="champ">
@@ -710,8 +721,14 @@ $transmettreSelection = function () {
                                         </label>
                                         @if ($eDevisApres)
                                             <input type="date" wire:model.live="eDateDevis" value="{{ $eDateDevis }}" class="champ" style="margin-top:4px;">
+                                        @endif
+                                    </td>
+                                    <td style="white-space:normal; min-width:150px;">
+                                        @if ($eDevisApres)
                                             <input type="text" wire:model="eNDevis" value="{{ $eNDevis }}"
-                                                class="champ" placeholder="N° du devis" style="margin-top:4px;">
+                                                class="champ" placeholder="PR-MT-11434">
+                                        @else
+                                            —
                                         @endif
                                     </td>
                                     <td style="white-space:normal; min-width:180px;">
@@ -737,12 +754,11 @@ $transmettreSelection = function () {
                                 <td>{{ $ligne->date->format('d/m/Y') }}</td>
                                 <td>{{ $ligne->client }}</td>
                                 <td style="color:var(--th-gris,#6B6E76);">{{ $ligne->localisation ?? '—' }}</td>
-                                <td style="color:var(--th-gris,#6B6E76);">
-                                    {{ $ligne->immatriculation ?? '—' }}
-                                    @if ($ligne->n_fiche_reception)
-                                        <span style="font-size:11px; display:block;">{{ $ligne->n_fiche_reception }}</span>
-                                    @endif
-                                </td>
+                                <td style="color:var(--th-gris,#6B6E76);">{{ $ligne->immatriculation ?? '—' }}</td>
+                                {{-- Le n° de fiche prend sa colonne : glissé sous la plaque, il
+                                     ne se triait ni ne se cherchait, et c'est pourtant lui qui
+                                     relie la prospection à la fiche de réception. --}}
+                                <td style="color:var(--th-gris,#6B6E76);">{{ $ligne->n_fiche_reception ?: '—' }}</td>
                                 <td>{{ $ligne->moyen }}</td>
                                 <td>{{ $ligne->activite }}</td>
 
@@ -775,6 +791,10 @@ $transmettreSelection = function () {
                                     @endif
                                     <x-date-sous-case :date="$ligne->date_devis" />
                                 </td>
+                                {{-- Le numéro du devis est exigé au moment où l'on déclare le
+                                     passage en devis : il doit donc se relire ici, sans quoi on
+                                     l'aurait saisi pour personne. --}}
+                                <td style="color:var(--th-gris,#6B6E76);">{{ $ligne->n_devis ?: '—' }}</td>
 
                                 {{-- Sur une ligne transmise, les informations libres restent
                                      ouvertes — mais il n'y a plus de brouillon : ce qui est écrit
@@ -874,7 +894,7 @@ $transmettreSelection = function () {
                             </tr>
                             @endif
                         @empty
-                            <x-table-vide :colspan="14" texte="Aucune prospection ne correspond à ces filtres." />
+                            <x-table-vide :colspan="16" texte="Aucune prospection ne correspond à ces filtres." />
                         @endforelse
                     </tbody>
                 </table>

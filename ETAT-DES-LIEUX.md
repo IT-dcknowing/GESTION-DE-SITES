@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (10e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (11e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 24/09 | voir `git log` | **corrections-du-soir** | **la création d'une facture depuis le recouvrement était cassée en production** (colonne `numero` NOT NULL jamais posée : MySQL refusait, SQLite l'acceptait, aucun test ne le voyait) ; **le bandeau vert ne s'affichait jamais après une navigation** — troisième piège de la même famille ; le filtre « Réglées » du chiffre d'affaires lisait l'état des impayés au lieu des encaissements (2 480 annoncées, 7 616 réelles) ; l'extrait de compte filtre à la frappe et n'offre plus que les tiers qui portent une facture (273 au lieu de 2 446) ; le dépôt avertit quand le fichier n'est pas de l'exercice déclaré ; « Rectification » entre au barème, à côté de « Enregistrer la modification » |
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
@@ -925,16 +926,16 @@ texte, elles ne se trieraient pas. La liste déroulante suit jusqu'à la derniè
 ### Où en est le plan
 
 Le classeur `plan-a-jour.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09, après la seconde série de corrections : **89
-lignes terminées, 3 à faire, 1 abandonnée et 1 sans objet** — plus rien n'attend de
+date de fin, une ligne par chantier. Au 24/09, au terme de la journée : **98 lignes
+terminées, 3 à faire, 1 abandonnée et 1 sans objet** — plus rien n'attend de
 validation, le courrier à M. Fofana étant parti. Les trois qui restent ne dépendent plus de
-nous : deux questions à la direction, et deux réglages d'hébergement. Dix sections
+nous : deux questions à la direction, et deux réglages d'hébergement. Onze sections
 se sont ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
 joindre), la caisse (le journal imprimé), les fournisseurs — le registre par année, puis le
 référentiel et l’échéance attendue —, les colonnes du fichier écran par écran, et le n° de
 fiche comme clé de rapprochement, ce qu'on a écarté, la seconde série de retours du
 propriétaire, la liaison des devis du logiciel aux prospections, et la seconde série de
-corrections du 24/09.
+corrections du 24/09, et ce qui était cassé sans qu'aucun test ne le voie.
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans
@@ -1182,6 +1183,128 @@ plus le retour à la ligne, que la colonne contient. C'est la bonne décision : 
 l'intérieur des noms composés (« Marie-Claire Aya ») et des codes de l'application
 (« C-0001 »), et le garder obligeait à une règle d'exception que personne n'aurait devinée en
 saisissant. Les espaces autour du séparateur ne changent rien.
+
+### Ce qui était cassé et qu'aucun test ne voyait
+
+✅ **Corrigé le 24/09.** Deux défauts de production, tous deux invisibles à la suite de
+tests, et tous deux signalés par l'usage.
+
+**La création d'une facture depuis le recouvrement ne fonctionnait pas.** `factures.numero`
+est NOT NULL sans valeur par défaut, et le formulaire ne le posait pas. En production —
+MySQL en `STRICT_TRANS_TABLES` — l'insertion échoue : le bouton ne fait rien, sans un mot à
+l'écran. **La suite tourne sur SQLite, qui accepte la même insertion sans broncher** : un
+test qui comptait les lignes créées passait des deux côtés. Le nouveau test regarde la
+*valeur* plutôt que le compte — c'est la seule forme qui protège quand les deux moteurs ne
+s'accordent pas. Le n° de facture devient facultatif et se numérote tout seul (série `NF`),
+et une **description** s'ajoute : une créance saisie ici n'a pas toujours de document
+d'atelier derrière elle, et six mois plus tard personne ne sait plus pourquoi elle existe.
+
+**Le bandeau vert ne s'affichait jamais après une navigation.** Le composant retenait la
+pile d'annonces au premier chargement ; `wire:navigate` remplace le corps de la page, et au
+deuxième écran la bulle était posée dans un élément détaché. Le geste était enregistré,
+l'annonce bien émise — rien n'arrivait. C'est ce qui poussait à cliquer plusieurs fois sur
+« Enregistrer la relance ». **Troisième défaut de la même famille**, après la boîte de
+confirmation et les filtres du recouvrement : un script `data-navigate-once` ne doit jamais
+retenir un élément, seulement le relire. Les annonces du serveur sortent en plus du script
+posé une fois, pour être redites à chaque page.
+
+### Le filtre « Réglées » ne parlait pas des règlements
+
+✅ **Corrigé le 24/09.** Sur le chiffre d'affaires, « réglée » se lisait `exercice_impayes`
+nul — c'est-à-dire « pas portée à l'état des impayés ». Ce n'est pas la même question, et la
+réponse était fausse : une facture jamais relevée par le superviseur passait pour réglée
+alors que personne n'avait payé. Le propriétaire l'a vu à l'écran : le choix « réglé »
+montrait des portées, le choix « porté » montrait zéro.
+
+Mesuré sur la base : l'ancien filtre annonçait **2 480 réglées**, il y en a **7 616**, et
+**3 716** ont encore un reste. Le filtre a maintenant trois choix qui ne se déduisent pas
+l'un de l'autre — réglées, reste à encaisser, portées à l'état — et le tableau reçoit deux
+colonnes, **Réglé** et **Reste**, déjà chargées par la même requête.
+
+### L'extrait de compte, et ce qu'un arrêté veut dire
+
+✅ **Corrigé le 24/09.** Le bouton « Voir l'extrait » disparaît : choisir un tiers, c'est
+demander son extrait, et un bouton qui confirme le choix qu'on vient de faire est un clic
+pour rien. La liste n'offre plus que les **tiers qui portent au moins une facture** — 273 au
+lieu de 2 446 : deux milliers étaient déclarés au référentiel sans qu'aucune facture ne les
+cite, et les choisir rendait une page vide. Un compte entièrement soldé y reste, lui : c'est
+justement le document qu'on remet à un client qui vérifie qu'il ne doit plus rien.
+
+**Sur la période, la réponse est non, et c'est voulu.** Filtrer sur avril ne réduit pas la
+liste des lignes, et ce n'est pas une panne : un extrait de compte n'est pas une fenêtre sur
+un mois, c'est l'état d'un compte **à une date**. Choisir avril déplace l'arrêté au 30/04 et
+montre tout ce qui précède — c'est ce qu'attend le client qui le reçoit, il veut son solde.
+L'écran le dit maintenant en toutes lettres au lieu de laisser croire à un filtre mort.
+
+### L'import doit parler de l'exercice sous lequel on le dépose
+
+✅ **Fait le 24/09**, demandé par le propriétaire. Le contrôle préalable lit les dates d'un
+échantillon du fichier et compare l'année dominante à l'exercice choisi dans le bandeau. Au
+delà de la moitié des lignes d'une autre année, il pose la question — il **avertit, il ne
+bloque pas**, comme le contrôle de ville : une reprise de fin d'exercice se dépose
+légitimement en janvier suivant.
+
+**Trois formats en sont exemptés**, et c'est le propriétaire qui a posé l'exception :
+l'état des impayés et le suivi fournisseur portent un tableau initial de plusieurs années,
+la balance fournisseurs aussi — un solde se traîne d'un exercice à l'autre. Leur reprocher
+de contenir 2024 reviendrait à leur reprocher d'être ce qu'ils sont.
+
+### Caisse et Trésorerie : deux écrans, deux sources
+
+✅ **Dit, et corrigé là où c'était faux.** Le propriétaire dépose le journal de Bouaké, la
+page *Caisse* se remplit, la page *Trésorerie* reste vide, et il demande si c'est normal.
+Ça l'est : *Caisse* lit `mouvements_caisse` — ce que la caisse du logiciel comptable a
+enregistré — tandis que *Trésorerie* lit `encaissements` et `charges` — ce que l'application
+a elle-même encaissé et décaissé. Les fondre ferait compter deux fois l'argent d'Abidjan,
+qui a les deux.
+
+Mais **l'écran « Informations » annonçait le contraire** : il rangeait la caisse sous
+« Trésorerie ». C'est lui qui avait induit l'erreur, et c'est corrigé. Il reçoit au passage
+les **trois formats qui lui manquaient** — balance fournisseurs, règlements fournisseurs,
+journal de caisse — et dit « onze fichiers » au lieu de « huit ».
+
+**Les deux formats de caisse décrivent la même chose** et écrivent dans les mêmes tables :
+ce qui les sépare est le document qu'on a en main. Leurs libellés le disent désormais dans
+les mêmes mots — « Caisse — le classeur tenu à la main (Excel) » et « Caisse — le journal
+imprimé par le logiciel (PDF) ». Le classeur d'Abidjan se dépose sous le premier.
+
+### Rectifier n'est pas modifier
+
+✅ **Fait le 24/09 au soir**, demandé par le propriétaire. Le barème reçoit un troisième
+geste, et les trois disent ce qu'ils font avant de le faire — une rémunération est au bout.
+
+- **Première activation** : la grille court depuis le 1er janvier de l'exercice.
+- **Rectification** : on récrit la grille en vigueur **à sa propre date**, sans en créer une
+  seconde. C'est le geste de celui qui s'aperçoit d'une faute de saisie — la grille devient
+  ce qu'elle aurait dû être depuis le début, et il n'y a jamais eu deux barèmes.
+- **Enregistrer la modification** : le barème a réellement changé ; la nouvelle grille prend
+  effet aujourd'hui, et l'ancienne reste derrière elle pour les mois déjà arrêtés.
+
+Chacun passe par une boîte de confirmation qui dit ce qui sera recalculé et ce qui ne le
+sera pas. La boîte se centre enfin — `inset: 0` puis `margin: auto`, faute de quoi elle se
+collait au coin haut gauche.
+
+### Les champs s'alignent, et tout champ a sa colonne
+
+✅ **Fait le 24/09** : « évite de faire des champs pas alignés, les indications sont bien,
+ne change pas, mais trouve un moyen de les aligner ». Les blocs de saisie s'alignaient par
+le bas : deux champs voisins dont un seul portait une indication n'avaient pas la même
+hauteur, et la rangée devenait un escalier. Ils s'alignent maintenant par le haut, avec une
+réserve de deux lignes pour tous les intitulés — l'indication déborde vers le bas sans rien
+déplacer, et elle est d'ailleurs à sa place là. La règle vaut pour tous les écrans qui
+emploient ce bloc.
+
+Sur « Mes prospections », le **n° de fiche de réception** et le **n° du devis** prennent
+leur colonne : saisir une information qu'on ne retrouve nulle part revient à la saisir pour
+rien.
+
+### Les cartes du tableau de bord tiennent leurs chiffres
+
+✅ **Fait le 24/09.** « 1 570 866 002 F » écrit en 27 px ne tient pas dans une carte étroite :
+il débordait, et la ventilation Mécanique / Sinistre cassait au milieu d'un montant. Un
+nombre ne peut pas se couper — un montant coupé se lit faux — donc c'est la taille qui cède :
+la carte devient sa propre référence de largeur et le chiffre s'y ajuste. Les deux lignes de
+ventilation passent en libellé à gauche, montant à droite, le montant insécable.
 
 ### Pour le jour où les API répondront
 

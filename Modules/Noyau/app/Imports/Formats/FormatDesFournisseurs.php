@@ -332,6 +332,12 @@ class FormatDesFournisseurs extends Format
 
     /** Le bon de commande porte parfois le code, mais pas de façon fiable : on n'en tire rien. */
     /** Une facture fournisseur porte le nom du fournisseur, pas le code de l'employé qui a reçu le véhicule : il n'y a rien à ventiler. */
+    /** Le suivi fournisseur reprend lui aussi un tableau initial de plusieurs années : une pièce impayée de 2024 y figure encore, et c'est normal. Exception posée par le propriétaire le 24/09. */
+    public static function porteUnSeulExercice(): bool
+    {
+        return false;
+    }
+
     public static function ventileParLesCodes(): bool
     {
         return false;

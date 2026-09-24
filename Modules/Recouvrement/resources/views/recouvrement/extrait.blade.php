@@ -43,7 +43,7 @@ state(['tiers' => ''])->url(except: '');
 mount(function () {
     // Un tiers inconnu est écarté plutôt que subi : afficher l'en-tête de l'entreprise
     // au-dessus d'un tableau vide laisse croire que le compte est soldé.
-    if ($this->tiers !== '' && ! array_key_exists($this->tiers, Recouvrement::tiers())) {
+    if ($this->tiers !== '' && ! array_key_exists($this->tiers, Recouvrement::tiersAvecFacture())) {
         $this->tiers = '';
     }
 });
@@ -53,7 +53,13 @@ $periode = computed(fn () => PeriodeDeTravail::depuis($this->moisFiltre, $this->
 
 $arrete = computed(fn () => Recouvrement::arrete($this->periode->arreteIso()));
 
-$tousLesTiers = computed(fn () => Recouvrement::tiers());
+/*
+ * **Seuls les tiers qui portent au moins une facture.** Corrigé le 24/09 : la liste en
+ * offrait 2 446, dont deux milliers déclarés au référentiel sans qu'aucune facture ne les
+ * cite — les choisir rendait une page vide. Un compte entièrement soldé y reste, lui :
+ * c'est justement le document qu'on remet à un client qui vérifie qu'il ne doit plus rien.
+ */
+$tousLesTiers = computed(fn () => Recouvrement::tiersAvecFacture());
 
 /**
  * Toutes les factures du tiers, soldées comprises : un extrait retrace un compte entier.
@@ -106,25 +112,20 @@ $totaux = computed(fn () => [
             <span class="chip no-print">L'impression donne le document remis au client</span>
         </h2>
 
-        {{-- Un formulaire GET, et un bouton « Voir ». Changer de tiers dans la liste ne
-             faisait rien : le changement attendait un aller-retour interactif qui n'arrivait
-             jamais. Une adresse, elle, part toujours — et se transmet. --}}
-        <form method="GET" action="{{ route('recouvrement.extrait') }}"
-              class="rec-frm no-print" style="grid-template-columns:2fr auto 1fr; margin-bottom:15px; align-items:end;">
-            @foreach ($this->periode->parametres() as $nom => $valeur)
-                <input type="hidden" name="{{ $nom }}" value="{{ $valeur }}">
-            @endforeach
+        {{-- **Le tiers se choisit, et l'extrait paraît.** Le bouton « Voir l'extrait » a
+             disparu le 24/09 à la demande du propriétaire, et il avait raison : un bouton
+             qui ne fait que confirmer le choix qu'on vient de faire est un clic de plus
+             pour rien. Le champ est lié au composant — choisir, c'est demander.
 
+             Le `<select>` natif reste dessous et porte toujours son nom : sans script, la
+             page continue de fonctionner. L'adresse, elle, suit le tiers choisi (`->url()`),
+             si bien qu'un extrait se transmet tel quel par son lien. --}}
+        <div class="rec-frm no-print" style="grid-template-columns:2fr 1fr; margin-bottom:15px; align-items:end;">
             <div class="rec-fld">
                 <x-select-cherchable id="ex-tiers" label="Tiers / assurance"
-                    name="tiers" :valeur="$tiers"
+                    model="tiers" :valeur="$tiers"
                     :options="$this->tousLesTiers"
                     vide="— Sélectionner —" placeholder="Taper le nom du tiers…" />
-            </div>
-
-            <div class="rec-fld">
-                <label>&nbsp;</label>
-                <button type="submit" class="rec-btn n" style="white-space:nowrap;">Voir l'extrait</button>
             </div>
 
             <div class="rec-fld">
@@ -133,7 +134,20 @@ $totaux = computed(fn () => [
                     {{ $this->tiers === '' ? '—' : $this->ouvertes->count().' facture(s) ouverte(s)' }}
                 </div>
             </div>
-        </form>
+        </div>
+
+        {{-- **Ce que la période fait ici, et ce qu'elle ne fait pas.** Le propriétaire a
+             relevé le 24/09 qu'un filtre sur avril ne réduisait pas la liste. C'est exact,
+             et c'est voulu : un extrait de compte n'est pas une fenêtre sur un mois, c'est
+             l'état d'un compte **à une date**. Choisir avril arrête l'extrait au 30/04 et
+             montre tout ce qui précède, réglé comme dû — c'est ce qu'attend le client qui
+             le reçoit : il veut son solde, pas les mouvements d'un mois isolé.
+             La phrase ci-dessous le dit maintenant, au lieu de laisser croire à une panne. --}}
+        <div class="rec-hint no-print">
+            Extrait <b>arrêté au {{ $this->periode->arrete->format('d/m/Y') }}</b> : toutes les
+            factures jusqu'à cette date, réglées comprises. Changer de mois déplace l'arrêté,
+            il ne découpe pas une tranche — un compte se lit depuis son origine.
+        </div>
 
         @if ($this->tiers === '')
             <div class="rec-hint">
