@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
@@ -264,6 +265,89 @@ class TableauDeBordRecouvrementTest extends TestCase
             ->assertSee('TIERS 001');
     }
 
+    /**
+     * Les filtres agissent sur **tout** l'écran, et pas seulement sur le tableau.
+     *
+     * **Ce que le propriétaire a vu le 24/09.** Il cherche « SAAR » : le tableau des tiers
+     * tombe à une ligne, « Reste à recouvrer » passe à 860 466 F — mais « Encaissé sur la
+     * période » reste à 1 141 472 574 F, « Charge par niveau » annonce toujours 100 tiers
+     * en contentieux, et « Forme de la créance » affiche les 795 millions de l'entreprise.
+     *
+     * Un écran où un chiffre sur deux répond au filtre est pire qu'un écran qui n'en tient
+     * aucun compte : on ne sait plus lequel des deux lire, et l'on compare des totaux qui
+     * ne parlent pas du même périmètre.
+     */
+    public function test_la_recherche_agit_sur_tous_les_chiffres_et_pas_seulement_sur_le_tableau(): void
+    {
+        $gerant = $this->compte('gerant', 'gerant@essai.test');
+
+        $nsia = $this->facture('NSIA ASSURANCES', 'F-001', 4_000_000, now()->subDays(120));
+        $allianz = $this->facture('ALLIANZ', 'F-002', 6_000_000, now()->subDays(120));
+
+        $this->encaissement($nsia, 1_000_000);
+        $this->encaissement($allianz, 2_000_000);
+
+        $ecran = Volt::actingAs($gerant)->test('recouvrement.tableau-de-bord');
+
+        // Sans filtre, les chiffres sont ceux de l'entreprise. L'encours est le reste dû :
+        // 4 M et 6 M facturés, 1 M et 2 M encaissés.
+        $this->assertSame(7_000_000, $ecran->instance()->reperes['encours']);
+        $this->assertSame(3_000_000, $ecran->instance()->reperes['encaisse']);
+
+        $ecran->set('recherche', 'NSIA');
+        $composant = $ecran->instance();
+
+        // L'encours suivait déjà le filtre. Ce qui ne le suivait pas :
+        $this->assertSame(3_000_000, $composant->reperes['encours'], 'le reste à recouvrer');
+        $this->assertSame(1_000_000, $composant->reperes['encaisse'], 'l’encaissé sur la période');
+        $this->assertSame(3_000_000, array_sum(array_column($composant->tranches, 'montant')),
+            'la forme de la créance');
+        $this->assertSame(1, array_sum(array_column($composant->niveaux, 'tiers')),
+            'la charge par niveau');
+        $this->assertSame(1_000_000, array_sum(array_column($composant->mois, 'encaisse')),
+            'la courbe des mois');
+    }
+
+    public function test_le_filtre_par_niveau_emporte_les_chiffres_avec_lui(): void
+    {
+        $gerant = $this->compte('gerant', 'gerant@essai.test');
+
+        // Deux âges, donc deux niveaux de relance : l'un passe le filtre, l'autre non.
+        $vieille = $this->facture('NSIA ASSURANCES', 'F-001', 4_000_000, now()->subDays(200));
+        $recente = $this->facture('ALLIANZ', 'F-002', 6_000_000, now()->subDays(40));
+
+        $this->encaissement($vieille, 1_000_000);
+        $this->encaissement($recente, 2_000_000);
+
+        $ecran = Volt::actingAs($gerant)->test('recouvrement.tableau-de-bord')
+            ->set('niveauFiltre', '5');
+
+        $composant = $ecran->instance();
+
+        $this->assertSame(1, $composant->reperes['tiers']);
+        $this->assertSame(3_000_000, $composant->reperes['encours']);
+        // Le règlement de la facture récente n'entre plus : son tiers n'est pas au niveau 5.
+        $this->assertSame(1_000_000, $composant->reperes['encaisse']);
+    }
+
+    public function test_sans_filtre_les_chiffres_restent_ceux_de_l_entreprise(): void
+    {
+        $gerant = $this->compte('gerant', 'gerant@essai.test');
+
+        $facture = $this->facture('NSIA ASSURANCES', 'F-001', 4_000_000, now()->subDays(120));
+        $this->encaissement($facture, 1_000_000);
+
+        // Un règlement dont la facture est soldée n'a plus de ligne au tableau, et il doit
+        // pourtant continuer de compter dans le total encaissé tant que rien n'est filtré.
+        $soldee = $this->facture('CLIENT SOLDE', 'F-999', 500_000, now()->subDays(60));
+        $this->encaissement($soldee, 500_000);
+
+        $composant = Volt::actingAs($gerant)->test('recouvrement.tableau-de-bord')->instance();
+
+        $this->assertSame(1_500_000, $composant->reperes['encaisse']);
+        $this->assertSame(3_000_000, $composant->reperes['encours']);
+    }
+
     // ------------------------------------------------------------------ utilitaires
 
     private function compte(string $role, string $email): User
@@ -295,6 +379,21 @@ class TableauDeBordRecouvrementTest extends TestCase
             'montant' => $montant,
             'activite' => 'Sinistre',
             'type' => 'Facture',
+        ]);
+    }
+
+    private function encaissement(Facture $facture, int $montant): void
+    {
+        DB::table('encaissements')->insert([
+            'entreprise_id' => $this->entreprise->id,
+            'site_id' => $this->site->id,
+            'facture_id' => $facture->id,
+            'date' => now()->subDays(5)->toDateString(),
+            'type' => 'Client',
+            'moyen' => 'Virement',
+            'montant' => $montant,
+            'client' => $facture->client,
+            'created_at' => now(), 'updated_at' => now(),
         ]);
     }
 

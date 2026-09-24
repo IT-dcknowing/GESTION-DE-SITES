@@ -72,6 +72,28 @@ abstract class Format
      */
     abstract protected function reference(array $ligne): ?string;
 
+    /**
+     * Ce fichier se range-t-il par le code de deux lettres de l'employé qui l'a rédigé ?
+     *
+     * **Pourquoi la question se pose, et ce qu'elle répare.** L'écran de dépôt annonçait,
+     * pour tout fichier déposé sans ville, « ce fichier sera ventilé par les codes du
+     * personnel » — y compris pour la balance fournisseurs, les règlements fournisseurs et
+     * le journal de caisse, qui ne portent aucun numéro de fiche et que rien ne ventile
+     * par les codes. Le propriétaire l'a relevé le 24/09, et il a raison : l'import de ces
+     * fichiers se passe très bien, mais l'avertissement décrit un mécanisme qui ne les
+     * concerne pas. Un avertissement qui ne s'applique pas à ce qu'on fait apprend à ne
+     * plus lire les avertissements.
+     *
+     * La réponse suit exactement `reference()` : un format qui ne rend aucune référence ne
+     * peut produire aucun code, donc rien à ventiler. Elle est déclarée plutôt que
+     * devinée, parce qu'elle sert à **écrire une phrase à l'écran** — et une phrase qu'on
+     * déduit d'un détour finit par mentir le jour où le détour change.
+     */
+    public static function ventileParLesCodes(): bool
+    {
+        return true;
+    }
+
     /** La valeur de la colonne SITE, quand le fichier en a une. */
     protected function colonneSite(array $ligne): ?string
     {

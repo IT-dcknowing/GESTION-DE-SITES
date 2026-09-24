@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (9e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (10e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
@@ -924,15 +925,16 @@ texte, elles ne se trieraient pas. La liste déroulante suit jusqu'à la derniè
 ### Où en est le plan
 
 Le classeur `plan-a-jour.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09, après la liaison devis / prospections : **85
+date de fin, une ligne par chantier. Au 24/09, après la seconde série de corrections : **89
 lignes terminées, 3 à faire, 1 abandonnée et 1 sans objet** — plus rien n'attend de
 validation, le courrier à M. Fofana étant parti. Les trois qui restent ne dépendent plus de
-nous : deux questions à la direction, et deux réglages d'hébergement. Neuf sections
+nous : deux questions à la direction, et deux réglages d'hébergement. Dix sections
 se sont ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
 joindre), la caisse (le journal imprimé), les fournisseurs — le registre par année, puis le
 référentiel et l’échéance attendue —, les colonnes du fichier écran par écran, et le n° de
 fiche comme clé de rapprochement, ce qu'on a écarté, la seconde série de retours du
-propriétaire, et la liaison des devis du logiciel aux prospections.
+propriétaire, la liaison des devis du logiciel aux prospections, et la seconde série de
+corrections du 24/09.
 
 La ligne « Obtenir les états de caisse en tableur », qui attendait une demande à la
 direction, passe à **Abandonné** : elle n'a plus d'objet depuis que le journal est lu dans
@@ -1097,6 +1099,89 @@ Le **rattachement facultatif au site** (branche `modif-site-precis`, déjà fusi
 `main`) a été relu : le site ne se pose que s'il appartient à la ville choisie, il retombe
 quand on ramène le commercial à la ville seule, et le formulaire ne propose que les ateliers
 de la ville. Huit tests le tiennent désormais.
+
+### Le barème s'active pour l'année, et se corrige pour la suite
+
+✅ **Fait le 24/09**, et c'est la suite logique du 24/09 au matin. La règle « un barème court
+jusqu'à ce qu'un autre le remplace » était juste, mais il manquait son commencement : une
+grille enregistrée prenait effet **le jour de la saisie**, si bien qu'une entreprise qui
+saisit son barème en septembre laissait huit mois d'imports sans commission — alors que le
+barème existait, écrit dans un document, bien avant qu'on l'ait tapé ici.
+
+Deux boutons, et ils ne font pas la même chose.
+
+- **Première activation** pose la grille au **1er janvier de l'exercice**. C'est le geste de
+  démarrage : le barème est la règle sur laquelle on se base depuis le début de l'année, et
+  les fichiers qu'on importe couvrent l'année entière.
+- **Enregistrer** pose la grille **à la date du jour**. C'est le geste de la correction : un
+  barème peut changer en cours d'année, et ce jour-là il ne doit pas recalculer les mois déjà
+  annoncés aux commerciaux. La grille d'avant reste derrière elle, et les deux coexistent.
+
+Le bouton d'activation disparaît dès que le début de l'exercice est couvert : il n'a plus
+rien à faire, et un bouton qui ne fait rien se clique quand même. À l'inverse, une grille
+posée en cours d'année **le dit maintenant à l'écran** — « le début de 2026 n'est couvert par
+aucune grille : ce qui a été importé avant cette date ne commissionne rien ». C'est le cas
+qui se voyait le moins et qui coûtait le plus.
+
+### Les filtres du recouvrement agissent sur tout l'écran
+
+✅ **Fait le 24/09.** Le propriétaire cherche « SAAR » : le tableau des tiers tombe à une
+ligne et « Reste à recouvrer » passe à 860 466 F — mais « Encaissé sur la période » reste à
+1 141 472 574 F, « Charge par niveau » annonce toujours 100 tiers en contentieux, et « Forme
+de la créance » affiche les 795 millions de l'entreprise.
+
+Un écran où un chiffre sur deux répond au filtre est pire qu'un écran qui n'en tient aucun
+compte : on ne sait plus lequel lire, et l'on compare des totaux qui ne parlent pas du même
+périmètre.
+
+Tout ce qui se lit sur les lignes suit désormais les lignes — la forme de la créance se
+calcule en additionnant la ventilation par tranche que chaque ligne porte déjà. Ce qui ne
+s'y lit pas — les règlements et les relances, qui vivent du côté des factures — reçoit un
+filtre construit une fois pour la page. **Deux sortes de filtres, et ils ne se posent pas de
+la même façon** : la recherche porte sur le nom du tiers et s'applique directement, si bien
+qu'un tiers qui a tout réglé n'a plus de ligne au tableau mais ses règlements du mois
+comptent quand on le cherche par son nom ; le portefeuille et le niveau, eux, sont des
+propriétés de la créance ouverte et ne peuvent retenir que des tiers présents au tableau.
+
+Sans filtre, rien n'est parcouru pour rien et les chiffres restent ceux de l'entreprise.
+
+**Un défaut trouvé en chemin, et corrigé.** La lecture des règlements en lignes brutes du
+matin avait oublié la colonne `cree_par` : le tableau « activité par agent » affichait donc
+zéro encaissement pour tout le monde. Elle est rendue à la liste des colonnes lues.
+
+### L'écran de dépôt n'annonce que ce qui va se passer
+
+✅ **Fait le 24/09.** « Ce fichier sera ventilé par les codes du personnel » s'affichait pour
+tout dépôt sans ville, quel que soit le type. Or six des onze formats ne portent **aucun
+numéro de fiche de réception** : la balance fournisseurs, les règlements fournisseurs, le
+journal de caisse, le classeur de caisse, l'état des impayés et les factures fournisseurs.
+Aucun code n'en sort, et rien n'y sera ventilé.
+
+Le propriétaire l'a relevé, et il a raison : leur import se passe très bien, c'est
+l'explication qui décrivait un mécanisme étranger à ce qu'ils font. Un avertissement qui ne
+s'applique pas à ce qu'on fait apprend à ne plus lire les avertissements.
+
+Chaque format déclare donc s'il se range par les codes, la réponse voyage dans l'option de la
+liste déroulante, et l'écran affiche l'une ou l'autre phrase — celle de la ventilation, ou
+celle qui dit ce qui va réellement se passer : « ses lignes ne portent pas de numéro de fiche
+[…] c'est la ville que vous déclarez qui range ce qu'il contient ». Le piège de la liste est
+le **code de règlement** du logiciel comptable : il ressemble à un code de saisie sans en
+être un, et c'est pour cela qu'il fallait le déclarer plutôt que de laisser l'écran le
+supposer.
+
+**Le nom du type « Journal de caisse — état imprimé (PDF) » a été conservé**, contrairement à
+la demande, et il faut le dire : ce format lit **réellement un PDF**. C'est le seul, le
+logiciel comptable ne sort pas cet état autrement, et 1 104 mouvements de Bouaké et San-Pédro
+en viennent. Retirer la mention ferait chercher un classeur qui n'existe pas.
+
+### Les séparateurs de la colonne libre
+
+✅ **Corrigé le 24/09 par le propriétaire lui-même**, qui a retiré le tiret et le blanc
+souligné de sa propre liste. Restent la **virgule**, le **point-virgule** et le **point** —
+plus le retour à la ligne, que la colonne contient. C'est la bonne décision : le tiret vit à
+l'intérieur des noms composés (« Marie-Claire Aya ») et des codes de l'application
+(« C-0001 »), et le garder obligeait à une règle d'exception que personne n'aurait devinée en
+saisissant. Les espaces autour du séparateur ne changent rien.
 
 ### Pour le jour où les API répondront
 

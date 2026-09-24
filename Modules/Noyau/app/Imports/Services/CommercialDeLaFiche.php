@@ -28,12 +28,18 @@ use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
  * 2. Le **code de l'application** — `C-0001`, `SP-ABJ` — celui qu'affichent nos écrans.
  * 3. Le **nom**, qui est ce que les gens écrivent spontanément, et donc ce qui se déforme.
  *
- * **Sur la ponctuation qui sépare.** Le propriétaire a listé la virgule, le point-virgule,
- * le point, le tiret et le blanc souligné. Pris au pied de la lettre, le tiret couperait
- * « Marie-Claire Aya » en deux et `C-0001` en son milieu. Un tiret ou un blanc souligné ne
- * sépare donc que lorsqu'il est **entouré d'espaces** ou **répété** ; à l'intérieur d'un
- * mot, il appartient au mot. La virgule et le point-virgule, eux, séparent toujours : on ne
- * les rencontre pas dans un nom.
+ * **Sur la ponctuation qui sépare.** Trois caractères, arrêtés par le propriétaire le
+ * 24/09 : la **virgule**, le **point-virgule** et le **point** — plus le retour à la ligne,
+ * que la colonne contient. Il a retiré lui-même le tiret et le blanc souligné de sa
+ * première liste, et c'est la bonne décision : le tiret vit à l'intérieur des noms
+ * composés — « Marie-Claire Aya » — et à l'intérieur des codes de l'application —
+ * « C-0001 ». Le garder obligeait à une règle d'exception que personne n'aurait devinée
+ * en saisissant, et une règle qu'on ne peut pas expliquer en une phrase au saisisseur est
+ * une règle qui sera mal appliquée.
+ *
+ * **Les espaces autour ne gênent pas.** « Koffi Yao , RAS », « Koffi Yao;RAS » et
+ * « Koffi Yao.  RAS » donnent tous « Koffi Yao » : on coupe sur le caractère, puis on
+ * débarrasse ce qui reste de ses espaces et de sa ponctuation de bord.
  *
  * **Sur les noms mal saisis.** « KOFI YAO » pour « Koffi Yao », « M. AYA » pour
  * « Marie-Claire Aya » : un rapprochement automatique se tromperait un jour, et ce jour-là
@@ -138,16 +144,28 @@ class CommercialDeLaFiche
             return null;
         }
 
-        // La virgule, le point-virgule et le retour à la ligne séparent toujours. Le point,
-        // le tiret et le blanc souligné ne séparent qu'entourés d'espaces ou répétés :
-        // sinon ils couperaient « Marie-Claire » et « C-0001 » par le milieu.
-        $morceaux = preg_split(
-            '/[;,\r\n]|\s+[.\-_]+\s+|[.\-_]{2,}|\.\s|\.$/u',
-            $texte,
-            2,
-        );
+        /*
+         * **Trois séparateurs, et trois seulement** : la virgule, le point-virgule et le
+         * point. Arrêté par le propriétaire le 24/09, qui a retiré de sa liste le tiret et
+         * le blanc souligné. C'est la bonne décision, et elle simplifie tout : le tiret vit
+         * à l'intérieur des noms composés — « Marie-Claire Aya » — et à l'intérieur des
+         * codes de l'application — « C-0001 ». Le garder comme séparateur obligeait à une
+         * règle d'exception (« il ne sépare qu'entouré d'espaces ») que personne n'aurait
+         * devinée en saisissant. Une règle qu'on ne peut pas expliquer en une phrase au
+         * saisisseur est une règle qui sera mal appliquée.
+         *
+         * Le retour à la ligne sépare aussi : la colonne en contient, et une phrase qui
+         * commence à la ligne suivante n'est plus le début de la colonne.
+         *
+         * **Les espaces ne gênent pas.** « Koffi Yao , RAS », « Koffi Yao;RAS »,
+         * « Koffi Yao.  RAS » donnent tous « Koffi Yao » : le découpage se fait sur le
+         * caractère, et ce qui reste est débarrassé de ses espaces et de sa ponctuation de
+         * bord. Un point à l'intérieur d'un mot — une initiale, « M.AYA » — coupe, lui
+         * aussi ; c'est assumé, le point est le séparateur que le propriétaire a retenu.
+         */
+        $morceaux = preg_split('/[;,.\r\n]/u', $texte, 2);
 
-        $segment = trim((string) ($morceaux[0] ?? ''), " \t\n\r\0\x0B.-_:/");
+        $segment = trim((string) ($morceaux[0] ?? ''), " \t\n\r\0\x0B.,;:/");
 
         if ($segment === '' || mb_strlen($segment) > 120) {
             return null;

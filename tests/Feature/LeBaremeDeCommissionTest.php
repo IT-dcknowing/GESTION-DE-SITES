@@ -402,6 +402,115 @@ class LeBaremeDeCommissionTest extends TestCase
         $this->assertSame(7, BaremeCommission::where('cible', 'commercial')->first()->tranches()->count());
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | La première activation, et la correction — deux gestes, deux dates
+    |--------------------------------------------------------------------------
+    | Arrêté par le propriétaire le 24/09. Un barème n'est pas une décision du jour : c'est
+    | la règle sur laquelle on se base depuis le début de l'année, et les fichiers qu'on
+    | importe couvrent l'année entière. Le poser à la date du jour laisserait les mois déjà
+    | importés sans commission — alors que le barème existait avant qu'on le saisisse ici.
+    |
+    | Une correction, elle, ne doit surtout pas recalculer les mois déjà annoncés.
+    */
+
+    public function test_la_premiere_activation_fait_courir_la_grille_depuis_le_1er_janvier(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', 2026)
+            ->call('enregistrerLaGrille', 'commercial', true)
+            ->assertSee('activée au 1er janvier 2026');
+
+        $bareme = BaremeCommission::where('cible', 'commercial')->firstOrFail();
+
+        $this->assertSame('2026-01-01', $bareme->date_effet->toDateString());
+
+        // Le point qui compte : un import de février trouve une grille, alors que la
+        // saisie a eu lieu en septembre.
+        $this->assertNotNull(CommissionCommerciale::grilleDeLaCible(
+            $this->entreprise->id, 'commercial', Carbon::create(2026, 2, 15),
+        ));
+    }
+
+    public function test_enregistrer_sans_activer_ne_vaut_qu_a_partir_d_aujourd_hui(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', 2026)
+            ->call('enregistrerLaGrille', 'commercial')
+            ->assertSee('effet au '.now()->format('d/m/Y'));
+
+        $bareme = BaremeCommission::where('cible', 'commercial')->firstOrFail();
+
+        $this->assertSame(now()->toDateString(), $bareme->date_effet->toDateString());
+    }
+
+    public function test_le_bouton_de_premiere_activation_disparait_une_fois_l_annee_couverte(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        $ecran = Volt::actingAs($gerant)->test('gerant.bareme-commission')->set('exercice', 2026);
+
+        // Tant que rien ne couvre le 1er janvier, l'écran propose le geste.
+        $ecran->assertSee('Première activation');
+
+        $ecran->call('enregistrerLaGrille', 'commercial', true)
+            ->call('enregistrerLaGrille', 'responsable', true);
+
+        // Une fois les deux grilles posées, le bouton n'a plus rien à faire — et un bouton
+        // qui ne fait rien se clique quand même.
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', 2026)
+            ->assertDontSee('Première activation');
+    }
+
+    public function test_une_correction_ne_recalcule_pas_les_mois_deja_arretes(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        // Activée au 1er janvier, puis corrigée aujourd'hui : deux grilles coexistent.
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', now()->year)
+            ->call('enregistrerLaGrille', 'commercial', true)
+            ->call('enregistrerLaGrille', 'commercial');
+
+        $this->assertSame(2, BaremeCommission::where('cible', 'commercial')->count());
+
+        // Février lit celle du 1er janvier, aujourd'hui lit la corrigée. C'est toute la
+        // raison d'avoir deux boutons plutôt qu'un.
+        $enFevrier = CommissionCommerciale::grilleDeLaCible(
+            $this->entreprise->id, 'commercial', Carbon::create(now()->year, 2, 15),
+        );
+        $aujourdhui = CommissionCommerciale::grilleDeLaCible($this->entreprise->id, 'commercial');
+
+        $this->assertNotNull($enFevrier);
+        $this->assertNotNull($aujourdhui);
+        $this->assertNotSame($enFevrier->id, $aujourdhui->id);
+    }
+
+    public function test_une_grille_posee_en_cours_d_annee_le_dit_a_l_ecran(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', now()->year)
+            ->call('enregistrerLaGrille', 'commercial');
+
+        // Le cas qui se voyait le moins et qui coûtait le plus : une grille existe, mais le
+        // début de l'année ne commissionne rien, et rien ne le disait.
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', now()->year)
+            ->assertSee('ne commissionne rien');
+    }
+
     public function test_une_tranche_ajoutee_sous_le_tableau_n_est_ecrite_qu_a_l_enregistrement(): void
     {
         $gerant = $this->compte('gerant');

@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Carbon;
 use Modules\Noyau\Entreprises\Services\ExerciceDeTravail;
 use Modules\Noyau\Exploitation\Modeles\BaremeCommission;
 use Modules\Noyau\Exploitation\Services\CommissionCommerciale;
@@ -18,9 +19,22 @@ use function Livewire\Volt\{computed, mount, protect, state};
 | n'est enregistré pour l'exercice, on affiche la grille de référence, prête à être
 | corrigée. L'écran dit laquelle des deux il montre.
 |
-| **Cloisonné par exercice.** Décidé par le propriétaire le 22/09/2026 : la commission
-| s'applique par exercice ; une grille corrigée vaut aussitôt pour tout son exercice — les
-| mois déjà passés compris — et ne touche à aucun autre.
+| **Deux gestes, et ils ne font pas la même chose.** Arrêté par le propriétaire le
+| 24/09/2026, et c'est la clé de cet écran.
+|
+| *Première activation* pose la grille au **1er janvier de l'exercice**. C'est le geste
+| qu'on fait une fois : le barème n'est pas une décision du jour, c'est la règle sur
+| laquelle on se base depuis le début de l'année, et les fichiers qu'on importe couvrent
+| l'année entière. La poser à la date du jour laisserait les mois déjà importés sans
+| barème — donc sans commission — alors que le barème existait, écrit dans un document,
+| bien avant qu'on l'ait saisi ici.
+|
+| *Enregistrer* pose la grille **à la date du jour**. C'est le geste de la correction : un
+| barème peut changer en cours d'année, et ce jour-là il ne doit pas recalculer les mois
+| déjà annoncés aux commerciaux. La grille d'avant reste derrière elle.
+|
+| Le bouton de première activation disparaît dès que le début de l'exercice est couvert :
+| il n'a plus rien à faire, et un bouton qui ne fait rien se clique quand même.
 |
 | **Tout se modifie ici, rien n'est écrit dans le code** : les tranches, les taux, la façon
 | de compter. Un changement enregistré agit dès l'affichage suivant de l'écran des
@@ -74,6 +88,32 @@ $enregistrees = computed(function () {
     }
 
     return $trouvees;
+});
+
+/**
+ * Ce qui couvre le **premier jour** de l'exercice regardé, catégorie par catégorie.
+ *
+ * C'est ce qui décide de la présence du bouton « Première activation ». La question n'est
+ * pas « une grille existe-t-elle ? » mais « l'année est-elle couverte depuis son premier
+ * jour ? » — parce que c'est ce dont on a besoin pour que les imports de janvier comptent.
+ *
+ * Un barème court jusqu'à ce qu'un autre le remplace : une grille posée au 1er janvier
+ * 2026 couvre aussi le 1er janvier 2027. Le bouton ne revient donc pas chaque année, et
+ * c'est voulu — l'activation est un geste de démarrage, pas un rituel.
+ *
+ * @return array<string, bool>
+ */
+$couvrentLeDebutDeLExercice = computed(function () {
+    $premierJour = Carbon::create((int) $this->exercice, 1, 1)->startOfDay();
+    $rendu = [];
+
+    foreach (array_keys(BaremeCommission::CIBLES) as $cible) {
+        $rendu[$cible] = CommissionCommerciale::grilleDeLaCible(
+            auth()->user()->entreprise_id, $cible, $premierJour,
+        ) !== null;
+    }
+
+    return $rendu;
 });
 
 $exercices = computed(function () {
@@ -157,7 +197,7 @@ $retirerLaTranche = function (string $cible, int $rang) {
  * Les contrôles sont faits ici et non à la saisie de chaque case : on corrige un tableau,
  * pas une cellule, et refuser une valeur à mi-chemin empêcherait d'en réécrire deux.
  */
-$enregistrerLaGrille = function (string $cible) {
+$enregistrerLaGrille = function (string $cible, bool $premiereActivation = false) {
     if (! isset($this->grilles[$cible])) {
         return;
     }
@@ -193,14 +233,35 @@ $enregistrerLaGrille = function (string $cible) {
 
     usort($lignes, fn ($a, $b) => $a['plancher'] <=> $b['plancher']);
 
-    CommissionCommerciale::enregistrer(auth()->user(), $cible, (int) $this->exercice, $lignes);
+    /*
+     * **La date d'effet, et pourquoi elle dépend du geste.**
+     *
+     * Une première activation pose la grille au 1er janvier de l'exercice : le barème est
+     * la règle sur laquelle on se base depuis le début de l'année, et les fichiers qu'on
+     * importe couvrent l'année entière. La poser à la date du jour laisserait les mois
+     * déjà importés sans barème — donc sans commission — alors que le barème existait
+     * avant qu'on le saisisse ici.
+     *
+     * Une correction, elle, prend effet aujourd'hui : les mois déjà arrêtés gardent la
+     * grille sous laquelle ils l'ont été. C'est la règle du 24/09, et elle ne change pas.
+     */
+    $effet = $premiereActivation
+        ? Carbon::create((int) $this->exercice, 1, 1)->startOfDay()
+        : null;
 
-    unset($this->enregistrees);
+    CommissionCommerciale::enregistrer(
+        auth()->user(), $cible, (int) $this->exercice, $lignes, dateEffet: $effet,
+    );
+
+    unset($this->enregistrees, $this->couvrentLeDebutDeLExercice);
     $this->chargerLesGrilles();
 
-    $this->message = 'Grille « '.(BaremeCommission::CIBLES[$cible] ?? $cible)
-        ."\u{a0}» enregistrée pour l'exercice ".$this->exercice
-        .'. Elle s\'applique immédiatement à tout cet exercice.';
+    $this->message = 'Grille « '.(BaremeCommission::CIBLES[$cible] ?? $cible)."\u{a0}» "
+        .($premiereActivation
+            ? 'activée au 1er janvier '.$this->exercice.'. Elle couvre l\'exercice entier, '
+                .'imports compris, et court jusqu\'à ce qu\'une autre la remplace.'
+            : 'enregistrée, avec effet au '.now()->format('d/m/Y')
+                .'. Les mois déjà arrêtés gardent la grille sous laquelle ils l\'ont été.');
 };
 
 /**
@@ -232,13 +293,15 @@ $notes = computed(fn () => [
 
 <div>
     <x-titre-ecran titre="Barème de commission"
-        sous-titre="Les deux grilles du document, pour l'exercice regardé. Une grille enregistrée s'applique aussitôt à tout son exercice, les mois déjà passés compris." />
+        sous-titre="Les deux grilles du document. La première activation les pose au 1er janvier et couvre l’année entière, imports compris ; une correction, elle, ne vaut que pour la suite." />
 
     <div class="carte" style="margin-bottom:18px;">
         <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
             <x-champ label="Exercice" model="exercice" type="select" :options="$this->exercices" :live="true" width="140" />
             <p style="margin:0 0 9px; font-size:12.5px; color:#6B6E76; flex:1; min-width:260px;">
-                Chaque exercice a ses grilles. Corriger celle de {{ $exercice }} ne touche à aucune autre année.
+                Un barème court jusqu'à ce qu'un autre le remplace : celui de {{ $exercice }} vaut
+                aussi pour les années suivantes tant que personne n'en pose d'autre. L'exercice
+                choisi ici dit surtout <b>à quelle année une première activation s'applique</b>.
             </p>
         </div>
 
@@ -276,9 +339,21 @@ $notes = computed(fn () => [
                     et jusqu'à ce qu'une autre la remplace.
                 @else
                     {{-- On n'affiche jamais un écran vide : la grille de référence est là,
-                         prête à être corrigée puis enregistrée. --}}
+                         prête à être corrigée puis activée. --}}
                     <b style="color:#B45309;">Grille de référence du document</b> — rien n'est encore
-                    enregistré pour {{ $exercice }}. Corrigez-la si besoin, puis enregistrez.
+                    enregistré pour {{ $exercice }}. Corrigez-la si besoin, puis
+                    <b>« Première activation »</b> : elle vaudra depuis le 1er janvier {{ $exercice }},
+                    pour tout ce qui a déjà été importé.
+                @endif
+
+                @if ($estEnregistree && ! ($this->couvrentLeDebutDeLExercice[$cible] ?? false))
+                    {{-- Le cas qui se voyait le moins et qui coûtait le plus : une grille
+                         existe, mais elle a été posée en cours d'année. Tout ce qui précède
+                         sa date d'effet ne commissionne rien, et rien ne le disait. --}}
+                    <br>
+                    <b style="color:#B45309;">Le début de {{ $exercice }} n'est couvert par aucune
+                    grille</b> : ce qui a été importé avant cette date ne commissionne rien.
+                    « Première activation » la fait courir depuis le 1er janvier.
                 @endif
             </p>
 
@@ -343,7 +418,21 @@ $notes = computed(fn () => [
 
             {{-- Les trois gestes de la section, sur une seule ligne. --}}
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
-                <button type="button" class="bouton bouton-sombre" wire:click="enregistrerLaGrille('{{ $cible }}')">
+                {{-- **Première activation.** Elle pose la grille au 1er janvier de
+                     l'exercice, et c'est ce qui la fait valoir pour les données déjà
+                     importées. Le bouton ne s'affiche que tant que le début de l'année
+                     n'est couvert par aucune grille : une fois le barème posé, il n'a plus
+                     rien à faire, et un bouton qui ne fait rien se clique quand même. --}}
+                @unless ($this->couvrentLeDebutDeLExercice[$cible] ?? false)
+                    <button type="button" class="bouton bouton-sombre"
+                        wire:click="enregistrerLaGrille('{{ $cible }}', true)">
+                        Première activation
+                    </button>
+                @endunless
+
+                <button type="button"
+                    class="bouton {{ ($this->couvrentLeDebutDeLExercice[$cible] ?? false) ? 'bouton-sombre' : 'bouton-secondaire' }}"
+                    wire:click="enregistrerLaGrille('{{ $cible }}')">
                     Enregistrer
                 </button>
                 <button type="button" class="bouton bouton-secondaire" wire:click="ouvrirLAjout('{{ $cible }}')">

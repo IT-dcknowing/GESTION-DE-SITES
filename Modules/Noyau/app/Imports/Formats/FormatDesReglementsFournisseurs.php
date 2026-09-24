@@ -58,6 +58,12 @@ class FormatDesReglementsFournisseurs extends Format
     }
 
     /** Le code de règlement est la référence : c'est de lui que se tire le code agent. */
+    /** Le code de règlement du logiciel comptable n'est pas un numéro de fiche : il ressemble à un code sans en être un, et c'est justement pour cela qu'il faut le dire ici plutôt que de laisser l'écran le supposer. */
+    public static function ventileParLesCodes(): bool
+    {
+        return false;
+    }
+
     protected function reference(array $ligne): ?string
     {
         return self::texte($ligne['code_reglement'] ?? null, 60);
