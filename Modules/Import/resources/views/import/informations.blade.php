@@ -42,11 +42,13 @@ $adresse = function (string $nom): ?string {
         <h2>Ce que chaque import alimente <span class="chip">notice</span></h2>
 
         <div style="font-size:14px; line-height:1.7;">
-            Onze fichiers entrent dans l'application : huit du logiciel d'atelier, trois du
-            logiciel comptable — la balance et les règlements fournisseurs, et le journal de caisse
-            imprimé. Chacun remplit des écrans précis, et <strong>aucun écran ne se remplit tout
-            seul</strong>. Ce tableau dit lequel dépose quoi, dans quel ordre, et ce qu'il en coûte
-            de sauter une étape.
+            Onze fichiers entrent dans l'application, et ils ont <strong>deux origines, pas
+            trois</strong> : la plupart sont exportés du <strong>logiciel de gestion</strong> —
+            ses modules Atelier, Commercial, Caisse et Fournisseur — et deux sont
+            <strong>tenus à la main</strong> dans un classeur : l'état des impayés et le suivi
+            fournisseur. Chacun remplit des écrans précis, et <strong>aucun écran ne se remplit
+            tout seul</strong>. Ce tableau dit lequel dépose quoi, dans quel ordre, et ce qu'il en
+            coûte de sauter une étape.
         </div>
 
         {{-- Deux confusions relevées le 24/09, et elles venaient toutes deux de ce
@@ -61,11 +63,26 @@ $adresse = function (string $nom): ?string {
             fondre ferait compter deux fois l'argent d'Abidjan, qui a les deux.
         </div>
 
+        {{-- La provenance, dite une fois. Le propriétaire l'a relevé le 24/09 : parler
+             d'un « logiciel comptable » laissait croire à un second progiciel, alors que
+             la balance et les règlements fournisseurs sortent du **même** logiciel que les
+             fiches de réception, par un autre de ses modules. --}}
+        <div class="imp-hint" style="margin-top:11px;">
+            <strong>D'où viennent ces fichiers.</strong>
+            Du <b>logiciel de gestion</b>, module par module : Atelier (situation du parc, entrées,
+            sorties), Commercial (devis et proformas, chiffre d'affaires), Caisse (le journal), et
+            Fournisseur (la balance, les règlements). Et de <b>deux classeurs tenus à la main</b> :
+            l'état des impayés et le suivi fournisseur — ce sont les seuls que le logiciel ne
+            produit pas, et les seuls qui portent plusieurs exercices d'un coup.
+        </div>
+
         <div class="imp-hint" style="margin-top:11px;">
             <strong>Deux formats pour la même caisse.</strong> « Le classeur tenu à la main » et
             « Le journal imprimé par le logiciel » écrivent dans les mêmes tables et alimentent les
             mêmes écrans. Ce qui les sépare est le document qu'on a en main : un fichier Excel pour
-            Abidjan, un PDF pour les deux autres villes. Choisissez celui que vous tenez.
+            Abidjan, un PDF pour les deux autres villes. Choisissez celui que vous tenez. Le logiciel ne sort
+            aujourd'hui son journal qu'en PDF ; le jour où il le sortira en tableur, il se déposera
+            sous le même type, sans qu'il faille en créer un de plus.
         </div>
 
         <div class="imp-hint" style="margin-top:11px;">

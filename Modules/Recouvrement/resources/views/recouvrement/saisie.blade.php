@@ -12,7 +12,7 @@ use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
 use Modules\Recouvrement\Support\AccesRecouvrement;
-use function Livewire\Volt\{computed, state};
+use function Livewire\Volt\{computed, protect, state};
 
 /*
 |--------------------------------------------------------------------------
@@ -236,7 +236,7 @@ $enregistrerEncaissement = function () {
         // La clôture se prononce ville par ville. Une facture sans lieu rattaché ne peut
         // pas être rapportée à une ville : on ne la bloque pas sur une clôture qui ne la
         // vise peut-être pas.
-        $villeId = $facture->site?->ville_id;
+        $villeId = $facture->site?->ville_id ?? ($facture->ville_id ? (int) $facture->ville_id : null);
 
         if ($villeId && Exercice::estFerme(auth()->user()->entreprise_id, $villeId, $donnees['dateTravail'])) {
             return "L'exercice est clos pour cette ville à cette date : l'encaissement ne peut plus y être imputé.";
@@ -244,7 +244,28 @@ $enregistrerEncaissement = function () {
 
         Encaissement::create([
             'entreprise_id' => auth()->user()->entreprise_id,
-            'site_id' => $facture->site_id,
+            /*
+             * **L'atelier de l'encaissement, et pourquoi il ne peut pas rester vide.**
+             *
+             * Il était recopié de la facture, sans plus. Or **8 937 factures sur 11 332
+             * n'ont pas d'atelier** — mesuré le 24/09 : la colonne SITE des exports dit
+             * « ABIDJAN », et Abidjan en a deux, si bien que l'import s'arrête à la ville.
+             * L'encaissement héritait donc d'un atelier nul dans près de huit cas sur dix.
+             *
+             * Ce n'est pas anodin : l'écran *Trésorerie* retient les encaissements par
+             * `whereIn('site_id', …)`, et un `site_id` nul n'entre dans aucun `whereIn`.
+             * Le règlement serait bien enregistré, la balance âgée et l'extrait de compte
+             * le verraient — mais il **n'apparaîtrait jamais en trésorerie**, sans qu'une
+             * ligne ne le signale. Aucun encaissement n'avait encore été saisi ici, donc
+             * personne ne l'avait rencontré ; le premier l'aurait fait.
+             *
+             * On descend donc jusqu'à un atelier : celui de la facture s'il est connu,
+             * sinon l'unique atelier de sa ville — c'est le cas de Bouaké et de San-Pédro —,
+             * sinon celui de la personne qui encaisse, qui est au moins un fait. Ce qu'on
+             * ne fait pas : choisir au hasard entre les deux ateliers d'Abidjan quand la
+             * personne n'en a aucun.
+             */
+            'site_id' => $facture->site_id ?? $this->atelierPour($facture),
             'facture_id' => $facture->id,
             'date' => $donnees['dateTravail'],
             'type' => 'Client',
@@ -281,6 +302,28 @@ $enregistrerEncaissement = function () {
     $this->dispatch('annonce', ton: 'succes', texte: 'Encaissement de '.Recouvrement::fr($montant)
         .' affecté — la balance âgée et la trésorerie sont à jour.');
 };
+
+/**
+ * L'atelier auquel rapporter un règlement dont la facture n'en porte aucun.
+ *
+ * Deux replis, dans cet ordre, et aucun n'invente : l'unique atelier de la ville de la
+ * facture — Bouaké et San-Pédro n'en ont qu'un, la question ne s'y pose pas —, puis celui
+ * de la personne qui encaisse. Si rien de tout cela n'est connu, on rend null : mieux vaut
+ * un règlement sans lieu qu'un règlement rangé au hasard entre deux ateliers d'Abidjan.
+ */
+$atelierPour = protect(function (Facture $facture): ?int {
+    $villeId = $facture->site?->ville_id ?? ($facture->ville_id ? (int) $facture->ville_id : null);
+
+    if ($villeId !== null) {
+        $sites = Site::where('ville_id', $villeId)->where('est_actif', true)->pluck('id');
+
+        if ($sites->count() === 1) {
+            return (int) $sites->first();
+        }
+    }
+
+    return auth()->user()->site_id ? (int) auth()->user()->site_id : null;
+});
 
 /*
 |--------------------------------------------------------------------------

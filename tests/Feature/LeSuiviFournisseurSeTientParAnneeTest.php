@@ -221,6 +221,153 @@ class LeSuiviFournisseurSeTientParAnneeTest extends TestCase
         $this->assertNotNull($piece->user_id);
     }
 
+    /**
+     * La saisie à la main couvre les mêmes colonnes que le classeur.
+     *
+     * **Ce qui manquait, relevé par le propriétaire le 24/09.** La table porte quarante
+     * colonnes depuis le 22/09 ; le formulaire n'en offrait que douze. Une pièce reçue
+     * entre deux dépôts était donc plus pauvre que la même venue du classeur, et sa page
+     * de détail affichait des cases vides qu'aucun écran ne permettait de remplir.
+     *
+     * La liste vient des deux classeurs, feuille « DETAIL » en main : celui d'Abidjan et
+     * celui de San-Pédro. On garde ce qu'ils ont en commun et l'on complète par le surplus
+     * de chacun — le n° de FEB et le montant HT ne sont qu'à San-Pédro, les quantités et
+     * les deux numéros de facture ne sont qu'à Abidjan.
+     */
+    public function test_la_saisie_a_la_main_porte_les_colonnes_des_deux_classeurs(): void
+    {
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs')
+            ->set('fournisseur', 'RIMCO SETACI')
+            ->set('dateFacture', '2026-03-04')
+            ->set('montant', '538189')
+            // Le dossier
+            ->set('mois', '3')
+            ->set('section', 'Carrosserie')
+            ->set('numeroBc', '227')
+            ->set('dateReception', '2026-03-06')
+            ->set('typeTransaction', 'Achat de pièces')
+            ->set('numeroFiche', 'FR-AB 010136')
+            ->set('vehicule', 'GREAT WALL M4')
+            ->set('codePiece', '24VGCFC50038')
+            // Le règlement
+            ->set('dateReglement', '2026-03-20')
+            ->set('delaiReglement', '30 jours')
+            ->set('numeroCheque', 'CHQ 486440')
+            ->set('numeroFeb', '1615')
+            // Les montants
+            ->set('montantHt', '456092')
+            ->set('tva', '82097')
+            ->set('tva2', '0')
+            ->set('montantRefacture', '600000')
+            ->set('montantNetAchat', '456092')
+            ->set('montantNetVente', '508474')
+            ->set('quantiteTotale', '4')
+            ->set('quantiteRefacturee', '3')
+            // La refacturation
+            ->set('numeroFactureAchat', 'FA-1234')
+            ->set('numeroFactureVente', 'FV-5678')
+            ->set('numeroFactureClient', '1615')
+            ->set('resultatIndicatif', 'Marge correcte')
+            ->set('observationsFacturation', 'Une pièce non refacturée.')
+            ->set('commentaires', 'Reçue sans bon de livraison.')
+            ->set('actionsAMener', 'Vérifier le chèque émis.')
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        $piece = FactureFournisseur::withoutGlobalScopes()->firstOrFail();
+
+        $this->assertSame(3, (int) $piece->mois);
+        $this->assertSame('Carrosserie', $piece->section);
+        $this->assertSame('227', $piece->numero_bc);
+        $this->assertSame('2026-03-06', $piece->date_reception?->toDateString());
+        $this->assertSame('Achat de pièces', $piece->type_transaction);
+        $this->assertSame('FR-AB 010136', $piece->numero_fiche);
+        $this->assertSame('GREAT WALL M4', $piece->vehicule);
+        $this->assertSame('24VGCFC50038', $piece->code_piece);
+
+        $this->assertSame('2026-03-20', $piece->date_reglement?->toDateString());
+        $this->assertSame('30 jours', $piece->delai_reglement);
+        $this->assertSame('CHQ 486440', $piece->numero_cheque);
+        $this->assertSame('1615', $piece->numero_feb);
+
+        $this->assertSame(456092, (int) $piece->montant_ht);
+        $this->assertSame(82097, (int) $piece->tva);
+        $this->assertSame(600000, (int) $piece->montant_refacture);
+        $this->assertSame(508474, (int) $piece->montant_net_vente);
+        $this->assertSame(4.0, (float) $piece->quantite_totale);
+
+        $this->assertSame('FA-1234', $piece->numero_facture_achat);
+        $this->assertSame('FV-5678', $piece->numero_facture_vente);
+        $this->assertSame('Marge correcte', $piece->resultat_indicatif);
+        $this->assertSame('Une pièce non refacturée.', $piece->observations_facturation);
+        $this->assertSame('Reçue sans bon de livraison.', $piece->commentaires);
+        $this->assertSame('Vérifier le chèque émis.', $piece->actions_a_mener);
+    }
+
+    public function test_une_precision_laissee_vide_reste_vide_et_ne_vaut_pas_zero(): void
+    {
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs')
+            ->set('fournisseur', 'SOCIDA')
+            ->set('dateFacture', '2026-03-04')
+            ->set('montant', '150000')
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        $piece = FactureFournisseur::withoutGlobalScopes()->firstOrFail();
+
+        // Une case laissée vide dit « on ne sait pas », jamais « c'est zéro ». Un montant
+        // HT à 0 F se lirait comme une facture exonérée, ce qui est une autre information.
+        $this->assertNull($piece->montant_ht);
+        $this->assertNull($piece->tva);
+        $this->assertNull($piece->mois);
+        $this->assertNull($piece->section);
+    }
+
+    public function test_l_atelier_n_est_demande_que_la_ou_il_y_a_un_choix_a_faire(): void
+    {
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs');
+
+        // Une ville à un seul atelier ne pose aucune question.
+        $ecran->set('villeSaisie', (string) $this->ville->id);
+        $this->assertSame([], $ecran->instance()->sitesOuSaisir);
+
+        // Abidjan en a deux : la question vaut d'être posée, et le champ paraît.
+        $second = Site::create([
+            'entreprise_id' => $this->entreprise->id, 'ville_id' => $this->ville->id,
+            'code' => 'ABJ-2', 'nom' => 'Abidjan — Site 2', 'est_actif' => true,
+        ]);
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs')
+            ->set('villeSaisie', (string) $this->ville->id);
+
+        $this->assertArrayHasKey($second->id, $ecran->instance()->sitesOuSaisir);
+        $ecran->assertSee('Atelier');
+    }
+
+    public function test_un_atelier_d_une_autre_ville_ne_se_pose_pas(): void
+    {
+        $autreVille = Ville::create([
+            'entreprise_id' => $this->entreprise->id, 'code' => 'BKE', 'nom' => 'Bouaké', 'est_actif' => true,
+        ]);
+        $ailleurs = Site::create([
+            'entreprise_id' => $this->entreprise->id, 'ville_id' => $autreVille->id,
+            'code' => 'BKE-1', 'nom' => 'Bouaké', 'est_actif' => true,
+        ]);
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs')
+            ->set('fournisseur', 'SOCIDA')
+            ->set('dateFacture', '2026-03-04')
+            ->set('montant', '150000')
+            ->set('villeSaisie', (string) $this->ville->id)
+            // Un identifiant recopié à la main rattacherait la pièce à l'atelier d'une
+            // autre ville — et, de proche en proche, son montant avec.
+            ->set('siteSaisie', (string) $ailleurs->id)
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        $this->assertNull(FactureFournisseur::withoutGlobalScopes()->firstOrFail()->site_id);
+    }
+
     public function test_sans_numero_la_piece_en_recoit_un(): void
     {
         Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs')

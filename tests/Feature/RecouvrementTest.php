@@ -342,6 +342,53 @@ class RecouvrementTest extends TestCase
      * deux côtés. Celui-ci regarde la **valeur** plutôt que le compte : il est vrai sur
      * les deux moteurs, et c'est la seule forme qui protège.
      */
+    /**
+     * Un règlement descend jusqu'à un atelier, même quand sa facture n'en porte aucun.
+     *
+     * **Ce que cela répare, mesuré le 24/09.** 8 937 factures sur 11 332 n'ont pas
+     * d'atelier : la colonne SITE des exports dit « ABIDJAN », et Abidjan en a deux, si
+     * bien que l'import s'arrête à la ville. L'encaissement héritait de cet atelier nul.
+     *
+     * Or la Trésorerie retient les encaissements par `whereIn('site_id', …)`, et un
+     * `site_id` nul n'entre dans aucun `whereIn` : le règlement aurait été enregistré, vu
+     * par la balance âgée et l'extrait de compte, et **jamais affiché en trésorerie**.
+     * Aucun encaissement n'avait encore été saisi ici ; le premier l'aurait rencontré.
+     */
+    public function test_un_encaissement_sur_une_facture_sans_atelier_en_recoit_un(): void
+    {
+        $agent = $this->compte('agent_recouvrement');
+        $this->declarerLeTiers('NSIA ASSURANCES');
+
+        // Une facture reprise de l'import : sa ville est connue, son atelier ne l'est pas.
+        $facture = Facture::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'ville_id' => $this->site->ville_id,
+            'site_id' => null,
+            'numero' => 'F-0001',
+            'n_facture' => 'F-001',
+            'date' => now()->subDays(30)->toDateString(),
+            'client' => 'NSIA ASSURANCES',
+            'activite' => 'Sinistre',
+            'montant' => 500000,
+        ]);
+
+        Volt::actingAs($agent)->test('recouvrement.saisie')
+            ->set('encTiers', 'NSIA ASSURANCES')
+            ->set('encFactureId', (string) $facture->id)
+            ->set('encMontant', '200000')
+            ->set('encMode', 'CHÈQUE')
+            ->call('enregistrerEncaissement')
+            ->assertHasNoErrors();
+
+        $encaissement = Encaissement::withoutGlobalScopes()->firstOrFail();
+
+        // Bouaké et San-Pédro n'ont qu'un atelier : la question ne s'y pose pas, et le
+        // règlement y descend tout seul.
+        $this->assertNotNull($encaissement->site_id, 'sans atelier, il disparaîtrait de la trésorerie');
+        $this->assertSame($this->site->id, (int) $encaissement->site_id);
+        $this->assertSame($facture->id, (int) $encaissement->facture_id);
+    }
+
     public function test_la_facture_creee_porte_son_numero_de_saisie(): void
     {
         $superviseur = $this->compte('superviseur_recouvrement');

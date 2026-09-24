@@ -80,10 +80,17 @@ class FormatDuJournalDeCaisse extends Format
 
     public static function libelle(): string
     {
-        // Même caisse, mêmes tables, autre document : voir FormatDeLaCaisse::libelle().
-        // La mention du PDF reste, et elle est exacte — c'est bien ce fichier-là qu'on
-        // dépose, le logiciel comptable ne sortant pas cet état autrement.
-        return 'Caisse — le journal imprimé par le logiciel (PDF)';
+        /*
+         * **Les deux extensions, et c'est la demande du propriétaire du 24/09.**
+         *
+         * Le logiciel ne sort aujourd'hui cet état qu'en PDF — c'est pourquoi le lecteur
+         * de PDF existe. Mais l'export en tableur viendra, et le jour où il viendra il ne
+         * doit pas falloir créer un type de plus : c'est le même journal, la même caisse,
+         * les mêmes tables. On dépose donc le document qu'on a, sous ce type-ci, et le
+         * format lit l'un comme l'autre. Voir `parcourirUnePage()` pour ce qui change
+         * réellement entre les deux — presque rien.
+         */
+        return 'Caisse — le journal du logiciel (PDF ou Excel)';
     }
 
     /**
@@ -167,27 +174,10 @@ class FormatDuJournalDeCaisse extends Format
         bool $ecrire,
         ?\Closure $surAvancee,
     ): void {
-        $entete = null;
         $courant = null;
         $description = null;
 
-        foreach ($lecteur->lignes($page) as $numero => $cellules) {
-            if ($entete === null) {
-                if ($numeroDePage === 1) {
-                    $this->lireLEnTeteDuDocument($cellules);
-                }
-
-                $candidat = $this->correspondance($cellules);
-
-                if ($this->suffisante($candidat)) {
-                    $entete = $candidat;
-                    $resultat->ligneDEnTete ??= $numero;
-                }
-
-                continue;
-            }
-
-            $ligne = $this->extraire($cellules, $entete);
+        foreach ($this->rangees($lecteur, $page, $numeroDePage, $resultat) as $numero => $ligne) {
             $texte = trim((string) ($ligne['libelle'] ?? ''));
 
             if ($this->piedDePage($texte)) {
@@ -236,6 +226,70 @@ class FormatDuJournalDeCaisse extends Format
         }
 
         $this->fermer($courant, $resultat, $lotId, $ecrire, $surAvancee);
+    }
+
+    /**
+     * Les rangées de la page, **dépliées** — un PDF et un tableur ne les découpent pas pareil.
+     *
+     * **Ce qui change entre les deux documents, et c'est tout.** Un état imprimé pose
+     * chaque ligne de texte à sa propre hauteur : la phrase du mouvement, le nom du
+     * remettant et le détail arrivent donc en trois rangées successives. Un tableur, lui,
+     * met les trois dans **une seule cellule**, séparées par des retours à la ligne — c'est
+     * ainsi que le même logiciel exportera son journal le jour où il saura le faire.
+     *
+     * On déplie donc la cellule du libellé : la première ligne garde la date et les
+     * montants, les suivantes ne portent qu'un texte. Le tableur reprend exactement la
+     * forme du PDF, et **tout ce qui suit est écrit une seule fois** — la reconnaissance du
+     * motif, du tiers, le sens lu à la colonne, la chaîne des soldes. Deux lectures
+     * séparées auraient fini par diverger sur le même journal.
+     *
+     * @return \Generator<int, array<string, string|float|\DateTimeImmutable|null>>
+     */
+    private function rangees(Lecteur $lecteur, string $page, int $numeroDePage, Resultat $resultat): \Generator
+    {
+        $entete = null;
+
+        foreach ($lecteur->lignes($page) as $numero => $cellules) {
+            if ($entete === null) {
+                if ($numeroDePage === 1) {
+                    $this->lireLEnTeteDuDocument($cellules);
+                }
+
+                $candidat = $this->correspondance($cellules);
+
+                if ($this->suffisante($candidat)) {
+                    $entete = $candidat;
+                    $resultat->ligneDEnTete ??= $numero;
+                }
+
+                continue;
+            }
+
+            $ligne = $this->extraire($cellules, $entete);
+            $morceaux = preg_split('/\R/u', (string) ($ligne['libelle'] ?? ''));
+
+            // Le cas ordinaire du PDF : une seule ligne dans la cellule, rien à déplier.
+            if ($morceaux === false || count($morceaux) <= 1) {
+                yield $numero => $ligne;
+
+                continue;
+            }
+
+            foreach ($morceaux as $rang => $morceau) {
+                if ($rang === 0) {
+                    $ligne['libelle'] = $morceau;
+                    yield $numero => $ligne;
+
+                    continue;
+                }
+
+                // Les suivantes ne portent qu'un texte : leur donner la date et le montant
+                // de la première ouvrirait autant de mouvements que de lignes de libellé.
+                if (trim($morceau) !== '') {
+                    yield $numero => ['libelle' => $morceau];
+                }
+            }
+        }
     }
 
     /**

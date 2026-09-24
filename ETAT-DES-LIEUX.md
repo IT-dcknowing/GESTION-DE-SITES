@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (11e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (12e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 24/09 | voir `git log` | **caisse-tableur-et-fournisseurs** | le **journal de caisse se lit aussi en tableur**, sous le même type que le PDF (sept mouvements comparés ligne à ligne, identiques) ; la **saisie d'une pièce fournisseur couvre les quarante colonnes** des deux classeurs, repliées par blocs, et demande l'atelier là où la ville en compte deux ; le **référentiel fournisseur dit enfin pourquoi il est vide** — le classeur est entré le 8/09, la feuille « Liste fournisseurs » n'est lue que depuis le 24/09, et 282 fiches attendent une relecture du même dépôt ; un **encaissement saisi sur une facture sans atelier en reçoit un**, sans quoi il n'apparaîtrait jamais en trésorerie ; le champ « Atelier » du dépôt n'oblige plus à recharger la page |
 | 24/09 | voir `git log` | **corrections-du-soir** | **la création d'une facture depuis le recouvrement était cassée en production** (colonne `numero` NOT NULL jamais posée : MySQL refusait, SQLite l'acceptait, aucun test ne le voyait) ; **le bandeau vert ne s'affichait jamais après une navigation** — troisième piège de la même famille ; le filtre « Réglées » du chiffre d'affaires lisait l'état des impayés au lieu des encaissements (2 480 annoncées, 7 616 réelles) ; l'extrait de compte filtre à la frappe et n'offre plus que les tiers qui portent une facture (273 au lieu de 2 446) ; le dépôt avertit quand le fichier n'est pas de l'exercice déclaré ; « Rectification » entre au barème, à côté de « Enregistrer la modification » |
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
@@ -926,10 +927,10 @@ texte, elles ne se trieraient pas. La liste déroulante suit jusqu'à la derniè
 ### Où en est le plan
 
 Le classeur `plan-a-jour.xlsx` porte le suivi : statut, date de début,
-date de fin, une ligne par chantier. Au 24/09, au terme de la journée : **98 lignes
+date de fin, une ligne par chantier. Au 24/09, au terme de la journée : **104 lignes
 terminées, 3 à faire, 1 abandonnée et 1 sans objet** — plus rien n'attend de
 validation, le courrier à M. Fofana étant parti. Les trois qui restent ne dépendent plus de
-nous : deux questions à la direction, et deux réglages d'hébergement. Onze sections
+nous : deux questions à la direction, et deux réglages d'hébergement. Douze sections
 se sont ajoutées au plan d'origine — la vitesse des pages, la plateforme (qui saisit, et comment le
 joindre), la caisse (le journal imprimé), les fournisseurs — le registre par année, puis le
 référentiel et l’échéance attendue —, les colonnes du fichier écran par écran, et le n° de
@@ -1305,6 +1306,110 @@ il débordait, et la ventilation Mécanique / Sinistre cassait au milieu d'un mo
 nombre ne peut pas se couper — un montant coupé se lit faux — donc c'est la taille qui cède :
 la carte devient sa propre référence de largeur et le chiffre s'y ajuste. Les deux lignes de
 ventilation passent en libellé à gauche, montant à droite, le montant insécable.
+
+### Le journal de caisse se lira en tableur le jour venu
+
+✅ **Fait le 24/09**, demandé plusieurs fois par le propriétaire. Le logiciel ne sort
+aujourd'hui son journal de caisse qu'en **PDF** — c'est pourquoi le lecteur de PDF existe.
+Mais l'export en tableur viendra, et ce jour-là il ne doit pas falloir créer un type de
+plus : c'est le même journal, la même caisse, les mêmes tables.
+
+**Ce qui change entre les deux documents tient en une phrase.** Un état imprimé pose la
+phrase du mouvement, le nom du remettant et le détail à trois hauteurs différentes ; un
+tableur les met dans **une seule cellule**, séparés par des retours à la ligne. On déplie
+donc la cellule du libellé, et tout le reste — la reconnaissance du motif, du tiers, le sens
+lu à la colonne où le montant est posé, la chaîne des soldes — est écrit **une seule fois**
+et sert aux deux. Deux lectures séparées du même journal auraient fini par diverger.
+
+Le type s'appelle désormais « Caisse — le journal du logiciel (PDF ou Excel) », en regard de
+« Caisse — le classeur tenu à la main (Excel) ». Un test importe les **sept mêmes
+mouvements** sous les deux formes et compare le résultat ligne à ligne : date, sens, montant,
+n° de pièce, motif, libellé, tiers, solde — **identiques**.
+
+**Sur la lecture du PDF, et la question de l'OCR : il n'y en a pas.** Le lecteur extrait la
+couche de texte du document — les caractères et leur position sur la page — et ne regarde
+aucun pixel. Un OCR peut lire 8 pour 3 ; celui-ci ne le peut pas. Ce qu'il peut manquer,
+c'est la **reconstitution des colonnes** quand un texte déborde, et c'est arrivé une fois
+(« INTERNET » contient les lettres qui servaient à découper le flux) : sept numéros de pièce
+manquaient, les montants et les soldes étaient exacts. C'est le bon sens de l'erreur — une
+phrase illisible coûte une étiquette, jamais un mouvement.
+
+### D'où viennent les fichiers : deux origines, pas trois
+
+✅ **Corrigé le 24/09.** L'écran « Informations » parlait d'un « logiciel comptable » pour la
+balance et les règlements fournisseurs. Le propriétaire l'a relevé, et il a raison : il n'y a
+pas de second progiciel. Le dossier `IMPORT` le montre en clair — **un seul logiciel de
+gestion**, module par module : Atelier (situation du parc, entrées, sorties), Commercial
+(devis et proformas, chiffre d'affaires), Caisse (le journal), Fournisseur (la balance, les
+règlements). Et **deux classeurs tenus à la main** : l'état des impayés et le suivi
+fournisseur — les seuls que le logiciel ne produit pas, et les seuls qui portent plusieurs
+exercices d'un coup, ce qui est exactement pourquoi ils échappent au contrôle d'exercice.
+
+### La saisie d'une pièce fournisseur couvre le classeur
+
+✅ **Fait le 24/09.** La table porte quarante colonnes depuis le 22/09 ; le formulaire n'en
+offrait que douze. Une pièce saisie à la main était donc plus pauvre que la même venue du
+classeur, et sa page de détail affichait des cases vides qu'aucun écran ne permettait de
+remplir.
+
+**La liste vient des deux classeurs**, feuille « DETAIL » en main : celui d'Abidjan
+(FSF L2A) et celui de San-Pédro. On garde ce qu'ils ont en commun et l'on complète par le
+surplus de chacun — le **n° de FEB** et le **montant HT** ne sont qu'à San-Pédro ; les
+**quantités**, les **montants nets**, les **deux numéros de facture** et le **résultat
+indicatif** ne sont qu'à Abidjan. Un seul formulaire pour les deux.
+
+**Rien de tout cela n'est obligatoire, et le formulaire ne prend pas la page.** L'essentiel
+reste visible — fournisseur, date, montant — et les précisions se déplient sous un bouton,
+rangées en quatre blocs : le dossier, le règlement, les montants, la refacturation. La
+marge, le taux, la différence et le reste à payer n'y figurent pas : ils se déduisent, comme
+les colonnes vertes du classeur, et les saisir permettrait de les contredire.
+
+**L'atelier se demande là où il y a un choix à faire.** Abidjan a deux ateliers, Bouaké et
+San-Pédro un seul : le champ paraît pour la première, se tait pour les autres. Un atelier
+qui n'appartient pas à la ville choisie est refusé plutôt que corrigé.
+
+### Pourquoi le référentiel fournisseur est vide
+
+✅ **Dit à l'écran le 24/09**, après une question du propriétaire : « on a fait un import des
+fournisseurs, que s'est-il passé ? »
+
+**Mesuré, et la réponse est simple.** Le classeur *FICHIER SUIVI FOURNISSEURS (FSF L2A)* est
+bien entré : 1 893 lignes lues, 1 848 pièces en base. Mais il a été déposé le **8 septembre**,
+et la lecture de la feuille « Liste fournisseurs » n'a été écrite que le **24 septembre**.
+Le classeur est complet ; c'est nous qui ne le lisions pas encore en entier. Rejoué
+aujourd'hui en simulation, il rend **282 fiches**.
+
+**Il n'y a rien à redemander à personne** : le fichier déposé est conservé, et le geste
+« Réimporter » du journal des imports suffit. L'écran le dit maintenant, avec le nom du
+dépôt, sa date, et le lien pour l'ouvrir — au lieu de conseiller de compléter un classeur
+qui n'a rien d'incomplet.
+
+**Et la liste « Facturés, mais absents de la liste » change de ton quand le référentiel est
+vide** : tous les fournisseurs y figurent alors, elle ne signale donc rien, elle redit le
+tableau des fournisseurs. Elle le dit plutôt que de laisser lire un paragraphe qui suppose
+un référentiel rempli.
+
+**Ce qui était demandé est en place, en revanche** : le suivi fournisseur se tient **par
+année avec report**, comme l'état des impayés — c'est le travail du 24/09 au matin, et les
+chiffres de tête de l'écran le montrent (« Reporté des années passées »).
+
+### Un règlement descend jusqu'à un atelier
+
+✅ **Corrigé le 24/09**, défaut trouvé en vérifiant où vont les encaissements du recouvrement.
+Ils vont bien dans `encaissements` avec leur `facture_id`, et cinq écrans les lisent. Mais
+leur atelier était recopié de la facture — or **8 937 factures sur 11 332 n'en ont pas** :
+la colonne SITE des exports dit « ABIDJAN », et Abidjan en a deux, si bien que l'import
+s'arrête à la ville.
+
+Conséquence : la *Trésorerie* retient les encaissements par `whereIn('site_id', …)`, et un
+atelier nul n'entre dans aucun `whereIn`. Le règlement aurait été enregistré, vu par la
+balance âgée, l'extrait de compte et le détail de la créance — et **jamais affiché en
+trésorerie**, sans qu'une ligne ne le signale. Aucun encaissement n'avait encore été saisi
+là ; le premier l'aurait rencontré.
+
+Il descend donc jusqu'à un atelier : celui de la facture s'il est connu, sinon l'unique
+atelier de sa ville, sinon celui de la personne qui encaisse. Ce qu'on ne fait pas : choisir
+au hasard entre les deux ateliers d'Abidjan.
 
 ### Pour le jour où les API répondront
 

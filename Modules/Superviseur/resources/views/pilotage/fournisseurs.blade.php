@@ -1,6 +1,7 @@
 <?php
 
 use Modules\Noyau\Commun\Services\NombreDeJours;
+use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
@@ -72,7 +73,60 @@ state([
     'immatriculation' => '',
     'observations' => '',
     'villeSaisie' => '',
+    'siteSaisie' => '',
 ]);
+
+/*
+ * Le reste des colonnes du classeur — celles que la saisie à la main ne proposait pas.
+ *
+ * **Ce qui manquait, relevé par le propriétaire le 24/09.** La table porte quarante
+ * colonnes depuis la migration du 22/09 ; le formulaire en offrait douze. Une pièce saisie
+ * ici était donc plus pauvre que la même pièce venue du classeur, et la page de détail
+ * affichait des cases vides qu'aucun écran ne permettait de remplir.
+ *
+ * **La liste vient des deux classeurs**, lus feuille « DETAIL » en main : celui d'Abidjan
+ * (FSF L2A) et celui de San-Pédro. On garde ce qu'ils ont en commun et l'on complète par
+ * le surplus de chacun — le n° de FEB et le montant HT ne sont qu'à San-Pédro, les
+ * quantités, la marge et les deux numéros de facture ne sont qu'à Abidjan. Un seul
+ * formulaire pour les deux, comme demandé.
+ *
+ * **Rien de tout cela n'est obligatoire.** Ce sont des précisions : une pièce reçue entre
+ * deux dépôts se saisit en trente secondes avec le fournisseur, la date et le montant, et
+ * le reste se complète si on l'a sous les yeux.
+ */
+state([
+    'mois' => '',
+    'section' => '',
+    'numeroBc' => '',
+    'dateReception' => '',
+    'dateReglement' => '',
+    'delaiReglement' => '',
+    'typeTransaction' => '',
+    'numeroCheque' => '',
+    'numeroFeb' => '',
+    'numeroFiche' => '',
+    'codePiece' => '',
+    'vehicule' => '',
+    'montantHt' => '',
+    'tva' => '',
+    'tva2' => '',
+    'montantRefacture' => '',
+    'montantNetAchat' => '',
+    'montantNetVente' => '',
+    'quantiteTotale' => '',
+    'quantiteRefacturee' => '',
+    'numeroFactureAchat' => '',
+    'numeroFactureVente' => '',
+    'numeroFactureClient' => '',
+    'resultatIndicatif' => '',
+    'observationsFacturation' => '',
+    'commentaires' => '',
+    'actionsAMener' => '',
+]);
+
+/* Les précisions se déplient : posées à plat, elles faisaient un formulaire de six rangées
+   devant un tableau qu'on venait consulter. */
+state(['precisionsOuvertes' => false]);
 
 mount(function () {
     $this->exercice ??= EtatDesFournisseurs::exerciceOuvert(auth()->user()->entreprise_id);
@@ -101,6 +155,36 @@ $peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()))
 
 $villesOuSaisir = computed(fn () => PerimetreSites::optionsVilles(auth()->user())
     ?->pluck('nom', 'id')->all() ?? []);
+
+/**
+ * Les ateliers de la ville choisie — et seulement quand il y a un choix à faire.
+ *
+ * **Demandé le 24/09** : « quand la ville qui a au moins deux sites est sélectionnée, on
+ * doit lui demander le site précis ». C'est le cas d'Abidjan, et d'elle seule : Bouaké et
+ * San-Pédro n'ont qu'un atelier, et leur poser la question serait offrir un choix qui n'en
+ * est pas un. Le champ apparaît donc, ou n'apparaît pas.
+ *
+ * @return array<int, string>
+ */
+$sitesOuSaisir = computed(function () {
+    if ($this->villeSaisie === '') {
+        return [];
+    }
+
+    $sites = Site::where('ville_id', (int) $this->villeSaisie)
+        ->where('est_actif', true)
+        ->orderBy('nom')
+        ->pluck('nom', 'id')
+        ->all();
+
+    return count($sites) > 1 ? $sites : [];
+});
+
+/* Changer de ville rend caduc l'atelier choisi dans la précédente. */
+$updatedVilleSaisie = function () {
+    $this->siteSaisie = '';
+    unset($this->sitesOuSaisir);
+};
 
 /**
  * Le périmètre : l'année regardée, ses reports, et les villes du lecteur.
@@ -234,6 +318,38 @@ $enregistrer = function () {
         'immatriculation' => ['nullable', 'string', 'max:40'],
         'observations' => ['nullable', 'string', 'max:2000'],
         'villeSaisie' => ['nullable', 'integer'],
+        'siteSaisie' => ['nullable', 'integer'],
+
+        /* Les précisions du classeur. Aucune n'est exigée : une pièce reçue entre deux
+           dépôts se saisit avec le fournisseur, la date et le montant, et le reste se
+           complète si on l'a sous les yeux. */
+        'mois' => ['nullable', 'integer', 'min:1', 'max:12'],
+        'section' => ['nullable', 'string', 'max:60'],
+        'numeroBc' => ['nullable', 'string', 'max:60'],
+        'dateReception' => ['nullable', 'date'],
+        'dateReglement' => ['nullable', 'date'],
+        'delaiReglement' => ['nullable', 'string', 'max:40'],
+        'typeTransaction' => ['nullable', 'string', 'max:120'],
+        'numeroCheque' => ['nullable', 'string', 'max:60'],
+        'numeroFeb' => ['nullable', 'string', 'max:60'],
+        'numeroFiche' => ['nullable', 'string', 'max:40'],
+        'codePiece' => ['nullable', 'string', 'max:60'],
+        'vehicule' => ['nullable', 'string', 'max:120'],
+        'montantHt' => ['nullable', 'integer'],
+        'tva' => ['nullable', 'integer'],
+        'tva2' => ['nullable', 'integer'],
+        'montantRefacture' => ['nullable', 'integer'],
+        'montantNetAchat' => ['nullable', 'integer'],
+        'montantNetVente' => ['nullable', 'integer'],
+        'quantiteTotale' => ['nullable', 'numeric', 'min:0'],
+        'quantiteRefacturee' => ['nullable', 'numeric', 'min:0'],
+        'numeroFactureAchat' => ['nullable', 'string', 'max:60'],
+        'numeroFactureVente' => ['nullable', 'string', 'max:60'],
+        'numeroFactureClient' => ['nullable', 'string', 'max:60'],
+        'resultatIndicatif' => ['nullable', 'string', 'max:120'],
+        'observationsFacturation' => ['nullable', 'string', 'max:2000'],
+        'commentaires' => ['nullable', 'string', 'max:2000'],
+        'actionsAMener' => ['nullable', 'string', 'max:2000'],
     ], [
         'dateEcheance.after_or_equal' => "L'échéance ne peut pas précéder la facture.",
     ]);
@@ -252,6 +368,18 @@ $enregistrer = function () {
     $villeId = in_array((int) $donnees['villeSaisie'], $this->idsVilles, true)
         ? (int) $donnees['villeSaisie']
         : null;
+
+    /* L'atelier n'est retenu que s'il appartient à cette ville-là. Un identifiant recopié
+       à la main rattacherait sinon la pièce à l'atelier d'une autre ville — et de proche
+       en proche son montant avec. */
+    $siteId = null;
+
+    if ($villeId !== null && ($donnees['siteSaisie'] ?? null)) {
+        $siteId = Site::where('id', (int) $donnees['siteSaisie'])
+            ->where('ville_id', $villeId)
+            ->where('est_actif', true)
+            ->value('id');
+    }
 
     $numero = trim((string) $donnees['numeroPiece']) !== ''
         ? trim((string) $donnees['numeroPiece'])
@@ -289,6 +417,37 @@ $enregistrer = function () {
         'immatriculation' => $donnees['immatriculation'] ?: null,
         'observations' => $donnees['observations'] ?: null,
         'source_rattachement' => 'saisie',
+        'site_id' => $siteId,
+
+        /* Les précisions du classeur, telles quelles. Une chaîne vide devient null : une
+           case laissée vide dit « on ne sait pas », pas « c'est vide ». */
+        'mois' => $donnees['mois'] !== '' ? (int) $donnees['mois'] : null,
+        'section' => $donnees['section'] ?: null,
+        'numero_bc' => $donnees['numeroBc'] ?: null,
+        'date_reception' => $donnees['dateReception'] ?: null,
+        'date_reglement' => $donnees['dateReglement'] ?: null,
+        'delai_reglement' => $donnees['delaiReglement'] ?: null,
+        'type_transaction' => $donnees['typeTransaction'] ?: null,
+        'numero_cheque' => $donnees['numeroCheque'] ?: null,
+        'numero_feb' => $donnees['numeroFeb'] ?: null,
+        'numero_fiche' => $donnees['numeroFiche'] ?: null,
+        'code_piece' => $donnees['codePiece'] ?: null,
+        'vehicule' => $donnees['vehicule'] ?: null,
+        'montant_ht' => $donnees['montantHt'] !== '' ? (int) $donnees['montantHt'] : null,
+        'tva' => $donnees['tva'] !== '' ? (int) $donnees['tva'] : null,
+        'tva_2' => $donnees['tva2'] !== '' ? (int) $donnees['tva2'] : null,
+        'montant_refacture' => $donnees['montantRefacture'] !== '' ? (int) $donnees['montantRefacture'] : null,
+        'montant_net_achat' => $donnees['montantNetAchat'] !== '' ? (int) $donnees['montantNetAchat'] : null,
+        'montant_net_vente' => $donnees['montantNetVente'] !== '' ? (int) $donnees['montantNetVente'] : null,
+        'quantite_totale' => $donnees['quantiteTotale'] !== '' ? $donnees['quantiteTotale'] : null,
+        'quantite_refacturee' => $donnees['quantiteRefacturee'] !== '' ? $donnees['quantiteRefacturee'] : null,
+        'numero_facture_achat' => $donnees['numeroFactureAchat'] ?: null,
+        'numero_facture_vente' => $donnees['numeroFactureVente'] ?: null,
+        'numero_facture_client' => $donnees['numeroFactureClient'] ?: null,
+        'resultat_indicatif' => $donnees['resultatIndicatif'] ?: null,
+        'observations_facturation' => $donnees['observationsFacturation'] ?: null,
+        'commentaires' => $donnees['commentaires'] ?: null,
+        'actions_a_mener' => $donnees['actionsAMener'] ?: null,
     ]);
 
     activity()->performedOn($piece)->causedBy(auth()->user())
@@ -306,6 +465,19 @@ $enregistrer = function () {
     $this->imputation = '';
     $this->immatriculation = '';
     $this->observations = '';
+
+    // Les précisions se vident aussi : la pièce suivante n'a aucune raison d'hériter du
+    // n° de chèque de la précédente.
+    foreach ([
+        'mois', 'section', 'numeroBc', 'dateReception', 'dateReglement', 'delaiReglement',
+        'typeTransaction', 'numeroCheque', 'numeroFeb', 'numeroFiche', 'codePiece', 'vehicule',
+        'montantHt', 'tva', 'tva2', 'montantRefacture', 'montantNetAchat', 'montantNetVente',
+        'quantiteTotale', 'quantiteRefacturee', 'numeroFactureAchat', 'numeroFactureVente',
+        'numeroFactureClient', 'resultatIndicatif', 'observationsFacturation', 'commentaires',
+        'actionsAMener',
+    ] as $champ) {
+        $this->{$champ} = '';
+    }
 
     // L'année de la pièce saisie devient celle qu'on regarde : sans cela, on viendrait de
     // consigner une facture qui n'apparaît nulle part à l'écran.
@@ -375,26 +547,122 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                     laissé vide, un numéro est attribué. Le reste à payer se déduit du montant et du réglé.
                 </p>
 
+                {{-- **Ce que ce formulaire couvre, et comment il tient sur l'écran.**
+
+                     Les deux classeurs tenus à la main — celui d'Abidjan et celui de
+                     San-Pédro — portent quarante colonnes à eux deux. La saisie n'en
+                     offrait que douze : une pièce saisie ici était donc plus pauvre que la
+                     même venue du classeur, et sa page de détail montrait des cases vides
+                     qu'aucun écran ne permettait de remplir (relevé le 24/09).
+
+                     Elles y sont toutes. Mais posées à plat, elles feraient six rangées de
+                     champs devant un tableau qu'on vient consulter : **l'essentiel reste
+                     visible, le reste se déplie**. Neuf fois sur dix, une pièce reçue entre
+                     deux dépôts se saisit avec le fournisseur, la date et le montant. --}}
                 <form wire:submit="enregistrer">
-                    <div style="display:flex; flex-wrap:wrap; gap:12px;">
-                        <x-champ label="Fournisseur" model="fournisseur" requis width="240" />
+                    <div class="bloc-saisie" style="background:#fff; border-style:solid;">
+                        <x-champ label="Fournisseur" model="fournisseur" requis width="230" />
                         <x-champ label="N° de pièce" model="numeroPiece" placeholder="Celui du fournisseur" width="150" />
-                        <x-champ label="Nature" model="naturePiece" width="140" />
-                        <x-champ label="Date de facture" model="dateFacture" type="date" requis width="160" />
-                        <x-champ label="Échéance" model="dateEcheance" type="date" width="160" />
-                        <x-champ label="Montant" model="montant" type="number" requis width="150" />
-                        <x-champ label="Déjà réglé" model="montantRegle" type="number" width="150" />
-                        <x-champ label="Mode de règlement" model="modeReglement" width="180" />
-                        <x-champ label="Imputation" model="imputation" width="180" />
-                        <x-champ label="Immatriculation" model="immatriculation" width="150" />
+                        <x-champ label="Nature" model="naturePiece" width="130" />
+                        <x-champ label="Date de facture" model="dateFacture" type="date" requis width="155" />
+                        <x-champ label="Échéance" model="dateEcheance" type="date" width="155" />
+                        <x-champ label="Montant" model="montant" type="number" requis width="140" />
+                        <x-champ label="Déjà réglé" model="montantRegle" type="number" width="140" />
+                        <x-champ label="Mode de règlement" model="modeReglement" width="170" />
+                        <x-champ label="Imputation" model="imputation" width="170" />
+                        <x-champ label="Immatriculation" model="immatriculation" width="145" />
                         @if (count($this->villesOuSaisir) > 1)
-                            <x-champ label="Ville" model="villeSaisie" type="select"
-                                :options="$this->villesOuSaisir" vide="— à préciser —" width="170" />
+                            <x-champ label="Ville" model="villeSaisie" type="select" live="true"
+                                :options="$this->villesOuSaisir" vide="— à préciser —" width="165" />
+                        @endif
+                        {{-- L'atelier n'apparaît que là où il y a un choix à faire : Abidjan
+                             en a deux, Bouaké et San-Pédro un seul. Demander « lequel ? »
+                             quand il n'y en a qu'un, c'est poser une question qui n'en est
+                             pas une. --}}
+                        @if ($this->sitesOuSaisir !== [])
+                            <x-champ label="Atelier" model="siteSaisie" type="select"
+                                :options="$this->sitesOuSaisir" vide="— à préciser —" width="185" />
                         @endif
                     </div>
 
                     <div style="margin-top:12px;">
                         <x-champ label="Observations" model="observations" type="textarea" />
+                    </div>
+
+                    {{-- ------------------------------------------- les colonnes du classeur --}}
+                    <div style="margin-top:14px;">
+                        <button type="button" class="bouton bouton-secondaire bouton-petit"
+                            wire:click="$toggle('precisionsOuvertes')">
+                            {{ $precisionsOuvertes ? '− Masquer' : '+ Ajouter' }} les précisions du classeur
+                        </button>
+                        <span style="font-size:12px; color:#6B6E76; margin-left:8px;">
+                            Section, bon de commande, TVA, refacturation, quantités, marge, n° FEB,
+                            n° de chèque — facultatives, et reprises telles que le classeur les nomme.
+                        </span>
+                    </div>
+
+                    <div x-show="$wire.precisionsOuvertes" @if (! $precisionsOuvertes) style="display:none;" @endif>
+                        <div style="margin-top:12px;">
+                            <p class="sous-titre" style="margin-top:0;">Le dossier</p>
+                            <div class="bloc-saisie">
+                                <x-champ label="Mois" model="mois" type="number" width="100" />
+                                <x-champ label="Section" model="section" width="160"
+                                    placeholder="Peinture, Carrosserie…" />
+                                <x-champ label="N° BC" model="numeroBc" width="140" />
+                                <x-champ label="Date de réception" model="dateReception" type="date" width="165" />
+                                <x-champ label="Type de transaction / services" model="typeTransaction" width="220" />
+                                <x-champ label="N° de fiche de réception" model="numeroFiche" width="180"
+                                    placeholder="FR-…" />
+                                <x-champ label="Véhicule" model="vehicule" width="170" />
+                                <x-champ label="Code pièce" model="codePiece" width="145" />
+                            </div>
+
+                            <p class="sous-titre">Le règlement</p>
+                            <div class="bloc-saisie">
+                                <x-champ label="Date de règlement" model="dateReglement" type="date" width="165" />
+                                <x-champ label="Délai de règlement" model="delaiReglement" width="165"
+                                    placeholder="Comptant, 30 jours…" />
+                                <x-champ label="N° de chèque" model="numeroCheque" width="150" />
+                                <x-champ label="N° FEB" model="numeroFeb" width="130" />
+                            </div>
+
+                            <p class="sous-titre">Les montants</p>
+                            <div class="bloc-saisie">
+                                <x-champ label="Montant HT" model="montantHt" type="number" width="140" />
+                                <x-champ label="TVA" model="tva" type="number" width="120" />
+                                <x-champ label="TVA 2" model="tva2" type="number" width="120" />
+                                <x-champ label="Montant refacturé" model="montantRefacture" type="number" width="160" />
+                                <x-champ label="Montant net achat" model="montantNetAchat" type="number" width="160" />
+                                <x-champ label="Montant net vente" model="montantNetVente" type="number" width="160" />
+                                <x-champ label="Qté totale" model="quantiteTotale" type="number" width="130" />
+                                <x-champ label="Qté refacturée" model="quantiteRefacturee" type="number" width="145" />
+                            </div>
+
+                            <p class="sous-titre">La refacturation au client</p>
+                            <div class="bloc-saisie">
+                                <x-champ label="N° facture achat (FA)" model="numeroFactureAchat" width="175" />
+                                <x-champ label="N° facture vente (FV)" model="numeroFactureVente" width="175" />
+                                <x-champ label="N° facture client" model="numeroFactureClient" width="165" />
+                                <x-champ label="Résultat indicatif" model="resultatIndicatif" width="170" />
+                            </div>
+
+                            {{-- La marge, le taux et la différence ne se saisissent pas : le
+                                 classeur les calcule, et une colonne qu'on peut contredire à
+                                 la main finit toujours par l'être. --}}
+                            <div class="imp-hint" style="margin-top:4px; font-size:12px;">
+                                La <b>marge</b>, le <b>taux</b>, la <b>différence</b> et le <b>reste à payer</b>
+                                ne figurent pas ici : ils se déduisent des montants, comme dans le classeur où
+                                ce sont des colonnes vertes. Les saisir permettrait de les contredire.
+                            </div>
+
+                            <p class="sous-titre">Ce qu'on en dit</p>
+                            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px;">
+                                <x-champ label="Observations sur la facturation client"
+                                    model="observationsFacturation" type="textarea" />
+                                <x-champ label="Commentaires" model="commentaires" type="textarea" />
+                                <x-champ label="Actions à mener" model="actionsAMener" type="textarea" />
+                            </div>
+                        </div>
                     </div>
 
                     <div style="margin-top:14px;">
