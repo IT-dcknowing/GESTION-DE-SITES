@@ -190,12 +190,25 @@ $requeteDetail = computed(function () {
         $q->saisieManuelle();
     }
 
-    /* Portée à l'état, ou réglée : ce sont les deux états d'une facture vue depuis le
-       recouvrement, et on ne porte à l'état que ce qui reste dû. */
+    /*
+     * **Trois états, et ils ne se déduisent pas l'un de l'autre.** Corrigé le 24/09 :
+     * « réglée » se lisait `exercice_impayes` nul, c'est-à-dire « pas portée à l'état ».
+     * Ce n'est pas la même question, et la réponse était fausse — une facture jamais
+     * relevée par le superviseur passait pour réglée alors que personne n'avait payé.
+     * Le propriétaire l'a vu : le choix « réglé » montrait des portées, le choix « porté »
+     * montrait zéro.
+     *
+     * Une facture est **réglée** quand ses encaissements couvrent son montant. Elle est
+     * **portée à l'état** quand le recouvrement l'a relevée. Et elle peut n'être ni l'un
+     * ni l'autre : due, mais pas encore portée — c'est même le cas le plus fréquent, et
+     * il a maintenant son propre choix plutôt que d'être compté avec les réglées.
+     */
     if ($this->etatImpayesFiltre === 'portee') {
         $q->whereNotNull('exercice_impayes');
     } elseif ($this->etatImpayesFiltre === 'reglee') {
-        $q->whereNull('exercice_impayes');
+        $q->soldee();
+    } elseif ($this->etatImpayesFiltre === 'due') {
+        $q->avecResteAEncaisser();
     }
 
     return $q;
@@ -212,7 +225,8 @@ $nombreDetail = computed(fn () => (clone $this->requeteDetail)->count());
 /* Combien de lignes derrière chaque choix, pour que le filtre annonce ce qu'il va trouver. */
 $comptesParEtat = computed(fn () => [
     'portee' => (clone $this->requeteBase)->whereNotNull('exercice_impayes')->count(),
-    'reglee' => (clone $this->requeteBase)->whereNull('exercice_impayes')->count(),
+    'reglee' => (clone $this->requeteBase)->soldee()->count(),
+    'due' => (clone $this->requeteBase)->avecResteAEncaisser()->count(),
 ]);
 
 /**
@@ -290,17 +304,19 @@ $comptesParOrigine = computed(fn () => [
             </select>
             {{-- Le décompte est dans l'intitulé de chaque choix : un filtre qui annonce
                  « 0 » avant qu'on le choisisse évite le clic qui ne trouve rien. --}}
-            {{-- L'état des impayés a deux valeurs et pas trois : une facture y est portée, ou
-                 elle ne l'est pas — auquel cas elle est réglée, puisqu'on ne porte à l'état
-                 que ce qui reste dû. Le filtre reprend donc les mots de l'écran des impayés,
-                 et non un vocabulaire de plus. --}}
+            {{-- Trois états, et ils ne se déduisent pas l'un de l'autre : réglée se lit sur
+                 les encaissements, portée à l'état se lit sur le recouvrement, et une
+                 facture peut n'être ni l'un ni l'autre — due, mais pas encore relevée. --}}
             <select wire:model.live="etatImpayesFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
                 <option value="" @selected($etatImpayesFiltre === '')>État : toutes</option>
-                <option value="portee" @selected($etatImpayesFiltre === 'portee')>
-                    Portées à l'état ({{ $this->comptesParEtat['portee'] }})
-                </option>
                 <option value="reglee" @selected($etatImpayesFiltre === 'reglee')>
                     Réglées ({{ $this->comptesParEtat['reglee'] }})
+                </option>
+                <option value="due" @selected($etatImpayesFiltre === 'due')>
+                    Reste à encaisser ({{ $this->comptesParEtat['due'] }})
+                </option>
+                <option value="portee" @selected($etatImpayesFiltre === 'portee')>
+                    Portées à l'état ({{ $this->comptesParEtat['portee'] }})
                 </option>
             </select>
             <select wire:model.live="origineFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
@@ -330,6 +346,12 @@ $comptesParOrigine = computed(fn () => [
                         <th>CODE CLIENT</th>
                         <th>CLIENTS</th>
                         <th style="text-align:right;">MONTANT FACTURE</th>
+                        {{-- Ce qui est entré, et ce qui reste. Demandé le 24/09 : « si une
+                             facture est réglée, on doit voir réglé, et aussi avoir le
+                             montant de ce qui est réglé ». Les deux colonnes sont déjà
+                             chargées par `withSum` — elles ne coûtent rien de plus. --}}
+                        <th style="text-align:right;">RÉGLÉ</th>
+                        <th style="text-align:right;">RESTE</th>
                         @if (count($this->idsSites) > 1)
                             <th>SITE</th>
                         @endif
@@ -381,6 +403,14 @@ $comptesParOrigine = computed(fn () => [
                             <td>{{ $ligne->code_client ?? '—' }}</td>
                             <td>{{ $ligne->client }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($ligne->montant) }}</td>
+                            @php $reste = Recouvrement::reste($ligne); @endphp
+                            <td style="text-align:right; font-variant-numeric:tabular-nums;">
+                                {{ ae((int) ($ligne->encaissements_sum_montant ?? 0)) }}
+                            </td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums;
+                                       {{ $reste < Recouvrement::SEUIL_SOLDE ? 'color:#0E9F6E; font-weight:700;' : 'font-weight:700;' }}">
+                                {{ $reste < Recouvrement::SEUIL_SOLDE ? 'Soldée' : ae($reste) }}
+                            </td>
                             @if (count($this->idsSites) > 1)
                                 <td>{{ $ligne->site?->nom ?? '— à rattacher —' }}</td>
                             @endif
@@ -418,7 +448,9 @@ $comptesParOrigine = computed(fn () => [
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="(count($this->idsSites) > 1 ? 17 : 16) + ($this->peutPorter ? 1 : 0)" texte="Aucune facture enregistrée sur cette période." />
+                        {{-- Deux colonnes de plus depuis le 24/09 — réglé et reste — et la ligne vide
+                             doit couvrir la même largeur, sinon le tableau se décale. --}}
+                        <x-table-vide :colspan="(count($this->idsSites) > 1 ? 19 : 18) + ($this->peutPorter ? 1 : 0)" texte="Aucune facture enregistrée sur cette période." />
                     @endforelse
                 </tbody>
             </table>

@@ -37,15 +37,22 @@
     @if ($mecanique !== null || $sinistre !== null || $nonVentile !== null)
         <div style="margin-top:7px; padding-top:7px; border-top:1px solid var(--th-ligne,#E2E0D8); display:flex; flex-direction:column; gap:3px;">
             @if ($mecanique !== null)
-                <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:#4B4E55;">
-                    <span style="display:inline-block; width:3px; height:11px; border-radius:2px; background:#2563EB;"></span>
-                    Mécanique&nbsp;<b style="font-variant-numeric:tabular-nums;">{{ $mecanique }}</b>
+                {{-- Le libellé à gauche, le montant à droite, et le montant ne se coupe
+                     jamais : c'est le même parti que les lignes libres ci-dessus. Posés
+                     bout à bout, « Mécanique 854 947 305 F » cassait au milieu du nombre
+                     dès que la carte se rétrécissait, et l'on lisait « 854 947 305 » sur
+                     une ligne et « F » sur la suivante. --}}
+                <div style="display:flex; align-items:baseline; gap:6px; font-size:11.5px; color:#4B4E55;">
+                    <span style="flex:0 0 auto; align-self:center; width:3px; height:11px; border-radius:2px; background:#2563EB;"></span>
+                    <span style="flex:1 1 auto; min-width:0;">Mécanique</span>
+                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $mecanique }}</b>
                 </div>
             @endif
             @if ($sinistre !== null)
-                <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:#4B4E55;">
-                    <span style="display:inline-block; width:3px; height:11px; border-radius:2px; background:#D97706;"></span>
-                    Sinistre&nbsp;<b style="font-variant-numeric:tabular-nums;">{{ $sinistre }}</b>
+                <div style="display:flex; align-items:baseline; gap:6px; font-size:11.5px; color:#4B4E55;">
+                    <span style="flex:0 0 auto; align-self:center; width:3px; height:11px; border-radius:2px; background:#D97706;"></span>
+                    <span style="flex:1 1 auto; min-width:0;">Sinistre</span>
+                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $sinistre }}</b>
                 </div>
             @endif
             @if ($nonVentile !== null)
@@ -54,10 +61,11 @@
                      regarde. Or cette ligne se lit à côté de « Mécanique » et « Sinistre »,
                      et à cette place on attend le nom d'une troisième part, pas le constat
                      d'une lacune. L'infobulle dit toujours d'où vient le montant. --}}
-                <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--th-gris,#6B6E76);"
+                <div style="display:flex; align-items:baseline; gap:6px; font-size:11.5px; color:var(--th-gris,#6B6E76);"
                     title="Opérations saisies sans précision d'activité — ni mécanique, ni sinistre.">
-                    <span style="display:inline-block; width:3px; height:11px; border-radius:2px; background:#9CA3AF;"></span>
-                    Autres&nbsp;<b style="font-variant-numeric:tabular-nums;">{{ $nonVentile }}</b>
+                    <span style="flex:0 0 auto; align-self:center; width:3px; height:11px; border-radius:2px; background:#9CA3AF;"></span>
+                    <span style="flex:1 1 auto; min-width:0;">Autres</span>
+                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $nonVentile }}</b>
                 </div>
             @endif
         </div>

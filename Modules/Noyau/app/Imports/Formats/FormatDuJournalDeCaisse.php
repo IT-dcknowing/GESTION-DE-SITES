@@ -80,7 +80,10 @@ class FormatDuJournalDeCaisse extends Format
 
     public static function libelle(): string
     {
-        return 'Journal de caisse — état imprimé (PDF)';
+        // Même caisse, mêmes tables, autre document : voir FormatDeLaCaisse::libelle().
+        // La mention du PDF reste, et elle est exacte — c'est bien ce fichier-là qu'on
+        // dépose, le logiciel comptable ne sortant pas cet état autrement.
+        return 'Caisse — le journal imprimé par le logiciel (PDF)';
     }
 
     /**

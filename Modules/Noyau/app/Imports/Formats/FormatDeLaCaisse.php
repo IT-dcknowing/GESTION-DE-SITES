@@ -55,7 +55,13 @@ class FormatDeLaCaisse extends Format
 
     public static function libelle(): string
     {
-        return 'États de caisse — entrées et sorties';
+        // Les deux formats de caisse décrivent **la même chose** — les entrées et les
+        // sorties d'une caisse — et écrivent dans les mêmes tables. Ce qui les distingue
+        // est le document qu'on apporte : un classeur tenu à la main pour Abidjan, un
+        // état imprimé par le logiciel comptable pour Bouaké et San-Pédro. Les libellés
+        // le disent maintenant dans les mêmes mots, sur le même modèle, pour qu'on choisisse
+        // par ce qu'on a en main plutôt qu'en devinant lequel est lequel (24/09).
+        return 'Caisse — le classeur tenu à la main (Excel)';
     }
 
     public static function colonnes(): array

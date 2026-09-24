@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Modules\Import\Support\AccesImport;
+use Modules\Noyau\Entreprises\Services\ExerciceDeTravail;
 use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Services\ControlePrealable;
@@ -175,7 +176,15 @@ class DepotController
             return null;
         }
 
-        $rapport = (new ControlePrealable($entrepriseId))->examiner($chemin, $format, $villeId);
+        /*
+         * L'exercice sous lequel on dépose entre dans le contrôle.
+         *
+         * C'est celui que la personne a choisi dans le bandeau, pas l'année du calendrier :
+         * on peut travailler en janvier sur l'exercice précédent, et c'est légitime. Ce
+         * qu'on vérifie, c'est que le **fichier** parle de cet exercice-là.
+         */
+        $rapport = (new ControlePrealable($entrepriseId))
+            ->examiner($chemin, $format, $villeId, ExerciceDeTravail::annee($requete->user()));
 
         if ($rapport['avertissements'] === []) {
             return null;

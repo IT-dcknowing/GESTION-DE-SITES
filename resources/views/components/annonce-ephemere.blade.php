@@ -45,16 +45,30 @@
             pointer-events:none; max-width:92vw;"
      aria-live="polite"></div>
 
+{{-- **Le mécanisme, posé une fois pour toute la durée du document.**
+
+     Il portait un défaut qu'on ne voit qu'à l'usage, et le propriétaire l'a signalé le
+     24/09 sur la relance : « on ne sait pas si cela a enregistré, donc cela pousse à
+     cliquer plusieurs fois ». Le geste était bien enregistré, et l'annonce bien émise —
+     c'est la bulle qui n'arrivait jamais.
+
+     La cause : ce script retenait la pile au premier chargement. Or `wire:navigate`
+     remplace le corps de la page sans recharger le document ; au deuxième écran, la
+     variable désignait un élément détaché, et `appendChild` posait la bulle dans le vide.
+     La pile est donc **relue au moment de l'annonce**, jamais retenue à l'avance. C'est le
+     même piège que celui de la boîte de confirmation et des filtres du recouvrement — le
+     troisième de la même famille, et le plus discret, parce qu'il ne casse rien : il rend
+     l'application muette. --}}
 <script data-navigate-once>
 (function () {
-    var pile = document.getElementById('annonces-ephemeres');
-
-    if (! pile) { return; }
-
     var DUREE = 3000;
 
     var montrer = function (texte, ton) {
         if (! texte) { return; }
+
+        var pile = document.getElementById('annonces-ephemeres');
+
+        if (! pile) { return; }
 
         var bulle = document.createElement('div');
         bulle.className = 'annonce ' + (ton === 'alerte' ? 'annonce-alerte' : 'annonce-succes');
@@ -79,9 +93,31 @@
         var detail = evenement.detail || {};
         montrer(detail.texte, detail.ton);
     });
-
-    @foreach ($annonces as $texte)
-        montrer(@json($texte), 'succes');
-    @endforeach
 })();
 </script>
+
+{{-- **Les annonces du serveur, elles, changent à chaque page.**
+
+     Elles vivaient dans le script ci-dessus, qui ne s'exécute qu'une fois : un message
+     flashé après une navigation sans rechargement n'était donc jamais dit. Ce second
+     script n'a pas `data-navigate-once` — il est réévalué à chaque page, ce qui est
+     exactement ce qu'il faut pour un message qui vaut pour cette page-là. --}}
+@if ($annonces !== [])
+    <script>
+        (function () {
+            var dire = function () {
+                @foreach ($annonces as $texte)
+                    window.annonce(@json($texte), 'succes');
+                @endforeach
+            };
+
+            // Le mécanisme est posé juste au-dessus, sauf au tout premier rendu où les
+            // deux scripts s'évaluent dans l'ordre : on attend alors le document.
+            if (typeof window.annonce === 'function') {
+                dire();
+            } else {
+                window.addEventListener('DOMContentLoaded', dire);
+            }
+        })();
+    </script>
+@endif

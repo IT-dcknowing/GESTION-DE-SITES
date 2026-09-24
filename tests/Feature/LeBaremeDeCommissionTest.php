@@ -385,7 +385,9 @@ class LeBaremeDeCommissionTest extends TestCase
         Volt::actingAs($gerant)->test('gerant.bareme-commission')
             ->set('exercice', 2026)
             ->call('enregistrerLaGrille', 'commercial')
-            ->assertSee('enregistrée');
+            // Depuis le 24/09 au soir, le geste s'appelle « modifier » : rectifier est
+            // l'autre bouton, et les deux ne font pas la même chose.
+            ->assertSee('modifiée');
 
         $bareme = BaremeCommission::where('cible', 'commercial')->first();
 
@@ -509,6 +511,54 @@ class LeBaremeDeCommissionTest extends TestCase
         Volt::actingAs($gerant)->test('gerant.bareme-commission')
             ->set('exercice', now()->year)
             ->assertSee('ne commissionne rien');
+    }
+
+    public function test_la_rectification_recrit_la_grille_a_sa_date_d_origine(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', now()->year)
+            ->call('enregistrerLaGrille', 'commercial', true);
+
+        $posee = BaremeCommission::where('cible', 'commercial')->firstOrFail();
+
+        Volt::actingAs($gerant)->test('gerant.bareme-commission')
+            ->set('exercice', now()->year)
+            ->call('enregistrerLaGrille', 'commercial', false, true)
+            ->assertSee('rectifiée');
+
+        // Le point qui sépare rectifier de modifier : il n'y a toujours qu'une grille, et
+        // elle court depuis la même date. Une faute de saisie qu'on répare n'est pas une
+        // décision nouvelle, et la garder à côté de sa correction ferait croire à deux.
+        $this->assertSame(1, BaremeCommission::where('cible', 'commercial')->count());
+        $this->assertSame(
+            $posee->date_effet->toDateString(),
+            BaremeCommission::where('cible', 'commercial')->firstOrFail()->date_effet->toDateString(),
+        );
+    }
+
+    public function test_les_deux_gestes_demandent_confirmation_et_disent_ce_qui_arrivera(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->actingAs($gerant);
+
+        $ecran = Volt::actingAs($gerant)->test('gerant.bareme-commission')->set('exercice', now()->year);
+
+        // Avant toute grille : seule l'activation est proposée, et elle s'annonce.
+        $ecran->assertSee('Faire courir cette grille depuis le 1er janvier', escape: false);
+
+        $ecran->call('enregistrerLaGrille', 'commercial', true);
+
+        $apres = Volt::actingAs($gerant)->test('gerant.bareme-commission')->set('exercice', now()->year);
+
+        // Une rémunération est au bout : chaque geste dit ce qu'il va faire avant de le
+        // faire, et les deux ne se rattrapent pas de la même façon.
+        $apres->assertSee('Rectification');
+        $apres->assertSee('Enregistrer la modification');
+        $apres->assertSee('sera recalculé', escape: false);
+        $apres->assertSee('rien de ce qui a été annoncé', escape: false);
     }
 
     public function test_une_tranche_ajoutee_sous_le_tableau_n_est_ecrite_qu_a_l_enregistrement(): void

@@ -176,7 +176,20 @@ th.num,
 }
 
 /* Carte KPI : liseré coloré en haut (acier / rouge si alerte / vert si bon). */
-.carte-kpi { border-top: 3px solid var(--th-steel); }
+.carte-kpi {
+    border-top: 3px solid var(--th-steel);
+
+    /* La carte devient sa propre référence de largeur.
+
+       **Ce que cela répare, relevé le 24/09.** Un chiffre d'affaires à dix chiffres —
+       « 1 570 866 002 F » — écrit en 27 px ne tient pas dans une carte de grille étroite :
+       il débordait par la droite, et la ventilation Mécanique / Sinistre cassait la ligne
+       en plein milieu d'un montant. Le nombre ne peut pas se couper (`white-space: nowrap`,
+       et c'est juste : un montant coupé se lit faux), donc c'est la taille qui doit céder.
+       Mesurée sur la carte et non sur la fenêtre : deux cartes de largeurs différentes
+       n'ont pas le même besoin, et `vw` les traiterait pareil. */
+    container-type: inline-size;
+}
 .carte-kpi.est-alerte { border-top-color: var(--th-accent); }
 .carte-kpi.est-bon { border-top-color: var(--th-vert); }
 
@@ -191,7 +204,10 @@ th.num,
 
 .kpi-valeur {
     font-family: 'Barlow Condensed', sans-serif;
+    /* Le repli d'abord, pour les navigateurs sans requête de conteneur : ils gardent le
+       comportement d'avant plutôt que de perdre la taille. */
     font-size: 27px;
+    font-size: clamp(15px, 8.2cqi, 27px);
     font-weight: 700;
     line-height: 1.05;
     font-variant-numeric: tabular-nums;
@@ -398,13 +414,44 @@ header nav a.nav-actif:hover { filter: brightness(1.12); }
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    align-items: end;
+
+    /* **Les champs s'alignent par le haut, pas par le bas.**
+
+       Demandé le 24/09 : « évite de faire des champs pas alignés, les indications sont
+       bien, ne change pas, mais trouve un moyen de les aligner ».
+
+       Alignés par le bas, deux champs voisins dont un seul porte une indication
+       (« Facultatif — sert à retrouver le devis ») n'ont pas la même hauteur : celui qui
+       en porte une remonte sa case d'une ligne, et la rangée devient un escalier. C'est
+       exactement ce que montrait la capture de « Nouvelle prospection ».
+
+       Alignés par le haut, l'indication dépasse vers le bas sans rien déplacer — elle est
+       d'ailleurs à sa place là : on la lit après le champ. Reste à ce que les intitulés
+       occupent tous la même hauteur, sinon un intitulé sur deux lignes décalerait sa case
+       à son tour : c'est le `min-height` de `.champ-libelle`. */
+    align-items: start;
     background: #FAF9F5;
     border: 1px dashed var(--th-ligne);
     border-radius: 8px;
     padding: 12px;
     width: 100%;
     box-sizing: border-box;
+}
+
+/* Deux lignes d'intitulé réservées à tous : « Date » et « N° de fiche de réception »
+   posent alors leur case à la même hauteur. L'intitulé se colle à sa case plutôt qu'au
+   haut de la réserve, pour qu'il reste attaché à ce qu'il nomme. */
+.bloc-saisie .champ-libelle {
+    min-height: 28px;
+    display: flex;
+    align-items: flex-end;
+}
+
+/* Ce qui n'a pas d'intitulé — un bouton, une case à cocher — descend de la même hauteur,
+   sinon il flotterait au-dessus de la rangée qu'il complète. */
+.bloc-saisie > button,
+.bloc-saisie > label {
+    margin-top: 28px;
 }
 
 /* ------------------------------------------------------------ États vides */
@@ -490,7 +537,9 @@ img, canvas, svg, video { max-width: 100%; height: auto; }
 
     .carte { padding: 13px; border-radius: 9px; }
     .titre-section { font-size: 15.5px; }
-    .kpi-valeur { font-size: 23px; }
+    /* Sur téléphone la carte occupe toute la largeur : la borne haute redescend, mais
+       c'est toujours la largeur de la carte qui commande. */
+    .kpi-valeur { font-size: 23px; font-size: clamp(15px, 7.5cqi, 23px); }
     .kpi-libelle { font-size: 10.5px; }
 
     /* Les blocs de saisie passent en colonne : plus de champs écrasés. */

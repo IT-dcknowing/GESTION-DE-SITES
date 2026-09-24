@@ -58,7 +58,7 @@ class AlimentationDesEcrans
             ],
             'prealable' => 'parc',
             'consequence' => "Le rattachement d'un devis à son commercial passe par le code de deux "
-                ."lettres du numéro de proforma : un code non renseigné laisse le devis sans auteur.",
+                .'lettres du numéro de proforma : un code non renseigné laisse le devis sans auteur.',
         ],
         'factures' => [
             'apporte' => 'Le chiffre d\'affaires facturé : le client, le montant, la date, l\'activité.',
@@ -71,7 +71,7 @@ class AlimentationDesEcrans
                 ['route' => 'recouvrement.synthese', 'libelle' => 'Synthèse du recouvrement'],
             ],
             'prealable' => 'parc',
-            'consequence' => "Une facture crée la créance. Tout le recouvrement en découle : "
+            'consequence' => 'Une facture crée la créance. Tout le recouvrement en découle : '
                 ."sans factures importées, la balance âgée est vide, et ce n'est pas une anomalie.",
         ],
         'impayes' => [
@@ -85,7 +85,7 @@ class AlimentationDesEcrans
                 ['route' => 'tresorerie', 'libelle' => 'Trésorerie'],
             ],
             'prealable' => 'factures',
-            'consequence' => "À déposer après les factures, jamais avant : un règlement sans facture "
+            'consequence' => 'À déposer après les factures, jamais avant : un règlement sans facture '
                 ."en face n'a rien à diminuer, et l'encours reste faux jusqu'au dépôt suivant.",
         ],
         'fournisseurs' => [
@@ -99,17 +99,73 @@ class AlimentationDesEcrans
             'prealable' => null,
             'consequence' => "Indépendant du parc : une charge n'a pas besoin d'une fiche de réception.",
         ],
+        /*
+         * **La caisse ne remplit pas la Trésorerie, et cette ligne le disait de travers.**
+         *
+         * Corrigé le 24/09, après une question du propriétaire : il dépose le journal de
+         * Bouaké, la page *Caisse* se remplit, la page *Trésorerie* reste vide, et il
+         * demande si c'est normal. Ça l'est — mais ce tableau annonçait le contraire, et
+         * c'est lui qui l'avait induit en erreur.
+         *
+         * Les deux écrans ne lisent pas la même table, parce qu'ils ne répondent pas à la
+         * même question. *Caisse* lit `mouvements_caisse` : **ce que la caisse du logiciel
+         * comptable a enregistré**. *Trésorerie* lit `encaissements` et `charges` : **ce
+         * que l'application a encaissé et décaissé elle-même**. Les fondre ferait compter
+         * deux fois l'argent d'Abidjan, qui a les deux.
+         */
         'caisse' => [
-            'apporte' => 'Les mouvements d\'espèces, dans les deux sens, avec le solde annoncé.',
+            'apporte' => 'Les mouvements d\'espèces du classeur tenu à la main, dans les deux sens, '
+                .'avec le solde annoncé.',
             'tables' => ['mouvements_caisse'],
             'ecrans' => [
-                ['route' => 'tresorerie', 'libelle' => 'Trésorerie'],
-                ['route' => 'caissier.encaissements', 'libelle' => 'Encaissements'],
-                ['route' => 'caissier.decaissements', 'libelle' => 'Décaissements'],
+                ['route' => 'caisse', 'libelle' => 'Caisse'],
+                ['route' => 'caisse.vehicule', 'libelle' => 'Caisse par véhicule'],
             ],
             'prealable' => null,
             'consequence' => "Une caisse n'a pas de numéro de pièce : le rapprochement se fait sur la "
-                ."ligne entière — date, sens, montant, libellé — ce qui protège du redépôt du même mois.",
+                .'ligne entière — date, sens, montant, libellé — ce qui protège du redépôt du même mois. '
+                ."Il ne remplit pas la Trésorerie : celle-ci compte ce que l'application encaisse et "
+                .'décaisse elle-même, la caisse compte ce que le logiciel comptable a enregistré.',
+        ],
+        /*
+         * Le même contenu, par l'autre document. Bouaké et San-Pédro ne tiennent pas de
+         * classeur : elles n'ont que l'état imprimé, et c'est le seul format de la maison
+         * lu dans un PDF.
+         */
+        'journal-caisse' => [
+            'apporte' => "Les mêmes mouvements d'espèces, lus dans l'état imprimé par le logiciel "
+                ."comptable — plus le n° de pièce, le motif codifié, le remettant et le solde d'ouverture.",
+            'tables' => ['mouvements_caisse'],
+            'ecrans' => [
+                ['route' => 'caisse', 'libelle' => 'Caisse'],
+                ['route' => 'caisse.vehicule', 'libelle' => 'Caisse par véhicule'],
+            ],
+            'prealable' => null,
+            'consequence' => "Même destination que le classeur : c'est la même caisse, par un autre "
+                ."document. Abidjan tient un classeur, Bouaké et San-Pédro n'ont que ce journal.",
+        ],
+        'balance-fournisseurs' => [
+            'apporte' => 'Le débit, le crédit et le solde de chaque fournisseur, tels que le logiciel '
+                .'comptable les arrête.',
+            'tables' => ['soldes_fournisseur'],
+            'ecrans' => [
+                ['route' => 'balance-fournisseurs', 'libelle' => 'Balance fournisseurs'],
+            ],
+            'prealable' => null,
+            'consequence' => "Se lit en regard du suivi fournisseur : c'est l'écart entre les deux — "
+                ."ce que l'atelier croit devoir, ce que la comptabilité a enregistré — qu'on cherche "
+                .'quand un fournisseur réclame. Il porte plusieurs exercices : un solde se traîne.',
+        ],
+        'reglements-fournisseurs' => [
+            'apporte' => 'Les paiements enregistrés par la comptabilité, avec leur mode et leur date.',
+            'tables' => ['reglements_fournisseur'],
+            'ecrans' => [
+                ['route' => 'reglements-fournisseurs', 'libelle' => 'Règlements fournisseurs'],
+                ['route' => 'fournisseurs', 'libelle' => 'Factures fournisseurs'],
+            ],
+            'prealable' => 'balance-fournisseurs',
+            'consequence' => "Sans la balance, un règlement ne s'oppose à aucun solde : on voit ce qui "
+                ."est sorti, jamais ce qu'il restait à sortir.",
         ],
         'entrees' => [
             'apporte' => "Les entrées de véhicules à l'atelier, avec le déposant et le propriétaire.",
@@ -119,10 +175,10 @@ class AlimentationDesEcrans
                 ['route' => 'parc-vehicules', 'libelle' => 'Parc véhicules'],
             ],
             'prealable' => 'parc',
-            'consequence' => "Enrichit des fiches que le parc a déjà posées ; il ne les fonde pas.",
+            'consequence' => 'Enrichit des fiches que le parc a déjà posées ; il ne les fonde pas.',
         ],
         'sorties' => [
-            'apporte' => "Les sorties de véhicules, avec la date de restitution.",
+            'apporte' => 'Les sorties de véhicules, avec la date de restitution.',
             'tables' => ['mouvements_vehicules'],
             'ecrans' => [
                 ['route' => 'mouvements-vehicules', 'libelle' => 'Entrées / Sorties'],

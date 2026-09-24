@@ -26,8 +26,13 @@
      supprimer une entreprise — demandent en plus un motif écrit dans un champ du
      formulaire, qui lui ne dépend d'aucun script. --}}
 
+{{-- `inset: 0` puis `margin: auto` : c'est ce couple qui centre une boête modale.
+     Sans lui, `width: 100%` la collait en haut à gauche dès que la feuille de style de
+     l'application touchait aux marges par défaut — c'est ce que montrait la capture du
+     24/09, où les notes du barème s'ouvraient dans le coin. --}}
 <dialog id="boite-confirmation" aria-labelledby="boite-confirmation-titre"
         style="border:0; border-radius:14px; padding:0; max-width:min(94vw, 470px); width:100%;
+               inset:0; margin:auto;
                box-shadow:0 26px 70px rgba(25,27,32,.34); font-family:var(--font-sans);
                color:var(--th-ink,#191B20);">
 
