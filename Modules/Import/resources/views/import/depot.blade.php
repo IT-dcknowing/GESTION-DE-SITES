@@ -118,6 +118,22 @@ $couvertureDesCodes = computed(function () {
     ];
 });
 
+/**
+ * Quels types se rangent par le code de deux lettres de l'employé — et lesquels non.
+ *
+ * **Le défaut relevé le 24/09.** L'avis « ce fichier sera ventilé par les codes du
+ * personnel » s'affichait pour tout dépôt sans ville, quel que soit le type. Or la balance
+ * fournisseurs, les règlements fournisseurs, le journal de caisse, le classeur de caisse,
+ * l'état des impayés et les factures fournisseurs **ne portent aucun numéro de fiche** :
+ * aucun code n'en sort, et rien n'y sera ventilé. Leur import se passe très bien ; c'est
+ * l'explication qui décrivait un mécanisme étranger à ce qu'on faisait. Un avertissement
+ * qui ne s'applique pas à ce qu'on fait apprend à ne plus lire les avertissements.
+ *
+ * Lu sur les formats eux-mêmes plutôt que recopié ici : une seconde liste divergerait le
+ * jour où un format changerait de nature.
+ */
+$ventilationParLesCodes = computed(fn () => Registre::ventilationParLesCodes());
+
 /** L'état du travail de fond : combien attendent, et depuis quand. */
 $file = computed(fn () => (new EtatDeLaFile((int) auth()->user()->entreprise_id))->mesurer());
 
@@ -244,10 +260,16 @@ $abandonner = function () {
                 <div class="imp-frm" style="margin-top:15px;">
                     <div class="imp-fld">
                         <label for="format">Type de fichier</label>
+                        {{-- Chaque type porte, dans sa propre option, s'il se range par les
+                             codes employés. C'est ce qui permet de n'afficher l'explication
+                             de la ventilation qu'aux cinq types qu'elle concerne, sans
+                             interroger le serveur au changement de liste. --}}
                         <select id="format" name="format" required>
-                            <option value="">— à choisir —</option>
+                            <option value="" data-codes="">— à choisir —</option>
                             @foreach ($this->formats as $cle => $libelle)
-                                <option value="{{ $cle }}" @selected(old('format') === $cle)>{{ $libelle }}</option>
+                                <option value="{{ $cle }}"
+                                        data-codes="{{ ($this->ventilationParLesCodes[$cle] ?? true) ? '1' : '0' }}"
+                                        @selected(old('format') === $cle)>{{ $libelle }}</option>
                             @endforeach
                         </select>
                         @error('format') <div class="imp-hint warn">{{ $message }}</div> @enderror
@@ -297,7 +319,8 @@ $abandonner = function () {
                      Elle est rendue visible d'emblée quand le formulaire revient avec cette
                      valeur : sans JavaScript, l'explication doit tout de même arriver. --}}
                 <div id="avis-toutes-villes" class="imp-hint warn"
-                     @unless (old('ville') === DepotController::TOUTES_LES_VILLES) hidden @endunless>
+                     @unless (old('ville') === DepotController::TOUTES_LES_VILLES
+                         && ($this->ventilationParLesCodes[old('format')] ?? false)) hidden @endunless>
                     <strong>Ce fichier sera ventilé par les codes du personnel.</strong>
                     Vous déposez sans déclarer de ville : chaque ligne ira donc là où la désigne son
                     contenu — d'abord la colonne SITE quand le fichier en a une, puis
@@ -322,12 +345,28 @@ $abandonner = function () {
                     </div>
                 </div>
 
+                {{-- L'autre moitié de la vérité, pour les six types qui ne portent aucun
+                     numéro de fiche. Leur dire « vos lignes seront ventilées par les codes »
+                     décrivait un mécanisme qui ne les concerne pas ; leur dire ce qui va
+                     réellement se passer vaut mieux que de se taire. --}}
+                <div id="avis-sans-codes" class="imp-hint"
+                     @unless (old('ville') === DepotController::TOUTES_LES_VILLES
+                         && old('format') && ! ($this->ventilationParLesCodes[old('format')] ?? true)) hidden @endunless>
+                    <strong>Ce type de fichier ne se range pas par les codes du personnel.</strong>
+                    Ses lignes ne portent pas de numéro de fiche de réception — il n'y a donc pas de
+                    code de deux lettres à en tirer, et rien à ventiler. L'import se fait normalement :
+                    c'est <strong>la ville que vous déclarez</strong> qui range ce qu'il contient.
+                    Déposé sans ville, ce qui en sort restera sans lieu.
+                </div>
+
                 <div class="imp-hint">
                     <strong>L'atelier ne se remplit que là où il y a un choix à faire.</strong>
                     Bouaké et San Pédro n'ont qu'un atelier : la ville suffit. Abidjan en a deux, et la
                     colonne SITE des exports dit seulement « ABIDJAN ». Si vous avez filtré l'extraction sur
                     un atelier dans le logiciel, indiquez-le ici et tout l'import ira là. Sinon, laissez
-                    « non filtré » : le rattachement se fera par le code employé, et ce que personne ne sait
+                    « non filtré »<span id="mention-du-code"
+                        @unless ($this->ventilationParLesCodes[old('format')] ?? true) hidden @endunless> : le
+                    rattachement se fera par le code employé, et</span> ce que personne ne sait
                     trancher reste au niveau de la ville plutôt que d'être rangé au hasard entre deux ateliers.
                 </div>
 
@@ -389,15 +428,47 @@ $abandonner = function () {
                     });
                 }
 
-                // L'avis « toutes les villes » s'affiche au moment du choix : c'est le
-                // seul instant où il change quelque chose à ce que la personne fait.
-                var avis = document.getElementById('avis-toutes-villes');
+                /*
+                 * L'avis « toutes les villes » s'affiche au moment du choix : c'est le seul
+                 * instant où il change quelque chose à ce que la personne fait. Mais il
+                 * dépend de **deux** listes, et non d'une : la ville dit qu'il y a une
+                 * ventilation à faire, le type dit si ce fichier s'y prête. Depuis le
+                 * 24/09, les six types qui ne portent aucun numéro de fiche reçoivent
+                 * l'autre phrase — celle qui décrit ce qui va réellement se passer.
+                 *
+                 * Les éléments sont relus à chaque changement plutôt que retenus au
+                 * chargement : ce script porte `data-navigate-once`, et l'on arrive sur cet
+                 * écran par un menu qui navigue sans recharger le document. Retenus, ils
+                 * auraient disparu au deuxième passage, et plus aucun avis ne se serait
+                 * affiché.
+                 */
+                var format = document.getElementById('format');
 
-                if (ville && avis) {
-                    ville.addEventListener('change', function () {
-                        avis.hidden = ville.value !== 'toutes';
-                    });
-                }
+                var rafraichirLesAvis = function () {
+                    var listeVille = document.getElementById('ville');
+                    var listeFormat = document.getElementById('format');
+                    var avisCodes = document.getElementById('avis-toutes-villes');
+                    var avisSansCodes = document.getElementById('avis-sans-codes');
+                    var mention = document.getElementById('mention-du-code');
+
+                    if (! listeVille || ! listeFormat) { return; }
+
+                    var choisi = listeFormat.selectedOptions.length ? listeFormat.selectedOptions[0] : null;
+                    var declare = choisi ? choisi.getAttribute('data-codes') : '';
+                    // Type non choisi : on ne préjuge de rien, et l'on se tait.
+                    var parLesCodes = declare === '1';
+                    var connu = declare === '1' || declare === '0';
+                    var sansVille = listeVille.value === 'toutes';
+
+                    if (avisCodes) { avisCodes.hidden = ! (sansVille && parLesCodes); }
+                    if (avisSansCodes) { avisSansCodes.hidden = ! (sansVille && connu && ! parLesCodes); }
+                    if (mention) { mention.hidden = connu && ! parLesCodes; }
+                };
+
+                if (ville) { ville.addEventListener('change', rafraichirLesAvis); }
+                if (format) { format.addEventListener('change', rafraichirLesAvis); }
+
+                rafraichirLesAvis();
 
                 if (ville && site) {
                     var filtrer = function () {

@@ -107,6 +107,26 @@ class Registre
         return $options;
     }
 
+    /**
+     * Les formats qui se rangent par les codes employés — ceux-là seuls.
+     *
+     * L'écran de dépôt s'en sert pour n'annoncer la ventilation par les codes qu'à qui
+     * elle concerne : sur cinq formats sur onze, elle est le mécanisme de rattachement ;
+     * sur les six autres, la mentionner décrit quelque chose qui n'aura pas lieu.
+     *
+     * @return array<string, bool> clé du format => se ventile par les codes
+     */
+    public static function ventilationParLesCodes(): array
+    {
+        $rendu = [];
+
+        foreach (self::DISPONIBLES as $cle => $classe) {
+            $rendu[$cle] = $classe::ventileParLesCodes();
+        }
+
+        return $rendu;
+    }
+
     public static function libelle(string $cle): string
     {
         if (self::connait($cle)) {

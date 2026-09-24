@@ -281,6 +281,12 @@ class FormatDeLaCaisse extends Format
     }
 
     /** Une ligne de caisse ne porte aucun numéro de fiche : il n'y a pas de code à en tirer. */
+    /** Le classeur de caisse est tenu par ville, à la main : sa ville vient du dépôt, jamais d'un code de deux lettres qu'il ne porte pas. */
+    public static function ventileParLesCodes(): bool
+    {
+        return false;
+    }
+
     protected function reference(array $ligne): ?string
     {
         return null;

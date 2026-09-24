@@ -3,6 +3,7 @@
 namespace Modules\Recouvrement\Support;
 
 use App\Models\User;
+use Closure;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Noyau\Commun\Services\NombreDeJours;
@@ -194,16 +195,16 @@ final class PortefeuilleDeRecouvrement
      *
      * @return Collection<int, array<string, mixed>>
      */
-    public function agents(): Collection
+    public function agents(?Closure $retient = null): Collection
     {
         $comptes = $this->comptesDuRecouvrement();
 
-        $relances = RelanceRecouvrement::query()
-            ->when($this->debut, fn ($q) => $q->whereDate('date', '>=', $this->debut))
-            ->whereDate('date', '<=', $this->arrete)
-            ->get();
-
-        $encaissements = $this->encaissementsDeLaPeriode();
+        // Les relances sont déjà en mémoire depuis le constructeur : les relire ici en
+        // ferait une seconde requête pour le même contenu. Et elles suivent le filtre —
+        // chercher un tiers doit montrer qui a travaillé *sur ce tiers*, pas l'activité de
+        // tout le monde sur tout le portefeuille.
+        $relances = $this->relancesRetenues($retient);
+        $encaissements = $this->reglementsRetenus($retient);
 
         return $comptes->map(function (User $compte) use ($relances, $encaissements) {
             $siennes = $relances->where('user_id', $compte->id);
@@ -252,17 +253,23 @@ final class PortefeuilleDeRecouvrement
      *
      * @return array<int, array{libelle: string, couleur: string, montant: int, part: float}>
      */
-    public function parTranche(): array
+    public function parTranche(Collection $lignes): array
     {
         $montants = array_fill(0, count(Recouvrement::TRANCHES), 0);
 
-        $jourArrete = NombreDeJours::jour($this->arrete);
-
-        foreach ($this->ouvertes as $ligne) {
-            $index = Recouvrement::tranchePourAge(Recouvrement::ageDeLaLigne($ligne, $jourArrete));
-
-            if ($index !== null) {
-                $montants[$index] += Recouvrement::resteDe($ligne->montant, $ligne->encaissements_sum_montant);
+        /*
+         * **Calculé sur les lignes affichées, et non sur tout le portefeuille.** Corrigé le
+         * 24/09 : la forme de la créance ignorait les filtres, si bien qu'on cherchait un
+         * tiers et que le graphique continuait d'afficher les 795 millions de l'entreprise.
+         *
+         * Chaque ligne porte déjà sa propre ventilation par tranche d'âge, posée par
+         * `Recouvrement::parTiers()` dans la passe qui groupe les créances : il n'y a qu'à
+         * les additionner. Repartir des factures ouvertes obligerait à leur réappliquer les
+         * filtres, qui portent sur le tiers et non sur la facture.
+         */
+        foreach ($lignes as $ligne) {
+            foreach (($ligne['tranches'] ?? []) as $index => $montant) {
+                $montants[$index] = ($montants[$index] ?? 0) + (int) $montant;
             }
         }
 
@@ -281,11 +288,13 @@ final class PortefeuilleDeRecouvrement
      *
      * @return array<int, array{niveau: int, libelle: string, montant: int, tiers: int}>
      */
-    public function parNiveau(): array
+    public function parNiveau(Collection $lignes): array
     {
         $parNiveau = [];
 
-        foreach ($this->lignes() as $ligne) {
+        // Les lignes affichées, et non toutes : la charge par niveau annonçait 100 tiers en
+        // contentieux alors que le filtre n'en retenait qu'un. Corrigé le 24/09.
+        foreach ($lignes as $ligne) {
             $niveau = (int) ($ligne['niveau']['niveau'] ?? 0);
             $parNiveau[$niveau] ??= ['niveau' => $niveau, 'montant' => 0, 'tiers' => 0];
             $parNiveau[$niveau]['montant'] += $ligne['reste'];
@@ -307,7 +316,7 @@ final class PortefeuilleDeRecouvrement
      *
      * @return array<int, array{mois: string, encaisse: int, relances: int}>
      */
-    public function parMois(): array
+    public function parMois(?Closure $retient = null): array
     {
         $debut = ($this->debut ?? $this->arrete->copy()->startOfYear())->copy()->startOfMonth();
         $suite = [];
@@ -322,7 +331,7 @@ final class PortefeuilleDeRecouvrement
 
         // La date arrive en chaîne ISO : ses sept premiers caractères sont le mois. Un
         // Carbon par règlement pour n'en lire que l'année et le mois coûtait 305 ms.
-        foreach ($this->encaissementsDeLaPeriode() as $encaissement) {
+        foreach ($this->reglementsRetenus($retient) as $encaissement) {
             $clef = substr((string) $encaissement->date, 0, 7);
 
             if (isset($suite[$clef])) {
@@ -331,13 +340,13 @@ final class PortefeuilleDeRecouvrement
         }
 
         // Les relances sont déjà lues et groupées au constructeur : les relire ici en
-        // ferait une seconde requête pour le même contenu.
-        $jourArrete = $this->arrete->toDateString();
+        // ferait une seconde requête pour le même contenu. Elles suivent le filtre, comme
+        // la courbe des règlements — sans quoi les deux courbes du même graphique
+        // parleraient de deux périmètres différents.
+        foreach ($this->relancesRetenues($retient) as $relance) {
+            $clef = $relance->date->format('Y-m');
 
-        foreach ($this->relancesParTiers->flatten(1) as $relance) {
-            $clef = $relance->date?->format('Y-m');
-
-            if ($clef !== null && isset($suite[$clef]) && $relance->date->toDateString() <= $jourArrete) {
+            if (isset($suite[$clef])) {
                 $suite[$clef]['relances']++;
             }
         }
@@ -345,10 +354,16 @@ final class PortefeuilleDeRecouvrement
         return array_values($suite);
     }
 
-    /** Les chiffres de tête, calculés sur les lignes qu'on affiche et pas sur d'autres. */
-    public function reperes(Collection $lignes): array
+    /**
+     * Les chiffres de tête, calculés sur les lignes qu'on affiche et pas sur d'autres.
+     *
+     * `$retient` borne ce qui ne se lit pas sur les lignes — les règlements et les relances,
+     * qui vivent du côté des factures. Null veut dire « aucun filtre », et les chiffres
+     * restent ceux de l'entreprise.
+     */
+    public function reperes(Collection $lignes, ?Closure $retient = null): array
     {
-        $encaisse = (int) $this->encaissementsDeLaPeriode()->sum('montant');
+        $encaisse = (int) $this->reglementsRetenus($retient)->sum('montant');
 
         return [
             'encours' => (int) $lignes->sum('reste'),
@@ -361,10 +376,7 @@ final class PortefeuilleDeRecouvrement
             'contentieux' => (int) $lignes->filter(fn (array $l) => ($l['niveau']['niveau'] ?? 0) >= 5)->sum('reste'),
             // Les relances sont en mémoire depuis le constructeur : une requête de plus
             // pour les compter lirait deux fois la même chose.
-            'relances' => $this->relancesParTiers->flatten(1)
-                ->filter(fn (RelanceRecouvrement $r) => $r->date !== null
-                    && $r->date->toDateString() <= $this->arrete->toDateString())
-                ->count(),
+            'relances' => $this->relancesRetenues($retient)->count(),
         ];
     }
 
@@ -409,6 +421,67 @@ final class PortefeuilleDeRecouvrement
     }
 
     /**
+     * Les règlements de la période, restreints aux tiers que le filtre retient.
+     *
+     * **Ce que cela répare, relevé par le propriétaire le 24/09.** Chercher « SAAR » sur le
+     * tableau de bord ne filtrait que le tableau des tiers : « Reste à recouvrer » passait
+     * bien à 860 466 F, mais « Encaissé sur la période » restait à 1 141 472 574 F — le
+     * total de l'entreprise, affiché à côté d'un encours filtré. Deux chiffres côte à côte
+     * qui ne parlent pas du même périmètre ne se comparent pas, et personne ne peut deviner
+     * lequel des deux a bougé.
+     *
+     * Le rattachement passe par la facture, comme partout ailleurs ici : c'est elle qui sait
+     * qui paie. Un règlement dont la facture est inconnue ne se rattache à personne, et
+     * sort donc dès qu'un filtre est posé — il ne peut pas être retenu par un nom qu'il n'a
+     * pas.
+     *
+     * `null` veut dire « aucun filtre » : on rend tout, et le chiffre reste celui de
+     * l'entreprise.
+     *
+     * @return Collection<int, object>
+     */
+    private function reglementsRetenus(?Closure $retient): Collection
+    {
+        if ($retient === null) {
+            return $this->encaissementsDeLaPeriode();
+        }
+
+        $tiersParFacture = $this->tiersParFacture();
+
+        return $this->encaissementsDeLaPeriode()->filter(function (object $encaissement) use ($tiersParFacture, $retient) {
+            $tiers = $tiersParFacture[$encaissement->facture_id] ?? null;
+
+            return $tiers !== null && $retient($tiers);
+        });
+    }
+
+    /**
+     * Les relances de la période, restreintes aux tiers que le filtre retient.
+     *
+     * @return Collection<int, RelanceRecouvrement>
+     */
+    private function relancesRetenues(?Closure $retient): Collection
+    {
+        $jourArrete = $this->arrete->toDateString();
+        $depuis = $this->debut?->toDateString();
+
+        return $this->relancesParTiers->flatten(1)
+            ->filter(function (RelanceRecouvrement $relance) use ($retient, $jourArrete, $depuis) {
+                if ($relance->date === null) {
+                    return false;
+                }
+
+                $jour = $relance->date->toDateString();
+
+                if ($jour > $jourArrete || ($depuis !== null && $jour < $depuis)) {
+                    return false;
+                }
+
+                return $retient === null || $retient((string) $relance->tiers);
+            });
+    }
+
+    /**
      * Les encaissements de la période regardée, une fois pour toutes.
      *
      * **Lus tels que la base les rend, et non en objets.** Mesuré le 24/09 sur la base de
@@ -436,8 +509,10 @@ final class PortefeuilleDeRecouvrement
         return $this->encaissements ??= Recouvrement::encaissementsDeLaVilleRegardee(Encaissement::query())
             ->when($this->debut, fn ($q) => $q->whereDate('date', '>=', $this->debut))
             ->whereDate('date', '<=', $this->arrete)
+            // `cree_par` sert le tableau des agents — c'est lui qui dit qui a encaissé.
+            // Oublié de cette liste, il faisait afficher zéro encaissement à tout le monde.
             ->select(['encaissements.id', 'encaissements.facture_id', 'encaissements.montant',
-                'encaissements.date', 'encaissements.code_auteur'])
+                'encaissements.date', 'encaissements.code_auteur', 'encaissements.cree_par'])
             ->toBase()
             ->get();
     }

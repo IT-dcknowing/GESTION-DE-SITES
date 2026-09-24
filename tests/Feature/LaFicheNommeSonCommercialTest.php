@@ -13,6 +13,7 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
 use Modules\Noyau\Exploitation\Services\RapprochementProspectionDevis;
+use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
 use Modules\Noyau\Imports\Services\CommercialDeLaFiche;
@@ -85,16 +86,25 @@ class LaFicheNommeSonCommercialTest extends TestCase
         return [
             'la virgule sépare' => ['Koffi Yao, véhicule livré', 'Koffi Yao'],
             'le point-virgule aussi' => ['KZ; en attente de pièce', 'KZ'],
-            'le point suivi d’un espace' => ['C-0001. RAS', 'C-0001'],
+            'le point aussi' => ['C-0001. RAS', 'C-0001'],
             'le point final' => ['Koffi Yao.', 'Koffi Yao'],
-            'le tiret entouré d’espaces' => ['Koffi Yao - véhicule livré', 'Koffi Yao'],
-            'le blanc souligné entouré d’espaces' => ['KZ _ RAS', 'KZ'],
-            'le tiret répété' => ['Koffi Yao--RAS', 'Koffi Yao'],
-            // Le piège : pris au pied de la lettre, le tiret couperait le prénom composé
-            // en deux et le code de l'application par le milieu.
+            'le retour à la ligne sépare' => ["KZ\nvéhicule livré", 'KZ'],
+
+            // Les espaces autour du séparateur ne changent rien : on coupe sur le
+            // caractère, puis on débarrasse ce qui reste de ses bords.
+            'un espace avant la virgule' => ['Koffi Yao , RAS', 'Koffi Yao'],
+            'aucun espace du tout' => ['Koffi Yao;RAS', 'Koffi Yao'],
+            'deux espaces après le point' => ['Koffi Yao.  RAS', 'Koffi Yao'],
+
+            // Le tiret et le blanc souligné ont été retirés de la liste des séparateurs
+            // par le propriétaire le 24/09. Ils vivent à l'intérieur des noms composés et
+            // des codes de l'application : les y couper serait pire que de ne pas les
+            // reconnaître comme séparateurs.
             'un nom composé n’est pas coupé' => ['Marie-Claire Aya, RAS', 'Marie-Claire Aya'],
             'un code d’application n’est pas coupé' => ['C-0001', 'C-0001'],
-            'le retour à la ligne sépare' => ["KZ\nvéhicule livré", 'KZ'],
+            'le tiret ne sépare plus' => ['Marie-Claire Aya - RAS', 'Marie-Claire Aya - RAS'],
+            'le blanc souligné non plus' => ['C-0001 _ RAS', 'C-0001 _ RAS'],
+
             'une colonne vide ne dit rien' => ['', null],
             'une colonne absente non plus' => [null, null],
             'un début sans lettre ne nomme personne' => ['12/09/2026, Koffi Yao', null],
@@ -332,6 +342,39 @@ class LaFicheNommeSonCommercialTest extends TestCase
             ->assertRedirect();
 
         $this->assertFalse((bool) $question->fresh()->est_resolue);
+    }
+
+    // ------------------------------------------------------------------ la ventilation annoncée
+
+    public function test_seuls_les_formats_qui_portent_un_numero_de_fiche_se_ventilent_par_les_codes(): void
+    {
+        $ventilation = Registre::ventilationParLesCodes();
+
+        // Ceux dont la référence est un numéro de fiche ou de proforma : le code de deux
+        // lettres en sort, et c'est lui qui range la ligne.
+        foreach (['parc', 'devis', 'factures', 'entrees', 'sorties'] as $cle) {
+            $this->assertTrue($ventilation[$cle], $cle.' porte un numéro de fiche');
+        }
+
+        // Et ceux qui n'en portent aucun. Leur annoncer une ventilation par les codes
+        // décrivait un mécanisme étranger à ce qu'ils font — relevé par le propriétaire le
+        // 24/09. Le « code de règlement » du logiciel comptable est le piège de la liste :
+        // il ressemble à un code sans en être un.
+        foreach (['impayes', 'fournisseurs', 'balance-fournisseurs',
+            'reglements-fournisseurs', 'caisse', 'journal-caisse'] as $cle) {
+            $this->assertFalse($ventilation[$cle], $cle.' ne porte aucun numéro de fiche');
+        }
+    }
+
+    public function test_l_ecran_de_depot_dit_pour_chaque_type_s_il_se_ventile(): void
+    {
+        $reponse = $this->actingAs($this->gerant())->get(route('import.depot'))->assertOk();
+
+        // La réponse voyage dans l'option elle-même : l'avis s'affiche au changement de
+        // liste, sans un aller-retour au serveur.
+        $reponse->assertSee('data-codes="1"', escape: false);
+        $reponse->assertSee('data-codes="0"', escape: false);
+        $reponse->assertSee('Ce type de fichier ne se range pas par les codes du personnel.', escape: false);
     }
 
     // ------------------------------------------------------------------ utilitaires

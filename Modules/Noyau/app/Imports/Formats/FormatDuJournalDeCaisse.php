@@ -486,6 +486,12 @@ class FormatDuJournalDeCaisse extends Format
     }
 
     /** Le journal ne porte aucun numéro de fiche : il n'y a pas de code à en tirer. */
+    /** Le journal imprimé dit sa caisse et sa ville en toutes lettres : il n'a pas besoin des codes, et n'en porte pas. */
+    public static function ventileParLesCodes(): bool
+    {
+        return false;
+    }
+
     protected function reference(array $ligne): ?string
     {
         return null;

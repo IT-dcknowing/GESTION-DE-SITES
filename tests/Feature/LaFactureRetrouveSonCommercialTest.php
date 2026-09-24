@@ -309,7 +309,9 @@ class LaFactureRetrouveSonCommercialTest extends TestCase
         Volt::actingAs($gerant)->test('gerant.bareme-commission')
             ->set('exercice', 2026)
             ->call('enregistrerLaGrille', 'commercial')
-            ->assertSee('immédiatement');
+            // Depuis le 24/09, « Enregistrer » est le geste de la correction : il annonce
+            // une date d'effet, et non une application immédiate à tout l'exercice.
+            ->assertSee('effet au '.now()->format('d/m/Y'));
 
         $this->assertSame(['commercial', 'responsable_site'], $grille->fresh()->roles);
     }

@@ -331,6 +331,12 @@ class FormatDesFournisseurs extends Format
     }
 
     /** Le bon de commande porte parfois le code, mais pas de façon fiable : on n'en tire rien. */
+    /** Une facture fournisseur porte le nom du fournisseur, pas le code de l'employé qui a reçu le véhicule : il n'y a rien à ventiler. */
+    public static function ventileParLesCodes(): bool
+    {
+        return false;
+    }
+
     protected function reference(array $ligne): ?string
     {
         return null;

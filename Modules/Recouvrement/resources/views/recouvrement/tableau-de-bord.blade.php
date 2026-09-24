@@ -131,20 +131,63 @@ $lignes = computed(function () {
     return $lignes->values();
 });
 
-$reperes = computed(fn () => $this->portefeuille->reperes($this->lignes));
+/**
+ * Ce que les filtres retiennent, dit une fois pour toute la page.
+ *
+ * **Le défaut relevé le 24/09 par le propriétaire.** Chercher « SAAR » ramenait bien le
+ * tableau des tiers à une ligne et « Reste à recouvrer » à 860 466 F — mais « Encaissé sur
+ * la période » restait à 1 141 472 574 F, « Charge par niveau » continuait d'annoncer
+ * 100 tiers en contentieux, et « Forme de la créance » affichait les 795 millions de
+ * l'entreprise. Un écran où un chiffre sur deux répond au filtre est pire qu'un écran qui
+ * n'en tient aucun compte : on ne sait plus lequel lire.
+ *
+ * Tout ce qui se lit sur les lignes suit donc les lignes. Ce qui ne s'y lit pas — les
+ * règlements et les relances, qui vivent du côté des factures — reçoit ce filtre-ci.
+ *
+ * **Deux sortes de filtres, et ils ne se posent pas de la même façon.** La recherche porte
+ * sur le **nom du tiers**, et s'applique donc directement : un tiers qui a tout réglé n'a
+ * plus de ligne au tableau, mais ses règlements du mois doivent compter quand on le
+ * cherche par son nom. Le portefeuille et le niveau de relance, eux, sont des propriétés
+ * de la créance ouverte : ils ne peuvent retenir que des tiers qui figurent au tableau.
+ *
+ * `null` veut dire « aucun filtre » : les chiffres restent ceux de l'entreprise, et rien
+ * n'est parcouru pour rien.
+ */
+$filtreDesTiers = computed(function () {
+    $recherche = trim(mb_strtolower($this->recherche));
+    $surLaCreance = $this->vueAppliquee !== '' || $this->niveauFiltre !== '';
+
+    if ($recherche === '' && ! $surLaCreance) {
+        return null;
+    }
+
+    $retenus = $surLaCreance
+        ? array_flip($this->lignes->pluck('tiers')->all())
+        : null;
+
+    return function (string $tiers) use ($recherche, $retenus): bool {
+        if ($recherche !== '' && ! str_contains(mb_strtolower($tiers), $recherche)) {
+            return false;
+        }
+
+        return $retenus === null || isset($retenus[$tiers]);
+    };
+});
+
+$reperes = computed(fn () => $this->portefeuille->reperes($this->lignes, $this->filtreDesTiers));
 
 /** L'activité par agent — l'agent simple n'y lit que la sienne. */
 $agents = computed(function () {
-    $agents = $this->portefeuille->agents();
+    $agents = $this->portefeuille->agents($this->filtreDesTiers);
 
     return $this->estEncadrant
         ? $agents
         : $agents->where('id', auth()->id())->values();
 });
 
-$tranches = computed(fn () => $this->portefeuille->parTranche());
-$niveaux = computed(fn () => $this->portefeuille->parNiveau());
-$mois = computed(fn () => $this->portefeuille->parMois());
+$tranches = computed(fn () => $this->portefeuille->parTranche($this->lignes));
+$niveaux = computed(fn () => $this->portefeuille->parNiveau($this->lignes));
+$mois = computed(fn () => $this->portefeuille->parMois($this->filtreDesTiers));
 
 /*
  * Pagination à la main : les lignes sont une collection calculée, pas une requête. Le
