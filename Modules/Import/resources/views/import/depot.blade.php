@@ -406,95 +406,147 @@ $abandonner = function () {
         {{-- Glisser-déposer et filtrage des ateliers : du JavaScript nu, sur un formulaire
              qui fonctionne déjà sans lui. Si ce script ne s'exécute pas, on perd le confort,
              jamais la fonction. --}}
+        {{-- Glisser-déposer, avis, et filtrage des ateliers : du JavaScript nu, sur un
+             formulaire qui fonctionne déjà sans lui.
+
+             **Aucun élément n'est retenu.** Ce script porte `data-navigate-once` : il
+             s'exécute une fois pour toute la durée du document, alors qu'on arrive sur cet
+             écran par un menu qui navigue sans recharger la page. Tout ce qu'il retiendrait
+             au chargement désignerait, au deuxième passage, un élément détaché — et le
+             geste ne ferait plus rien. C'est ce qui obligeait à recharger la page pour que
+             le champ « Atelier » se remette à suivre la ville (relevé le 24/09), et c'est
+             le même piège que celui de la boîte de confirmation et du bandeau vert.
+
+             Les écoutes vivent donc sur le `document`, qui survit à toutes les
+             navigations, et chaque geste relit les champs au moment où il agit. --}}
         <script data-navigate-once>
             (function () {
-                var zone = document.getElementById('zone-depot');
-                var champ = document.getElementById('fichier');
-                var ville = document.getElementById('ville');
-                var site = document.getElementById('site');
-
-                if (zone && champ) {
-                    ['dragover', 'dragenter'].forEach(function (e) {
-                        zone.addEventListener(e, function (ev) { ev.preventDefault(); zone.classList.add('survol'); });
-                    });
-                    ['dragleave', 'drop'].forEach(function (e) {
-                        zone.addEventListener(e, function () { zone.classList.remove('survol'); });
-                    });
-                    zone.addEventListener('drop', function (ev) {
-                        ev.preventDefault();
-                        if (ev.dataTransfer && ev.dataTransfer.files.length) {
-                            champ.files = ev.dataTransfer.files;
-                        }
-                    });
-                }
+                /** Les champs, relus à chaque fois — jamais retenus. */
+                var champs = function () {
+                    return {
+                        zone: document.getElementById('zone-depot'),
+                        fichier: document.getElementById('fichier'),
+                        ville: document.getElementById('ville'),
+                        site: document.getElementById('site'),
+                        format: document.getElementById('format'),
+                    };
+                };
 
                 /*
-                 * L'avis « toutes les villes » s'affiche au moment du choix : c'est le seul
-                 * instant où il change quelque chose à ce que la personne fait. Mais il
-                 * dépend de **deux** listes, et non d'une : la ville dit qu'il y a une
-                 * ventilation à faire, le type dit si ce fichier s'y prête. Depuis le
-                 * 24/09, les six types qui ne portent aucun numéro de fiche reçoivent
+                 * L'avis « toutes les villes » dépend de **deux** listes, et non d'une : la
+                 * ville dit qu'il y a une ventilation à faire, le type dit si ce fichier
+                 * s'y prête. Les six types qui ne portent aucun numéro de fiche reçoivent
                  * l'autre phrase — celle qui décrit ce qui va réellement se passer.
-                 *
-                 * Les éléments sont relus à chaque changement plutôt que retenus au
-                 * chargement : ce script porte `data-navigate-once`, et l'on arrive sur cet
-                 * écran par un menu qui navigue sans recharger le document. Retenus, ils
-                 * auraient disparu au deuxième passage, et plus aucun avis ne se serait
-                 * affiché.
                  */
-                var format = document.getElementById('format');
-
                 var rafraichirLesAvis = function () {
-                    var listeVille = document.getElementById('ville');
-                    var listeFormat = document.getElementById('format');
+                    var c = champs();
                     var avisCodes = document.getElementById('avis-toutes-villes');
                     var avisSansCodes = document.getElementById('avis-sans-codes');
                     var mention = document.getElementById('mention-du-code');
 
-                    if (! listeVille || ! listeFormat) { return; }
+                    if (! c.ville || ! c.format) { return; }
 
-                    var choisi = listeFormat.selectedOptions.length ? listeFormat.selectedOptions[0] : null;
+                    var choisi = c.format.selectedOptions.length ? c.format.selectedOptions[0] : null;
                     var declare = choisi ? choisi.getAttribute('data-codes') : '';
                     // Type non choisi : on ne préjuge de rien, et l'on se tait.
                     var parLesCodes = declare === '1';
                     var connu = declare === '1' || declare === '0';
-                    var sansVille = listeVille.value === 'toutes';
+                    var sansVille = c.ville.value === 'toutes';
 
                     if (avisCodes) { avisCodes.hidden = ! (sansVille && parLesCodes); }
                     if (avisSansCodes) { avisSansCodes.hidden = ! (sansVille && connu && ! parLesCodes); }
                     if (mention) { mention.hidden = connu && ! parLesCodes; }
                 };
 
-                if (ville) { ville.addEventListener('change', rafraichirLesAvis); }
-                if (format) { format.addEventListener('change', rafraichirLesAvis); }
+                /*
+                 * Le champ « Atelier » ne montre que les ateliers de la ville choisie, et
+                 * disparaît quand cette ville n'en compte qu'un — un choix qui n'en est pas
+                 * un ne se pose pas. Abidjan en a deux, et c'est le seul cas où la question
+                 * vaut d'être posée.
+                 */
+                var filtrerLesAteliers = function () {
+                    var c = champs();
 
-                rafraichirLesAvis();
+                    if (! c.ville || ! c.site) { return; }
 
-                if (ville && site) {
-                    var filtrer = function () {
-                        var choisie = ville.value;
-                        var visibles = 0;
+                    var choisie = c.ville.value;
+                    var visibles = 0;
 
-                        Array.prototype.forEach.call(site.options, function (opt) {
-                            var sienne = opt.getAttribute('data-ville');
-                            var garder = sienne === '' || sienne === choisie;
-                            opt.hidden = ! garder;
-                            opt.disabled = ! garder;
-                            if (garder && sienne !== '') { visibles++; }
-                        });
+                    Array.prototype.forEach.call(c.site.options, function (opt) {
+                        var sienne = opt.getAttribute('data-ville');
+                        var garder = sienne === '' || sienne === choisie;
+                        opt.hidden = ! garder;
+                        opt.disabled = ! garder;
+                        if (garder && sienne !== '') { visibles++; }
+                    });
 
-                        if (site.selectedOptions.length && site.selectedOptions[0].disabled) {
-                            site.value = '';
-                        }
+                    if (c.site.selectedOptions.length && c.site.selectedOptions[0].disabled) {
+                        c.site.value = '';
+                    }
 
-                        // Une ville à un seul atelier ne pose aucune question : le champ
-                        // disparaît plutôt que d'offrir un choix qui n'en est pas un.
-                        site.closest('.imp-fld').style.display = visibles > 0 ? '' : 'none';
-                    };
+                    var enveloppe = c.site.closest('.imp-fld');
 
-                    ville.addEventListener('change', filtrer);
-                    filtrer();
-                }
+                    if (enveloppe) {
+                        enveloppe.style.display = visibles > 0 ? '' : 'none';
+                    }
+                };
+
+                // Une seule écoute déléguée pour les deux listes : elle survit aux
+                // navigations, et n'a rien à rebrancher quand la page est remplacée.
+                document.addEventListener('change', function (evenement) {
+                    var cible = evenement.target;
+
+                    if (! cible || (cible.id !== 'ville' && cible.id !== 'format')) { return; }
+
+                    rafraichirLesAvis();
+
+                    if (cible.id === 'ville') { filtrerLesAteliers(); }
+                });
+
+                // Le glisser-déposer, par délégation lui aussi.
+                ['dragover', 'dragenter'].forEach(function (nom) {
+                    document.addEventListener(nom, function (ev) {
+                        var zone = ev.target.closest ? ev.target.closest('#zone-depot') : null;
+
+                        if (zone) { ev.preventDefault(); zone.classList.add('survol'); }
+                    });
+                });
+
+                ['dragleave', 'drop'].forEach(function (nom) {
+                    document.addEventListener(nom, function (ev) {
+                        var zone = ev.target.closest ? ev.target.closest('#zone-depot') : null;
+
+                        if (zone) { zone.classList.remove('survol'); }
+                    });
+                });
+
+                document.addEventListener('drop', function (ev) {
+                    var zone = ev.target.closest ? ev.target.closest('#zone-depot') : null;
+
+                    if (! zone) { return; }
+
+                    ev.preventDefault();
+
+                    var c = champs();
+
+                    if (c.fichier && ev.dataTransfer && ev.dataTransfer.files.length) {
+                        c.fichier.files = ev.dataTransfer.files;
+                    }
+                });
+
+                /*
+                 * L'état de départ, à chaque arrivée sur l'écran. `livewire:navigated` est
+                 * émis après chaque navigation sans rechargement : sans lui, la première
+                 * mise en place n'aurait lieu qu'une fois, et le champ « Atelier »
+                 * arriverait déplié au deuxième passage.
+                 */
+                var remettreEnPlace = function () {
+                    rafraichirLesAvis();
+                    filtrerLesAteliers();
+                };
+
+                document.addEventListener('livewire:navigated', remettreEnPlace);
+                remettreEnPlace();
             })();
         </script>
 

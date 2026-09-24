@@ -4,6 +4,7 @@ use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Imports\Modeles\FournisseurReferentiel;
+use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Tracabilite\Services\JournalLisible;
 use Spatie\Activitylog\Models\Activity;
 
@@ -168,6 +169,24 @@ $totaux = computed(function () {
  * Le périmètre se lit du compte connecté, jamais d'un paramètre reçu : un responsable de
  * ville ne doit pas apprendre d'ici ce qu'une autre ville doit à qui.
  */
+/**
+ * Le dernier dépôt du suivi fournisseur, s'il y en a un.
+ *
+ * **Pourquoi cet écran en a besoin.** Un référentiel vide a deux causes qui n'appellent
+ * pas la même réponse, et l'écran les confondait : ou bien rien n'a jamais été déposé, et
+ * il faut déposer ; ou bien un classeur est bien entré **avant que la feuille « Liste
+ * fournisseurs » ne soit lue** — c'est le cas au 24/09 : le dépôt date du 8 septembre, la
+ * lecture de cette feuille a été écrite le 24 — et il suffit alors de relire ce dépôt, sans
+ * redemander le fichier à personne.
+ *
+ * Dire « complétez le classeur » dans le second cas est un mauvais conseil : le classeur
+ * est complet, c'est nous qui ne l'avions pas encore lu en entier.
+ */
+$dernierDepot = computed(fn () => LotImport::where('format', 'fournisseurs')
+    ->where('etat', 'termine')
+    ->latest('termine_le')
+    ->first());
+
 $orphelins = computed(fn () => ConditionsFournisseur::sansFiche(
     (int) auth()->user()->entreprise_id,
     EtatDesFournisseurs::dansLePerimetre(
@@ -261,11 +280,35 @@ $orphelins = computed(fn () => ConditionsFournisseur::sansFiche(
         </div>
 
         @if ($this->totaux['fiches'] === 0)
-            <p style="margin:0; font-size:13.5px; color:#6B6E76;">
-                Aucune fiche. Elles arrivent avec le classeur de suivi fournisseur, déposé
-                depuis le module <b>Import</b> : la feuille « Liste fournisseurs » est lue
-                en même temps que la feuille des factures, en un seul dépôt.
-            </p>
+            @if ($this->dernierDepot !== null)
+                {{-- Le cas qu'on rencontre aujourd'hui, et que l'écran taisait : le classeur
+                     est bien entré, mais avant que cette feuille-là ne soit lue. Le fichier
+                     déposé est conservé — il n'y a rien à redemander, seulement à relire. --}}
+                <div class="imp-hint warn" style="margin:0;">
+                    <strong>Aucune fiche, et le classeur est pourtant déjà entré.</strong>
+                    « {{ $this->dernierDepot->nom_fichier }} » a été lu le
+                    {{ $this->dernierDepot->termine_le?->format('d/m/Y') }} — mais la feuille
+                    « Liste fournisseurs » n'était pas encore lue à cette date : seules les
+                    factures l'étaient.
+                    <p style="margin:10px 0 0;">
+                        <strong>Rien à redemander à personne.</strong> Le fichier déposé est conservé :
+                        ouvrez ce dépôt dans le journal des imports et relancez sa lecture
+                        (« Réimporter »). Les fiches arriveront avec, sans qu'aucune facture ne soit
+                        écrite deux fois.
+                    </p>
+                    <p style="margin:10px 0 0;">
+                        <a href="{{ route('import.lot', $this->dernierDepot->id) }}" wire:navigate
+                           style="font-weight:700; color:#C8102E;">Ouvrir ce dépôt →</a>
+                    </p>
+                </div>
+            @else
+                <p style="margin:0; font-size:13.5px; color:#6B6E76;">
+                    Aucune fiche, et aucun classeur de suivi fournisseur n'a encore été déposé.
+                    Elles arrivent avec lui, depuis le module <b>Import</b> : la feuille
+                    « Liste fournisseurs » est lue en même temps que la feuille des factures,
+                    en un seul dépôt.
+                </p>
+            @endif
         @else
             <div class="tableau-conteneur">
                 <table class="tableau">
@@ -333,16 +376,40 @@ $orphelins = computed(fn () => ConditionsFournisseur::sansFiche(
     @if ($this->orphelins->isNotEmpty())
         <div class="carte" style="margin-top:18px;">
             <h3 style="margin:0 0 6px; font-size:15px;">Facturés, mais absents de la liste</h3>
-            <p style="margin:0 0 14px; font-size:12.5px; color:#6B6E76;">
-                Ces fournisseurs ont des pièces en base et aucune fiche : leurs factures
-                n'auront pas d'échéance attendue. Certains noms sont vraisemblablement une
-                autre orthographe d'un fournisseur déjà listé — l'application ne les
-                rapproche pas d'elle-même, parce qu'attribuer un délai de paiement sur une
-                ressemblance est une décision qui ne lui appartient pas. Deux corrections sont
-                possibles : compléter la feuille « Liste fournisseurs » du classeur, qui reposera la
-                fiche au prochain dépôt ; ou corriger ici le nom d'une fiche existante quand c'est
-                une orthographe qui diffère — chaque correction laisse sa trace ci-dessous.
-            </p>
+
+            {{-- **Deux situations, et elles ne se disent pas dans les mêmes mots.**
+
+                 Quand le référentiel est vide, *tous* les fournisseurs facturés y sont
+                 absents : la liste ne signale alors rien du tout, elle recopie le tableau
+                 des fournisseurs. Le texte qui parlait de « compléter le classeur » était
+                 dans ce cas un mauvais conseil — le classeur est complet, c'est sa feuille
+                 qui n'avait pas encore été lue. Relevé par le propriétaire le 24/09 :
+                 « je ne comprends rien à ce texte ». --}}
+            @if ($this->totaux['fiches'] === 0)
+                <p style="margin:0 0 14px; font-size:12.5px; color:#6B6E76;">
+                    Le référentiel étant vide, <b>tous</b> les fournisseurs facturés y figurent :
+                    cette liste ne signale donc rien pour l'instant, elle redit le tableau des
+                    fournisseurs. Elle reprendra son sens une fois la feuille
+                    « Liste fournisseurs » lue — il ne restera alors que ceux qui y manquent
+                    réellement, ou dont le nom s'y écrit autrement.
+                </p>
+            @else
+                <p style="margin:0 0 14px; font-size:12.5px; color:#6B6E76;">
+                    Ces fournisseurs ont des pièces en base et aucune fiche : <b>leurs factures
+                    n'auront pas d'échéance attendue</b>, faute de terme de règlement connu.
+                    Certains noms sont vraisemblablement une autre orthographe d'un fournisseur
+                    déjà listé — l'application ne les rapproche pas d'elle-même, parce
+                    qu'attribuer un délai de paiement sur une ressemblance est une décision qui
+                    ne lui appartient pas.
+                </p>
+                <p style="margin:0 0 14px; font-size:12.5px; color:#6B6E76;">
+                    <b>Deux façons de corriger.</b> Ajouter le fournisseur à la feuille
+                    « Liste fournisseurs » du classeur, qui posera sa fiche au prochain dépôt ;
+                    ou, quand c'est une orthographe qui diffère, corriger ici le nom de la fiche
+                    existante pour qu'il colle à celui des factures. Chaque correction laisse sa
+                    trace au journal, en bas de cette page.
+                </p>
+            @endif
 
             <div class="tableau-conteneur">
                 <table class="tableau">

@@ -503,6 +503,209 @@ class LeJournalDeCaisseEntreTest extends TestCase
     }
 
     /** @param  list<list<array{float, float, string}>>  $pages */
+    /*
+    |--------------------------------------------------------------------------
+    | Le même journal, exporté en tableur
+    |--------------------------------------------------------------------------
+    | **La demande du propriétaire, le 24/09** : « préparer cet import aussi en Excel pour
+    | que lorsque les imports seront disponibles en Excel on puisse l'importer, donc dans
+    | le même type d'import du PDF ». Le logiciel ne sort aujourd'hui cet état qu'en PDF ;
+    | le jour où il le sortira en tableur, il ne doit pas falloir créer un type de plus.
+    |
+    | Ce qui change entre les deux documents tient en une phrase : un état imprimé pose la
+    | phrase du mouvement, le remettant et le détail à trois hauteurs différentes ; un
+    | tableur les met dans une seule cellule, séparés par des retours à la ligne. Tout le
+    | reste — le motif, le tiers, le sens lu à la colonne, la chaîne des soldes — est écrit
+    | une seule fois et sert aux deux.
+    */
+
+    public function test_le_meme_journal_en_tableur_donne_exactement_les_memes_mouvements(): void
+    {
+        $this->importerLeJournal([$this->pageDUnJournal()]);
+
+        $parLePdf = $this->mouvementsLisibles();
+
+        $this->assertCount(7, $parLePdf, 'le document imprimé doit avoir produit ses sept mouvements');
+
+        MouvementCaisse::withoutGlobalScopes()->delete();
+        OuvertureCaisse::withoutGlobalScopes()->delete();
+
+        $this->importerLeJournalEnTableur();
+
+        $parLeTableur = $this->mouvementsLisibles();
+
+        // Le point qui compte : ce n'est pas « le tableur passe », c'est « il donne la
+        // même chose ». Deux lectures qui divergeraient sur le même journal seraient pires
+        // qu'une seule qui refuse.
+        $this->assertSame($parLePdf, $parLeTableur);
+    }
+
+    public function test_le_tableur_retrouve_le_tiers_et_le_detail_d_une_cellule_multiligne(): void
+    {
+        $this->importerLeJournalEnTableur();
+
+        $mouvement = MouvementCaisse::withoutGlobalScopes()
+            ->where('numero_piece', '002272')->firstOrFail();
+
+        // Les trois lignes étaient dans une seule cellule : le remettant et le détail
+        // doivent en être ressortis comme ils le sont d'un document imprimé.
+        $this->assertSame('Remettant — MINLIN YANNICK', $mouvement->tiers());
+        $this->assertSame('APPROV CAISSE', $mouvement->motif);
+        $this->assertSame(270000, $mouvement->montant);
+        $this->assertSame(MouvementCaisse::ENTREE, $mouvement->sens);
+    }
+
+    public function test_un_tableur_est_accepte_sous_le_meme_type_que_le_pdf(): void
+    {
+        // Le type ne change pas de nom, et son libellé annonce les deux extensions : c'est
+        // ce qui évitera de créer un second type le jour de l'export en tableur.
+        $this->assertStringContainsString('PDF ou Excel', FormatDuJournalDeCaisse::libelle());
+
+        $resultat = $this->importerLeJournalEnTableur();
+
+        $this->assertSame(0, $resultat->rejetees);
+        $this->assertSame(7, MouvementCaisse::withoutGlobalScopes()->count());
+    }
+
+    /**
+     * Le journal tel qu'un tableur l'exporterait : une ligne par mouvement, et les trois
+     * lignes de texte réunies dans la cellule du libellé.
+     */
+    private function importerLeJournalEnTableur(): Resultat
+    {
+        $lignes = [
+            1 => ['JOURNAL DE CAISSE', '', '', 'PERIODE :', '01/04/2026', 'Au', '31/07/2026'],
+            2 => ['CAISSE :', 'CAISSE BOUAKE', '', 'SOLDE AVANT LA PERIODE :', '100 000'],
+            3 => [],
+            4 => ['DATE', 'LIBELLE DE LA TRANSACTION', 'ENTREE', 'SORTIE', 'SOLDE'],
+        ];
+
+        $rang = 5;
+
+        foreach ($this->mouvementsDuJournal() as $mouvement) {
+            $lignes[$rang++] = [
+                $mouvement['date'],
+                implode("\n", $mouvement['texte']),
+                $mouvement['entree'],
+                $mouvement['sortie'],
+                $mouvement['solde'],
+            ];
+        }
+
+        return $this->traiter(
+            $this->classeurXlsx(['Journal' => $lignes]),
+            FormatDuJournalDeCaisse::class,
+            FormatDuJournalDeCaisse::cle(),
+            'journal.xlsx',
+        );
+    }
+
+    /**
+     * Les **sept mêmes mouvements** que `pageDUnJournal()`, sous la forme d'un tableur.
+     *
+     * Un mot sur la correspondance : ce que le document imprimé pose à trois hauteurs, le
+     * tableur le met dans une cellule avec des retours à la ligne. Le reste est identique —
+     * même date, même colonne pour le montant, même solde. C'est précisément ce que ce jeu
+     * d'essai doit garantir : deux écritures du même journal, et pas deux journaux.
+     *
+     * @return list<array{date: string, texte: list<string>, entree: string, sortie: string, solde: string}>
+     */
+    private function mouvementsDuJournal(): array
+    {
+        return [
+            // 1. Une entrée ordinaire, remettant nommé.
+            [
+                'date' => '27/04/26',
+                'texte' => [
+                    'ENTREE DE CAISSE MC -N° 002272 -MOTIF : APPROV CAISSE',
+                    'REMETTANT : MINLIN YANNICK',
+                ],
+                'entree' => '270 000', 'sortie' => '', 'solde' => '370 000',
+            ],
+            // 2. Une entrée de 1 F, remettant non nommé, détail sur une ligne à part.
+            [
+                'date' => '27/04/26',
+                'texte' => [
+                    'ENTREE DE CAISSE MC -N° 002271 -MOTIF : SOLDE INITIAL',
+                    'REMETTANT :',
+                    'SOLDE INITIAL',
+                ],
+                'entree' => '1', 'sortie' => '', 'solde' => '370 001',
+            ],
+            // 3. Son annulation : même numéro, même colonne, montant négatif.
+            [
+                'date' => '27/04/26',
+                'texte' => [
+                    'ANNULATION ENTREE DE CAISSE MC -N° 002271 -MOTIF : SOLDE INITIAL',
+                    'SOLDE INITIAL',
+                ],
+                'entree' => '-1', 'sortie' => '', 'solde' => '370 000',
+            ],
+            // 4. Une sortie de 1 000 F.
+            [
+                'date' => '27/04/26',
+                'texte' => [
+                    'SORTIE DE CAISSE MC -N° 02276 -MOTIF : ACHATS DIVERS',
+                    'BENEFICIAIRE : BOUTIQUE',
+                    'ACHAT INSECTICIDE',
+                ],
+                'entree' => '', 'sortie' => '1 000', 'solde' => '369 000',
+            ],
+            // 5. Un mouvement sans phrase de description : le document ne l'imprime pas.
+            [
+                'date' => '28/04/26',
+                'texte' => [
+                    'BENEFICIAIRE : SANE JOSE',
+                    'ABONNEMENT FIBRE OPTIQUE',
+                ],
+                'entree' => '', 'sortie' => '25 000', 'solde' => '344 000',
+            ],
+            // 6 et 7. Deux sorties distinctes sous le même numéro de pièce.
+            [
+                'date' => '28/04/26',
+                'texte' => [
+                    'SORTIE DE CAISSE MC -N° 002410 -MOTIF : ACHATS DIVERS',
+                    'BENEFICIAIRE : KACOU SIMPLICE',
+                ],
+                'entree' => '', 'sortie' => '8 000', 'solde' => '336 000',
+            ],
+            [
+                'date' => '28/04/26',
+                'texte' => [
+                    "SORTIE DE CAISSE MC -N° 002410 -MOTIF : MAIN D'OEUVRE",
+                    'BENEFICIAIRE : GUEDJE JAURES',
+                ],
+                'entree' => '', 'sortie' => '8 000', 'solde' => '328 000',
+            ],
+        ];
+    }
+
+    /**
+     * Les mouvements en base, réduits à ce qui se compare.
+     *
+     * La date est rendue en chaîne : deux objets Carbon égaux ne sont jamais identiques au
+     * sens de `assertSame`, et c'est la valeur qu'on veut comparer, pas l'instance.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function mouvementsLisibles(): array
+    {
+        return MouvementCaisse::withoutGlobalScopes()
+            ->orderBy('date')->orderBy('id')
+            ->get()
+            ->map(fn (MouvementCaisse $m) => [
+                'date' => $m->date?->toDateString(),
+                'sens' => $m->sens,
+                'montant' => (int) $m->montant,
+                'piece' => $m->numero_piece,
+                'motif' => $m->motif,
+                'libelle' => $m->libelle,
+                'tiers' => $m->tiers(),
+                'solde' => (int) $m->solde_annonce,
+            ])
+            ->all();
+    }
+
     private function importerLeJournal(array $pages, string $ecriture = 'litterale'): Resultat
     {
         return $this->traiter(
