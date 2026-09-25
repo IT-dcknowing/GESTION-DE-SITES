@@ -89,8 +89,15 @@ class FormatDuJournalDeCaisse extends Format
          * les mêmes tables. On dépose donc le document qu'on a, sous ce type-ci, et le
          * format lit l'un comme l'autre. Voir `parcourirUnePage()` pour ce qui change
          * réellement entre les deux — presque rien.
+         *
+         * **Excel est nommé le premier, et ce n'est pas un détail de rédaction.** Le
+         * propriétaire l'a demandé le 24/09 : « l'import se fera en Excel la plupart du
+         * temps, donc celui de l'Excel doit être prioritaire ». Un tableur se lit par ses
+         * cellules, un imprimé par la position de ses caractères sur la page — la première
+         * lecture ne peut pas se tromper de colonne, la seconde le peut. L'ordre des mots
+         * dit donc lequel apporter quand on a le choix.
          */
-        return 'Caisse — le journal du logiciel (PDF ou Excel)';
+        return 'Caisse — le journal du logiciel (Excel ou PDF)';
     }
 
     /**

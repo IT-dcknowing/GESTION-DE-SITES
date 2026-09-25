@@ -389,6 +389,72 @@ class RecouvrementTest extends TestCase
         $this->assertSame($facture->id, (int) $encaissement->facture_id);
     }
 
+    /**
+     * Un refus se lit dans le formulaire qui l'a prononcé.
+     *
+     * **Le défaut, relevé par le propriétaire le 24/09 : « le bouton ne réagit pas ».**
+     * La carte n'affichait que deux erreurs nommément — le n° de facture et le courtier.
+     * Toutes les autres partaient dans le sac des erreurs sans qu'aucune ligne ne les
+     * rende : le client obligatoire, l'atelier, la date, le montant. Le serveur refusait,
+     * l'écran ne bougeait pas, et le geste se lisait comme une panne.
+     *
+     * Ce test verrouille le contraire : refusée, la facture le dit, et elle dit pourquoi.
+     */
+    public function test_une_facture_refusee_affiche_la_raison_du_refus(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement');
+
+        Volt::actingAs($superviseur)->test('recouvrement.saisie')
+            ->set('facTiers', '')
+            ->set('facSiteId', $this->site->id)
+            ->set('facDate', now()->toDateString())
+            ->set('facMontant', 750000)
+            ->call('creerFacture')
+            ->assertHasErrors('facTiers')
+            ->assertSee('Enregistrement refusé')
+            ->assertSee('client');
+
+        $this->assertSame(0, Facture::withoutGlobalScopes()->count());
+    }
+
+    /**
+     * Le formulaire se vide en entier après un enregistrement.
+     *
+     * Demandé le 24/09 sur la relance, et vrai des trois gestes : un formulaire à demi
+     * rempli après coup se lit comme un formulaire pas encore enregistré, et le geste
+     * suivant est de recliquer. Sur une relance N5, recliquer envoie deux fois l'huissier.
+     */
+    public function test_les_formulaires_se_vident_apres_un_enregistrement(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement');
+        $this->declarerLeTiers('NSIA ASSURANCES');
+
+        $ecran = Volt::actingAs($superviseur)->test('recouvrement.saisie')
+            ->set('facTiers', 'NSIA ASSURANCES')
+            ->set('facAssureur', 'NSIA ASSURANCES')
+            ->set('facSiteId', $this->site->id)
+            ->set('facDate', now()->toDateString())
+            ->set('facMontant', 750000)
+            ->call('creerFacture')
+            ->assertHasNoErrors();
+
+        $ecran->assertSet('facTiers', '')
+            ->assertSet('facAssureur', '')
+            ->assertSet('facMontant', '');
+
+        $ecran->set('relTiers', 'NSIA ASSURANCES')
+            ->set('relDate', now()->toDateString())
+            ->set('relNiveau', 5)
+            ->set('relCanal', RelanceRecouvrement::CANAUX[0])
+            ->set('relStatut', RelanceRecouvrement::STATUTS[0])
+            ->call('enregistrerRelance')
+            ->assertHasNoErrors();
+
+        $ecran->assertSet('relTiers', '')
+            ->assertSet('relNiveau', 1)
+            ->assertSet('relCanal', '');
+    }
+
     public function test_la_facture_creee_porte_son_numero_de_saisie(): void
     {
         $superviseur = $this->compte('superviseur_recouvrement');

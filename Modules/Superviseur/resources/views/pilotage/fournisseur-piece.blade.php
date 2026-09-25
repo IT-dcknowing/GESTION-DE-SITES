@@ -273,7 +273,7 @@ $enregistrer = function () {
                     feuille « Liste fournisseurs » du classeur : ni terme de règlement, ni
                     TVA. Aucune échéance ne peut donc en être déduite. La liste se complète
                     dans le classeur, puis le dépôt la reprend —
-                    <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate>voir le référentiel</a>.
+                    <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate>voir les conditions de règlement</a>.
                 </p>
             @else
                 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px 18px;">

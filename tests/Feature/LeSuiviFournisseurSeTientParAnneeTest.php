@@ -514,6 +514,97 @@ class LeSuiviFournisseurSeTientParAnneeTest extends TestCase
 
     // ------------------------------------------------------------------ outillage
 
+    // ------------------------------------------------------------------ le tableau initial
+
+    /**
+     * Le pendant du « Tableau état initial » des impayés.
+     *
+     * **Ce qu'il protège, et que l'état par année ne peut pas montrer.** L'état d'une année
+     * retient ce qui y a été facturé plus ce qui reste dû depuis avant : une pièce de 2023
+     * **déjà soldée** n'entre donc dans aucun exercice, et disparaît de tous les écrans.
+     * C'est acceptable pour travailler, et inacceptable pour vérifier une reprise. Le
+     * propriétaire l'a relevé le 24/09 : « je ne vois pas le bouton initial comme celui
+     * des impayés ».
+     */
+    public function test_le_tableau_initial_montre_aussi_ce_qui_est_solde_et_ancien(): void
+    {
+        $this->piece('SOCIDA', '1001', '2023-03-04', 500_000, 500_000);
+        $this->piece('NSIA', '1002', '2026-02-10', 300_000, 0);
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs-tableau-initial');
+
+        // Les deux, alors qu'aucun exercice ne porte la première.
+        $this->assertSame(2, $ecran->instance()->nombre);
+        $ecran->assertSee('1001')->assertSee('1002');
+
+        // Et l'état de 2026, lui, ne la voit pas : c'est bien deux vues, pas deux copies.
+        $this->assertSame(['1002'], EtatDesFournisseurs::requete(2026)->pluck('numero_piece')->all());
+    }
+
+    public function test_le_tableau_initial_separe_la_reprise_de_la_saisie(): void
+    {
+        $lot = LotImport::create([
+            'entreprise_id' => $this->entreprise->id,
+            'ville_id' => $this->ville->id,
+            'deposant' => 'Reprise',
+            'format' => 'fournisseurs',
+            'nom_fichier' => 'FSF L2A.xlsx',
+            'empreinte' => str_repeat('a', 64),
+            'etat' => 'termine',
+        ]);
+
+        $this->piece('SOCIDA', '1001', '2025-03-04', 500_000, 0)->update(['lot_import_id' => $lot->id]);
+        $this->piece('NSIA', '1002', '2026-02-10', 300_000, 0);
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs-tableau-initial');
+
+        $ecran->set('origineFiltre', 'saisie');
+        $this->assertSame(1, $ecran->instance()->nombre);
+        $this->assertSame(['1002'], $ecran->instance()->lignes->pluck('numero_piece')->all());
+
+        $ecran->set('origineFiltre', 'fichier');
+        $this->assertSame(['1001'], $ecran->instance()->lignes->pluck('numero_piece')->all());
+    }
+
+    /**
+     * Le périmètre se lit sur l'identité du lecteur, jamais sur le paramètre reçu.
+     *
+     * Un tableau « tout, tel quel » est précisément celui où l'on serait tenté d'oublier la
+     * règle : c'est celui où elle compte le plus.
+     */
+    public function test_le_tableau_initial_ne_montre_pas_une_autre_ville(): void
+    {
+        $ailleurs = Ville::create([
+            'entreprise_id' => $this->entreprise->id, 'code' => 'BKE', 'nom' => 'Bouaké', 'est_actif' => true,
+        ]);
+        Site::create([
+            'entreprise_id' => $this->entreprise->id, 'ville_id' => $ailleurs->id,
+            'code' => 'BKE-1', 'nom' => 'Bouaké', 'est_actif' => true,
+        ]);
+
+        $this->piece('SOCIDA', '1001', '2026-03-04', 500_000, 0)->update(['ville_id' => $ailleurs->id]);
+        $this->piece('NSIA', '1002', '2026-02-10', 300_000, 0);
+
+        // Le périmètre d'un responsable de ville se lit sur la ville qu'il dirige, et non
+        // sur la case « ville » de sa fiche — c'est la règle de Site::visiblesPour().
+        $responsable = $this->compte('responsable_ville');
+        $this->ville->update(['responsable_id' => $responsable->id]);
+
+        // Sans filtre, il voit la sienne, et elle seule.
+        $ecran = Volt::actingAs($responsable)
+            ->test('pilotage.fournisseurs-tableau-initial');
+
+        $this->assertSame(['1002'], $ecran->instance()->lignes->pluck('numero_piece')->all());
+
+        // Le filtre ne lui est même pas offert — mais l'état se force depuis le navigateur.
+        // Forcé, il n'ouvre rien : le filtre ne peut qu'élaguer le périmètre, jamais
+        // l'élargir. Zéro ligne est la bonne réponse ; la pièce de Bouaké en serait une
+        // mauvaise, et silencieuse.
+        $ecran->set('villeFiltre', (string) $ailleurs->id);
+
+        $this->assertSame([], $ecran->instance()->lignes->pluck('numero_piece')->all());
+    }
+
     private function piece(string $fournisseur, string $numero, ?string $date, int $montant, int $regle): FactureFournisseur
     {
         return FactureFournisseur::withoutGlobalScopes()->create([

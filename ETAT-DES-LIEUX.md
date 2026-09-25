@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 septembre 2026** (12e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **25 septembre 2026** (13e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 25/09 | voir `git log` | **finitions-du-25** | « **Créer une facture** » ne réagissait pas : `wire:model.blur` n'écoute que `blur`, et le champ masqué des listes cherchables ne le reçoit jamais — la valeur ne partait pas, et le refus ne s'affichait nulle part ; **les trois formulaires du recouvrement se vident** après enregistrement ; **tableau initial des fournisseurs** (`/fournisseurs/tableau-initial`), le pendant de celui des impayés ; « Référentiel » devient « **Conditions de règlement** » ; **la loupe ville lit enfin le périmètre** du lecteur ; **une seule numérotation** de facture et **une seule expression** de « réglée » ; le journal de caisse annonce **Excel avant PDF** |
 | 24/09 | voir `git log` | **caisse-tableur-et-fournisseurs** | le **journal de caisse se lit aussi en tableur**, sous le même type que le PDF (sept mouvements comparés ligne à ligne, identiques) ; la **saisie d'une pièce fournisseur couvre les quarante colonnes** des deux classeurs, repliées par blocs, et demande l'atelier là où la ville en compte deux ; le **référentiel fournisseur dit enfin pourquoi il est vide** — le classeur est entré le 8/09, la feuille « Liste fournisseurs » n'est lue que depuis le 24/09, et 282 fiches attendent une relecture du même dépôt ; un **encaissement saisi sur une facture sans atelier en reçoit un**, sans quoi il n'apparaîtrait jamais en trésorerie ; le champ « Atelier » du dépôt n'oblige plus à recharger la page |
 | 24/09 | voir `git log` | **corrections-du-soir** | **la création d'une facture depuis le recouvrement était cassée en production** (colonne `numero` NOT NULL jamais posée : MySQL refusait, SQLite l'acceptait, aucun test ne le voyait) ; **le bandeau vert ne s'affichait jamais après une navigation** — troisième piège de la même famille ; le filtre « Réglées » du chiffre d'affaires lisait l'état des impayés au lieu des encaissements (2 480 annoncées, 7 616 réelles) ; l'extrait de compte filtre à la frappe et n'offre plus que les tiers qui portent une facture (273 au lieu de 2 446) ; le dépôt avertit quand le fichier n'est pas de l'exercice déclaré ; « Rectification » entre au barème, à côté de « Enregistrer la modification » |
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
@@ -1410,6 +1411,104 @@ là ; le premier l'aurait rencontré.
 Il descend donc jusqu'à un atelier : celui de la facture s'il est connu, sinon l'unique
 atelier de sa ville, sinon celui de la personne qui encaisse. Ce qu'on ne fait pas : choisir
 au hasard entre les deux ateliers d'Abidjan.
+
+### Le bouton qui ne réagissait pas, et ce qu'il a révélé
+
+✅ **Corrigé le 25/09.** « L'enregistrement ne passe pas, le bouton ne réagit pas », sur
+« Créer une facture » du recouvrement. Le bouton réagissait ; c'est la valeur qui ne
+partait pas.
+
+**La cause, en une phrase.** Les quatre listes de tiers de ce formulaire sont des
+`x-select-cherchable` alimentées par un `<datalist>` partagé, et ce cas-là — et lui seul —
+branche son champ en `wire:model.blur`. Or Livewire, pour ce modificateur, **n'écoute que
+`blur`** : ni `input`, ni `change`. Le champ réel est masqué et hors du parcours au
+clavier, il ne reçoit donc jamais le focus, donc ne le perd jamais, donc n'émet jamais
+`blur`. Le client restait vide côté serveur, `required` refusait, et rien ne s'affichait.
+
+**Deux corrections, pas une.** Le panneau émet maintenant les **trois** évènements, dans
+l'ordre où un vrai geste humain les produit — en émettre un de trop est sans effet, en
+oublier un laisse la valeur dans la page. Et surtout : **un refus se lit désormais dans le
+formulaire qui l'a prononcé** (`x-erreurs-du-bloc`). La carte n'affichait que deux erreurs
+nommément, le n° de facture et le courtier ; les autres — client, atelier, date, montant —
+partaient dans le sac des erreurs sans qu'aucune ligne ne les rende. C'est la deuxième
+correction qui compte : la première ferme un défaut, la seconde empêche le prochain de
+passer inaperçu.
+
+**Et les formulaires se vident.** Demandé le même jour, et vrai des trois gestes : un
+formulaire à demi rempli après coup se lit comme un formulaire pas encore enregistré, et
+le geste suivant est de recliquer. Sur une relance N5, recliquer envoie deux fois
+l'huissier. (`fill()` et non `reset()` : Volt ne rend pas toujours à `reset()` la valeur
+déclarée dans `state()`, et un tiers remis à `null` au lieu de la chaîne vide casse le
+rendu suivant.)
+
+### Le tableau initial des fournisseurs
+
+✅ **Fait le 25/09**, après une remarque juste : « je ne vois pas le bouton initial comme
+celui des impayés ». La paire manquait. `/fournisseurs/tableau-initial` en est le pendant
+exact.
+
+**Ce qu'il montre et que l'écran par année ne peut pas montrer.** L'état des fournisseurs
+retient une année **plus ce qui traîne depuis avant** : une pièce de 2023 **déjà soldée**
+n'entre donc dans aucun exercice, et disparaît de tous les écrans. Acceptable pour
+travailler, inacceptable pour vérifier une reprise. Ici, toutes les pièces, toutes années
+mêlées, vingt-cinq colonnes du classeur, en lecture seule — les quarante se lisent sur la
+page de détail. Filtres : année, ville, origine (classeur ou saisie), solde, recherche.
+
+**Sur le « montant double » qui n'avait pas été compris**, la carte de tête le dit
+maintenant en clair : les deux classeurs portent **10 147 lignes** à eux deux, mais
+**7 397 distinctes** — **2 670 figurent dans les deux**. Déposés l'un après l'autre sans
+précaution, ils auraient compté la même dette deux fois. Chaque pièce est donc reconnue à
+quatre champs (fournisseur, n°, date, montant), et c'est aussi pourquoi ces quatre-là
+restent verrouillés sur une ligne venue d'un fichier.
+
+**Et « Référentiel » change de nom.** C'était un mot de développeur : il dit comment la
+chose est rangée, pas ce qu'on y lit — au point qu'on pouvait croire y trouver les
+fournisseurs sans facture. L'écran s'appelle **« Conditions de règlement des
+fournisseurs »**, ce qu'il porte : à quel terme chacun se règle, et s'il facture la TVA.
+
+### Les modules communiquent : trois règles ramenées à une
+
+✅ **Fait le 25/09**, dans l'ordre demandé par le propriétaire (1, puis 3, puis 2).
+
+**1. Le périmètre ville.** `VilleDeTravail` — la *loupe*, ce qu'on choisit de regarder —
+listait toutes les villes actives de l'entreprise **sans regarder qui demandait**, et
+vérifiait le choix de la session contre cette même liste trop large. Pour un agent de
+recouvrement, dont le périmètre est l'entreprise entière, cela ne changeait rien ; pour un
+responsable de ville, la même liste ouvrait la ville d'à côté — et un identifiant posé à la
+main dans la session aurait tenu. La loupe **choisit désormais dans**
+`PerimetreSites::villesVisibles()` ; elle ne décide plus. Le périmètre est relu à chaque
+lecture, parce qu'un périmètre se rétrécit — une mutation, un rôle retiré — et que la
+session, elle, ne le sait pas.
+
+*À ne pas confondre avec* `Recouvrement::dansLaVille()`, qui n'est pas un troisième droit
+mais la façon d'appliquer une ville à des factures dont 8 937 sur 11 332 n'ont pas
+d'atelier. Ce sont trois choses différentes : le **droit**, la **loupe**, et la
+**traduction en SQL**. Seules les deux premières devaient se parler.
+
+**3. Un seul numéro.** Trois écrans créent une facture — la saisie du jour, le
+recouvrement, l'état des impayés — et chacun recopiait la numérotation. Le numéro de
+**pièce** n'avait pourtant jamais à être écrit dans un écran : `EstUneSaisieTracee` le pose
+à la création, pour les cinq modèles de saisie. Les trois copies ont été retirées. Le
+numéro de **document** — celui que le client lit sur son papier — a maintenant une seule
+règle, `Facture::numeroDeDocument()`. Les deux existent et ne disent pas la même chose :
+une facture reprise d'un fichier porte le second sans porter le premier.
+
+**2. Une seule expression de « réglée ».** La sous-requête des encaissements était écrite
+trois fois — `scopeSoldee`, `scopeAvecResteAEncaisser`, `EtatDesImpayes::filtrerLeSolde`.
+Elles donnaient le même résultat, ce qui est plus inquiétant que rassurant : rien
+n'obligeait la troisième à suivre le jour où l'on bougerait `SEUIL_SOLDE`. Il n'y a plus
+qu'une constante, `Facture::ENCAISSE_SQL`, et un seul seuil.
+
+### Le journal de caisse : Excel d'abord
+
+✅ **Le 25/09.** Le type s'appelle « Caisse — le journal du logiciel (**Excel ou PDF**) »,
+et l'ordre des mots n'est pas de la rédaction : « l'import se fera en Excel la plupart du
+temps, donc celui de l'Excel doit être prioritaire ». Un tableur se lit par ses cellules,
+un imprimé par la position de ses caractères sur la page — la première lecture ne peut pas
+se tromper de colonne, la seconde le peut. Le libellé dit donc lequel apporter quand on a
+le choix. L'autre type de caisse, « le classeur tenu à la main (Excel) », n'a jamais été
+que du tableur. Et le lecteur `Classeur` choisit de toute façon par la **signature** du
+fichier, pas par son extension : n'importe quel type accepte l'un ou l'autre.
 
 ### Pour le jour où les API répondront
 

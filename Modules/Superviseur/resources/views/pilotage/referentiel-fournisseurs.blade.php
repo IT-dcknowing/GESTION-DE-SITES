@@ -198,8 +198,12 @@ $orphelins = computed(fn () => ConditionsFournisseur::sansFiche(
 ?>
 
 <div>
-    <x-titre-ecran titre="Référentiel fournisseurs"
-        sous-titre="Le terme de règlement et la TVA de chaque fournisseur, tels que la feuille « Liste fournisseurs » du classeur les déclare. C'est de là que vient l'échéance attendue d'une facture.">
+    {{-- « Référentiel » est un mot de développeur : il dit comment la chose est rangée,
+         pas ce qu'on y lit. Le propriétaire l'a relevé le 24/09 — il pensait y trouver la
+         liste des fournisseurs sans facture. Le titre dit donc ce que la page porte : le
+         terme de règlement et la TVA, fournisseur par fournisseur. --}}
+    <x-titre-ecran titre="Conditions de règlement des fournisseurs"
+        sous-titre="À quel terme chaque fournisseur se règle, et s'il facture la TVA — tels que la feuille « Liste fournisseurs » du classeur les déclare. C'est de là que vient l'échéance attendue d'une facture que le classeur n'a pas datée.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
             <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Suivi fournisseur</a>
             <a href="{{ route('balance-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Balance</a>

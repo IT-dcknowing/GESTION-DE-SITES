@@ -3,7 +3,10 @@
 namespace Modules\Noyau\Entreprises\Services;
 
 use App\Models\User;
+use Illuminate\Support\Collection;
+use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Support\PerimetreSites;
 
 /**
  * La ville qu'on regarde en ce moment, dans les modules qui travaillent sur toute l'entreprise.
@@ -20,6 +23,18 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
  * Le choix vit dans la session, comme celui de l'exercice, et pour les mêmes raisons : il
  * appartient à celui qui regarde, il n'écrit rien, et fermer la session le rend.
  *
+ * **La loupe ne peut pas élargir le droit, et c'est vérifié ici.** Elle listait toutes les
+ * villes actives de l'entreprise, sans regarder qui demandait. Pour un agent de
+ * recouvrement, dont le périmètre est l'entreprise entière, cela ne changeait rien ; pour
+ * un responsable de ville, la même liste aurait ouvert la ville d'à côté — et la
+ * vérification de `villeId()` se faisait contre cette même liste trop large, si bien qu'un
+ * identifiant posé à la main dans la session aurait tenu.
+ *
+ * Il n'y a donc plus qu'un endroit où se décide « que voit cette personne » :
+ * `PerimetreSites::villesVisibles()`. La loupe **choisit dedans**, elle ne décide pas.
+ * Demandé le 24/09 par le propriétaire, en tête des modules à faire communiquer.
+ *
+ * @see PerimetreSites le droit — qui a accès à quoi
  * @see ExerciceDeTravail la même idée, appliquée à l'année
  */
 class VilleDeTravail
@@ -38,7 +53,9 @@ class VilleDeTravail
 
         $choisie = session(self::cle($entrepriseId));
 
-        return $choisie !== null && self::villes($entrepriseId)->has((int) $choisie)
+        // Relu à chaque lecture, et non seulement au moment du choix : un périmètre se
+        // rétrécit — une mutation, un rôle retiré — et la session, elle, ne le sait pas.
+        return $choisie !== null && self::villes($entrepriseId, $utilisateur)->has((int) $choisie)
             ? (int) $choisie
             : null;
     }
@@ -52,7 +69,7 @@ class VilleDeTravail
             return;
         }
 
-        if ($villeId === null || ! self::villes($entrepriseId)->has($villeId)) {
+        if ($villeId === null || ! self::villes($entrepriseId, $utilisateur)->has($villeId)) {
             session()->forget(self::cle($entrepriseId));
 
             return;
@@ -81,7 +98,7 @@ class VilleDeTravail
 
         $utilisateur ??= auth()->user();
 
-        return \Modules\Noyau\Entreprises\Modeles\Site::withoutGlobalScopes()
+        return Site::withoutGlobalScopes()
             ->where('entreprise_id', $utilisateur->entreprise_id)
             ->where('ville_id', $villeId)
             ->pluck('id')
@@ -89,10 +106,26 @@ class VilleDeTravail
             ->all();
     }
 
-    /** @return \Illuminate\Support\Collection<int, string> */
-    public static function villes(?int $entrepriseId = null)
+    /**
+     * Les villes dans lesquelles la loupe peut se poser — celles que le lecteur a le droit
+     * de voir, et pas une de plus.
+     *
+     * L'argument `$entrepriseId` reste accepté pour les appels hors session — une commande,
+     * une tâche de fond —, où il n'y a personne dont lire le périmètre. Il ne sert qu'à
+     * cela : dès qu'un compte est connecté, c'est son périmètre qui tranche.
+     *
+     * @return Collection<int, string>
+     */
+    public static function villes(?int $entrepriseId = null, ?User $utilisateur = null)
     {
-        $entrepriseId ??= auth()->user()?->entreprise_id;
+        $utilisateur ??= auth()->user();
+
+        if ($utilisateur !== null) {
+            return PerimetreSites::villesVisibles($utilisateur)
+                ->where('est_actif', true)
+                ->sortBy('nom')
+                ->pluck('nom', 'id');
+        }
 
         if ($entrepriseId === null) {
             return collect();
@@ -111,7 +144,7 @@ class VilleDeTravail
 
         return $villeId === null
             ? 'Toutes les villes'
-            : (string) self::villes()->get($villeId, 'Toutes les villes');
+            : (string) self::villes(null, $utilisateur)->get($villeId, 'Toutes les villes');
     }
 
     private static function cle(int $entrepriseId): string

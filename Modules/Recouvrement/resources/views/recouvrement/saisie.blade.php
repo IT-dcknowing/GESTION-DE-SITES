@@ -7,7 +7,6 @@ use Modules\Noyau\Entreprises\Modeles\Exercice;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
-use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
@@ -296,7 +295,21 @@ $enregistrerEncaissement = function () {
         ->withProperties(['tiers' => $donnees['encTiers'], 'montant' => $montant, 'mode' => $donnees['encMode']])
         ->log('Recouvrement — encaissement enregistré');
 
-    $this->reset(['encFactureId', 'encMontant', 'encReference']);
+    /*
+     * **Le formulaire se vide en entier, tiers compris.** Demandé par le propriétaire le
+     * 24/09. Il ne gardait que le tiers et le mode, ce qui paraissait commode : on enchaîne
+     * souvent deux règlements du même client. Mais un formulaire à demi rempli après un
+     * enregistrement se lit comme un formulaire pas encore enregistré — et le geste suivant
+     * est de recliquer. On préfère retaper le tiers que d'encaisser deux fois.
+     *
+     * La date de travail, elle, reste : c'est un réglage de séance, pas une saisie.
+     */
+    // `fill` et non `reset` : Volt ne rend pas toujours à `reset()` la valeur déclarée
+    // dans `state()`, et un `encTiers` remis à null au lieu de la chaîne vide fait sauter
+    // `facturesOuvertesDuTiers(string $tiers)` au rendu suivant. On repose donc les
+    // valeurs de départ à la main — elles sont écrites juste au-dessus, dans `state()`.
+    $this->fill(['encTiers' => '', 'encFactureId' => '', 'encMode' => '',
+        'encMontant' => '', 'encReference' => '']);
     unset($this->ouvertes, $this->kpis, $this->tiersOuverts, $this->facturesDuTiersEncaissement, $this->factureVisee);
 
     $this->dispatch('annonce', ton: 'succes', texte: 'Encaissement de '.Recouvrement::fr($montant)
@@ -384,7 +397,11 @@ $enregistrerRelance = function () {
         ->withProperties(['tiers' => $donnees['relTiers'], 'niveau' => 'N'.$donnees['relNiveau'], 'canal' => $donnees['relCanal']])
         ->log('Recouvrement — relance N'.$donnees['relNiveau'].' tracée');
 
-    $this->reset(['relFacture', 'relInterlocuteur', 'relResultat', 'relPromis']);
+    // Vidé en entier, pour la même raison que l'encaissement : une relance N5 qu'on
+    // enregistre deux fois part deux fois chez l'huissier. Le niveau revient à N1 et le
+    // statut à « En cours » — leurs valeurs de départ —, la date de relance reste.
+    $this->fill(['relTiers' => '', 'relFacture' => '', 'relNiveau' => 1, 'relCanal' => '',
+        'relInterlocuteur' => '', 'relResultat' => '', 'relPromis' => '', 'relStatut' => 'En cours']);
     unset($this->nombreRelances);
 
     // Les deux derniers niveaux engagent l'entreprise : le message le rappelle au moment
@@ -455,12 +472,17 @@ $creerFacture = function () {
      * **Le numéro de facture se génère quand on ne le donne pas.** Demandé par le
      * propriétaire le 24/09. Une créance saisie ici n'a pas toujours de facture d'atelier
      * derrière elle : exiger un numéro obligeait à en inventer un, et un numéro inventé à
-     * la main finit par se répéter. La série « NF » est celle qu'emploie déjà la saisie du
-     * jour du responsable de site — une seule numérotation pour toute la maison.
+     * la main finit par se répéter.
+     *
+     * La règle n'est plus recopiée ici : elle vit dans `Facture::numeroDeDocument()`, et
+     * les trois écrans qui créent une facture l'appellent. Trois copies d'une même règle
+     * finissent par diverger — c'est ce qui était arrivé.
      */
-    $numeroFacture = trim((string) ($donnees['facNumero'] ?? '')) !== ''
-        ? $donnees['facNumero']
-        : GenerateurNumero::suivant(auth()->user()->entreprise_id, 'nfa', $donnees['facDate']);
+    $numeroFacture = Facture::numeroDeDocument(
+        $donnees['facNumero'] ?? null,
+        auth()->user()->entreprise_id,
+        $donnees['facDate'],
+    );
 
     // Un doublon de numéro pour le même client rend l'extrait de compte incontestable —
     // dans le mauvais sens : le client conteste, et on ne sait plus laquelle est la bonne.
@@ -486,16 +508,10 @@ $creerFacture = function () {
         'entreprise_id' => auth()->user()->entreprise_id,
         'site_id' => (int) $donnees['facSiteId'],
         'date' => $donnees['facDate'],
-        /*
-         * **`numero` manquait, et la création échouait en silence.** La colonne est NOT
-         * NULL sans valeur par défaut : le bouton « Créer la facture » butait donc sur la
-         * base à chaque clic, et l'écran ne montrait rien — d'où « la création ne
-         * fonctionne pas », relevé par le propriétaire le 24/09. C'est le numéro **de
-         * saisie**, celui que porte toute pièce de l'application ; `n_facture` est celui
-         * du document remis au client. Les deux existent, et ils ne disent pas la même
-         * chose.
-         */
-        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'fac', $donnees['facDate']),
+        // `numero` — le numéro de **pièce**, celui que porte toute saisie de l'application —
+        // n'est pas écrit ici : le trait `EstUneSaisieTracee` le pose à la création, avec la
+        // date de l'opération et la série de la facture. Le recopier consommait un numéro de
+        // plus pour rien, et ajoutait un quatrième endroit où la règle pouvait diverger.
         'n_facture' => $numeroFacture,
         'client' => $donnees['facTiers'],
         'assureur' => $donnees['facAssureur'] ?: null,
@@ -521,7 +537,11 @@ $creerFacture = function () {
         ])
         ->log('Recouvrement — facture créée');
 
-    $this->reset(['facNumero', 'facVehicule', 'facImmatriculation', 'facMontant', 'facObservations']);
+    // Les tiers aussi : ils étaient conservés, et une seconde facture créée dans la
+    // foulée héritait en silence du courtier de la précédente.
+    $this->fill(['facTiers' => '', 'facAssureur' => '', 'facCourtier' => '', 'facDeposeChez' => '',
+        'facNumero' => '', 'facVehicule' => '', 'facImmatriculation' => '', 'facMontant' => '',
+        'facObservations' => '']);
     unset($this->ouvertes, $this->kpis, $this->tiers, $this->tiersOuverts);
 
     $this->dispatch('annonce', ton: 'succes', texte: 'Facture n° '.$numeroFacture
@@ -710,6 +730,8 @@ $creerTiers = function () {
                 @endif
             @enderror
 
+            <x-erreurs-du-bloc prefixe="enc" />
+
             <div class="rec-actions">
                 <button type="button" class="rec-btn r" wire:click="enregistrerEncaissement">
                     Enregistrer l'encaissement
@@ -832,6 +854,8 @@ $creerTiers = function () {
                         @endif
                     </div>
                 @enderror
+
+                <x-erreurs-du-bloc prefixe="fac" />
 
                 <div class="rec-actions">
                     <button type="button" class="rec-btn n" wire:click="creerFacture">Créer la facture</button>
@@ -1002,6 +1026,8 @@ $creerTiers = function () {
                     </div>
                 @endif
             @enderror
+
+            <x-erreurs-du-bloc prefixe="rel" />
 
             <div class="rec-actions">
                 <button type="button" class="rec-btn r" wire:click="enregistrerRelance">

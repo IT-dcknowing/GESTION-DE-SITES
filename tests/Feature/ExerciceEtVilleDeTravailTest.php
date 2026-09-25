@@ -10,6 +10,7 @@ use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Exercice;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Services\BasculeDExercice;
 use Modules\Noyau\Entreprises\Services\ExerciceDeTravail;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Entreprises\Services\VilleDeTravail;
@@ -78,7 +79,7 @@ class ExerciceEtVilleDeTravailTest extends TestCase
 
         // `Exercice::actuel()` lit un exercice, il n'en crée pas : c'est la bascule qui
         // s'en charge, au premier passage d'année comme au premier jour de l'entreprise.
-        (new \Modules\Noyau\Entreprises\Services\BasculeDExercice)->assurer($this->entreprise->id);
+        (new BasculeDExercice)->assurer($this->entreprise->id);
     }
 
     /*
@@ -184,5 +185,48 @@ class ExerciceEtVilleDeTravailTest extends TestCase
         VilleDeTravail::choisir($villeAutre->id);
 
         $this->assertNull(VilleDeTravail::villeId(), "La ville d'une autre entreprise n'est jamais retenue.");
+    }
+
+    /**
+     * La loupe choisit dans le périmètre, elle ne le décide pas.
+     *
+     * **Ce qui était possible avant.** `VilleDeTravail::villes()` listait toutes les villes
+     * actives de l'entreprise, sans regarder qui demandait — et `villeId()` vérifiait le
+     * choix de la session contre cette même liste trop large. Un responsable de ville
+     * pouvait donc poser la ville d'à côté et la lire, sur tout écran qui s'appuie sur la
+     * loupe : la balance âgée, l'extrait de compte, le tableau de bord du recouvrement.
+     *
+     * Il n'y a plus qu'un endroit où se décide « que voit cette personne ». Le test le
+     * vérifie par les trois chemins : la liste offerte, le choix posé, et la relecture
+     * d'un choix déjà en session.
+     */
+    public function test_la_loupe_ne_propose_pas_une_ville_hors_du_perimetre(): void
+    {
+        $responsable = User::create([
+            'entreprise_id' => $this->entreprise->id, 'name' => 'Responsable Abidjan',
+            'email' => 'resp-abj@alpha.test', 'password' => Hash::make('motdepasse123'),
+            'ville_id' => $this->abidjan->id, 'est_actif' => true,
+        ]);
+        $responsable->assignRole('responsable_ville');
+        $this->abidjan->update(['responsable_id' => $responsable->id]);
+
+        $this->actingAs($responsable = $responsable->fresh());
+
+        // Ce qu'on lui propose : sa ville, et elle seule.
+        $this->assertSame(['Abidjan'], VilleDeTravail::villes()->values()->all());
+
+        // Ce qu'il obtient en demandant l'autre : rien — et non « Bouaké ».
+        VilleDeTravail::choisir($this->bouake->id);
+        $this->assertNull(VilleDeTravail::villeId());
+
+        // Et un identifiant posé directement dans la session ne tient pas davantage : le
+        // périmètre est relu à chaque lecture, parce qu'un périmètre se rétrécit.
+        session(['ville_de_travail.'.$this->entreprise->id => $this->bouake->id]);
+        $this->assertNull(VilleDeTravail::villeId());
+        $this->assertSame('Toutes les villes', VilleDeTravail::libelle());
+
+        // Le gérant, lui, garde les deux : la règle n'a rien retiré à qui y a droit.
+        $this->actingAs($this->gerant);
+        $this->assertSame(['Abidjan', 'Bouaké'], VilleDeTravail::villes()->values()->all());
     }
 }

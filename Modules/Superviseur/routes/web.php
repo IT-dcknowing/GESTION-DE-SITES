@@ -65,6 +65,11 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // l'écran de caisse aurait donné un écran qui répond mal aux deux questions.
     Volt::route('/caisse/vehicule', 'pilotage.caisse-vehicule')->name('caisse.vehicule');
     Volt::route('/fournisseurs', 'pilotage.fournisseurs')->name('fournisseurs');
+    // La reprise des deux classeurs a son adresse propre, comme celle du classeur des
+    // impayés : toutes années mêlées, en lecture seule. L'état par année ne peut pas la
+    // montrer — une pièce soldée d'une année passée n'entre dans aucun exercice.
+    Volt::route('/fournisseurs/tableau-initial', 'pilotage.fournisseurs-tableau-initial')
+        ->name('fournisseurs.tableau-initial');
     /*
      * Les deux exports du logiciel comptable ont leur page, à côté du suivi tenu à la main.
      *

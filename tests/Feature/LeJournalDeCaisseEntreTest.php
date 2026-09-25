@@ -558,8 +558,11 @@ class LeJournalDeCaisseEntreTest extends TestCase
     public function test_un_tableur_est_accepte_sous_le_meme_type_que_le_pdf(): void
     {
         // Le type ne change pas de nom, et son libellé annonce les deux extensions : c'est
-        // ce qui évitera de créer un second type le jour de l'export en tableur.
-        $this->assertStringContainsString('PDF ou Excel', FormatDuJournalDeCaisse::libelle());
+        // ce qui évitera de créer un second type le jour de l'export en tableur. Excel est
+        // nommé le premier — « l'import se fera en Excel la plupart du temps, donc celui de
+        // l'Excel doit être prioritaire », 24/09 — et un tableur se lit par ses cellules là
+        // où un imprimé se lit par la position de ses caractères.
+        $this->assertStringContainsString('Excel ou PDF', FormatDuJournalDeCaisse::libelle());
 
         $resultat = $this->importerLeJournalEnTableur();
 
