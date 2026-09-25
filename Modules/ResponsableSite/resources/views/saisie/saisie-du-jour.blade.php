@@ -946,10 +946,12 @@ $validerFactures = function () {
             'site_id' => $this->site->id,
             'devis_id' => $ligne['devis_id'],
             'commercial_id' => $ligne['commercial_id'],
-            'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'fac', $this->date),
+            // `numero` est posé par `EstUneSaisieTracee` à la création : une seule règle
+            // pour les cinq modèles de saisie, et rien à oublier dans un écran.
+            //
             // Le N° de facture est généré automatiquement, jamais saisi à la main — un champ
             // manuel oublié faisait silencieusement disparaître la ligne à la validation.
-            'n_facture' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'nfa', $this->date),
+            'n_facture' => Facture::numeroDeDocument(null, auth()->user()->entreprise_id, $this->date),
             'reference_devis' => $ligne['devis_numero'],
             'date' => $this->date,
             'client' => $ligne['client'],
@@ -1016,8 +1018,8 @@ $ajouterFactureLibre = function () {
         'devis_id' => $devisLie?->id,
         'reference_devis' => $donnees['facLibreRefDevis'] ?: null,
         'commercial_id' => $donnees['facLibreCommercialId'],
-        'numero' => GenerateurNumero::suivant(auth()->user()->entreprise_id, 'fac', $this->date),
-        'n_facture' => $donnees['facLibreNumero'] ?: GenerateurNumero::suivant(auth()->user()->entreprise_id, 'nfa', $this->date),
+        // Même chose ici : `numero` vient du trait, et le n° de document d'une seule règle.
+        'n_facture' => Facture::numeroDeDocument($donnees['facLibreNumero'] ?? null, auth()->user()->entreprise_id, $this->date),
         'date' => $this->date,
         'client' => $donnees['facLibreClient'],
         'type' => $donnees['facLibreType'],

@@ -181,12 +181,29 @@
                 champ.value = valeur;
             }
 
-            // Les deux évènements, et dans cet ordre : Livewire écoute `input` pour un
-            // champ texte et `change` pour une liste. En omettre un laisserait la
-            // valeur dans la page sans jamais l'envoyer au serveur — c'est exactement
-            // le défaut qu'on répare ici.
+            /*
+             * **Les trois évènements, et `blur` n'est pas facultatif.**
+             *
+             * Livewire ne se branche pas sur ce qu'on croit : `wire:model` nu écoute
+             * `input`, `wire:model.live` écoute `input` et `change`, mais
+             * `wire:model.blur` n'écoute **que** `blur` — lire son code le dit sans
+             * ambiguïté. Or le champ réel est masqué et hors du parcours au clavier :
+             * il ne reçoit jamais le focus, donc il ne le perd jamais, donc aucun `blur`
+             * n'est émis. Les quatre listes de tiers de « Créer une facture » sont dans
+             * ce cas — et leur valeur n'atteignait jamais le serveur.
+             *
+             * Conséquence mesurée le 24/09 : le client restait vide côté serveur, la
+             * règle `required` refusait la facture, et l'écran ne montrait rien. « Le
+             * bouton ne réagit pas », relevé par le propriétaire. Le bouton réagissait ;
+             * c'est la valeur qui n'était pas partie.
+             *
+             * On émet donc les trois, dans l'ordre où un vrai geste humain les produit.
+             * En émettre un de trop est sans effet : Livewire ne réagit qu'à celui qu'il
+             * écoute. En oublier un laisse la valeur dans la page.
+             */
             champ.dispatchEvent(new Event('input', { bubbles: true }));
             champ.dispatchEvent(new Event('change', { bubbles: true }));
+            champ.dispatchEvent(new Event('blur', { bubbles: false }));
 
             rafraichirBouton(bloc);
             fermer();

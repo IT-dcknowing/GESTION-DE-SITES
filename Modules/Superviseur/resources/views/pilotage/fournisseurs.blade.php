@@ -517,7 +517,14 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
              se pose la question, et c'est donc là que doivent être les réponses. --}}
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
             <x-champ label="Année de l'état" model="exercice" type="select" :options="$this->exercices" :live="true" width="130" />
-            <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Référentiel</a>
+            {{-- Le pendant du « Tableau état initial » des impayés. Il manquait, et son
+                 absence se remarquait : l'état par année ne montre jamais l'ensemble d'un
+                 coup, et une pièce soldée d'une année passée n'y paraît nulle part. --}}
+            <a href="{{ route('fournisseurs.tableau-initial') }}" wire:navigate class="bouton bouton-secondaire">Tableau initial</a>
+            {{-- « Référentiel » ne disait pas ce qu'on y trouve. Cette page porte le terme de
+                 règlement d'un fournisseur et sa TVA — c'est de là que sort l'échéance
+                 attendue d'une pièce que le classeur n'a pas datée. --}}
+            <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Conditions de règlement</a>
             <a href="{{ route('balance-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Balance fournisseurs</a>
             <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements fournisseurs</a>
             @if ($this->peutEcrire)
