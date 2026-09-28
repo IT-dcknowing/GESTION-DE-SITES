@@ -217,6 +217,52 @@ $orphelins = computed(fn () => ConditionsFournisseur::sansFiche(
         </div>
     @endif
 
+    {{-- **À quoi sert cette page, en trois phrases.**
+
+         Le propriétaire a posé la question deux fois, et deux fois l'explication est
+         passée à côté : « c'est quoi une fiche ? », « je ne comprends pas ». Le texte
+         parlait en termes de modèle de données — fiche, référentiel, échéance déduite —
+         au lieu de partir du problème que la chose résout.
+
+         On repart donc du concret : une facture fournisseur sans date d'échéance, et
+         5 184 lignes sur 7 350 dans ce cas. --}}
+    <div class="carte" style="margin-bottom:16px; border-left:3px solid #B87A00;">
+        <h3 style="font-size:15px; font-weight:700; margin:0 0 8px;">À quoi sert cette page</h3>
+
+        <p style="margin:0 0 10px; font-size:13.5px; line-height:1.65;">
+            <b>Le problème qu'elle résout.</b> Une facture fournisseur devrait dire pour quand
+            elle est à payer. <b>5 184 des 7 350 lignes du classeur ne le disent pas</b> : la
+            colonne « date d'échéance » y est vide. Sans elle, impossible de savoir ce qui est
+            en retard — et donc impossible de payer dans l'ordre.
+        </p>
+
+        <p style="margin:0 0 10px; font-size:13.5px; line-height:1.65;">
+            <b>Ce que cette page contient.</b> Une ligne par fournisseur — c'est ce qu'on appelle
+            ici une <b>fiche</b> — qui dit <b>à quel terme ce fournisseur se règle</b> :
+            « comptant », « 30 jours », « 45 jours fin de mois »… et s'il facture la TVA. Ce ne
+            sont pas ses factures : c'est <b>l'accord qu'on a avec lui</b>. Une fiche par
+            fournisseur, pas une par facture.
+        </p>
+
+        <p style="margin:0 0 10px; font-size:13.5px; line-height:1.65;">
+            <b>Ce que l'application en fait.</b> Facture de SOCIDA du 4 mars, sans échéance
+            écrite ; la fiche de SOCIDA dit « 30 jours » ; l'écran affiche donc
+            <b>3 avril, marqué « attendue »</b>. Le mot compte : cette date est <b>déduite, jamais
+            écrite en base</b>, et elle n'entre ni dans le filtre « Échues » ni dans le total de
+            l'échu — on relance sur ce que le fournisseur a écrit, pas sur ce qu'on a calculé
+            pour lui.
+        </p>
+
+        <p style="margin:0; font-size:13.5px; line-height:1.65;">
+            <b>Et le tableau du bas, « Facturés, mais absents de la liste ».</b> Il nomme les
+            fournisseurs à qui l'on doit de l'argent et <b>qui n'ont pas de fiche ici</b> — donc
+            dont on ignore le délai de paiement, donc dont aucune facture n'aura d'échéance
+            attendue. Ce n'est pas l'inverse : ils ont bien des factures, c'est la ligne d'accord
+            qui manque. Les fiches arrivent avec la feuille « Liste fournisseurs » du classeur de
+            suivi, au même dépôt que les factures.
+        </p>
+    </div>
+
     @if ($this->fiche)
         <div class="carte" style="margin-bottom:16px;">
             <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Corriger la fiche de {{ $this->fiche->nom }}</h3>

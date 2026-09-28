@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
@@ -162,7 +163,8 @@ class DepotEtVilleDesCreancesTest extends TestCase
             'format' => 'impayes', 'nom_fichier' => 'Etats.xlsx', 'empreinte' => str_repeat('b', 64), 'etat' => 'termine',
         ]);
 
-        $format = new class($this->entreprise->id, new Rattachement($this->entreprise->id)) extends FormatDesImpayes {
+        $format = new class($this->entreprise->id, new Rattachement($this->entreprise->id)) extends FormatDesImpayes
+        {
             public function ecrireLaLigne(array $ligne, array $rattachement, int $lot): void
             {
                 $this->ecrire($ligne, $rattachement, $lot);
@@ -190,7 +192,7 @@ class DepotEtVilleDesCreancesTest extends TestCase
     public function test_la_commande_pose_la_ville_d_apres_l_atelier_en_constat_d_abord(): void
     {
         $facture = $this->creance('ANCIENNE', 100_000, site: $this->siteBouake);
-        \Illuminate\Support\Facades\DB::table('factures')->where('id', $facture->id)->update(['ville_id' => null]);
+        DB::table('factures')->where('id', $facture->id)->update(['ville_id' => null]);
 
         $this->artisan('factures:poser-la-ville')->assertSuccessful();
         $this->assertNull($facture->fresh()->ville_id, 'Le constat ne doit rien écrire.');
@@ -237,7 +239,10 @@ class DepotEtVilleDesCreancesTest extends TestCase
         $this->get(route('impayes.detail', $creance->id))
             ->assertOk()
             ->assertSee("Saisie à l'état des impayés")
-            ->assertSee("Qui l'a touchée", false)
+            // Deux blocs distincts depuis le 25/09 : « Qui s'en est chargé » nomme les
+            // personnes et leurs dates ; « Ce qui a changé » raconte les gestes.
+            ->assertSee("Qui s'en est chargé", false)
+            ->assertSee('Ce qui a changé, geste par geste', false)
             ->assertSee('CHÈQUE')
             ->assertSee(route('impayes', ['exercice' => $creance->exercice_impayes, 'modifier' => $creance->id]));
 

@@ -1,4 +1,4 @@
-@props(['ligne' => null, 'numero' => null])
+@props(['ligne' => null, 'numero' => null, 'nom' => null])
 
 @php
     use Modules\Noyau\Commun\Services\SignatureDeSaisie;
@@ -42,5 +42,13 @@
 
     @if ($nomAuteur)
         <div style="font-size:11px; color:var(--th-gris,#6B6E76); font-weight:400;">{{ $nomAuteur }}</div>
+    @elseif ($nom)
+        {{-- **Le nom que la ligne porte, faute de saisisseur.** Une ligne importée n'a pas
+             été saisie ici : `cree_par` est vide, et le code à lui seul ne se retient pas.
+             Sur un devis venu du logiciel d'atelier, ce qu'on veut lire sous le numéro est
+             le **commercial** — c'est ce que l'appelant passe ici. Demandé le 25/09 :
+             « fais apparaître le nom du commercial comme c'est fait dans d'autres
+             endroits ». --}}
+        <div style="font-size:11px; color:var(--th-gris,#6B6E76); font-weight:400;">{{ $nom }}</div>
     @endif
 </div>

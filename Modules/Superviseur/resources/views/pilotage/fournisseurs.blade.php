@@ -7,6 +7,7 @@ use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
+use Modules\Noyau\Imports\Services\NumeroDePiece;
 
 use function Livewire\Volt\{computed, mount, state};
 
@@ -385,15 +386,22 @@ $enregistrer = function () {
         ? trim((string) $donnees['numeroPiece'])
         : GenerateurNumero::suivant($entrepriseId, EtatDesFournisseurs::SERIE, $donnees['dateFacture']);
 
+    /*
+     * Le doublon se cherche avec la **même règle que l'import**, noyau du numéro compris :
+     * une pièce saisie « 1827 » et la même déjà entrée « 22319I091/0001827 » sont la même
+     * facture. Deux règles de doublon, une à l'écran et une à l'import, laisseraient passer
+     * à la main ce que le fichier refuse — et la dette compterait double.
+     */
     $deja = FactureFournisseur::query()
         ->where('fournisseur', $donnees['fournisseur'])
-        ->where('numero_piece', $numero)
         ->whereDate('date_facture', $donnees['dateFacture'])
         ->where('montant', $montant)
-        ->first();
+        ->get()
+        ->first(fn (FactureFournisseur $piece) => NumeroDePiece::memePiece($numero, $piece->numero_piece));
 
     if ($deja !== null) {
-        $this->addError('numeroPiece', 'Cette pièce est déjà enregistrée — même fournisseur, même numéro, même date, même montant.');
+        $this->addError('numeroPiece', 'Cette pièce est déjà enregistrée sous le n° « '
+            .$deja->numero_piece.' » — même fournisseur, même date, même montant.');
 
         return;
     }

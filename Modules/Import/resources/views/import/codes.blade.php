@@ -4,7 +4,10 @@ use Modules\Import\Support\AccesImport;
 use Modules\Noyau\Entreprises\Modeles\Reaffectation;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Illuminate\Support\Facades\DB;
+use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Imports\Services\AffectationDesCodes;
+use Modules\Noyau\Imports\Services\CodesDesCommerciaux;
 
 use function Livewire\Volt\{computed, state};
 
@@ -91,6 +94,51 @@ $aNommer = computed(fn () => $this->observations->whereNull('ville_id')->count()
 
 $jamaisVus = computed(fn () => $this->observations->where('occurrences', 0)->count());
 
+/** Combien de codes désignent réellement quelqu'un — voir CodesDesCommerciaux. */
+$couverture = computed(fn () => CodesDesCommerciaux::pour((int) auth()->user()->entreprise_id)->couverture());
+
+/**
+ * Ce que le rattachement donne aujourd'hui, en devis.
+ *
+ * Compté en base et non déduit : c'est le seul chiffre qui dit si la chaîne « code →
+ * compte → commercial » sert à quelque chose. Il valait 0 sur 2 432 au 25/09.
+ */
+$devis = computed(fn () => [
+    'total' => Devis::query()->count(),
+    'rattaches' => Devis::query()->whereNotNull('commercial_id')->count(),
+]);
+
+/**
+ * Combien de devis portent chaque code, et quel commercial ce code désigne.
+ *
+ * En une requête pour toute la table : une par ligne aurait fait trente-neuf requêtes
+ * pour une page qu'on ouvre pour lire, pas pour attendre.
+ *
+ * @return array{devis: array<string, int>, commerciaux: array<string, string>}
+ */
+$parCode = computed(function () {
+    $devis = Devis::query()
+        ->whereNotNull('code_auteur')
+        ->selectRaw('code_auteur, count(*) as n')
+        ->groupBy('code_auteur')
+        ->pluck('n', 'code_auteur')
+        ->mapWithKeys(fn ($n, $code) => [mb_strtoupper((string) $code) => (int) $n])
+        ->all();
+
+    $commerciaux = DB::table('codes_agents')
+        ->join('commerciaux', function ($jointure) {
+            $jointure->on('commerciaux.user_id', '=', 'codes_agents.user_id')
+                ->on('commerciaux.entreprise_id', '=', 'codes_agents.entreprise_id');
+        })
+        ->where('codes_agents.entreprise_id', auth()->user()->entreprise_id)
+        ->whereNotNull('codes_agents.user_id')
+        ->pluck('commerciaux.nom', 'codes_agents.code')
+        ->mapWithKeys(fn ($nom, $code) => [mb_strtoupper((string) $code) => (string) $nom])
+        ->all();
+
+    return ['devis' => $devis, 'commerciaux' => $commerciaux];
+});
+
 /** Les mutations récentes — c'est ce qui explique un code vu dans deux villes. */
 $mutations = computed(fn () => Reaffectation::where('entreprise_id', auth()->user()->entreprise_id)
     ->whereNotNull('code_agent_id')
@@ -118,10 +166,13 @@ $mutations = computed(fn () => Reaffectation::where('entreprise_id', auth()->use
             <div class="val">{{ $this->aNommer }}</div>
             <div class="sub">information, pas blocage</div>
         </div>
-        <div class="imp-kpi">
-            <div class="lab">Jamais croisés</div>
-            <div class="val">{{ $this->jamaisVus }}</div>
-            <div class="sub">aucun fichier importé ne les porte</div>
+        {{-- « Jamais croisés » ne se traduisait par aucune action : le propriétaire a
+             demandé le 25/09 de le retirer. Ce qui appelle une action, en revanche, c'est
+             le code qui ne désigne personne — ses devis restent sans commercial. --}}
+        <div class="imp-kpi {{ $this->couverture['relies'] < $this->couverture['total'] ? '' : 'vert' }}">
+            <div class="lab">Reliés à un commercial</div>
+            <div class="val">{{ $this->couverture['relies'] }}/{{ $this->couverture['total'] }}</div>
+            <div class="sub">sinon le devis reste sans commercial</div>
         </div>
     </div>
 
@@ -134,8 +185,39 @@ $mutations = computed(fn () => Reaffectation::where('entreprise_id', auth()->use
             chaque fiche qu'il rédige&nbsp;:
             <span style="font-family:ui-monospace,Consolas,monospace; background:#F4F2EC; padding:2px 6px;
                          border-radius:4px;">FR-<strong>KZ</strong>N° 010669</span>.
-            <strong>C'est par elles que les devis importés rejoignent leur commercial</strong>, et que les
+            C'est par elles qu'un devis importé <strong>peut</strong> rejoindre son commercial, et que les
             tableaux affichent un nom plutôt qu'un code.
+        </div>
+
+        {{-- **Ce paragraphe disait une promesse, il dit maintenant une mesure.**
+
+             « C'est par elles que les devis importés rejoignent leur commercial » : c'était
+             faux, et le propriétaire l'a relevé le 25/09. Mesuré ce jour-là, 2 432 devis
+             importés sur 2 432 n'avaient ni code ni commercial. Deux causes : l'import
+             jetait le code après s'en être servi pour la ville — c'est réparé —, et aucun
+             des codes n'est relié à un compte, donc à un commercial.
+
+             Un écran qui promet ce qu'il ne fait pas coûte plus cher qu'un écran qui se
+             tait : on ne cherche pas la cause d'un manque qu'on croit déjà couvert. --}}
+        <div class="imp-hint {{ $this->couverture['relies'] === 0 ? 'warn' : ($this->couverture['relies'] < $this->couverture['total'] ? '' : 'ok') }}"
+             style="margin-top:11px;">
+            <strong>{{ $this->couverture['relies'] }} code(s) sur {{ $this->couverture['total'] }}
+                désignent un commercial.</strong>
+            @if ($this->couverture['relies'] < $this->couverture['total'])
+                Les autres sont des initiales sans personne derrière : leurs devis restent
+                <strong>sans commercial</strong>, et le chiffre de celui qui a décroché l'affaire ne les
+                compte pas. Le lien se fait ici, code par code, en ouvrant une ligne — il ne se devine
+                pas : attribuer un chiffre d'affaires sur une ressemblance de noms se trompe un jour,
+                et ce jour-là rien ne l'affiche.
+            @else
+                Chaque devis importé rejoint donc son commercial par le code de son numéro.
+            @endif
+            @if ($this->devis['total'] > 0)
+                <div style="margin-top:7px;">
+                    Aujourd'hui : <strong>{{ number_format($this->devis['rattaches'], 0, ',', ' ') }}</strong>
+                    devis rattachés sur <strong>{{ number_format($this->devis['total'], 0, ',', ' ') }}</strong>.
+                </div>
+            @endif
         </div>
 
         {{-- Deux cas, et il faut les tenir tous les deux. Ne dire que le premier laissait
@@ -156,14 +238,6 @@ $mutations = computed(fn () => Reaffectation::where('entreprise_id', auth()->use
             annoncée.
         </div>
 
-        @if ($this->jamaisVus > 0)
-            <div class="imp-hint">
-                <strong>{{ $this->jamaisVus }} code(s) n'apparaissent dans aucun fichier importé.</strong>
-                Ils viennent de la liste des utilisateurs du logiciel : ce sont des employés qui n'ont pas
-                encore rédigé de fiche, ou dont les fiches sont dans un fichier qui n'a pas été déposé.
-                Ce n'est pas une anomalie.
-            </div>
-        @endif
     </div>
 
     {{-- ------------------------------------------------------------------ la table des codes --}}
@@ -204,7 +278,9 @@ $mutations = computed(fn () => Reaffectation::where('entreprise_id', auth()->use
                         <tr>
                             <th>Code</th>
                             <th>Employé</th>
+                            <th>Commercial désigné</th>
                             <th class="num">Fiches</th>
+                            <th class="num">Devis</th>
                             <th>Ville</th>
                             <th>Atelier</th>
                             <th>État</th>
@@ -217,7 +293,20 @@ $mutations = computed(fn () => Reaffectation::where('entreprise_id', auth()->use
                             <tr wire:key="code-{{ $o['code'] }}">
                                 <td class="mono"><strong style="font-size:14px;">{{ $o['code'] }}</strong></td>
                                 <td>{{ $o['libelle'] ?: '—' }}</td>
+                                {{-- La colonne qui manquait, et qui explique le reste : un code sans
+                                     commercial laisse tous ses devis sans commercial. --}}
+                                <td>
+                                    @if ($nomDuCommercial = ($this->parCode['commerciaux'][mb_strtoupper($o['code'])] ?? null))
+                                        {{ $nomDuCommercial }}
+                                    @else
+                                        <span style="color:#B0000A;">— non relié —</span>
+                                    @endif
+                                </td>
                                 <td class="num">{{ $o['dossiers'] ? number_format($o['dossiers'], 0, ',', ' ') : '·' }}</td>
+                                <td class="num">
+                                    {{ ($n = ($this->parCode['devis'][mb_strtoupper($o['code'])] ?? 0))
+                                        ? number_format($n, 0, ',', ' ') : '·' }}
+                                </td>
                                 <td>
                                     @if ($o['ville_id'])
                                         {{ $this->villes[$o['ville_id']] ?? '?' }}

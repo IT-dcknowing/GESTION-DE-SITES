@@ -5,6 +5,7 @@ use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Noyau\Tracabilite\Services\QuiAAgi;
 use Spatie\Activitylog\Models\Activity;
 
 use function Livewire\Volt\{computed, mount, state};
@@ -59,6 +60,21 @@ $historique = computed(fn () => $this->creance === null ? collect() : Activity::
 $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
     ->whereIn('id', $this->creance->encaissements->pluck('cree_par')->filter()->unique())
     ->pluck('name', 'id'));
+
+/**
+ * Qui s'est chargé de cette créance, et **à quelles dates**.
+ *
+ * Demandé le 25/09, avec une précision qui commande la mise en page : le nom paraît dans
+ * le tableau de l'état, les dates ne paraissent **que dans le détail**. C'est la bonne
+ * répartition — un tableau répond à « qui suit ce dossier ? », un détail à « que s'est-il
+ * passé, et quand ? ».
+ *
+ * À distinguer du journal plus bas : celui-ci dit **les personnes**, celui-là dit **les
+ * gestes**. On regarde rarement les deux pour la même raison.
+ *
+ * @see \Modules\Noyau\Tracabilite\Services\QuiAAgi
+ */
+$traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::detailDe($this->creance));
 
 ?>
 
@@ -215,9 +231,62 @@ $auteurs = computed(fn () => $this->creance === null ? collect() : User::query()
             </div>
         </div>
 
+        {{-- ------------------------------------------------------------- qui s'en est chargé --}}
+        <div class="carte" style="margin-bottom:16px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 10px;">Qui s'en est chargé</h3>
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
+                Les personnes qui ont agi sur cette créance, et les dates auxquelles elles l'ont fait.
+                Le tableau de l'état n'affiche que les noms ; les dates sont ici, où elles ont un sens.
+            </p>
+
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Personne</th>
+                            <th>Code de saisie</th>
+                            <th>Fonction</th>
+                            <th class="num">Gestes</th>
+                            <th>Dates d'intervention</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($this->traitants as $personne)
+                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                <td style="font-weight:600;">{{ $personne['nom'] }}</td>
+                                <td style="font-family:ui-monospace,Consolas,monospace; font-size:12.5px;">
+                                    {{ $personne['code'] ?? '—' }}
+                                </td>
+                                <td style="color:#6B6E76;">{{ $personne['fonction'] ?? '—' }}</td>
+                                <td class="num">{{ $personne['gestes'] ?: '·' }}</td>
+                                <td style="font-size:12.5px;">
+                                    @forelse (collect($personne['dates'])->sortDesc()->take(8) as $date)
+                                        <span style="display:inline-block; background:#F4F2EC; border-radius:4px;
+                                                     padding:2px 7px; margin:0 4px 4px 0; white-space:nowrap;">
+                                            {{ $date?->format('d/m/Y H:i') }}
+                                        </span>
+                                    @empty
+                                        <span style="color:#9A9DA5;">—</span>
+                                    @endforelse
+                                    @if (count($personne['dates']) > 8)
+                                        <span style="color:#6B6E76;">+ {{ count($personne['dates']) - 8 }} autre(s)</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            {{-- Une créance venue d'un import que personne n'a retouchée : c'est
+                                 le cas le plus fréquent, et ce n'est pas une anomalie. --}}
+                            <x-table-vide :colspan="5"
+                                texte="Personne n'est encore intervenu sur cette créance — elle vient d'un dépôt et n'a pas été retouchée." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         {{-- ---------------------------------------------------------------- l'historique --}}
         <div class="carte">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 10px;">Qui l'a touchée, et ce qui a changé</h3>
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 10px;">Ce qui a changé, geste par geste</h3>
             <div class="tableau-conteneur">
                 <table class="tableau">
                     <thead>
