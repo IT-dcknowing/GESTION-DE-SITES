@@ -7,6 +7,7 @@ use Modules\Noyau\Imports\Lecteurs\Lecteur;
 use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Modeles\FournisseurReferentiel;
+use Modules\Noyau\Imports\Services\NumeroDePiece;
 
 /**
  * Le suivi des factures fournisseurs — ce que l'entreprise doit.
@@ -500,24 +501,48 @@ class FormatDesFournisseurs extends Format
     /**
      * La ligne déjà en base, ou null.
      *
-     * Quatre valeurs et non deux : un même numéro de pièce revient chez deux fournisseurs
-     * différents, et un même fournisseur ventile une facture sur plusieurs lignes ou émet
-     * un avoir sous le numéro de la pièce qu'il annule. Quand la pièce manque — 183 lignes
-     * sur 10 147 — la date et le montant suffisent à retrouver la ligne.
+     * **Quatre valeurs et non deux.** Un même numéro de pièce revient chez deux
+     * fournisseurs différents, et un même fournisseur ventile une facture sur plusieurs
+     * lignes ou émet un avoir sous le numéro de la pièce qu'il annule. Quand la pièce
+     * manque — 183 lignes sur 10 147 — la date et le montant suffisent.
+     *
+     * **Et le numéro se compare par son noyau, pas à la lettre.** C'est la correction du
+     * 25/09, née d'une question du propriétaire : « les deux fichiers n'ont pas la même
+     * formalisation du numéro ». Ils ne l'ont pas. Abidjan écrit « 0001827 » là où San
+     * Pédro écrit « 22319I091/0001827 » — le préfixe est le code du bon de commande, et un
+     * seul des deux classeurs le recopie. Comparés à la lettre, ces deux-là sont deux
+     * pièces ; ce sont la même. **562 factures seraient entrées deux fois** au dépôt du
+     * second classeur. Voir `NumeroDePiece` pour la règle et ce qu'elle a coûté à vérifier.
+     *
+     * **On lit d'abord large, on tranche ensuite en PHP**, et c'est voulu : le triplet
+     * fournisseur + date + montant ramène une poignée de lignes — on ne peut pas demander à
+     * SQL de comparer des noyaux sans stocker une colonne de plus, et une colonne dérivée
+     * qu'on oublierait de tenir à jour vaut moins qu'un calcul fait sur place.
      */
     private function retrouver(?string $fournisseur, ?string $piece, $dateFacture, int $montant): ?FactureFournisseur
     {
-        return FactureFournisseur::withoutGlobalScopes()
+        $candidates = FactureFournisseur::withoutGlobalScopes()
             ->where('entreprise_id', $this->entrepriseId)
             ->where('fournisseur', $fournisseur)
-            ->when(
-                $piece !== null && $piece !== '',
-                fn ($requete) => $requete->where('numero_piece', $piece),
-                fn ($requete) => $requete->whereNull('numero_piece'),
-            )
             ->where('date_facture', $dateFacture)
             ->where('montant', $montant)
-            ->first();
+            ->get();
+
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        // Sans numéro de pièce, la ligne sans numéro est la sienne : lui attribuer une
+        // ligne numérotée reviendrait à écraser une pièce identifiée par une qui ne l'est
+        // pas.
+        if ($piece === null || trim($piece) === '') {
+            return $candidates->first(fn (FactureFournisseur $f) => trim((string) $f->numero_piece) === '');
+        }
+
+        return $candidates->first(fn (FactureFournisseur $f) => NumeroDePiece::memePiece($piece, $f->numero_piece))
+            // Le littéral reste un repli : une pièce dont le noyau serait vide — un numéro
+            // fait de séparateurs seuls — doit tout de même se retrouver elle-même.
+            ?? $candidates->first(fn (FactureFournisseur $f) => (string) $f->numero_piece === $piece);
     }
 
     /**

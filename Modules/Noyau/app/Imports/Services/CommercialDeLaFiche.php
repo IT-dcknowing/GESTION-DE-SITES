@@ -2,8 +2,10 @@
 
 namespace Modules\Noyau\Imports\Services;
 
+use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Modules\Noyau\Commun\Services\CodeAuteur;
 use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 
 /**
@@ -338,13 +340,25 @@ class CommercialDeLaFiche
         return $id === null ? null : [$id, 'code_atelier'];
     }
 
-    /** @return array{0: int, 1: string}|null */
+    /**
+     * Le code de la plateforme.
+     *
+     * **Deux écritures acceptées, et c'est une transition assumée.** Le code que la maison
+     * emploie désormais est celui de l'auteur — `A-C-KY-0007` : ville, rôle, initiales,
+     * rang —, et c'est lui qu'on demande d'écrire dans le logiciel d'atelier. L'ancien
+     * compteur de la table, « C-0010 », reste reconnu : il a été dicté et noté pendant des
+     * mois, et cesser de le lire d'un coup ferait échouer des saisies déjà faites.
+     *
+     * Ce qui est affiché, en revanche, n'est plus que le premier — voir
+     * `Commercial::codeDeSaisie()`. On lit large, on écrit étroit.
+     */
     private function parCodeDApplication(string $saisi): ?array
     {
         $cle = mb_strtoupper(trim($saisi));
 
         $commercial = $this->referentiel()
-            ->first(fn (object $c) => mb_strtoupper((string) $c->numero) === $cle);
+            ->first(fn (object $c) => mb_strtoupper((string) $c->numero) === $cle
+                || ($c->code_de_saisie !== null && mb_strtoupper((string) $c->code_de_saisie) === $cle));
 
         return $commercial === null ? null : [(int) $commercial->id, 'code_application'];
     }
@@ -385,6 +399,17 @@ class CommercialDeLaFiche
             ->where('entreprise_id', $this->entrepriseId)
             ->where('est_spontane', false)
             ->orderBy('nom')
-            ->get(['id', 'nom', 'numero', 'user_id']));
+            ->get(['id', 'nom', 'numero', 'user_id']))
+            // Le code de la plateforme est posé ici plutôt que dans la requête : il se
+            // compose à partir du compte, et une jointure ne saurait pas le fabriquer.
+            ->map(function (object $commercial) {
+                $compte = $commercial->user_id === null
+                    ? null
+                    : User::withoutGlobalScopes()->find($commercial->user_id);
+
+                $commercial->code_de_saisie = CodeAuteur::pour($compte);
+
+                return $commercial;
+            });
     }
 }

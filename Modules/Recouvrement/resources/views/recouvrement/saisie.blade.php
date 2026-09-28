@@ -739,7 +739,32 @@ $creerTiers = function () {
             </div>
         </div>
 
-        {{-- ─────────────── Facture ─────────────── --}}
+        {{-- ─────────────── Facture ───────────────
+
+             **Masquée le 25/09, à la demande du propriétaire, et non supprimée.**
+
+             « Retire la section « Créer une facture », car en vrai pour l'instant elle ne
+             sert pas : le chiffre d'affaires suit toute une procédure avant d'être chiffre
+             d'affaires, et on l'importe en plus. »
+
+             Le raisonnement tient : une facture naît dans le logiciel d'atelier, au bout
+             d'une procédure — devis, validation, facturation — et entre ici par l'import.
+             En créer une à la main ouvrait une seconde porte sur la même table, avec sa
+             propre numérotation, sans que rien ne la relie à la procédure. C'est d'ailleurs
+             par là que le numéro manquant était passé.
+
+             **Pourquoi masquer plutôt qu'effacer.** L'action `creerFacture` reste écrite,
+             testée et gardée par l'habilitation : le besoin peut revenir — une reprise de
+             garantie, une facture que le logiciel n'a pas produite — et le jour où il
+             reviendra, il vaut mieux retrouver un code éprouvé qu'en réécrire un. Ce qui
+             disparaît, c'est la porte, pas la serrure. Passer cette constante à `true` la
+             rouvre, et rien d'autre n'est à toucher. --}}
+        @php
+            /* Le jour où une facture devra se créer à la main, ici et nulle part ailleurs. */
+            $laFactureSeCreeAlaMain = false;
+        @endphp
+
+        @if ($laFactureSeCreeAlaMain)
         <div class="rec-carte">
             <h2>Créer une facture <span class="chip">Superviseur · Gérant</span></h2>
 
@@ -867,6 +892,7 @@ $creerTiers = function () {
                 </div>
             @endif
         </div>
+        @endif
 
         </div>
 

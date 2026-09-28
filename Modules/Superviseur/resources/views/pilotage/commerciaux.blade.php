@@ -290,7 +290,7 @@ $graphique = computed(fn () => [
                 <thead>
                     <tr>
                         <th>Rang</th>
-                        <th>N°</th>
+                        <th>Code de saisie</th>
                         <th>Commercial</th>
                         @if (count($this->idsVilles) > 1)
                             <th>Ville</th>
@@ -325,7 +325,18 @@ $graphique = computed(fn () => [
                                     <span style="font-weight:800;">{{ $i + 1 }}</span>
                                 @endif
                             </td>
-                            <td style="font-weight:700;">{{ $ligne['commercial']->numero }}</td>
+                            {{-- Le code de la plateforme, et non l'ancien compteur « C-0010 » :
+                                 c'est celui-ci qui signe les saisies, et c'est celui-ci qu'il faut
+                                 écrire dans le logiciel d'atelier. Relevé le 25/09. --}}
+                            <td style="font-weight:700; font-family:ui-monospace,Consolas,monospace;">
+                                {{ $ligne['commercial']->codeDeSaisie() }}
+                                @if ($ligne['commercial']->codeEstAncien())
+                                    <div style="font-size:10.5px; font-weight:400; color:#B0000A;"
+                                         title="Aucun compte n'est relié à ce commercial : il n'a donc pas de code de plateforme.">
+                                        sans compte relié
+                                    </div>
+                                @endif
+                            </td>
                             <td style="font-weight:700;">{{ $ligne['commercial']->nom }}</td>
                             @if (count($this->idsVilles) > 1)
                                 <td>{{ $ligne['commercial']->ville->nom }}</td>

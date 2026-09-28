@@ -400,7 +400,27 @@ class RecouvrementTest extends TestCase
      *
      * Ce test verrouille le contraire : refusée, la facture le dit, et elle dit pourquoi.
      */
-    public function test_une_facture_refusee_affiche_la_raison_du_refus(): void
+    public function test_une_saisie_refusee_affiche_la_raison_du_refus(): void
+    {
+        $superviseur = $this->compte('superviseur_recouvrement');
+
+        // L'encaissement, parce que c'est un formulaire encore affiché. La règle vaut pour
+        // les trois : les champs d'une carte partagent leur préfixe, et `x-erreurs-du-bloc`
+        // rend ceux de sa carte.
+        Volt::actingAs($superviseur)->test('recouvrement.saisie')
+            ->set('encTiers', '')
+            ->set('encFactureId', '')
+            ->set('encMode', '')
+            ->set('encMontant', '')
+            ->call('enregistrerEncaissement')
+            ->assertHasErrors()
+            ->assertSee('Enregistrement refusé');
+    }
+
+    /**
+     * Et la facture refusée l'est toujours côté serveur, carte masquée ou non.
+     */
+    public function test_une_facture_sans_client_reste_refusee(): void
     {
         $superviseur = $this->compte('superviseur_recouvrement');
 
@@ -410,9 +430,7 @@ class RecouvrementTest extends TestCase
             ->set('facDate', now()->toDateString())
             ->set('facMontant', 750000)
             ->call('creerFacture')
-            ->assertHasErrors('facTiers')
-            ->assertSee('Enregistrement refusé')
-            ->assertSee('client');
+            ->assertHasErrors('facTiers');
 
         $this->assertSame(0, Facture::withoutGlobalScopes()->count());
     }
@@ -1307,13 +1325,17 @@ class RecouvrementTest extends TestCase
     }
 
     /**
-     * L'annuaire complet n'est écrit qu'une fois dans la page.
+     * L'annuaire complet n'est écrit qu'une fois dans la page — et depuis le 25/09,
+     * plus du tout, puisque la carte qui en avait besoin est masquée.
      *
-     * Les trois champs de la carte « Créer une facture » ont besoin de tous les tiers, y
-     * compris ceux qui ne doivent rien. Ils partagent donc un seul `datalist` : recopier
-     * la liste dans trois `select` coûtait 928 Ko, renvoyés à chaque aller-retour.
+     * Les trois champs de « Créer une facture » avaient besoin de tous les tiers, y
+     * compris ceux qui ne doivent rien : ils partageaient un `datalist`, parce que
+     * recopier la liste dans trois `select` coûtait 928 Ko à chaque aller-retour. La
+     * carte masquée, ce poids-là ne part plus du tout — c'est le bénéfice incident du
+     * retrait, et il vaut d'être verrouillé : le jour où la carte reviendra, elle devra
+     * revenir avec son `datalist` partagé et non avec trois listes.
      */
-    public function test_l_annuaire_complet_n_est_pas_recopie_dans_chaque_champ(): void
+    public function test_l_annuaire_complet_ne_pese_pas_sur_la_page(): void
     {
         foreach (range(1, 40) as $rang) {
             $this->declarerLeTiers('TIERS '.str_pad((string) $rang, 3, '0', STR_PAD_LEFT));
@@ -1321,12 +1343,31 @@ class RecouvrementTest extends TestCase
 
         $html = Volt::actingAs($this->compte('gerant'))->test('recouvrement.saisie')->html();
 
-        $this->assertStringContainsString('<datalist id="rec-tiers-connus">', $html);
-
-        // Un nom quelconque de l'annuaire : une occurrence dans le datalist, et pas une
-        // de plus. Trois, et les trois `select` seraient revenus.
-        $this->assertSame(1, substr_count($html, '"TIERS 007"'),
+        // Au plus une fois. Zéro tant que la carte est masquée, une seule si elle revient.
+        $this->assertLessThanOrEqual(1, substr_count($html, '"TIERS 007"'),
             "L'annuaire des tiers est recopié plusieurs fois dans la page.");
+    }
+
+    /**
+     * La carte « Créer une facture » est masquée, et l'action reste gardée.
+     *
+     * **Demandé le 25/09** : « retire la section Créer une facture, car en vrai pour
+     * l'instant elle ne sert pas — le chiffre d'affaires suit toute une procédure avant
+     * d'être chiffre d'affaires, et on l'importe en plus. »
+     *
+     * Masquer une carte n'est pas fermer une porte : l'action reste appelable depuis le
+     * navigateur. C'est l'habilitation qui garde, et c'est elle qu'on vérifie ici — sans
+     * quoi retirer le bouton aurait donné l'illusion d'avoir retiré la fonction.
+     */
+    public function test_la_carte_de_creation_de_facture_est_masquee(): void
+    {
+        $html = Volt::actingAs($this->compte('gerant'))->test('recouvrement.saisie')->html();
+
+        $this->assertStringNotContainsString('Créer la facture', $html);
+
+        // « Créer un client / tiers » reste, et c'est voulu : la relance et l'encaissement
+        // ont besoin de pouvoir nommer un tiers que la facturation n'a pas encore vu.
+        $this->assertStringContainsString('Créer le tiers', $html);
     }
 
     private function facture(

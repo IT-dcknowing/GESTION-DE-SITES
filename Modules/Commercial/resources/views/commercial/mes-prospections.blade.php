@@ -39,6 +39,12 @@ state([
     'eImmatriculation' => '', 'eNFicheReception' => '', 'eNDevis' => '',
     'ePassage' => false, 'eDatePassage' => null,
     'eDevisApres' => false, 'eDateDevis' => null, 'eObservations' => '',
+
+    // La question posée sur la ligne quand on y coche « devis après passage » : de quel
+    // devis s'agit-il ? Voir `basculerDevisApres()` — sans numéro, la prospection ne peut
+    // plus être reliée au devis importé.
+    'devisEnAttenteId' => null,
+    'nDevisEnAttente' => '',
 ]);
 
 // Les filtres sont portés par l'adresse de la page : ils survivent au rechargement,
@@ -386,10 +392,23 @@ $enregistrerEdition = function () {
     $this->annoncer('Brouillon modifié.');
 };
 
-/** Cocher directement dans la liste, sans ouvrir le formulaire pour une seule case. */
+/**
+ * Cocher « passage » directement dans la liste, **y compris sur une ligne transmise**.
+ *
+ * **Relevé le 25/09 : « c'est impossible de cliquer sur passage ».** C'était exact, et
+ * c'était une incohérence. La case était réservée au brouillon au nom d'une règle juste —
+ * ce qui est *déclaré* ne bouge plus sous les yeux du responsable — mais le passage n'est
+ * pas une déclaration, c'est un **constat** : on est passé, ou on n'est pas passé, et cela
+ * se constate souvent après coup. La preuve que la règle était mal appliquée ici : cocher
+ * « devis après passage » sur une ligne transmise mettait déjà `passage` à vrai. La case
+ * était donc fermée à la main et ouverte par la bande.
+ *
+ * Ce qui est déclaré reste fermé : la date, le moyen, l'activité. Et comme pour le devis,
+ * le responsable est prévenu — une ligne qu'il arbitre ne change pas en silence.
+ */
 $basculerPassage = function (int $id) {
     $p = Prospection::where('commercial_id', $this->commercial?->id ?? 0)
-        ->where('statut_validation', 'Brouillon')->findOrFail($id);
+        ->whereIn('statut_validation', ['Brouillon', 'Transmise'])->findOrFail($id);
 
     $passage = ! $p->passage;
 
@@ -398,7 +417,18 @@ $basculerPassage = function (int $id) {
         'date_passage' => $passage ? ($p->date_passage ?? $p->date) : null,
         'devis_apres_passage' => $passage ? $p->devis_apres_passage : false,
         'date_devis' => $passage ? $p->date_devis : null,
+        // Retirer le passage retire le devis qui en découlait : son numéro n'a plus de
+        // sujet, et le laisser ferait porter un devis à une visite qui n'a pas eu lieu.
+        'n_devis' => $passage ? $p->n_devis : null,
     ]);
+
+    if ($p->statut_validation === 'Transmise') {
+        $this->prevenirDUnComplement($p, $passage ? 'un passage constaté après coup' : 'le retrait du passage');
+    }
+
+    $this->annoncer($p->statut_validation === 'Transmise'
+        ? 'Mise à jour transmise à votre responsable.'
+        : 'Brouillon modifie.');
 };
 
 /**
@@ -416,26 +446,90 @@ $basculerDevisApres = function (int $id) {
     $p = Prospection::where('commercial_id', $this->commercial?->id ?? 0)
         ->whereIn('statut_validation', ['Brouillon', 'Transmise'])->findOrFail($id);
 
-    $devisApres = ! $p->devis_apres_passage;
-    $dateDevis = $devisApres ? ($p->date_devis ?? $p->date_passage ?? $p->date) : null;
+    /*
+     * **On coche, donc on demande le numéro.** Relevé le 25/09 : « lorsque la prospection
+     * est envoyée sans devis et qu'après on veut ajouter le devis, le numéro de devis
+     * n'est plus demandé ». C'était vrai : le formulaire l'exigeait, cette case-ci ne
+     * l'exigeait pas — et c'est pourtant par elle que passent presque tous les devis,
+     * puisqu'un devis arrive après la visite, donc après la transmission.
+     *
+     * Sans numéro, la prospection ne peut plus être reliée au devis importé : il ne reste
+     * que le rapprochement par la plaque et le nom, qui se trompe dès que le même client
+     * revient dans le mois. La case ouvre donc une question sur la ligne — pas une boîte
+     * du navigateur, la maison n'en veut pas — et le devis n'est posé qu'une fois le
+     * numéro donné.
+     */
+    if (! $p->devis_apres_passage) {
+        $this->devisEnAttenteId = $p->id;
+        $this->nDevisEnAttente = (string) ($p->n_devis ?? '');
+
+        return;
+    }
 
     $p->update([
-        'devis_apres_passage' => $devisApres,
-        'date_devis' => $dateDevis,
-        'passage' => $devisApres ? true : $p->passage,
-        'date_passage' => $devisApres ? $dateDevis : $p->date_passage,
+        'devis_apres_passage' => false,
+        'date_devis' => null,
+        'n_devis' => null,
     ]);
 
     // Le responsable arbitre cette ligne : si elle change après lui être partie, il doit
     // l'apprendre. Une ligne qui bouge en silence sous les yeux de qui l'arbitre est pire
     // qu'une ligne qu'on ne peut pas corriger.
     if ($p->statut_validation === 'Transmise') {
-        $this->prevenirDUnComplement($p, $devisApres ? 'un devis obtenu après le passage' : 'le retrait du devis');
+        $this->prevenirDUnComplement($p, 'le retrait du devis');
     }
 
     $this->annoncer($p->statut_validation === 'Transmise'
         ? 'Mise à jour transmise à votre responsable.'
-        : 'Brouillon modifié.');
+        : 'Brouillon modifie.');
+};
+
+/** On renonce : la case retrouve son état, et rien n'est écrit. */
+$annulerLeDevis = function () {
+    $this->devisEnAttenteId = null;
+    $this->nDevisEnAttente = '';
+};
+
+/**
+ * Poser le devis et son numéro, depuis la ligne.
+ *
+ * Le numéro est **exigé ici comme il l'est au formulaire** : c'est la même règle, au même
+ * moment — celui où le devis existe et où son numéro est sous les yeux. Deux exigences
+ * différentes selon la porte empruntée, c'est la garantie que l'une des deux restera vide.
+ */
+$confirmerLeDevis = function () {
+    $p = Prospection::where('commercial_id', $this->commercial?->id ?? 0)
+        ->whereIn('statut_validation', ['Brouillon', 'Transmise'])
+        ->findOrFail((int) $this->devisEnAttenteId);
+
+    $this->validate(
+        ['nDevisEnAttente' => ['required', 'string', 'max:60']],
+        [],
+        ['nDevisEnAttente' => 'n° du devis'],
+    );
+
+    $dateDevis = $p->date_devis ?? $p->date_passage ?? $p->date;
+
+    $p->update([
+        'devis_apres_passage' => true,
+        'date_devis' => $dateDevis,
+        // Un devis suppose un passage : c'est la règle de `normaliserPassage`, et elle
+        // vaut aussi quand on coche depuis la ligne.
+        'passage' => true,
+        'date_passage' => $p->date_passage ?? $dateDevis,
+        'n_devis' => trim($this->nDevisEnAttente),
+    ]);
+
+    $this->devisEnAttenteId = null;
+    $this->nDevisEnAttente = '';
+
+    if ($p->statut_validation === 'Transmise') {
+        $this->prevenirDUnComplement($p, 'un devis obtenu après le passage');
+    }
+
+    $this->annoncer($p->statut_validation === 'Transmise'
+        ? 'Devis n° '.$p->n_devis.' transmis à votre responsable.'
+        : 'Brouillon modifie.');
 };
 
 /**
@@ -599,19 +693,32 @@ $transmettreSelection = function () {
                     placeholder="FR-…" aide="Facultatif — si le véhicule est déjà à l'atelier" />
                 <x-champ label="Moyens" model="moyen" type="select" :options="$this->optionsMoyen" width="140" />
                 <x-champ label="Activité" model="activite" type="select" :options="$this->optionsActivite" width="150" />
+                {{-- **Les champs liés paraissent à la coche, pas au retour du serveur.**
+
+                     Ils étaient posés sous un `@if` : la case cochée, il fallait attendre
+                     l'aller-retour Livewire pour que le champ apparaisse. « Le champ
+                     apparaît en retard, fais apparaître ça de façon instantanée dès que le
+                     bouton est coché » — 25/09. C'est `x-show` qui le fait, sur l'état que
+                     Livewire tient déjà en mémoire dans la page.
+
+                     Les champs restent **rendus par le serveur**, simplement masqués : la
+                     page continue de fonctionner sans JavaScript, et la règle qui exige le
+                     n° de devis reste où elle doit être — dans la validation. --}}
                 <x-champ label="Passage" model="passage" type="checkbox" live="true" />
-                @if ($passage && ! $devisApres)
+                <div x-show="$wire.passage && ! $wire.devisApres" x-cloak>
                     <x-champ label="Date de passage" model="datePassage" type="date" width="150" />
-                @endif
+                </div>
                 <x-champ label="Devis après passage" model="devisApres" type="checkbox" live="true" />
-                @if ($devisApres)
+                <div x-show="$wire.devisApres" x-cloak>
                     <x-champ label="Date du devis (= date de passage)" model="dateDevis" type="date" live="true" width="180" />
-                    {{-- Il n'apparaît qu'ici, et il est exigé : c'est l'instant où le devis
-                         existe et où son numéro est sous les yeux du commercial. Le donner
-                         maintenant évite tout le rapprochement qui suivrait. --}}
+                </div>
+                {{-- Il n'apparaît qu'ici, et il est exigé : c'est l'instant où le devis
+                     existe et où son numéro est sous les yeux du commercial. Le donner
+                     maintenant évite tout le rapprochement qui suivrait. --}}
+                <div x-show="$wire.devisApres" x-cloak>
                     <x-champ label="N° du devis" model="nDevis" width="170" requis="true"
                         placeholder="PR-MT-11434" aide="Ou le n° de fiche, à défaut" />
-                @endif
+                </div>
                 <x-champ label="Observations" model="observations" />
                 {{-- Deux gestes distincts : mettre de côté, ou transmettre tout de suite.
                      La plupart des visites se saisissent une fois rentré, sûr de soi :
@@ -771,11 +878,16 @@ $transmettreSelection = function () {
 
                                      La date reste affichée sous la case : une coche sans date laisse
                                      croire que la date n'a pas été enregistrée. --}}
+                                {{-- Ouverte aussi sur une ligne transmise depuis le 25/09 : le
+                                     passage est un **constat**, pas une déclaration, et il se
+                                     constate souvent après coup. Elle était d'ailleurs déjà
+                                     ouverte par la bande — cocher le devis mettait le passage à
+                                     vrai. Seule la ligne arbitrée reste fermée. --}}
                                 <td style="text-align:center;">
-                                    @if ($brouillon)
+                                    @if ($brouillon || $ligne->statut_validation === 'Transmise')
                                         <input type="checkbox" wire:click="basculerPassage({{ $ligne->id }})"
                                             @checked($ligne->passage) style="width:16px; height:16px; cursor:pointer;"
-                                            title="Êtes-vous passé sur site ?">
+                                            title="Êtes-vous passé sur site ? Sur une ligne transmise, la mise à jour part aussitôt au responsable.">
                                     @else
                                         {{ $ligne->passage ? '☑' : '☐' }}
                                     @endif
@@ -790,6 +902,45 @@ $transmettreSelection = function () {
                                         {{ $ligne->devis_apres_passage ? '☑' : '☐' }}
                                     @endif
                                     <x-date-sous-case :date="$ligne->date_devis" />
+
+                                    {{-- La question, posée sur la ligne qu'elle concerne.
+
+                                         Elle remplace un silence : la case posait le devis sans
+                                         jamais demander son numéro, alors que le formulaire
+                                         l'exige — et c'est par cette case que passent presque
+                                         tous les devis, puisqu'un devis arrive après la visite.
+                                         Sans numéro, il ne reste que le rapprochement par la
+                                         plaque, qui se trompe dès que le client revient. --}}
+                                    @if ((int) $devisEnAttenteId === (int) $ligne->id)
+                                        <div style="margin-top:6px; text-align:left; background:#FFFBEA;
+                                                    border:1px solid #E3D9A8; border-radius:7px; padding:8px;">
+                                            <label style="display:block; font-size:11.5px; font-weight:700; color:#4B4E55;">
+                                                N° du devis obtenu
+                                            </label>
+                                            <input type="text" wire:model="nDevisEnAttente" value="{{ $nDevisEnAttente }}"
+                                                wire:keydown.enter="confirmerLeDevis"
+                                                placeholder="PR-MT-11434" autofocus
+                                                style="width:100%; box-sizing:border-box; margin-top:3px; padding:5px 7px;
+                                                       border:1px solid var(--th-ligne,#E2E0D8); border-radius:5px; font-size:12.5px;">
+                                            @error('nDevisEnAttente')
+                                                <div style="font-size:11px; color:#C8102E; margin-top:3px;">{{ $message }}</div>
+                                            @enderror
+                                            <div style="display:flex; gap:5px; margin-top:6px;">
+                                                <button type="button" wire:click="confirmerLeDevis"
+                                                    class="bouton bouton-sombre" style="padding:4px 9px; font-size:11.5px;">
+                                                    Enregistrer
+                                                </button>
+                                                <button type="button" wire:click="annulerLeDevis"
+                                                    class="bouton bouton-secondaire" style="padding:4px 9px; font-size:11.5px;">
+                                                    Annuler
+                                                </button>
+                                            </div>
+                                            <div style="font-size:10.5px; color:#6B6E76; margin-top:5px; line-height:1.45;">
+                                                Ou le n° de fiche, à défaut. C'est lui qui reliera cette
+                                                visite au devis quand le fichier sera importé.
+                                            </div>
+                                        </div>
+                                    @endif
                                 </td>
                                 {{-- Le numéro du devis est exigé au moment où l'on déclare le
                                      passage en devis : il doit donc se relire ici, sans quoi on

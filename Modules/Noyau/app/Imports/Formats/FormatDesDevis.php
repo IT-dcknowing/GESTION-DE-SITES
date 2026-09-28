@@ -4,6 +4,7 @@ namespace Modules\Noyau\Imports\Formats;
 
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
+use Modules\Noyau\Imports\Services\CodesDesCommerciaux;
 
 /**
  * « Devis » — les proformas.
@@ -133,6 +134,21 @@ class FormatDesDevis extends Format
 
         $montant = (int) round((float) self::montant($ligne['montant'] ?? null));
 
+        /*
+         * **Le code de celui qui a rédigé la proforma, écrit sur la ligne.**
+         *
+         * Il était extrait — c'est lui qui sert à ranger la ligne dans sa ville — puis
+         * jeté. Mesuré le 25/09 : **2 432 devis importés sur 2 432 ne portaient ni code ni
+         * commercial**, alors que leur numéro le dit tous (« PR-MT-11434 » → MT). L'écran
+         * des codes promettait pourtant que « c'est par elles que les devis importés
+         * rejoignent leur commercial » : la promesse n'était tenue nulle part.
+         *
+         * On écrit donc le code, et le commercial quand le code en désigne un. La distinction
+         * compte : le code est un fait lu dans le fichier, le commercial est une conclusion
+         * qui suppose qu'on ait relié ce code à quelqu'un — voir `CodesDesCommerciaux`.
+         */
+        $code = $rattachement['code'] ?? null;
+
         $valeurs = [
             'site_id' => $rattachement['site_id'],
             'lot_import_id' => $lotId,
@@ -142,7 +158,17 @@ class FormatDesDevis extends Format
             'montant_devis' => $montant,
             'activite' => $this->activite($ligne),
             'observations' => $this->observations($ligne),
+            'code_auteur' => $code,
         ];
+
+        // Le commercial ne s'écrase jamais : celui qu'une personne a posé à l'écran vaut
+        // mieux que celui qu'un code déduit, et un code qui cesse d'être relié ne doit pas
+        // effacer un rattachement déjà établi.
+        $commercialId = $code === null ? null : CodesDesCommerciaux::pour($this->entrepriseId)->commercialDuCode($code);
+
+        if ($commercialId !== null) {
+            $valeurs['commercial_id'] = $commercialId;
+        }
 
         $existant = isset($this->numerosConnus[$numero])
             ? Devis::withoutGlobalScopes()
@@ -173,6 +199,12 @@ class FormatDesDevis extends Format
         // écraser par un fichier redéposé au titre d'une autre ville.
         if ($rattachement['presumee'] && $existant->site_id !== null) {
             unset($valeurs['site_id']);
+        }
+
+        // Un commercial déjà posé — à la main, ou par la fiche de réception — ne se laisse
+        // pas remplacer par la déduction du code.
+        if ($existant->commercial_id !== null) {
+            unset($valeurs['commercial_id']);
         }
 
         $existant->fill($valeurs);

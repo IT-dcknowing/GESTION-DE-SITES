@@ -148,6 +148,46 @@ class LeSuiviFournisseurEntreEnEntierTest extends TestCase
         );
     }
 
+    /**
+     * Le même numéro écrit de deux façons reste une seule facture.
+     *
+     * **Mesuré le 25/09 sur les deux fichiers réels**, après une question du propriétaire :
+     * les deux classeurs n'écrivent pas le n° de pièce pareil. Abidjan écrit « 0001827 »,
+     * San Pédro écrit « 22319I091/0001827 » — le préfixe est le code du bon de commande, et
+     * un seul des deux le recopie. Comparés à la lettre, ce sont deux pièces : **562
+     * factures seraient entrées deux fois** au dépôt du second classeur, et la dette aurait
+     * été comptée double sans qu'une ligne ne le signale.
+     */
+    public function test_le_meme_numero_ecrit_autrement_ne_cree_pas_une_seconde_dette(): void
+    {
+        $this->importer(array_merge(
+            $this->preambuleDuClasseur(),
+            [$this->enTeteAbidjan()],
+            [$this->ligneAbidjan()],
+        ));
+
+        $piece = FactureFournisseur::withoutGlobalScopes()->firstOrFail();
+        $numeroAbidjan = (string) $piece->numero_piece;
+
+        // Le second classeur reprend la même facture — même fournisseur, même date, même
+        // montant — sous le numéro préfixé du bon de commande.
+        $reprise = $this->ligneSanPedroReprenantAbidjan();
+        $reprise[2] = $piece->date_facture->format('Y-m-d');
+        $reprise[9] = (int) $piece->montant;
+        $reprise[15] = (string) $piece->fournisseur;
+        $reprise[8] = '22319I091/000'.ltrim($numeroAbidjan, '0');
+        $reprise[18] = (int) $piece->montant_regle;
+        $reprise[19] = (int) $piece->reste_a_payer;
+
+        $this->importer(array_merge([$this->enTeteSanPedro()], [$reprise]));
+
+        $this->assertSame(
+            1,
+            FactureFournisseur::withoutGlobalScopes()->count(),
+            'Le même numéro écrit autrement ne doit pas créer une seconde dette.',
+        );
+    }
+
     public function test_deux_lignes_du_meme_numero_de_piece_ne_s_ecrasent_plus(): void
     {
         // La facture et son avoir portent le même numéro de pièce : c'est le cas réel de

@@ -143,15 +143,35 @@ $lignes = computed(fn () => (clone $this->requete)->forPage($this->page, 20)->ge
             réglée n'y paraît donc dans aucune année. Ici elles y sont toutes — c'est la reprise
             telle quelle, pour vérifier, pas pour travailler.
         </p>
+        <p style="margin:0 0 10px; font-size:13px; line-height:1.6;">
+            <strong>Aucun des deux classeurs n'est « celui de sa ville ».</strong> Mesuré le 25/09,
+            feuille <b>DETAIL</b> des deux fichiers déposés :
+        </p>
+        <table class="tableau" style="margin:0 0 12px; font-size:12.5px; max-width:560px;">
+            <thead>
+                <tr><th>Classeur</th><th style="text-align:right;">Abidjan</th><th style="text-align:right;">San Pédro</th><th style="text-align:right;">Bouaké</th><th style="text-align:right;">Sans ville</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>FICHIER SUIVI FOURNISSEURS (FSF L2A)</td><td style="text-align:right;">5 461</td><td style="text-align:right;">852</td><td style="text-align:right;">30</td><td style="text-align:right;">1 082</td></tr>
+                <tr><td>SanPedro_SUIVI FACTURES FOURNISSEURS SP-26</td><td style="text-align:right;">2 862</td><td style="text-align:right;">921</td><td style="text-align:right;">—</td><td style="text-align:right;">1 557</td></tr>
+            </tbody>
+        </table>
+        <p style="margin:0 0 10px; font-size:13px; line-height:1.6;">
+            Les deux portent les deux villes, et le classeur de San Pédro contient <b>trois fois plus
+            de lignes d'Abidjan que de San Pédro</b>. Ce ne sont pas deux périmètres, ce sont deux
+            copies partiellement recouvrantes du même suivi — il n'y a pas de « bon » fichier à
+            choisir, il faut les deux, et la ville se lit ligne à ligne dans la colonne SITE.
+        </p>
         <p style="margin:0; font-size:13px; line-height:1.6;">
-            <strong>Pourquoi les montants ne comptent pas double.</strong> Les deux classeurs
-            — Abidjan et San-Pédro — portent <b>10 147 lignes</b> à eux deux, mais seulement
-            <b>7 397 distinctes</b> : <b>2 670 lignes figurent dans les deux</b>. Déposés l'un après
-            l'autre sans précaution, ils auraient compté la même dette deux fois. Chaque pièce est
-            donc reconnue à quatre champs — <b>fournisseur, n° de pièce, date, montant</b> — et une
-            ligne déjà entrée est mise à jour au lieu d'être ajoutée. C'est aussi pourquoi ces quatre
-            champs restent verrouillés sur une ligne venue d'un fichier : les retoucher ferait qu'un
-            prochain dépôt ne la reconnaîtrait plus, et la recréerait.
+            <strong>Pourquoi les montants ne comptent pas double.</strong> <b>10 101 lignes</b>
+            exploitables à eux deux, <b>7 373 distinctes</b> : <b>2 648 figurent dans les deux</b>.
+            Une pièce est reconnue à quatre champs — <b>fournisseur, n° de pièce, date, montant</b> —
+            et une ligne déjà entrée est mise à jour au lieu d'être ajoutée. <b>Le numéro se compare
+            par son noyau</b>, parce que les deux classeurs ne l'écrivent pas pareil : « 0001827 »
+            d'un côté, « 22319I091/0001827 » de l'autre — le préfixe est le code du bon de commande,
+            qu'un seul des deux recopie. Comparés à la lettre, <b>562 factures seraient entrées deux
+            fois</b>. C'est aussi pourquoi ces quatre champs restent verrouillés sur une ligne venue
+            d'un fichier : les retoucher ferait qu'un prochain dépôt ne la reconnaîtrait plus.
         </p>
     </div>
 
