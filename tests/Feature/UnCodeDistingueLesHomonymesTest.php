@@ -184,6 +184,49 @@ class UnCodeDistingueLesHomonymesTest extends TestCase
         );
     }
 
+    /**
+     * Le code naît avec la fiche, quel que soit le chemin.
+     *
+     * **Demandé le 28/09** : « le code doit être attribué en même temps, pas par
+     * l'utilisateur ; à l'import ou à la création, le code doit être présent ».
+     *
+     * Trois chemins créent une fiche — le dépôt du classeur, la saisie à l'écran, le
+     * bouton « coder ». Un code posé par l'appelant est un code que l'un des trois
+     * oubliera, et l'oubli ne se verrait pas. Posé par le modèle, aucune fiche ne peut
+     * naître sans.
+     */
+    public function test_une_fiche_ne_peut_pas_naitre_sans_code(): void
+    {
+        // Le chemin de l'import : `consigner()` sans code dans les valeurs.
+        $parImport = FournisseurReferentiel::consigner($this->entreprise->id, 'KALEOS', [
+            'delai_reglement' => '30 jours',
+        ]);
+
+        $this->assertStringStartsWith('FRS-F-', (string) $parImport->code);
+
+        // Le chemin direct, sans passer par `consigner()`.
+        $direct = FournisseurReferentiel::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'nom' => 'SOCIDA',
+            'nom_normalise' => FournisseurReferentiel::clePour('SOCIDA'),
+        ]);
+
+        $this->assertStringStartsWith('FRS-F-', (string) $direct->code);
+        $this->assertNotSame($parImport->code, $direct->code, 'Deux fiches, deux codes.');
+    }
+
+    /** Et il ne se recalcule jamais : un identifiant qui change n'identifie plus rien. */
+    public function test_le_code_d_une_fiche_ne_change_pas(): void
+    {
+        $fiche = FournisseurReferentiel::consigner($this->entreprise->id, 'KALEOS', []);
+        $code = $fiche->code;
+
+        FournisseurReferentiel::consigner($this->entreprise->id, 'kaleos', ['delai_reglement' => '45 jours']);
+
+        $this->assertSame($code, $fiche->fresh()->code);
+        $this->assertSame(1, FournisseurReferentiel::withoutGlobalScopes()->count());
+    }
+
     // ------------------------------------------------------------------ le décor
 
     private function creance(string $client): Facture

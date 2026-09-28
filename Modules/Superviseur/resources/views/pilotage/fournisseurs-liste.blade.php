@@ -1,7 +1,6 @@
 <?php
 
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
-use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Modeles\FournisseurReferentiel;
 
@@ -148,17 +147,17 @@ $coder = function (string $nom) {
         return;
     }
 
+    /*
+     * Le code n'est pas posé ici : c'est le modèle qui le pose à la naissance de la fiche.
+     * Demandé le 28/09 — « le code doit être attribué en même temps, pas par
+     * l'utilisateur ». Trois chemins créent une fiche ; un code posé par l'appelant est un
+     * code que l'un des trois oubliera.
+     */
     $fiche = FournisseurReferentiel::consigner(
         (int) auth()->user()->entreprise_id,
         $nom,
         ['source_feuille' => 'code attribué à l’écran'],
     );
-
-    if ($fiche->code === null) {
-        $fiche->forceFill([
-            'code' => GenerateurNumero::suivant((int) auth()->user()->entreprise_id, 'frs_fiche'),
-        ])->save();
-    }
 
     unset($this->annuaire, $this->filtrees, $this->sansCode);
 
@@ -178,14 +177,11 @@ $coderTout = function () {
             continue;
         }
 
-        $fiche = FournisseurReferentiel::consigner($entrepriseId, $ligne['nom'], [
+        FournisseurReferentiel::consigner($entrepriseId, $ligne['nom'], [
             'source_feuille' => 'code attribué à l’écran',
         ]);
 
-        if ($fiche->code === null) {
-            $fiche->forceFill(['code' => GenerateurNumero::suivant($entrepriseId, 'frs_fiche')])->save();
-            $poses++;
-        }
+        $poses++;
     }
 
     activity()->causedBy(auth()->user())
@@ -225,10 +221,6 @@ $ajouter = function () {
         'source_feuille' => 'saisi à l’écran',
     ]));
 
-    if ($fiche->code === null) {
-        $fiche->forceFill(['code' => GenerateurNumero::suivant($entrepriseId, 'frs_fiche')])->save();
-    }
-
     $this->fill(['nom' => '', 'delai' => '', 'note' => '', 'aConfirmer' => '', 'formulaireOuvert' => false]);
     unset($this->annuaire, $this->filtrees, $this->sansCode, $this->ressemblants);
 
@@ -263,8 +255,20 @@ $ajouter = function () {
 
             <div class="bloc-saisie" style="background:#fff; border-style:solid;">
                 <x-champ label="Nom du fournisseur" model="nom" :requis="true" width="280" live="true" />
+                {{-- **À quoi il sert, puisque la question a été posée le 28/09.**
+
+                     Une facture fournisseur devrait dire pour quand elle est à payer.
+                     5 184 des 7 350 lignes du classeur ne le disent pas : la colonne
+                     « date d'échéance » y est vide. Le terme comble ce trou — « 30 jours »
+                     sur une facture du 4 mars donne une échéance **attendue** au 3 avril,
+                     déduite et jamais écrite en base.
+
+                     Facultatif, et c'est voulu : on ouvre souvent un fournisseur avant
+                     d'avoir négocié ses conditions. Laissé vide, ses factures n'auront
+                     simplement pas d'échéance attendue — et la colonne le dira. --}}
                 <x-champ label="Terme de règlement" model="delai" width="220"
-                    placeholder="Comptant · 30 jours · 45 jours fin de mois" />
+                    placeholder="Comptant · 30 jours · 45 jours fin de mois"
+                    aide="Facultatif — sert à déduire l'échéance des factures qui n'en portent pas" />
                 <x-champ label="Note" model="note" width="280" />
                 <button type="button" wire:click="ajouter" class="bouton">
                     {{ $aConfirmer !== '' ? 'Oui, ajouter quand même' : 'Ajouter' }}
@@ -336,7 +340,10 @@ $ajouter = function () {
                         <th>Terme de règlement</th>
                         <th class="num">Pièces</th>
                         <th style="text-align:right;">Reste dû</th>
-                        <th>Fiche</th>
+                        {{-- « Fiche » ne disait rien à qui n'a pas écrit le code — relevé le
+                             28/09. La colonne répond en réalité à une question précise :
+                             sait-on à quel terme ce fournisseur se règle ? --}}
+                        <th>Échéance déductible</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -363,12 +370,15 @@ $ajouter = function () {
                                 {{ ae($ligne['reste']) }}
                             </td>
                             <td>
-                                @if ($ligne['fiche'])
-                                    <span style="color:#0E9F6E; font-weight:600;">déclarée</span>
+                                @if ($ligne['terme'])
+                                    <span style="color:#0E9F6E; font-weight:600;">oui</span>
                                 @else
-                                    {{-- Facturé sans fiche : ses pièces n'auront pas d'échéance
-                                         attendue, faute de terme connu. --}}
-                                    <span style="color:#B87A00;">sans conditions</span>
+                                    {{-- Sans terme connu, ses factures qui ne portent pas
+                                         d'échéance n'en auront aucune — ni attendue, ni écrite.
+                                         C'est le cas de 5 184 lignes sur 7 350. --}}
+                                    <span style="color:#B87A00;" title="Aucun terme de règlement connu : ses factures sans échéance n'en auront pas.">
+                                        non — terme inconnu
+                                    </span>
                                 @endif
                             </td>
                         </tr>

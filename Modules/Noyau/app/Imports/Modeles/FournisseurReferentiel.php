@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Modules\Noyau\Commun\Concerns\AppartientAUneEntreprise;
+use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Spatie\Activitylog\Contracts\Activity;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -43,6 +44,36 @@ class FournisseurReferentiel extends Model
     use LogsActivity;
 
     protected $table = 'referentiel_fournisseurs';
+
+    /**
+     * Le code est posé par le modèle, à la naissance de la fiche — jamais par un écran.
+     *
+     * **Demandé le 28/09** : « le code doit être attribué en même temps, pas par
+     * l'utilisateur ; à l'import ou à la création, le code doit être présent ».
+     *
+     * C'est la bonne règle, et elle est plus solide qu'elle n'en a l'air. Une fiche naît
+     * par trois chemins — le dépôt du classeur, la saisie à l'écran, le bouton « coder » —
+     * et un code posé par l'appelant est un code que l'un des trois oubliera. Posé ici, il
+     * ne peut pas manquer : aucune fiche ne peut naître sans.
+     *
+     * **Il ne se recalcule jamais.** Un identifiant qui change n'identifie plus rien : il
+     * ne se retient pas, ne se dicte pas au téléphone, et deux documents édités à un mois
+     * d'écart ne se rapprochent plus. C'est la même règle que pour le code d'auteur.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $fiche) {
+            if (trim((string) $fiche->code) !== '') {
+                return;
+            }
+
+            $entrepriseId = $fiche->entreprise_id ?? auth()->user()?->entreprise_id;
+
+            if ($entrepriseId) {
+                $fiche->code = GenerateurNumero::suivant((int) $entrepriseId, 'frs_fiche');
+            }
+        });
+    }
 
     /**
      * Ce que le journal retient d'une fiche corrigée à la main.
