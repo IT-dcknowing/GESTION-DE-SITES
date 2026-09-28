@@ -981,6 +981,11 @@ $basculerPortage = function () {
                              des traitements de cette ligne. Le nom ici, les dates dans le
                              détail — un tableau répond à « qui suit ce dossier ? », pas à
                              « que s'est-il passé et quand ? ». --}}
+                        {{-- Le versement unique qui a soldé cette ligne avec d'autres.
+                             Demandé le 28/09 : « une colonne paiement global qui va
+                             permettre de marquer que ces lignes ont été payées de façon
+                             globale à travers un chèque ou autre ». --}}
+                        <th>Règlement global</th>
                         <th>Traité par</th>
                         <th></th>
                     </tr>
@@ -1069,6 +1074,23 @@ $basculerPortage = function () {
                             <td style="color:#B87A00; font-weight:600; white-space:nowrap;">
                                 {{ EtatDesImpayes::libelleReport($ligne, $this->annee) }}
                             </td>
+                            <td style="white-space:nowrap; font-family:ui-monospace,Consolas,monospace; font-size:12px;">
+                                @php
+                                    /* La référence du versement, s'il y en a une. Elle est
+                                       posée sur les encaissements, pas sur la facture : une
+                                       créance peut recevoir un versement groupé puis un
+                                       versement isolé, et c'est le règlement qui est groupé,
+                                       pas la créance. */
+                                    $global = $ligne->encaissements->pluck('reglement_global')->filter()->unique();
+                                @endphp
+                                @if ($global->isEmpty())
+                                    <span style="color:#9A9DA5;">—</span>
+                                @else
+                                    @foreach ($global as $reference)
+                                        <div title="Ce règlement a soldé plusieurs factures d'un seul versement.">{{ $reference }}</div>
+                                    @endforeach
+                                @endif
+                            </td>
                             <td>
                                 <x-qui-a-agi :personnes="$this->traitants[$ligne->id] ?? []" />
                             </td>
@@ -1103,7 +1125,7 @@ $basculerPortage = function () {
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="24"
+                        <x-table-vide :colspan="25"
                             texte="Aucune créance dans l'état {{ $this->annee }}. Le bouton « Ajouter une créance » ouvre la saisie." />
                     @endforelse
                 </tbody>

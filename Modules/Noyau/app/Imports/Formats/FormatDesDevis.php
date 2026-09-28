@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Imports\Formats;
 
 use Modules\Noyau\Exploitation\Modeles\Devis;
+use Modules\Noyau\Exploitation\Services\RapprochementProspectionDevis;
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
 use Modules\Noyau\Imports\Services\CodesDesCommerciaux;
 
@@ -178,7 +179,7 @@ class FormatDesDevis extends Format
             : null;
 
         if ($existant === null) {
-            Devis::withoutGlobalScopes()->create($valeurs + [
+            $cree = Devis::withoutGlobalScopes()->create($valeurs + [
                 'entreprise_id' => $this->entrepriseId,
                 'numero' => mb_substr($numero, 0, 20),
                 // Le fichier ne dit pas si le devis a été validé ou refusé : il liste les
@@ -190,6 +191,17 @@ class FormatDesDevis extends Format
             ]);
 
             $this->numerosConnus[$numero] = true;
+
+            /*
+             * **La prospection qui l'annonçait le récupère, sans qu'on clique.**
+             *
+             * Demandé le 28/09. Ce n'est pas un rapprochement : le commercial a écrit ce
+             * numéro lui-même, en cochant « devis après passage », en tenant le devis.
+             * C'est une lecture, et une lecture n'a pas à être confirmée à la main. Les
+             * trois autres pistes — fiche, plaque, nom — restent manuelles, parce qu'elles
+             * concluent à partir d'indices.
+             */
+            RapprochementProspectionDevis::relierParLeNumero($cree);
 
             return 'cree';
         }
@@ -208,6 +220,11 @@ class FormatDesDevis extends Format
         }
 
         $existant->fill($valeurs);
+
+        // Un devis déjà entré peut n'avoir pas trouvé sa prospection au premier dépôt —
+        // la case a pu être cochée depuis. On réessaie à chaque passage : la méthode ne
+        // fait rien quand le rattachement existe déjà.
+        RapprochementProspectionDevis::relierParLeNumero($existant);
 
         if (! $existant->isDirty()) {
             return 'ignore';

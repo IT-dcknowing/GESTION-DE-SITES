@@ -1211,6 +1211,30 @@ $ajouterCharge = function () {
         @endif
         @error('exercice') <div class="encart encart-alerte" style="margin-bottom:16px;">{{ $message }}</div> @enderror
 
+{{-- **Trois sections masquées le 28/09, à la demande du propriétaire.**
+
+     « Les sections 2 — Devis, Encaissements et Chiffre d'affaires facturé, car elles n'ont
+     plus d'utilité du moment où les informations éditées n'iront pas dans le logiciel. »
+
+     Le raisonnement tient et il est le même que pour « Créer une facture » du
+     recouvrement : un devis, une facture et un encaissement naissent dans le logiciel
+     d'atelier, au bout d'une procédure, et entrent ici **par l'import**. Les saisir à la
+     main ouvrait une seconde source pour les mêmes tables — sans que rien ne relie les
+     deux, et sans que la saisie ne remonte jamais au logiciel. Deux vérités pour un même
+     chiffre, c'est une de trop.
+
+     **Masquées, non supprimées**, et pour la même raison qu'ailleurs : le code est écrit,
+     testé, gardé par les habilitations. Le besoin peut revenir le jour où le logiciel
+     saura recevoir ce qu'on lui envoie. Passer la constante à `true` rouvre la porte ;
+     rien d'autre n'est à toucher.
+
+     Ce qui reste dans cet écran : la prospection — qui n'existe que chez nous —, les
+     charges et décaissements, et l'atelier. --}}
+@php
+    /* Le jour où la saisie repartira vers le logiciel d'atelier, ici et nulle part ailleurs. */
+    $laSaisieAlimenteLeLogiciel = false;
+@endphp
+
         <x-carte-section titre="Flux commercial" icone="commercial" couleur="var(--th-ink,#191B20)">
             {{-- Ce tableau ne montre que les prospections à arbitrer. Une ligne tranchée,
                  validée comme refusée, s'en va aussitôt : celle qui annonçait un devis
@@ -1408,6 +1432,7 @@ $ajouterCharge = function () {
                     style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:13.5px; resize:vertical;"></textarea>
             </div>
 
+            @if ($laSaisieAlimenteLeLogiciel)
             <x-sous-titre n="2" t="Devis" />
 
             @if ($this->prospectionsAttenteDevis->isNotEmpty())
@@ -1606,9 +1631,11 @@ $ajouterCharge = function () {
                     placeholder="Ex. : baisse des devis liée à..., motifs des refus (prix jugé élevé, délai, pièces indisponibles)..."
                     style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:13.5px; resize:vertical;"></textarea>
             </div>
+            @endif
 
         </x-carte-section>
 
+        @if ($laSaisieAlimenteLeLogiciel)
         <x-carte-section titre="Chiffre d'affaires facturé" icone="facture" couleur="var(--th-vert,#0E9F6E)">
             @if ($this->devisValidesNonFactures->isNotEmpty())
                 <div style="width:100%;">
@@ -1773,7 +1800,9 @@ $ajouterCharge = function () {
                     style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:13.5px; resize:vertical;"></textarea>
             </div>
         </x-carte-section>
+        @endif
 
+        @if ($laSaisieAlimenteLeLogiciel)
         <x-carte-section titre="Encaissements" icone="encaissement" couleur="var(--th-bleu,#2563EB)">
             <div class="tableau-conteneur">
                 <table class="tableau">
@@ -1854,6 +1883,7 @@ $ajouterCharge = function () {
                     style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:13.5px; resize:vertical;"></textarea>
             </div>
         </x-carte-section>
+        @endif
 
         <x-carte-section titre="Charges & décaissements" icone="charge" couleur="var(--th-accent,#C8102E)">
             <div class="tableau-conteneur">

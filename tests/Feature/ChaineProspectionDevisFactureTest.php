@@ -2,6 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
@@ -11,10 +15,6 @@ use Modules\Noyau\Exploitation\Modeles\CompteurDocument;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
-use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
-use Livewire\Volt\Volt;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -136,7 +136,7 @@ class ChaineProspectionDevisFactureTest extends TestCase
         // reste quelque chose à en faire.
         $this->assertTrue(
             $ecran->prospectionsAttenteDevis->contains('id', $attendUnDevis->id),
-            "Une prospection validée qui annonçait un devis passe en « Devis à effectuer »."
+            'Une prospection validée qui annonçait un devis passe en « Devis à effectuer ».'
         );
     }
 
@@ -325,7 +325,23 @@ class ChaineProspectionDevisFactureTest extends TestCase
         return Volt::test('saisie.saisie-du-jour')->set('date', $this->jour);
     }
 
-    public function test_la_liste_des_factures_a_encaisser_ne_preselectionne_rien(): void
+    /**
+     * Les trois sections qui alimentaient le logiciel d'atelier sont masquées.
+     *
+     * **Demandé le 28/09** : « les sections 2 — Devis, Encaissements et Chiffre d'affaires
+     * facturé, car elles n'ont plus d'utilité du moment où les informations éditées n'iront
+     * pas dans le logiciel ».
+     *
+     * Un devis, une facture et un encaissement naissent dans le logiciel d'atelier et
+     * entrent ici par l'import. Les saisir à la main ouvrait une seconde source pour les
+     * mêmes tables, sans rien qui relie les deux — deux vérités pour un même chiffre.
+     *
+     * **Masquées, non supprimées** : les actions restent écrites, testées et gardées par
+     * les habilitations, parce que le besoin peut revenir le jour où le logiciel saura
+     * recevoir ce qu'on lui envoie. Ce test verrouille l'écran, pas le code mort : c'est
+     * l'écran que le propriétaire a demandé de nettoyer.
+     */
+    public function test_les_sections_qui_doublaient_le_logiciel_sont_masquees(): void
     {
         Facture::create([
             'entreprise_id' => $this->entreprise->id,
@@ -336,10 +352,14 @@ class ChaineProspectionDevisFactureTest extends TestCase
             'activite' => 'Mécanique', 'montant' => 100_000,
         ]);
 
-        // Sans ligne vide en tête, le navigateur affiche la première facture alors que
-        // le serveur ne détient rien : on obtenait « le champ facture est obligatoire »
-        // sur une facture qui paraissait pourtant choisie.
-        $this->ecran()->assertSeeHtml('<option value="">— Choisir une facture</option>');
+        $html = $this->ecran()->html();
+
+        $this->assertStringNotContainsString("Chiffre d'affaires facturé", $html);
+        $this->assertStringNotContainsString('— Choisir une facture', $html);
+
+        // Ce qui reste : la prospection, qui n'existe que chez nous, et les charges.
+        $this->assertStringContainsString('Prospections à valider', $html);
+        $this->assertStringContainsString('Charges', $html);
     }
 
     public function test_le_numero_de_la_future_facture_est_lisible_avant_de_valider(): void
@@ -350,10 +370,14 @@ class ChaineProspectionDevisFactureTest extends TestCase
             ->set('factureSelection.'.$devis->id, true)
             ->call('genererBrouillonsFactures');
 
-        // Le numéro se lit avant d'enregistrer — pour l'annoncer au client — mais le
+        // Le numéro se réserve avant d'enregistrer — pour l'annoncer au client — mais le
         // compteur n'est pas touché tant que la facturation n'est pas validée.
         // Le numéro porte le jour et le mois de la journée saisie : NF-1409-0001.
-        $ecran->assertSee('NF-'.now()->parse($this->jour)->format('dm').'-0001');
+        //
+        // L'aperçu ne se lit plus à l'écran depuis le 28/09 : la section « Chiffre
+        // d'affaires facturé » est masquée. La garantie, elle, est inchangée et c'est
+        // elle qui compte — un numéro réservé puis abandonné creuserait un trou dans la
+        // séquence, et cela se verrait six mois plus tard, au contrôle.
         $this->assertSame(
             0,
             (int) CompteurDocument::where('entreprise_id', $this->entreprise->id)->where('type', 'nfa')->value('dernier_numero'),
