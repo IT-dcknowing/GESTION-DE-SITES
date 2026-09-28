@@ -119,6 +119,10 @@
     {{-- Posés une seule fois : tout écran peut annoncer un geste ou poser une question
          sans embarquer sa propre boîte. --}}
     <x-annonce-ephemere />
+    {{-- Le geste est parti : le dire pendant qu'il voyage. Un bouton cliqué qui ne répond
+         pas se lit comme un bouton en panne, et l'on reclique — sur un encaissement, c'est
+         un second versement à retrouver et à annuler. --}}
+    <x-travail-en-cours />
     <x-confirmation />
 
     {{-- Un import se termine pendant qu'on travaille ailleurs : la veille l'annonce là où

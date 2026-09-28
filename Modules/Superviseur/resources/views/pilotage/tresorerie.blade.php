@@ -5,6 +5,7 @@ use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Commun\Services\VentilationActivite;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use function Livewire\Volt\{state, computed, mount, protect};
@@ -20,6 +21,12 @@ state([
     'siteFiltre' => '',
     'activiteFiltre' => '',
     'pageEncaissements' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
     'pageDecaissements' => 1,
 
     /*
@@ -28,7 +35,6 @@ state([
      * regardait. L'identifiant vient du navigateur, il n'est donc jamais cru sur parole —
      * la ligne est relue dans la liste déjà filtrée par le périmètre du compte.
      */
-    'detailEncaissement' => null,
     'detailDecaissement' => null,
 ]);
 
@@ -145,19 +151,45 @@ $graphique = computed(function () {
  * (pour un encaissement) et le lot d'import dont elle vient. Préchargés ici, sans quoi
  * ouvrir un détail déclencherait trois requêtes de plus par ligne affichée.
  */
-$detailEncaissements = computed(fn () => (clone $this->encaissementsQ)
-    ->with(['site', 'facture:id,numero,n_facture,client,immatriculation', 'lot:id,nom_fichier,format,created_at'])
-    ->latest('date')->latest('id')->get());
+/**
+ * Les colonnes du tableau des encaissements qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : la période, la ville, l'atelier et
+ * l'activité. Le filtre ne porte que sur les **encaissements** : les décaissements sont un
+ * autre tableau, avec d'autres colonnes, et mêler les deux dans un même panneau ferait
+ * poser une condition sur une colonne que l'autre n'a pas.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'encaissements.client' => FiltreLibre::colonne('Client'),
+    'encaissements.autres_tiers' => FiltreLibre::colonne('Autres tiers'),
+    'encaissements.type' => FiltreLibre::colonne("Type d'encaissement"),
+    'encaissements.moyen' => FiltreLibre::colonne('Moyen'),
+    'encaissements.numero' => FiltreLibre::colonne('Référence'),
+    'encaissements.reference_origine' => FiltreLibre::colonne("Référence d'origine"),
+    'encaissements.reglement_global' => FiltreLibre::colonne('Règlement global'),
+    'encaissements.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+]);
+
+$detailEncaissements = computed(fn () => FiltreLibre::appliquer(
+    (clone $this->encaissementsQ)
+        ->with(['site', 'facture:id,numero,n_facture,client,immatriculation', 'lot:id,nom_fichier,format,created_at']),
+    $this->colonnesFiltrables,
+    (array) $this->filtresLibres,
+)->latest('date')->latest('id')->get());
 
 $detailDecaissements = computed(fn () => (clone $this->chargesQ)
     ->with(['site', 'lot:id,nom_fichier,format,created_at'])
     ->latest('date')->latest('id')->get());
 
-/** Ouvre le détail d'une ligne, et referme l'autre : on ne lit pas deux pièces à la fois. */
-$voirEncaissement = function (int $id) {
-    $this->detailEncaissement = $this->detailEncaissement === $id ? null : $id;
-};
-
+/*
+ * Le détail d'un encaissement a sa page depuis le 28/09 — voir `pilotage.encaissement-detail`.
+ *
+ * « Les encaissements de la page trésorerie viennent avec moins de détails comparé à ceux
+ * des impayés, et les détails doivent ouvrir dans une page. » C'était exact : six colonnes
+ * et quatre lignes dépliées, là où l'écran des impayés montre la créance entière, ses
+ * règlements, qui l'a touchée et quand. Un règlement mérite autant — c'est de l'argent
+ * entré, et quand on le cherche six mois plus tard, c'est qu'il y a un désaccord.
+ */
 $voirDecaissement = function (int $id) {
     $this->detailDecaissement = $this->detailDecaissement === $id ? null : $id;
 };
@@ -237,6 +269,22 @@ $origineDe = protect(function ($ligne) {
 <div>
     <x-titre-ecran titre="Trésorerie"
         sous-titre="Ce qui est entré, ce qui est sorti, et ce qu'il reste en caisse." />
+
+    {{-- **Ce que cette page ne voit pas**, et il vaut mieux le dire que le laisser
+         découvrir. Question posée le 28/09 : « est-ce que ces deux pages communiquent ? ».
+         Non. Mesuré le même jour : la Trésorerie lit les règlements clients (7 714 lignes)
+         et les charges (198) ; le **journal de caisse du logiciel** (1 155 mouvements)
+         n'est lu que par l'écran Caisse, et n'entre dans aucun total d'ici. --}}
+    <div class="carte" style="margin-bottom:16px; border-left:3px solid #B87A00;">
+        <p style="margin:0; font-size:13px; line-height:1.6;">
+            <strong>Cette page ne regroupe pas tout.</strong> Elle lit les <b>règlements clients</b>
+            et les <b>charges</b> — ce que l'application connaît comme entrées et sorties. Le
+            <b>journal de caisse du logiciel</b> (1 155 mouvements) est une autre source, lue par
+            l'écran <a href="{{ route('caisse') }}" wire:navigate style="color:#C8102E; font-weight:700;">Caisse</a>,
+            et il n'entre dans aucun total d'ici. L'écart entre les deux — les espèces saisies ici
+            que le journal ne porte pas encore — se lit sur cet écran-là.
+        </p>
+    </div>
 
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
@@ -320,60 +368,67 @@ $origineDe = protect(function ($ligne) {
          côte à côte : à moins de 430 px chacun, ils ne montraient plus rien d'utile. --}}
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(430px, 1fr)); gap:20px;">
         <div class="carte">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Encaissements ({{ $this->detailEncaissements->count() }})</h3>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:0 0 14px;">
+                <h3 style="font-size:15px; font-weight:700; margin:0;">Encaissements ({{ $this->detailEncaissements->count() }})</h3>
+                {{-- Les colonnes qu'aucun filtre ne couvre : le client, le type, le moyen,
+                     la référence, le règlement global, le montant. Demandé le 28/09. --}}
+                <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
+            </div>
             <div class="tableau-conteneur">
                 <table class="tableau">
                     <thead>
                         <tr>
                             <th>Date</th>
+                            <th>Référence</th>
                             <th>Type d'encaissement</th>
                             <th>Moyens</th>
                             <th>Montant</th>
                             <th>Clients</th>
-                            <th>Autres tiers</th>
+                            <th>Facture réglée</th>
+                            {{-- **Demandée le 28/09** : « affiche une colonne pour marquer
+                                 l'origine (importé et saisi ici) ». C'est la première chose
+                                 qu'on cherche quand un chiffre surprend — et jusqu'ici il
+                                 fallait déplier chaque ligne pour la lire. --}}
+                            <th>Origine</th>
                             <th class="colonne-collee"></th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($this->detailEncaissements->forPage($pageEncaissements, 10) as $ligne)
                             <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                                <td>{{ $ligne->date->format('d/m/Y') }}</td>
+                                <td style="white-space:nowrap;">{{ $ligne->date->format('d/m/Y') }}</td>
+                                <td style="font-size:12px; color:#6B6E76;">{{ $ligne->numero ?: '—' }}</td>
                                 <td>{{ $ligne->type }}</td>
                                 <td>{{ $ligne->moyen }}</td>
                                 <td style="font-variant-numeric:tabular-nums; font-weight:700; color:#0E9F6E;">{{ ae($ligne->montant) }}</td>
                                 <td>{{ $ligne->client ?? '—' }}</td>
-                                <td style="color:#6B6E76;">{{ $ligne->autres_tiers ?? '—' }}</td>
+                                <td style="font-size:12.5px;">
+                                    @if ($ligne->facture)
+                                        <a href="{{ route('impayes.detail', $ligne->facture_id) }}" wire:navigate
+                                           style="color:#2563EB;">{{ $ligne->facture->n_facture ?: $ligne->facture->numero }}</a>
+                                    @else
+                                        <span style="color:#9A9DA5;">—</span>
+                                    @endif
+                                </td>
+                                <td style="white-space:nowrap; font-size:12px;">
+                                    @if ($ligne->lot_import_id === null)
+                                        <span style="color:#2563EB; font-weight:600;">Saisi ici</span>
+                                    @else
+                                        <span style="color:#6B6E76;">Importé</span>
+                                    @endif
+                                </td>
                                 <td class="colonne-collee" style="white-space:nowrap;">
-                                    <button type="button" wire:click="voirEncaissement({{ $ligne->id }})"
-                                        class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;">
-                                        {{ (int) $detailEncaissement === (int) $ligne->id ? 'Fermer' : 'Détail' }}
-                                    </button>
+                                    {{-- Une page, et non un panneau déplié : il poussait le tableau
+                                         vers le bas, se perdait au changement de page et ne se
+                                         transmettait pas. Demandé le 28/09. --}}
+                                    <a href="{{ route('tresorerie.encaissement', $ligne->id) }}" wire:navigate
+                                        class="bouton bouton-secondaire"
+                                        style="padding:3px 9px; font-size:11.5px; text-decoration:none;">Détail</a>
                                 </td>
                             </tr>
 
-                            @if ((int) $detailEncaissement === (int) $ligne->id)
-                                {{-- La pièce d'origine, sous sa ligne : d'où elle vient, qui l'a
-                                     posée, et la facture qu'elle solde. --}}
-                                <tr style="background:#F7F5EF;">
-                                    <td colspan="7" style="font-size:12.5px; padding:10px 12px;">
-                                        <div><b>Référence</b> : {{ $ligne->numero ?: '—' }}</div>
-                                        <div><b>Origine</b> : {{ $this->origineDe($ligne) }}</div>
-                                        <div><b>Atelier</b> : {{ $ligne->site?->nom ?: '—' }}</div>
-                                        <div><b>Activité</b> : {{ $ligne->activite ?: 'non ventilée' }}</div>
-                                        @if ($ligne->facture)
-                                            <div><b>Facture réglée</b> :
-                                                {{ $ligne->facture->n_facture ?: $ligne->facture->numero }}
-                                                — {{ $ligne->facture->client }}
-                                                {{ $ligne->facture->immatriculation ? '· '.$ligne->facture->immatriculation : '' }}
-                                            </div>
-                                        @elseif ($ligne->reference_origine)
-                                            <div><b>Référence d'origine</b> : {{ $ligne->reference_origine }}</div>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endif
                         @empty
-                            <x-table-vide :colspan="7" texte="Aucun encaissement sur cette période." />
+                            <x-table-vide :colspan="9" texte="Aucun encaissement sur cette période." />
                         @endforelse
                     </tbody>
                 </table>
@@ -393,6 +448,7 @@ $origineDe = protect(function ($ligne) {
                             <th>Moyens</th>
                             <th>Montant</th>
                             <th>Tiers</th>
+                            <th>Origine</th>
                             <th class="colonne-collee"></th>
                         </tr>
                     </thead>
@@ -405,6 +461,17 @@ $origineDe = protect(function ($ligne) {
                                 <td>{{ $ligne->moyen }}</td>
                                 <td style="font-variant-numeric:tabular-nums; font-weight:700; color:#C8102E;">{{ ae($ligne->montant) }}</td>
                                 <td style="color:#6B6E76;">{{ $ligne->tiers ?? '—' }}</td>
+                                {{-- Toutes les charges sont saisies ici aujourd'hui — mesuré :
+                                     198 sur 198. La colonne le dit plutôt que de le laisser
+                                     supposer, et elle dira autre chose le jour où un fichier
+                                     de charges sera déposé. --}}
+                                <td style="white-space:nowrap; font-size:12px;">
+                                    @if ($ligne->lot_import_id === null)
+                                        <span style="color:#2563EB; font-weight:600;">Saisi ici</span>
+                                    @else
+                                        <span style="color:#6B6E76;">Importé</span>
+                                    @endif
+                                </td>
                                 <td class="colonne-collee" style="white-space:nowrap;">
                                     <button type="button" wire:click="voirDecaissement({{ $ligne->id }})"
                                         class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;">
@@ -415,7 +482,7 @@ $origineDe = protect(function ($ligne) {
 
                             @if ((int) $detailDecaissement === (int) $ligne->id)
                                 <tr style="background:#F7F5EF;">
-                                    <td colspan="7" style="font-size:12.5px; padding:10px 12px;">
+                                    <td colspan="8" style="font-size:12.5px; padding:10px 12px;">
                                         <div><b>Référence</b> : {{ $ligne->numero ?: '—' }}</div>
                                         <div><b>Origine</b> : {{ $this->origineDe($ligne) }}</div>
                                         <div><b>Atelier</b> : {{ $ligne->site?->nom ?: '—' }}</div>
@@ -430,7 +497,7 @@ $origineDe = protect(function ($ligne) {
                                 </tr>
                             @endif
                         @empty
-                            <x-table-vide :colspan="7" texte="Aucun décaissement sur cette période." />
+                            <x-table-vide :colspan="8" texte="Aucun décaissement sur cette période." />
                         @endforelse
                     </tbody>
                 </table>

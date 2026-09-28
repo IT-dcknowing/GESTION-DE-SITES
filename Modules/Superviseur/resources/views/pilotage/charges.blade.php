@@ -4,6 +4,7 @@ use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Commun\Services\VentilationActivite;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use function Livewire\Volt\{state, computed, mount};
 
@@ -18,6 +19,12 @@ state([
     'siteFiltre' => '',
     'activiteFiltre' => '',
     'pageDetail' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 mount(function () {
@@ -108,7 +115,26 @@ $graphique = computed(function () {
     ];
 });
 
-$detail = computed(fn () => (clone $this->requeteBase)->with('site')->latest('date')->latest('id')->get());
+/**
+ * Les colonnes du tableau qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : la période, la ville, l'atelier et
+ * l'activité.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'charges.libelle' => FiltreLibre::colonne("Libellé d'opération"),
+    'charges.tiers' => FiltreLibre::colonne('Tiers'),
+    'charges.moyen' => FiltreLibre::colonne('Moyen'),
+    'charges.reference_origine' => FiltreLibre::colonne('Référence'),
+    'charges.motif' => FiltreLibre::colonne('Motif'),
+    'charges.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+]);
+
+$detail = computed(fn () => FiltreLibre::appliquer(
+    (clone $this->requeteBase)->with('site'),
+    $this->colonnesFiltrables,
+    (array) $this->filtresLibres,
+)->latest('date')->latest('id')->get());
 
 ?>
 
@@ -119,6 +145,12 @@ $detail = computed(fn () => (clone $this->requeteBase)->with('site')->latest('da
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
+
+    {{-- Les colonnes qu'aucun filtre ne couvre : le libellé, le tiers, le moyen, la
+         référence, le motif, le montant. Demandé le 28/09. --}}
+    <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
+    </div>
 
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp

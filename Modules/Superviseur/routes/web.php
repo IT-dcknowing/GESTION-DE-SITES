@@ -58,6 +58,10 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
 Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caissier'])->group(function () {
     Volt::route('/charges', 'pilotage.charges')->name('charges');
     Volt::route('/tresorerie', 'pilotage.tresorerie')->name('tresorerie');
+    // Un règlement a sa page, comme la créance qu'il solde : un panneau déplié pousse le
+    // tableau vers le bas, se perd au changement de page et ne se transmet pas.
+    Volt::route('/tresorerie/encaissement/{id}', 'pilotage.encaissement-detail')
+        ->name('tresorerie.encaissement')->whereNumber('id');
     // Les deux écrans qui manquaient à ce qui était déjà importé : mille cent cinquante-cinq
     // mouvements de caisse et mille huit cent quarante-huit factures fournisseurs dormaient
     // en base sans qu'aucune page ne les affiche. Une donnée qu'on ne peut pas voir n'a pas
@@ -150,6 +154,11 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     // La reprise du classeur a son adresse propre : c'est une page qu'on ouvre à côté de
     // l'autre pour comparer, pas un volet qu'on replie sous elle.
     Volt::route('/impayes/etat-initial', 'pilotage.impayes-etat-initial')->name('impayes.etat-initial');
+    // Un versement unique qui a soldé plusieurs factures. La référence n'était qu'une
+    // étiquette : on voyait la part d'une créance sans jamais voir le chèque, alors que
+    // la question qu'on pose au client est celle du versement entier.
+    Volt::route('/impayes/reglement/{reference}', 'pilotage.reglement-global')
+        ->name('impayes.reglement')->where('reference', '[A-Za-z0-9\-]+');
     // Le détail d'une créance a sa page, comme la fiche d'un véhicule : il se lit au large,
     // se rouvre dans un autre onglet et se transmet. Déplié sous sa ligne, il poussait le
     // tableau vers le bas et se perdait au premier changement de page.

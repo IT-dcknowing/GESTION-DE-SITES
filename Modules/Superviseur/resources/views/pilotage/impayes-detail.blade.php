@@ -205,11 +205,21 @@ $traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::de
                             @if ($global->isEmpty())
                                 —
                             @else
+                                {{-- Le lien mène au versement entier. Cette page ne montre que la
+                                     part de **cette** créance ; la question qu'on pose au client
+                                     six mois plus tard est celle du chèque. --}}
                                 @foreach ($global as $reference)
-                                    <div style="font-family:ui-monospace,Consolas,monospace;">{{ $reference }}</div>
+                                    <div>
+                                        <a href="{{ route('impayes.reglement', $reference) }}" wire:navigate
+                                           style="font-family:ui-monospace,Consolas,monospace; color:#2563EB; font-weight:700;">
+                                            {{ $reference }}
+                                        </a>
+                                    </div>
                                 @endforeach
                                 <div style="font-size:11.5px; color:#6B6E76; font-weight:400;">
-                                    un seul versement a soldé plusieurs factures
+                                    un seul versement a soldé plusieurs factures —
+                                    <a href="{{ route('impayes.reglement', $global->first()) }}" wire:navigate
+                                       style="color:#2563EB;">voir ce qu'il a payé, ligne par ligne</a>
                                 </div>
                             @endif
                         </td></tr>

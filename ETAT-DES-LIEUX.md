@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **28 septembre 2026** (15e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **28 septembre 2026** (16e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 28/09 | voir `git log` | **filtres-et-tresorerie** | les **compteurs des filtres disent ce que le tableau rend** (« Réglées (85) » au-dessus de « Détail (2) ») ; le **versement a sa page** et sa référence porte l'année ; **cocher ne parle plus au serveur** (400 ms mesurées par case) ; un bandeau dit « **enregistrement en cours** » ; bouton « **Autre filtre** » sur sept écrans, une à deux cases selon le type de la donnée ; **détail d'un encaissement en page** et colonne **Origine** ; **Caisse et Trésorerie disent ce qu'elles ne voient pas**, avec le pont des espèces saisies ; le **code d'une fiche fournisseur naît avec elle** |
 | 28/09 | voir `git log` | **encaissement-et-tiers** | **un versement solde plusieurs factures** — sélection à cocher, répartition « la plus ancienne d'abord », référence de règlement global et colonne dans l'état ; l'**encaissement du recouvrement refait sur le modèle des impayés** (banque, dépositaire, dates, déduction instantanée) ; la **relance cite les factures cochées** ; **un code par tiers et par fournisseur**, avec avertissement de ressemblance qui ne bloque pas ; **liste des fournisseurs** et ajout ; la **prospection attend son devis** et le récupère seule à l'import ; trois sections de la saisie du responsable masquées ; le détail d'une créance porte enfin toutes les colonnes |
 | 28/09 | voir `git log` | **fournisseurs-et-tracabilite** | la **clé de rapprochement des fournisseurs n'était pas infaillible** : les deux classeurs n'écrivent pas le n° de pièce pareil, et 562 factures seraient entrées deux fois — le numéro se compare désormais par son noyau ; **aucun des deux classeurs n'est « celui de sa ville »** ; les **devis importés retrouvent leur commercial** (2 432 sur 2 432 n'en avaient aucun) ; le commercial se désigne par le **code de la plateforme** et non par « C-0010 » ; **« Traité par »** dans les tableaux, avec les dates dans le détail seulement ; **page de détail d'un devis** ; cocher « devis après passage » **demande enfin son numéro**, et « passage » se coche sur une ligne transmise ; « Créer une facture » masquée du recouvrement |
 | 25/09 | voir `git log` | **finitions-du-25** | « **Créer une facture** » ne réagissait pas : `wire:model.blur` n'écoute que `blur`, et le champ masqué des listes cherchables ne le reçoit jamais — la valeur ne partait pas, et le refus ne s'affichait nulle part ; **les trois formulaires du recouvrement se vident** après enregistrement ; **tableau initial des fournisseurs** (`/fournisseurs/tableau-initial`), le pendant de celui des impayés ; « Référentiel » devient « **Conditions de règlement** » ; **la loupe ville lit enfin le périmètre** du lecteur ; **une seule numérotation** de facture et **une seule expression** de « réglée » ; le journal de caisse annonce **Excel avant PDF** |
@@ -1786,6 +1787,153 @@ Ce qui reste : la prospection, qui n'existe que chez nous, les charges et l'atel
 qu'il dispose des fichiers définitifs — « pour éviter de bâtir sur ce qui n'est pas
 correct ». La correction de la clé (comparaison du n° par son noyau) reste en place : elle
 ne déplace rien de ce qui existe, elle empêche ce qui serait arrivé.
+
+### Un compteur de filtre dit ce que le tableau rendra
+
+✅ **Corrigé le 28/09.** « Les éléments entre parenthèses ne reflètent pas la réalité dans
+le tableau. » Exact, et l'écart était énorme : le filtre annonçait « Réglées (85) » au-dessus
+d'un tableau qui affichait « Détail des factures (2) ».
+
+**La cause.** Ces compteurs partaient de la requête de base, qui ne porte ni le filtre
+d'état ni celui d'origine, alors que le tableau applique les deux. « Réglées (85) » voulait
+donc dire « 85 réglées **toutes origines confondues** », pendant que le tableau ne montrait
+que les réglées d'une seule origine. Deux questions différentes, deux nombres différents, et
+rien pour dire lequel répondait à quoi.
+
+**La règle.** Un compteur de filtre ne peut dire qu'une chose pour être utile : *si je
+choisis celui-ci, combien de lignes vais-je voir ?* Il porte donc **tous les autres
+filtres, et pas le sien**. « Toutes » en a un aussi, désormais.
+
+### Le bouton « Autre filtre »
+
+✅ **Fait le 28/09.** « Pour toutes ces pages, en plus des filtres disponibles […] un bouton
+"autre filtre" ; dans ce bouton on doit avoir une liste déroulante de toutes les colonnes
+manquantes de leur tableau […] un ou deux champs selon le type de données : pour les données
+à valeur fixe une liste déroulante, pour les données à recherche un champ, mais pour les
+données à date deux champs — cela servira d'intervalle. »
+
+**Le manque.** Chaque écran offre trois ou quatre filtres, ceux dont on se sert tous les
+jours ; les tableaux portent quinze à vingt-cinq colonnes. Les autres ne se filtraient pas :
+on exportait, on ouvrait le classeur, et l'on filtrait ailleurs — pour une question que
+l'application pouvait répondre.
+
+**Quatre types, et c'est la forme du champ qui change**, comme demandé :
+
+| Type | Champs | Pourquoi |
+|---|---|---|
+| `liste` | 1 déroulante | taper « Mécanique » avec une faute ne trouve rien, et l'on croit qu'il n'y a pas de lignes |
+| `texte` | 1 | une recherche qui contient |
+| `date` | **2** | on cherche une tranche, pas un jour exact |
+| `nombre` | **2** | « entre 100 000 et 500 000 » est la question qu'on pose |
+
+**Deux décisions qui comptent.** Les colonnes sont **déclarées par chaque écran**, jamais
+devinées du schéma : deviner donnerait des filtres sur `id`, `created_at` et `lot_import_id`
+— du bruit au milieu duquel on ne trouverait plus les trois qui servent. Et **une colonne
+non déclarée ne filtre rien** : les noms viennent de l'état Livewire, donc du navigateur,
+et les prendre tels quels laisserait composer une condition sur n'importe quelle colonne de
+la table. C'est le premier test du fichier.
+
+« — Non renseigné — » est un choix à part entière, et souvent celui qu'on cherche : les
+lignes dont la colonne est vide sont celles qu'il faut compléter.
+
+**Posé sur sept écrans** : état des impayés, chiffre d'affaires, devis, fournisseurs,
+caisse, trésorerie, charges. Restent à poser : parc véhicules, entrées/sorties, clients,
+commerciaux, prospects, rapprochements.
+
+### Un versement a sa page, et sa référence porte l'année
+
+✅ **Le 28/09.** « RG-2809-0001 doit être RG-280926-0001, et aussi cliquable pour aller
+directement vers les détails ; au niveau des détails, on ne doit pas afficher uniquement le
+détail de cette ligne : on doit avoir le montant total donné, les lignes touchées et combien
+par ligne. »
+
+Les deux tiennent ensemble. « RG-2809 » seul ne dit pas de quelle année il s'agit, et on
+cite cette référence des mois après, sur un relevé bancaire — **seul ce type porte l'année**,
+une facture se cherchant dans l'état de son exercice. Et la question qu'on pose alors est
+celle du **versement** — « votre chèque, qu'a-t-il soldé ? » — et non celle d'une de ses
+parts. `/impayes/reglement/{reference}` montre le montant donné, la ventilation facture par
+facture, ce qui reste dû sur chacune et qui l'a enregistré.
+
+### Cocher ne parle plus au serveur
+
+✅ **Corrigé le 28/09**, et c'est une mesure. « Les boutons cocher et tout cocher sont lents,
+et aussi les factures listées. » Chaque clic recalculait toute la page :
+
+| Ce qui était refait à chaque case | Coût |
+|---|---|
+| la liste du tiers (163 factures pour CGRAE) | 119 ms |
+| le bandeau (`lignesOuvertes`, 1 339 lignes) | 98 ms |
+| la liste déroulante des débiteurs | 86 ms |
+| l'annuaire complet (2 446 tiers) | 96 ms |
+
+Près de **400 ms de serveur pour une case à cocher**, plus le rendu des 163 lignes et le
+réseau. La sélection vit désormais dans le navigateur — `$wire.$set(..., false)` pose la
+valeur sans requête — et n'atteint le serveur qu'à l'enregistrement, le seul moment où elle
+compte et le seul où elle est vérifiée. Un clic coûte zéro.
+
+### « Enregistrement en cours… »
+
+✅ **Le 28/09.** Un bouton cliqué qui ne répond pas immédiatement se lit comme un bouton en
+panne : on reclique. Recliquer sur « Enregistrer l'encaissement » n'est pas anodin — c'est un
+second versement sur les mêmes factures, à retrouver et à annuler ; sur une relance N5, c'est
+deux fois l'huissier.
+
+**Un seul composant plutôt qu'un `wire:loading` par bouton** : il y en a des dizaines et il
+en naîtra d'autres ; un indicateur posé bouton par bouton est un indicateur qu'on oubliera
+quelque part, et l'oubli ne se verra pas.
+
+**Ce qu'on distingue.** Livewire envoie deux sortes d'échanges : les `updates` — un filtre
+qu'on tape, une case qu'on coche — et les `calls` — un geste. Annoncer « enregistrement en
+cours » à chaque frappe dans une recherche serait pire que se taire : on apprendrait à ne
+plus lire le bandeau. Il ne réagit donc qu'aux appels de méthode, et n'apparaît qu'au-delà
+de 180 ms pour ne pas clignoter.
+
+### Caisse et Trésorerie : ce que chacune lit, et ce qu'elle ne lit pas
+
+✅ **Dit à l'écran le 28/09**, après la question « est-ce que ces deux pages
+communiquent ? ». Non — et la compréhension qu'on pouvait en avoir était l'inverse de la
+réalité :
+
+| Écran | Ce qu'il lit | Lignes | Origine |
+|---|---|---:|---|
+| **Caisse** | le journal de caisse du logiciel | 1 155 | 100 % importées |
+| **Trésorerie** | les règlements clients | 7 714 | 7 629 importées · 85 saisies |
+| | les charges | 198 | 100 % saisies ici |
+
+La Caisse **ne regroupe pas** la trésorerie ; la Trésorerie **ne voit pas** le journal.
+
+**Pourquoi on ne les fond pas dans un seul tableau.** La colonne « solde annoncé » du
+journal forme une chaîne : chaque ligne porte le solde imprimé après elle, et c'est cette
+chaîne qui prouve qu'aucune ligne n'a été perdue à l'import. Y insérer des écritures
+absentes du journal romprait la seule vérification qu'on ait sur ce fichier.
+
+**Le pont, plutôt que la fusion.** L'écran Caisse montre **à côté**, nommément, ce que
+l'application a encaissé ou décaissé **en espèces** et que le journal ne porte pas encore.
+C'est exactement ce qu'un rapprochement de caisse cherche. Et une colonne **Origine**
+(« Importé » / « Saisi ici ») paraît des deux côtés, là où il fallait déplier chaque ligne.
+
+### Le détail d'un encaissement, en page
+
+✅ **Le 28/09.** « Les encaissements de la page trésorerie viennent avec moins de détails
+comparé à ceux des impayés, et les détails doivent ouvrir dans une page. » C'était exact :
+six colonnes et quatre lignes dépliées, là où l'écran des impayés montre la créance entière.
+Un règlement mérite autant — c'est de l'argent entré, et quand on le cherche six mois plus
+tard, c'est qu'il y a un désaccord.
+
+`/tresorerie/encaissement/{id}` : l'écriture, qui a payé et pour quoi, le reste dû après,
+**les autres parts du même versement**, qui l'a enregistré et ce qui a changé.
+
+### Le code d'une fiche fournisseur naît avec elle
+
+✅ **Le 28/09.** « Le code doit être attribué en même temps, pas par l'utilisateur ; à
+l'import ou à la création, le code doit être présent. » Trois chemins créent une fiche — le
+dépôt du classeur, la saisie à l'écran, le bouton « coder » — et un code posé par l'appelant
+est un code que l'un des trois oubliera, sans que l'oubli se voie. Il est posé par le
+**modèle**, à la naissance : aucune fiche ne peut naître sans.
+
+La colonne « Fiche » devient **« Échéance déductible »** — elle ne disait rien à qui n'a pas
+écrit le code, et elle répond en réalité à une question précise. Et le champ « Terme de
+règlement » explique à quoi il sert : 5 184 factures sur 7 350 n'ont pas d'échéance écrite.
 
 ### Pour le jour où les API répondront
 

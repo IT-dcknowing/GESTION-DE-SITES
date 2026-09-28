@@ -1,11 +1,15 @@
 <?php
 
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Modeles\Charge;
+use Modules\Noyau\Exploitation\Modeles\Encaissement;
+use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 use Modules\Noyau\Imports\Modeles\MouvementCaisse;
 use Modules\Noyau\Imports\Modeles\OuvertureCaisse;
 
-use function Livewire\Volt\{computed, mount, state};
+use function Livewire\Volt\{computed, mount, protect, state};
 
 /**
  * Les états de caisse repris du logiciel d'atelier.
@@ -58,6 +62,12 @@ state([
     'sensFiltre' => '',
     'recherche' => '',
     'pageDetail' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 mount(function () {
@@ -124,17 +134,45 @@ $colonnesDuFichier = computed(fn () => [
     'caisse' => count($this->caisses) > 1,
 ]);
 
-$requete = computed(fn () => (clone $this->perimetre)
-    ->when($this->sensFiltre, fn ($q) => $q->where('sens', $this->sensFiltre))
-    ->when(trim($this->recherche) !== '', function ($q) {
-        $terme = '%'.trim($this->recherche).'%';
+/**
+ * Les colonnes du journal qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : la période, la ville, le sens, et la
+ * recherche sur le libellé, le bénéficiaire, le motif, la pièce et la plaque.
+ *
+ * `caisse` est une liste : le journal ne connaît qu'une poignée de caisses nommées, et les
+ * taper à la main avec une faute ne trouverait rien.
+ */
+$colonnesFiltrables = computed(fn () => [
+    // `caisses` rend un tableau simple : on le retourne en valeur => libellé, qui est ce
+    // qu'une liste déroulante attend.
+    'mouvements_caisse.caisse' => FiltreLibre::colonne('Caisse', 'liste',
+        array_combine($this->caisses, $this->caisses) ?: []),
+    'mouvements_caisse.type_piece' => FiltreLibre::colonne('Type de pièce'),
+    'mouvements_caisse.role_tiers' => FiltreLibre::colonne('Rôle du tiers'),
+    'mouvements_caisse.beneficiaire' => FiltreLibre::colonne('Bénéficiaire / remettant'),
+    'mouvements_caisse.motif' => FiltreLibre::colonne('Motif'),
+    'mouvements_caisse.numero_piece' => FiltreLibre::colonne('N° de pièce'),
+    'mouvements_caisse.immatriculation' => FiltreLibre::colonne('Immatriculation'),
+    'mouvements_caisse.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+    'mouvements_caisse.date' => FiltreLibre::colonne('Date du mouvement', 'date'),
+]);
 
-        $q->where(fn ($sous) => $sous->where('libelle', 'like', $terme)
-            ->orWhere('beneficiaire', 'like', $terme)
-            ->orWhere('motif', 'like', $terme)
-            ->orWhere('numero_piece', 'like', $terme)
-            ->orWhere('immatriculation', 'like', $terme));
-    }));
+$requete = computed(fn () => FiltreLibre::appliquer(
+    (clone $this->perimetre)
+        ->when($this->sensFiltre, fn ($q) => $q->where('sens', $this->sensFiltre))
+        ->when(trim($this->recherche) !== '', function ($q) {
+            $terme = '%'.trim($this->recherche).'%';
+
+            $q->where(fn ($sous) => $sous->where('libelle', 'like', $terme)
+                ->orWhere('beneficiaire', 'like', $terme)
+                ->orWhere('motif', 'like', $terme)
+                ->orWhere('numero_piece', 'like', $terme)
+                ->orWhere('immatriculation', 'like', $terme));
+        }),
+    $this->colonnesFiltrables,
+    (array) $this->filtresLibres,
+));
 
 /**
  * Ce que la caisse contenait avant le premier jour regardé.
@@ -276,6 +314,81 @@ $detail = computed(fn () => (clone $this->requete)
     ->orderByDesc('date')->orderByDesc('id')
     ->paginate(25, ['*'], 'pageDetail', $this->pageDetail));
 
+/**
+ * Ce que l'application a enregistré en espèces, et que le journal du logiciel ne porte pas.
+ *
+ * **Le constat, mesuré le 28/09**, après la question du propriétaire — « est-ce que ces
+ * deux pages communiquent ? » :
+ *
+ *   - `mouvements_caisse` : **1 155 lignes, toutes importées, aucune saisie** ;
+ *   - `encaissements` : 7 714 lignes, dont **85 saisies dans l'application** ;
+ *   - `charges` : 198 lignes, **toutes saisies dans l'application**.
+ *
+ * Les deux écrans ne communiquent donc pas, et la compréhension qu'on pouvait en avoir
+ * était inverse : la **Caisse** ne porte que le journal du logiciel, elle ne regroupe rien ;
+ * la **Trésorerie** ne regroupe pas tout — elle ignore complètement le journal de caisse.
+ *
+ * **Pourquoi on ne les fond pas dans un seul tableau.** La colonne « solde annoncé » du
+ * journal forme une chaîne : chaque ligne porte le solde que le logiciel a imprimé après
+ * elle, et c'est cette chaîne qui prouve qu'aucune ligne n'a été perdue à l'import. Y
+ * insérer des écritures qui ne figurent pas dans le journal romprait la seule vérification
+ * qu'on ait sur ce fichier.
+ *
+ * **Ce qu'on fait donc :** on les montre **à côté**, nommément, avec leur origine. Ce qui
+ * manque au journal se lit alors d'un coup d'œil au lieu de se deviner en comparant deux
+ * écrans.
+ *
+ * **La règle du « en espèces ».** Une caisse tient des espèces : on retient les écritures
+ * dont le moyen les nomme. Un virement ou un chèque n'a rien à faire dans un journal de
+ * caisse, et l'y faire paraître ferait douter du rapprochement au lieu de l'aider.
+ */
+$enEspeces = protect(fn (?string $moyen) => $moyen !== null
+    // `CorrespondanceImport::normaliser()` et non un `strtolower` maison : c'est la
+    // normalisation de la maison — majuscules, accents retirés, ponctuation ôtée — et deux
+    // façons de comparer deux chaînes finissent toujours par se contredire.
+    && str_contains(CorrespondanceImport::normaliser($moyen), 'ESPECE'));
+
+$saisiesHorsJournal = computed(function () {
+    [$debut, $fin] = $this->plage;
+    $sites = PerimetreSites::idsRetenus(auth()->user(), $this->villeFiltre, null);
+
+    $entrees = Encaissement::query()
+        ->whereIn('site_id', $sites)
+        ->whereNull('lot_import_id')
+        ->whereBetween('date', [$debut, $fin])
+        ->with('site')
+        ->get()
+        ->filter(fn ($e) => $this->enEspeces($e->moyen))
+        ->map(fn ($e) => [
+            'date' => $e->date,
+            'sens' => 'Entrée',
+            'libelle' => $e->client ?: ($e->type ?: 'Encaissement'),
+            'reference' => $e->numero ?: $e->reference_origine,
+            'montant' => (int) $e->montant,
+            'site' => $e->site?->nom,
+            'lien' => route('tresorerie.encaissement', $e->id),
+        ]);
+
+    $sorties = Charge::query()
+        ->whereIn('site_id', $sites)
+        ->whereNull('lot_import_id')
+        ->whereBetween('date', [$debut, $fin])
+        ->with('site')
+        ->get()
+        ->filter(fn ($c) => $this->enEspeces($c->moyen))
+        ->map(fn ($c) => [
+            'date' => $c->date,
+            'sens' => 'Sortie',
+            'libelle' => $c->libelle ?: ($c->type_operation ?: 'Charge'),
+            'reference' => $c->numero ?: null,
+            'montant' => (int) $c->montant,
+            'site' => $c->site?->nom,
+            'lien' => null,
+        ]);
+
+    return $entrees->concat($sorties)->sortByDesc('date')->values();
+});
+
 ?>
 
 <div>
@@ -292,6 +405,100 @@ $detail = computed(fn () => (clone $this->requete)
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="null" :site-filtre="null"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
+
+    {{-- **Ce que cette page lit, et ce qu'elle ne lit pas.**
+
+         Question posée le 28/09 : « est-ce que ces deux pages communiquent ? ». Non, et la
+         compréhension qu'on pouvait en avoir était l'inverse de la réalité. Mesuré le même
+         jour, et c'est sans appel. --}}
+    <div class="carte" style="margin-bottom:16px; border-left:3px solid #B87A00;">
+        <p style="margin:0 0 9px; font-size:13px; line-height:1.6;">
+            <strong>Caisse et Trésorerie ne lisent pas la même chose, et ne se parlent pas.</strong>
+        </p>
+        <table class="tableau" style="font-size:12.5px; margin:0 0 9px; max-width:640px;">
+            <thead>
+                <tr><th>Écran</th><th>Ce qu'il lit</th><th style="text-align:right;">Lignes</th><th>Origine</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><b>Caisse</b> (cet écran)</td>
+                    <td>le journal de caisse du logiciel</td>
+                    <td style="text-align:right;">1 155</td>
+                    <td>100&nbsp;% importées</td>
+                </tr>
+                <tr>
+                    <td rowspan="2"><b>Trésorerie</b></td>
+                    <td>les règlements clients</td>
+                    <td style="text-align:right;">7 714</td>
+                    <td>7 629 importées · 85 saisies</td>
+                </tr>
+                <tr>
+                    <td>les charges</td>
+                    <td style="text-align:right;">198</td>
+                    <td>100&nbsp;% saisies ici</td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="margin:0; font-size:13px; line-height:1.6;">
+            La Caisse <b>ne regroupe donc pas</b> la trésorerie, et la Trésorerie
+            <b>ne voit pas</b> le journal de caisse. On ne les fond pas dans un seul tableau pour
+            une raison précise&nbsp;: la colonne <b>solde annoncé</b> du journal forme une chaîne
+            qui prouve qu'aucune ligne n'a été perdue à l'import. Y insérer des écritures absentes
+            du journal romprait la seule vérification qu'on ait sur ce fichier. Elles sont donc
+            montrées <b>à côté</b>, ci-dessous.
+        </p>
+    </div>
+
+    {{-- Le pont : ce que l'application a enregistré en espèces et que le journal ignore.
+         C'est exactement ce qu'un rapprochement de caisse cherche. --}}
+    @if ($this->saisiesHorsJournal->isNotEmpty())
+        <div class="carte" style="margin-bottom:16px; border-left:3px solid #2563EB;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 6px;">
+                Saisi dans l'application, absent du journal
+                ({{ $this->saisiesHorsJournal->count() }})
+            </h3>
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
+                Des espèces encaissées ou décaissées <b>ici</b>, sur la période regardée. Le journal
+                du logiciel ne les porte pas — il n'a pas été réédité depuis. C'est l'écart qu'un
+                rapprochement de caisse cherche&nbsp;: la somme ci-dessous devrait se retrouver dans
+                le prochain état de caisse déposé.
+            </p>
+
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Sens</th><th>Libellé</th><th>Référence</th>
+                            <th>Atelier</th><th style="text-align:right;">Montant</th><th>Origine</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($this->saisiesHorsJournal as $ligne)
+                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                <td style="white-space:nowrap;">{{ $ligne['date']?->format('d/m/Y') ?? '—' }}</td>
+                                <td style="font-weight:700; color:{{ $ligne['sens'] === 'Entrée' ? '#0E9F6E' : '#C8102E' }};">
+                                    {{ $ligne['sens'] }}
+                                </td>
+                                <td>{{ $ligne['libelle'] }}</td>
+                                <td style="color:#6B6E76; font-size:12px;">{{ $ligne['reference'] ?: '—' }}</td>
+                                <td style="color:#6B6E76;">{{ $ligne['site'] ?: '—' }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">
+                                    {{ ae($ligne['montant']) }}
+                                </td>
+                                <td style="font-size:12px; color:#2563EB; font-weight:600;">Saisi ici</td>
+                                <td style="text-align:right;">
+                                    @if ($ligne['lien'])
+                                        <a href="{{ $ligne['lien'] }}" wire:navigate class="bouton bouton-secondaire"
+                                            style="padding:3px 9px; font-size:11.5px; text-decoration:none;">Détail</a>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
 
     {{-- Le choix de la caisse ne s'affiche que là où il y en a plusieurs : ailleurs, une
          liste à un seul élément fait croire qu'il existe un second choix caché. --}}
@@ -387,6 +594,10 @@ $detail = computed(fn () => (clone $this->requete)
                     <option value="entree" @selected($sensFiltre === 'entree')>Entrées seulement</option>
                     <option value="sortie" @selected($sensFiltre === 'sortie')>Sorties seulement</option>
                 </select>
+
+                {{-- Les colonnes du journal qu'aucun filtre ne couvre : la caisse, le type de
+                     pièce, le rôle du tiers, le montant, la date. Demandé le 28/09. --}}
+                <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
             </div>
         </div>
 
