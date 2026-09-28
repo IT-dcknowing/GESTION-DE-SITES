@@ -1,7 +1,10 @@
 <?php
 
+use Modules\Noyau\Exploitation\Modeles\Tiers;
+use Modules\Noyau\Exploitation\Services\CodeDuTiers;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 use function Livewire\Volt\{computed, state};
 
 /*
@@ -53,6 +56,98 @@ $periode = computed(fn () => PeriodeDeTravail::depuis($this->moisFiltre, $this->
 $arrete = computed(fn () => Recouvrement::arrete($this->periode->arreteIso()));
 
 $annuaire = computed(fn () => Recouvrement::annuaireDesTiers($this->arrete));
+
+/**
+ * Les codes déjà attribués, par nom normalisé — une requête pour toute la page.
+ *
+ * **Pourquoi un code, demandé le 28/09.** Un nom ne peut pas à la fois empêcher le doublon
+ * d'orthographe et permettre l'homonyme volontaire : « NSIA ASSURANCES » et « Nsia
+ * Assurance » doivent se confondre, deux sociétés réellement homonymes doivent se
+ * distinguer. Le code fait la seconde moitié.
+ *
+ * Il n'est pas posé d'office sur les 2 445 tiers connus : ce serait écrire des données que
+ * personne n'a demandées. Il s'attribue par un geste, ligne par ligne ou en une fois, et
+ * ce geste se trace.
+ */
+$codes = computed(fn () => CodeDuTiers::parNom((int) auth()->user()->entreprise_id));
+
+$sansCode = computed(fn () => collect($this->annuaire)
+    ->reject(fn (array $ligne) => isset($this->codes[Tiers::normaliser($ligne['tiers'])]))
+    ->count());
+
+/** Peut-on attribuer un code ? Même règle que la création d'un tiers. */
+$peutCoder = computed(fn () => AccesRecouvrement::peutCreerUnTiers(auth()->user()));
+
+/**
+ * Attribuer son code à un tiers, un à la fois.
+ *
+ * Le nom vient de l'annuaire et non du navigateur : un nom reçu tel quel permettrait de
+ * coder n'importe quelle chaîne, et la liste se remplirait de tiers qui n'existent pas.
+ */
+$coder = function (string $tiers) {
+    if (! $this->peutCoder) {
+        $this->dispatch('annonce', ton: 'alerte',
+            texte: "L'attribution d'un code relève du superviseur ou du gérant.");
+
+        return;
+    }
+
+    $connu = collect($this->annuaire)->firstWhere('tiers', $tiers);
+
+    if ($connu === null) {
+        return;
+    }
+
+    $pose = CodeDuTiers::attribuer(
+        (int) auth()->user()->entreprise_id,
+        $tiers,
+        $connu['roles'][0] ?? null,
+        auth()->id(),
+    );
+
+    unset($this->codes, $this->sansCode);
+
+    $this->dispatch('annonce', ton: 'succes',
+        texte: '« '.$tiers.' » porte désormais le code '.$pose->code.'.');
+};
+
+/**
+ * Attribuer les codes manquants, en une fois.
+ *
+ * **Un geste, pas un effet de bord.** On aurait pu poser les codes à la migration, ou au
+ * premier affichage de la page : les deux auraient écrit des milliers de lignes sans que
+ * personne ne l'ait décidé, et sur une base qui porte de vraies données. Ici, c'est un
+ * bouton, il dit combien il va écrire, et l'écriture se trace au journal.
+ */
+$coderTout = function () {
+    if (! $this->peutCoder) {
+        $this->dispatch('annonce', ton: 'alerte',
+            texte: "L'attribution des codes relève du superviseur ou du gérant.");
+
+        return;
+    }
+
+    $entrepriseId = (int) auth()->user()->entreprise_id;
+    $poses = 0;
+
+    foreach ($this->annuaire as $ligne) {
+        if (isset($this->codes[Tiers::normaliser($ligne['tiers'])])) {
+            continue;
+        }
+
+        CodeDuTiers::attribuer($entrepriseId, $ligne['tiers'], $ligne['roles'][0] ?? null, auth()->id());
+        $poses++;
+    }
+
+    activity()->causedBy(auth()->user())
+        ->withProperties(['codes_poses' => $poses])
+        ->log('Recouvrement — codes de tiers attribués');
+
+    unset($this->codes, $this->sansCode);
+
+    $this->dispatch('annonce', ton: 'succes',
+        texte: $poses.' code(s) attribué(s). Un tiers garde son code pour toujours.');
+};
 
 $lignes = computed(function () {
     $recherche = trim(mb_strtolower($this->recherche));
@@ -141,10 +236,28 @@ $updatedRole = function () { $this->page = 1; };
             </div>
         </div>
 
+        @if ($this->sansCode > 0 && $this->peutCoder)
+            {{-- **Le geste est proposé, jamais fait d'office.** Poser 2 445 codes à la
+                 migration ou au premier affichage aurait écrit des milliers de lignes sans
+                 que personne ne l'ait décidé, sur une base qui porte de vraies données.
+                 Ici c'est un bouton, il dit combien il va écrire, et l'écriture se trace. --}}
+            <div class="rec-hint" style="margin-bottom:10px;">
+                <strong>{{ number_format($this->sansCode, 0, ',', ' ') }} tiers n'ont pas encore de code.</strong>
+                Le code distingue deux tiers réellement homonymes, là où le nom ne le peut pas.
+                <button type="button" wire:click="coderTout" class="rec-btn n"
+                    style="margin-left:8px; padding:3px 10px; font-size:12px;">
+                    Attribuer les codes manquants
+                </button>
+            </div>
+        @endif
+
         <div class="rec-tbl-wrap" style="max-height:none;">
             <table class="rec-tbl">
                 <thead>
                     <tr>
+                        {{-- Le code, demandé le 28/09 : c'est lui qui distingue deux tiers
+                             réellement homonymes, là où le nom ne le peut pas. --}}
+                        <th>Code</th>
                         <th>Tiers</th>
                         <th>Rôle</th>
                         <th class="num">Factures</th>
@@ -159,7 +272,21 @@ $updatedRole = function () { $this->page = 1; };
                 </thead>
                 <tbody>
                     @forelse ($this->affichees as $ligne)
+                        @php $code = $this->codes[Tiers::normaliser($ligne['tiers'])] ?? null; @endphp
                         <tr>
+                            <td style="white-space:nowrap; font-family:ui-monospace,Consolas,monospace; font-size:12.5px;">
+                                @if ($code)
+                                    {{ $code }}
+                                @elseif ($this->peutCoder)
+                                    {{-- Le geste est là où manque le code, et il ne demande
+                                         pas de quitter la page. --}}
+                                    <button type="button" wire:click="coder('{{ addslashes($ligne['tiers']) }}')"
+                                        class="rec-btn" style="padding:2px 8px; font-size:11px;"
+                                        title="Attribuer un code à ce tiers">coder</button>
+                                @else
+                                    <span style="color:#9A9DA5;">—</span>
+                                @endif
+                            </td>
                             <td><b>{{ $ligne['tiers'] }}</b></td>
                             <td>
                                 @forelse ($ligne['roles'] as $chapeau)
@@ -192,7 +319,7 @@ $updatedRole = function () { $this->page = 1; };
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" style="text-align:center; color:#6B6E76; padding:26px;">
+                            <td colspan="11" style="text-align:center; color:#6B6E76; padding:26px;">
                                 Aucun tiers ne correspond à cette recherche.
                             </td>
                         </tr>

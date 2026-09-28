@@ -33,7 +33,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * signalerait.
  */
 #[Fillable([
-    'entreprise_id', 'lot_import_id', 'nom', 'nom_normalise',
+    'entreprise_id', 'lot_import_id', 'nom', 'nom_normalise', 'code',
     'delai_reglement', 'jours_reglement', 'fin_de_mois', 'assujetti_tva',
     'note', 'source_feuille',
 ])]

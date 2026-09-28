@@ -15,6 +15,7 @@ use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
+use Modules\Noyau\Exploitation\Modeles\Tiers;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Recouvrement\Support\AccesRecouvrement;
 use Spatie\Permission\PermissionRegistrar;
@@ -549,7 +550,44 @@ class RecouvrementTest extends TestCase
         $this->assertSame(1, Facture::withoutGlobalScopes()->count());
     }
 
-    public function test_un_tiers_ne_se_cree_pas_deux_fois_a_la_casse_pres(): void
+    /**
+     * Un nom qui prête à confusion est montré, pas refusé.
+     *
+     * **La règle a changé le 28/09**, et elle tient maintenant les deux bouts :
+     *
+     *   - le doublon d'orthographe coûte cher — « NSIA ASSURANCES » et « Nsia Assurance »
+     *     coupent l'encours en deux, on relance deux fois la moitié de la dette ;
+     *   - l'interdiction coûte autant — deux sociétés portent parfois réellement le même
+     *     nom, et refuser la seconde oblige à la saisir sous un nom faux, ce qui est le
+     *     doublon qu'on voulait éviter, dans l'autre sens.
+     *
+     * D'où : le premier clic montre ce qui ressemble, le second crée. C'est le **code**
+     * qui distingue les deux homonymes.
+     */
+    public function test_un_nom_voisin_est_montre_avant_d_etre_cree(): void
+    {
+        $gerant = $this->compte('gerant');
+        $this->facture('NSIA ASSURANCES', 'F-001', 100000, now());
+
+        $ecran = Volt::actingAs($gerant)->test('recouvrement.saisie')
+            ->set('nouveauTiers', 'Nsia Assurances')
+            ->call('creerTiers');
+
+        // Rien n'est écrit au premier clic : l'écran pose la question.
+        $ecran->assertSet('tiersAConfirmer', 'NSIA ASSURANCES');
+        $this->assertSame(0, Tiers::withoutGlobalScopes()->count());
+        $ecran->assertSee('Ce nom existe déjà');
+
+        // Le second clic crée, et le tiers reçoit son code.
+        $ecran->call('creerTiers')->assertHasNoErrors();
+
+        $tiers = Tiers::withoutGlobalScopes()->firstOrFail();
+        $this->assertSame('NSIA ASSURANCES', $tiers->nom);
+        $this->assertStringStartsWith('T-', $tiers->code);
+    }
+
+    /** Renoncer n'écrit rien, et laisse le nom dans le champ pour le corriger. */
+    public function test_renoncer_apres_l_avertissement_n_ecrit_rien(): void
     {
         $gerant = $this->compte('gerant');
         $this->facture('NSIA ASSURANCES', 'F-001', 100000, now());
@@ -557,7 +595,28 @@ class RecouvrementTest extends TestCase
         Volt::actingAs($gerant)->test('recouvrement.saisie')
             ->set('nouveauTiers', 'Nsia Assurances')
             ->call('creerTiers')
-            ->assertHasErrors('nouveauTiers');
+            ->call('annulerLeTiers')
+            ->assertSet('tiersAConfirmer', '')
+            ->assertSet('nouveauTiers', 'Nsia Assurances');
+
+        $this->assertSame(0, Tiers::withoutGlobalScopes()->count());
+    }
+
+    /** Un nom sans voisin se crée du premier coup : on n'interroge pas pour rien. */
+    public function test_un_nom_sans_voisin_se_cree_du_premier_coup(): void
+    {
+        $gerant = $this->compte('gerant');
+
+        Volt::actingAs($gerant)->test('recouvrement.saisie')
+            ->set('nouveauTiers', 'ZORGHO TRANSIT')
+            ->set('tiersRole', 'Client')
+            ->call('creerTiers')
+            ->assertHasNoErrors();
+
+        $tiers = Tiers::withoutGlobalScopes()->firstOrFail();
+        $this->assertSame('ZORGHO TRANSIT', $tiers->nom);
+        $this->assertSame('Client', $tiers->role);
+        $this->assertStringStartsWith('T-', $tiers->code);
     }
 
     /*

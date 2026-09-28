@@ -8,6 +8,7 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
+use Modules\Noyau\Exploitation\Services\CodeDuTiers;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Noyau\Exploitation\Services\ReglementGlobal;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
@@ -93,8 +94,16 @@ state([
     // d'atelier derrière elle : sans un mot, six mois plus tard, personne ne sait.
     'facObservations' => '',
 
-    // Tiers (superviseur / gérant)
+    /*
+     * Tiers (superviseur / gérant).
+     *
+     * `tiersAConfirmer` retient qu'on a déjà montré les noms qui ressemblent : le second
+     * clic crée, même si le nom est identique. C'est la demande du 28/09 — avertir sans
+     * interdire, parce que deux sociétés portent parfois réellement le même nom.
+     */
     'nouveauTiers' => '',
+    'tiersRole' => '',
+    'tiersAConfirmer' => '',
 ]);
 
 /** La période regardée, et l'arrêté qu'elle commande — voir PeriodeDeTravail. */
@@ -121,6 +130,26 @@ $sites = computed(fn () => Site::where('est_actif', true)->orderBy('nom')->pluck
 $peutRediger = computed(fn () => AccesRecouvrement::peutCreerUneFacture(auth()->user()));
 
 $nombreRelances = computed(fn () => RelanceRecouvrement::count());
+
+/**
+ * Les tiers dont le nom ressemble à celui qu'on s'apprête à créer.
+ *
+ * Cherchés dans **tout ce que la maison connaît** — les noms portés par les onze mille
+ * factures, et non les seuls tiers déjà codés : le doublon qu'on veut éviter est presque
+ * toujours avec un nom venu d'un import.
+ */
+$ressemblants = computed(fn () => trim($this->nouveauTiers) === ''
+    ? collect()
+    : CodeDuTiers::ressemblants((int) auth()->user()->entreprise_id, $this->nouveauTiers));
+
+/* Retaper le nom annule la confirmation : ce n'est plus le même tiers qu'on validait. */
+$updatedNouveauTiers = function () {
+    if (mb_strtoupper(trim($this->nouveauTiers)) !== $this->tiersAConfirmer) {
+        $this->tiersAConfirmer = '';
+    }
+
+    unset($this->ressemblants);
+};
 
 /**
  * Les tiers qu'on peut réellement encaisser ou relancer : ceux qui doivent encore.
@@ -672,33 +701,70 @@ $creerTiers = function () {
         return;
     }
 
-    $this->validate(['nouveauTiers' => ['required', 'string', 'max:160']], [], ['nouveauTiers' => 'nom du tiers']);
+    $this->validate([
+        'nouveauTiers' => ['required', 'string', 'max:160'],
+        'tiersRole' => ['nullable', Rule::in(['Client', 'Assurance', 'Courtier', 'Dépositaire'])],
+    ], [], ['nouveauTiers' => 'nom du tiers', 'tiersRole' => 'rôle']);
 
     $nom = mb_strtoupper(trim($this->nouveauTiers));
+    $entrepriseId = (int) auth()->user()->entreprise_id;
 
-    // Comparaison insensible à la casse : « Nsia » et « NSIA » sont le même assureur, et
-    // deux orthographes du même tiers coupent son encours en deux dans toutes les vues.
-    $deja = collect($this->tiers)->first(fn (string $t) => mb_strtoupper($t) === $nom);
-
-    if ($deja !== null) {
-        $this->addError('nouveauTiers', "« $deja » existe déjà : ne pas créer de doublon.");
+    /*
+     * **On avertit, on ne bloque pas.** L'écran refusait purement et simplement un nom
+     * déjà connu. C'était la moitié de la règle, et la moitié gênante : deux sociétés
+     * portent parfois réellement le même nom, et les refuser oblige à en saisir une sous
+     * un nom faux — c'est-à-dire le doublon qu'on voulait éviter, dans l'autre sens.
+     *
+     * Demandé le 28/09 : « le système doit proposer les clients existants et demander si
+     * le client n'y figure pas, mais ne doit pas bloquer la création si le tiers est
+     * différent ; et s'il porte le même nom, ils doivent aussi être créés ».
+     *
+     * Le premier clic montre ce qui ressemble. Le second crée. C'est le **code** qui
+     * distinguera les deux homonymes — et c'est pour cela qu'il existe.
+     */
+    if ($this->tiersAConfirmer !== $nom && $this->ressemblants->isNotEmpty()) {
+        $this->tiersAConfirmer = $nom;
 
         return;
     }
 
-    Referentiel::create([
-        'entreprise_id' => auth()->user()->entreprise_id,
-        'type' => Referentiel::TIERS_RECOUVREMENT,
-        'valeur' => $nom,
-        'est_actif' => true,
-    ]);
+    /*
+     * Deux écritures, et elles ne font pas la même chose.
+     *
+     * `Referentiel` rend le nom **sélectionnable** dans les listes déroulantes — c'est ce
+     * qui existait, et il faut le garder : sans lui, un tiers créé ici n'apparaîtrait dans
+     * aucun formulaire. `Tiers` lui donne son **code**, qui le distingue d'un homonyme.
+     * On n'écrit le référentiel que si le nom n'y est pas déjà : un homonyme volontaire
+     * ne doit pas créer deux entrées identiques dans une liste déroulante, où l'on ne
+     * saurait plus laquelle choisir.
+     */
+    $dejaProposable = collect($this->tiers)->contains(fn (string $t) => mb_strtoupper($t) === $nom);
 
-    activity()->causedBy(auth()->user())->withProperties(['tiers' => $nom])->log('Recouvrement — tiers créé');
+    if (! $dejaProposable) {
+        Referentiel::create([
+            'entreprise_id' => $entrepriseId,
+            'type' => Referentiel::TIERS_RECOUVREMENT,
+            'valeur' => $nom,
+            'est_actif' => true,
+        ]);
+    }
 
-    $this->nouveauTiers = '';
-    unset($this->tiers);
+    $tiers = CodeDuTiers::attribuer($entrepriseId, $nom, $this->tiersRole ?: null, auth()->id());
 
-    $this->dispatch('annonce', ton: 'succes', texte: "Tiers « $nom » créé : il est proposé dans toutes les listes.");
+    activity()->causedBy(auth()->user())
+        ->withProperties(['tiers' => $nom, 'code' => $tiers->code, 'role' => $this->tiersRole ?: null])
+        ->log('Recouvrement — tiers créé');
+
+    $this->fill(['nouveauTiers' => '', 'tiersRole' => '', 'tiersAConfirmer' => '']);
+    unset($this->tiers, $this->ressemblants);
+
+    $this->dispatch('annonce', ton: 'succes',
+        texte: 'Tiers « '.$nom.' » créé sous le code '.$tiers->code.' — il est proposé dans toutes les listes.');
+};
+
+/** On renonce : rien n'est écrit, et le nom reste dans le champ pour être corrigé. */
+$annulerLeTiers = function () {
+    $this->tiersAConfirmer = '';
 };
 
 ?>
@@ -1316,23 +1382,93 @@ $creerTiers = function () {
 
             @if ($this->peutRediger)
                 <div class="rec-frm">
-                    <div class="rec-fld" style="grid-column:span 2;">
+                    <div class="rec-fld">
                         <label>Nom du tiers (majuscules)</label>
-                        <input type="text" wire:model="nouveauTiers" value="{{ $nouveauTiers }}" style="text-transform:uppercase;">
+                        <input type="text" wire:model.live.debounce.400ms="nouveauTiers"
+                            value="{{ $nouveauTiers }}" style="text-transform:uppercase;">
+                    </div>
+                    <div class="rec-fld">
+                        {{-- Ce qu'il est pour nous. Facultatif : un tiers en tient souvent
+                             plusieurs — une compagnie travaille en direct sur certains
+                             dossiers et par courtier sur d'autres — et c'est l'annuaire qui
+                             dit ce que les factures montrent. Celui-ci dit ce qu'on a
+                             déclaré, ce qui n'est pas la même chose. --}}
+                        <label>Rôle <span style="font-weight:400; color:#6B6E76;">(facultatif)</span></label>
+                        <select wire:model="tiersRole">
+                            <option value="" @selected($tiersRole === '')>— à préciser plus tard —</option>
+                            @foreach (['Client', 'Assurance', 'Courtier', 'Dépositaire'] as $role)
+                                <option value="{{ $role }}" @selected($tiersRole === $role)>{{ $role }}</option>
+                            @endforeach
+                        </select>
                     </div>
                 </div>
 
+                {{-- **Ce qui ressemble est montré, et ne bloque pas.**
+
+                     L'écran refusait purement et simplement un nom déjà connu. C'était la
+                     moitié de la règle, et la moitié gênante : deux sociétés portent
+                     parfois réellement le même nom, et refuser la seconde oblige à la
+                     saisir sous un nom faux — c'est-à-dire le doublon qu'on voulait
+                     éviter, dans l'autre sens.
+
+                     Demandé le 28/09. Le premier clic montre, le second crée, et c'est le
+                     **code** qui distinguera les deux homonymes. --}}
+                @if ($this->ressemblants->isNotEmpty())
+                    <div class="rec-hint {{ $tiersAConfirmer !== '' ? 'warn' : '' }}" style="margin-top:8px;">
+                        <strong>
+                            @if ($this->ressemblants->firstWhere('connu', 'identique'))
+                                Ce nom existe déjà à l'identique.
+                            @else
+                                {{ $this->ressemblants->count() }} tiers portent un nom voisin.
+                            @endif
+                        </strong>
+                        <div style="margin:7px 0 0;">
+                            @foreach ($this->ressemblants as $proche)
+                                <div style="display:flex; gap:8px; align-items:baseline; padding:2px 0;">
+                                    <span style="font-weight:600;">{{ $proche['nom'] }}</span>
+                                    @if ($proche['code'])
+                                        <span style="font-family:ui-monospace,Consolas,monospace; font-size:11.5px; color:#6B6E76;">
+                                            {{ $proche['code'] }}
+                                        </span>
+                                    @endif
+                                    @if ($proche['connu'] === 'identique')
+                                        <span style="font-size:11.5px; color:#C8102E; font-weight:700;">nom identique</span>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+
+                        @if ($tiersAConfirmer !== '')
+                            <p style="margin:9px 0 0; font-weight:700;">
+                                S'il s'agit de l'un d'eux, corrigez le nom ou renoncez. Si c'est bien un
+                                autre tiers — même nom, autre société —, confirmez : son code le
+                                distinguera partout.
+                            </p>
+                        @else
+                            <p style="margin:9px 0 0;">
+                                Vérifiez que le tiers n'y figure pas. La création reste possible : cliquez
+                                une seconde fois pour confirmer.
+                            </p>
+                        @endif
+                    </div>
+                @endif
+
                 @error('nouveauTiers')
                     <div class="rec-hint warn">⚠ {{ $message }}</div>
-                @else
+                @elseif ($this->ressemblants->isEmpty())
                     <div class="rec-hint">
-                        Contrôle anti-doublon automatique, insensible à la casse. Le tiers créé est
-                        immédiatement proposé dans toutes les listes déroulantes.
+                        Aucun tiers connu ne porte un nom voisin. Le tiers créé reçoit un <b>code</b>
+                        — « T-0001 » — et il est aussitôt proposé dans toutes les listes déroulantes.
                     </div>
                 @enderror
 
                 <div class="rec-actions">
-                    <button type="button" class="rec-btn n" wire:click="creerTiers">Créer le tiers</button>
+                    <button type="button" class="rec-btn n" wire:click="creerTiers">
+                        {{ $tiersAConfirmer !== '' ? 'Oui, créer quand même' : 'Créer le tiers' }}
+                    </button>
+                    @if ($tiersAConfirmer !== '')
+                        <button type="button" class="rec-btn" wire:click="annulerLeTiers">Renoncer</button>
+                    @endif
                 </div>
             @else
                 <div class="rec-lock">

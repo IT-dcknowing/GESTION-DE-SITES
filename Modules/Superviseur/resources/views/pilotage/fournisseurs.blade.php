@@ -529,6 +529,9 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                  absence se remarquait : l'état par année ne montre jamais l'ensemble d'un
                  coup, et une pièce soldée d'une année passée n'y paraît nulle part. --}}
             <a href="{{ route('fournisseurs.tableau-initial') }}" wire:navigate class="bouton bouton-secondaire">Tableau initial</a>
+            {{-- L'annuaire, demandé le 28/09 : cet écran liste des pièces, les conditions
+                 listent des accords, aucun ne disait quels fournisseurs on connaît. --}}
+            <a href="{{ route('fournisseurs.liste') }}" wire:navigate class="bouton bouton-secondaire">Liste des fournisseurs</a>
             {{-- « Référentiel » ne disait pas ce qu'on y trouve. Cette page porte le terme de
                  règlement d'un fournisseur et sa TVA — c'est de là que sort l'échéance
                  attendue d'une pièce que le classeur n'a pas datée. --}}

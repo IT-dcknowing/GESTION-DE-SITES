@@ -73,6 +73,10 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // montrer — une pièce soldée d'une année passée n'entre dans aucun exercice.
     Volt::route('/fournisseurs/tableau-initial', 'pilotage.fournisseurs-tableau-initial')
         ->name('fournisseurs.tableau-initial');
+    // L'annuaire des fournisseurs et leur code. Ni les pièces ni les conditions ne
+    // répondaient à « quels fournisseurs connaissons-nous ? », qui est pourtant la
+    // première question qu'on pose avant de saisir.
+    Volt::route('/fournisseurs/liste', 'pilotage.fournisseurs-liste')->name('fournisseurs.liste');
     /*
      * Les deux exports du logiciel comptable ont leur page, à côté du suivi tenu à la main.
      *
