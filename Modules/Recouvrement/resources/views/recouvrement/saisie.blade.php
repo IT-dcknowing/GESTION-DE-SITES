@@ -9,6 +9,7 @@ use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Noyau\Exploitation\Services\ReglementGlobal;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
 use Modules\Recouvrement\Support\AccesRecouvrement;
 use function Livewire\Volt\{computed, protect, state};
@@ -42,12 +43,23 @@ state([
     // commande plus les chiffres du bandeau : ceux-là suivent la période choisie en haut.
     'dateTravail' => fn () => now()->toDateString(),
 
-    // Encaissement
+    /*
+     * Encaissement — refait le 28/09 sur le modèle de l'écran des impayés.
+     *
+     * Il ne visait **qu'une facture**, et il manquait la moitié de ce qui fait un
+     * règlement : la banque, et de quoi voir le dossier qu'on solde. Le propriétaire l'a
+     * relevé : « on ne sait pas chez qui ça s'est déposé, les dates et bien d'autres — on
+     * n'a pas tous les champs nécessaires par rapport aux impayés ».
+     *
+     * Il vise maintenant **une ou plusieurs factures** : un client remet un chèque pour ce
+     * qu'il doit, pas pour une pièce précise. `encFactures` porte les cases cochées.
+     */
     'encTiers' => '',
-    'encFactureId' => '',
+    'encFactures' => [],
     'encMode' => '',
     'encMontant' => '',
     'encReference' => '',
+    'encBanque' => '',
 
     // Relance
     'relTiers' => '',
@@ -150,10 +162,30 @@ $facturesDuTiersEncaissement = computed(fn () => Recouvrement::facturesOuvertesD
 $facturesDuTiersRelance = computed(fn () => Recouvrement::facturesOuvertesDuTiers($this->relTiers)
     ->sortByDesc(fn (Facture $f) => Recouvrement::reste($f))->values());
 
-/** La facture visée par l'encaissement en cours, si elle relève bien du tiers choisi. */
-$factureVisee = computed(fn () => $this->encFactureId === ''
-    ? null
-    : $this->facturesDuTiersEncaissement->firstWhere('id', (int) $this->encFactureId));
+/**
+ * Les factures cochées, et elles seules.
+ *
+ * On repart **toujours** de la liste du tiers plutôt que des identifiants reçus : une case
+ * cochée puis un changement de tiers laisserait sinon pointer le versement sur la créance
+ * de quelqu'un d'autre.
+ */
+$encSelection = computed(fn () => $this->facturesDuTiersEncaissement->filter(
+    fn (Facture $f) => ! empty($this->encFactures[$f->id]),
+)->values());
+
+/**
+ * Ce que le versement donnerait à chaque facture — montré avant d'écrire.
+ *
+ * La règle est écrite une seule fois, dans `ReglementGlobal` : la plus ancienne d'abord,
+ * jusqu'à épuisement. L'écran la rejoue pour l'afficher, l'action la rejoue pour écrire —
+ * la même, et on ne peut donc pas enregistrer autre chose que ce qui était montré.
+ */
+$encRepartition = computed(fn () => ReglementGlobal::repartir(
+    $this->encSelection,
+    (int) ($this->encMontant ?: 0),
+));
+
+$encTotalDu = computed(fn () => $this->encSelection->sum(fn (Facture $f) => Recouvrement::reste($f)));
 
 /**
  * Le niveau qu'appelle le dossier du tiers relancé : celui de sa facture la plus
@@ -177,10 +209,37 @@ $soldeDuTiersRelance = computed(fn () => $this->facturesDuTiersRelance->sum(fn (
 |--------------------------------------------------------------------------
 */
 $updatedEncTiers = function () {
-    // La facture retenue appartenait à l'ancien tiers : la garder ferait pointer
-    // l'encaissement sur la créance de quelqu'un d'autre.
-    $this->encFactureId = '';
+    // Les factures cochées appartenaient à l'ancien tiers : les garder ferait pointer
+    // le versement sur la créance de quelqu'un d'autre.
+    $this->encFactures = [];
     $this->encMontant = '';
+    unset($this->facturesDuTiersEncaissement, $this->encSelection, $this->encRepartition, $this->encTotalDu);
+};
+
+/**
+ * Cocher toutes les factures ouvertes du tiers, et proposer leur total.
+ *
+ * **Le montant se propose, il ne s'impose pas.** Cocher tout veut presque toujours dire
+ * « il a tout payé » ; mais pas toujours — le propriétaire l'a précisé : « la somme donnée
+ * ne veut pas dire que ça couvrira toutes les créances ». Le champ reste donc modifiable,
+ * et la répartition suit ce qu'on y met.
+ */
+$toutCocherEncaissement = function () {
+    $this->encFactures = $this->facturesDuTiersEncaissement
+        ->mapWithKeys(fn (Facture $f) => [$f->id => true])->all();
+
+    unset($this->encSelection, $this->encRepartition, $this->encTotalDu);
+
+    $this->encMontant = (string) $this->encTotalDu;
+};
+
+$toutDecocherEncaissement = function () {
+    $this->encFactures = [];
+    unset($this->encSelection, $this->encRepartition, $this->encTotalDu);
+};
+
+$updatedEncFactures = function () {
+    unset($this->encSelection, $this->encRepartition, $this->encTotalDu);
 };
 
 $updatedRelTiers = function () {
@@ -197,89 +256,143 @@ $updatedRelTiers = function () {
 |--------------------------------------------------------------------------
 */
 $enregistrerEncaissement = function () {
+    /*
+     * **Un versement, une ou plusieurs factures.** C'était une facture et une seule, et
+     * cela ne correspondait pas au geste réel : un client remet un chèque pour ce qu'il
+     * doit, rarement pour une pièce précise. Demandé le 28/09.
+     *
+     * Ce qui change ici tient en trois points, et le reste est inchangé :
+     *
+     * 1. on valide une **liste** de factures plutôt qu'un identifiant ;
+     * 2. la répartition est celle de `ReglementGlobal` — la plus ancienne d'abord — et
+     *    c'est la **même** que celle que l'écran a montrée avant le clic ;
+     * 3. au-delà d'une facture, les écritures partagent une **référence de versement**,
+     *    pour qu'on puisse dire six mois plus tard « ce chèque a soldé celles-ci ».
+     */
     $donnees = $this->validate([
         'dateTravail' => ['required', 'date'],
         'encTiers' => ['required', 'string'],
-        'encFactureId' => ['required', 'integer'],
         'encMode' => ['required', Rule::in(array_keys($this->modes))],
         'encMontant' => ['required', 'numeric', 'min:1'],
         'encReference' => ['nullable', 'string', 'max:120'],
+        'encBanque' => ['nullable', 'string', 'max:120'],
     ], [], [
-        'encTiers' => 'tiers', 'encFactureId' => 'facture', 'encMode' => 'mode d\'encaissement',
-        'encMontant' => 'montant', 'dateTravail' => 'date',
+        'encTiers' => 'tiers', 'encMode' => 'mode d\'encaissement',
+        'encMontant' => 'montant', 'dateTravail' => 'date', 'encBanque' => 'banque',
     ]);
 
+    $choisies = $this->encSelection;
+
+    if ($choisies->isEmpty()) {
+        $this->addError('encFactures', 'Cocher au moins une facture : un règlement se rapporte à une créance.');
+
+        return;
+    }
+
     $montant = (int) $donnees['encMontant'];
+    $idsChoisies = $choisies->pluck('id')->all();
 
     /*
      * Verrou en base le temps du contrôle et de l'écriture. Sans lui, deux agents qui
-     * encaissent la même facture au même instant passeraient tous deux le test du reste
-     * à payer, et la facture se retrouverait sur-encaissée — un trou qui ne se voit
-     * qu'au rapprochement bancaire, des semaines plus tard.
+     * encaissent les mêmes factures au même instant passeraient tous deux le test du
+     * reste à payer, et les créances se retrouveraient sur-encaissées — un trou qui ne se
+     * voit qu'au rapprochement bancaire, des semaines plus tard.
      */
-    $refus = DB::transaction(function () use ($donnees, $montant) {
-        $facture = Facture::with('site')->lockForUpdate()->find((int) $donnees['encFactureId']);
+    $refus = DB::transaction(function () use ($donnees, $montant, $idsChoisies) {
+        $factures = Facture::with('site')
+            ->whereIn('id', $idsChoisies)
+            ->lockForUpdate()
+            ->get();
 
-        // Le rattachement se contrôle sur le tiers payant, pas sur la colonne `client` :
-        // une facture apportée par un courtier est due par le courtier, et c'est sous son
-        // nom qu'elle a été choisie dans la liste.
-        if (! $facture || $facture->tiersPayant() !== $donnees['encTiers']) {
-            return "Cette facture n'existe plus, ou n'appartient pas à ce tiers.";
+        if ($factures->count() !== count($idsChoisies)) {
+            return "Une des factures n'existe plus : recommencez la sélection.";
         }
 
-        if ($montant > $facture->resteAEncaisser()) {
-            return 'Montant supérieur au reste à payer ('
-                .Recouvrement::fr($facture->resteAEncaisser()).') : la facture a pu être réglée entre-temps.';
+        foreach ($factures as $facture) {
+            // Le rattachement se contrôle sur le tiers payant, pas sur la colonne
+            // `client` : une facture apportée par un courtier est due par le courtier, et
+            // c'est sous son nom qu'elle a été choisie dans la liste.
+            if ($facture->tiersPayant() !== $donnees['encTiers']) {
+                return "Une des factures cochées n'appartient pas à ce tiers.";
+            }
+
+            // La clôture se prononce ville par ville. Une facture sans lieu rattaché ne
+            // peut pas être rapportée à une ville : on ne la bloque pas sur une clôture
+            // qui ne la vise peut-être pas.
+            $villeId = $facture->site?->ville_id ?? ($facture->ville_id ? (int) $facture->ville_id : null);
+
+            if ($villeId && Exercice::estFerme(auth()->user()->entreprise_id, $villeId, $donnees['dateTravail'])) {
+                return "L'exercice est clos pour une de ces villes à cette date : l'encaissement ne peut plus y être imputé.";
+            }
         }
 
-        // La clôture se prononce ville par ville. Une facture sans lieu rattaché ne peut
-        // pas être rapportée à une ville : on ne la bloque pas sur une clôture qui ne la
-        // vise peut-être pas.
-        $villeId = $facture->site?->ville_id ?? ($facture->ville_id ? (int) $facture->ville_id : null);
+        // La répartition est refaite **sous verrou**, sur les restes à jour : ceux que
+        // l'écran affichait pouvaient dater de quelques minutes.
+        $repartition = ReglementGlobal::repartir($factures, $montant);
 
-        if ($villeId && Exercice::estFerme(auth()->user()->entreprise_id, $villeId, $donnees['dateTravail'])) {
-            return "L'exercice est clos pour cette ville à cette date : l'encaissement ne peut plus y être imputé.";
+        if ($repartition['reste_du_versement'] > 0) {
+            return 'Le versement dépasse de '.Recouvrement::fr($repartition['reste_du_versement'])
+                .' le total dû sur les factures cochées ('.Recouvrement::fr($repartition['total_du']).').'
+                .' Un trop-perçu est une décision — avoir, ou avance sur une facture à venir — et ne s\'impute pas ici.';
         }
 
-        Encaissement::create([
-            'entreprise_id' => auth()->user()->entreprise_id,
-            /*
-             * **L'atelier de l'encaissement, et pourquoi il ne peut pas rester vide.**
-             *
-             * Il était recopié de la facture, sans plus. Or **8 937 factures sur 11 332
-             * n'ont pas d'atelier** — mesuré le 24/09 : la colonne SITE des exports dit
-             * « ABIDJAN », et Abidjan en a deux, si bien que l'import s'arrête à la ville.
-             * L'encaissement héritait donc d'un atelier nul dans près de huit cas sur dix.
-             *
-             * Ce n'est pas anodin : l'écran *Trésorerie* retient les encaissements par
-             * `whereIn('site_id', …)`, et un `site_id` nul n'entre dans aucun `whereIn`.
-             * Le règlement serait bien enregistré, la balance âgée et l'extrait de compte
-             * le verraient — mais il **n'apparaîtrait jamais en trésorerie**, sans qu'une
-             * ligne ne le signale. Aucun encaissement n'avait encore été saisi ici, donc
-             * personne ne l'avait rencontré ; le premier l'aurait fait.
-             *
-             * On descend donc jusqu'à un atelier : celui de la facture s'il est connu,
-             * sinon l'unique atelier de sa ville — c'est le cas de Bouaké et de San-Pédro —,
-             * sinon celui de la personne qui encaisse, qui est au moins un fait. Ce qu'on
-             * ne fait pas : choisir au hasard entre les deux ateliers d'Abidjan quand la
-             * personne n'en a aucun.
-             */
-            'site_id' => $facture->site_id ?? $this->atelierPour($facture),
-            'facture_id' => $facture->id,
-            'date' => $donnees['dateTravail'],
-            'type' => 'Client',
-            // L'encaissement hérite de l'activité de la facture qu'il solde : c'est ce
-            // qui rend la ligne ventilable en trésorerie.
-            'activite' => $facture->activite,
-            'moyen' => $donnees['encMode'],
-            'montant' => $montant,
-            // Celui qui a réellement payé, donc le courtier s'il y en a un. Inscrire
-            // l'assuré ici couperait l'extrait de compte du courtier en deux : ses
-            // factures d'un côté, ses règlements de l'autre.
-            'client' => $facture->tiersPayant(),
-            'reference_origine' => $donnees['encReference'] ?: $facture->n_facture,
-            'cree_par' => auth()->id(),
-        ]);
+        /*
+         * La référence du versement n'est posée **qu'au-delà d'une facture**. Un règlement
+         * d'une seule ligne n'est pas un règlement global, et le marquer comme tel ferait
+         * apparaître des « paiements groupés » qui n'en sont pas dans la colonne de l'état.
+         */
+        $reference = $factures->count() > 1
+            ? ReglementGlobal::reference(auth()->user()->entreprise_id, $donnees['dateTravail'])
+            : null;
+
+        foreach ($repartition['parts'] as $part) {
+            if ($part['part'] <= 0) {
+                continue;
+            }
+
+            $facture = $part['facture'];
+
+            Encaissement::create([
+                'entreprise_id' => auth()->user()->entreprise_id,
+                /*
+                 * **L'atelier de l'encaissement, et pourquoi il ne peut pas rester vide.**
+                 *
+                 * Il était recopié de la facture, sans plus. Or **8 937 factures sur
+                 * 11 332 n'ont pas d'atelier** — mesuré le 24/09 : la colonne SITE des
+                 * exports dit « ABIDJAN », et Abidjan en a deux, si bien que l'import
+                 * s'arrête à la ville. L'encaissement héritait donc d'un atelier nul dans
+                 * près de huit cas sur dix.
+                 *
+                 * Ce n'est pas anodin : l'écran *Trésorerie* retient les encaissements par
+                 * `whereIn('site_id', …)`, et un `site_id` nul n'entre dans aucun
+                 * `whereIn`. Le règlement serait bien enregistré, la balance âgée et
+                 * l'extrait de compte le verraient — mais il **n'apparaîtrait jamais en
+                 * trésorerie**, sans qu'une ligne ne le signale.
+                 */
+                'site_id' => $facture->site_id ?? $this->atelierPour($facture),
+                'facture_id' => $facture->id,
+                'date' => $donnees['dateTravail'],
+                'type' => 'Client',
+                // L'encaissement hérite de l'activité de la facture qu'il solde : c'est ce
+                // qui rend la ligne ventilable en trésorerie.
+                'activite' => $facture->activite,
+                'moyen' => $donnees['encMode'],
+                'montant' => $part['part'],
+                // Celui qui a réellement payé, donc le courtier s'il y en a un. Inscrire
+                // l'assuré ici couperait l'extrait de compte du courtier en deux : ses
+                // factures d'un côté, ses règlements de l'autre.
+                'client' => $facture->tiersPayant(),
+                'reference_origine' => $donnees['encReference'] ?: $facture->n_facture,
+                'reglement_global' => $reference,
+                'cree_par' => auth()->id(),
+            ]);
+
+            // La banque est une information de la créance, pas de l'écriture : c'est
+            // l'état des impayés qui la porte, et c'est là qu'elle doit se retrouver.
+            if (trim((string) $donnees['encBanque']) !== '') {
+                $facture->forceFill(['banque' => trim($donnees['encBanque'])])->save();
+            }
+        }
 
         return null;
     });
@@ -292,28 +405,31 @@ $enregistrerEncaissement = function () {
     }
 
     activity()->causedBy(auth()->user())
-        ->withProperties(['tiers' => $donnees['encTiers'], 'montant' => $montant, 'mode' => $donnees['encMode']])
+        ->withProperties([
+            'tiers' => $donnees['encTiers'],
+            'montant' => $montant,
+            'mode' => $donnees['encMode'],
+            'factures' => count($idsChoisies),
+        ])
         ->log('Recouvrement — encaissement enregistré');
 
     /*
-     * **Le formulaire se vide en entier, tiers compris.** Demandé par le propriétaire le
-     * 24/09. Il ne gardait que le tiers et le mode, ce qui paraissait commode : on enchaîne
-     * souvent deux règlements du même client. Mais un formulaire à demi rempli après un
-     * enregistrement se lit comme un formulaire pas encore enregistré — et le geste suivant
-     * est de recliquer. On préfère retaper le tiers que d'encaisser deux fois.
+     * **Le formulaire se vide en entier, tiers compris.** Demandé le 24/09 : un formulaire
+     * à demi rempli après un enregistrement se lit comme un formulaire pas encore
+     * enregistré, et le geste suivant est de recliquer. On préfère retaper le tiers que
+     * d'encaisser deux fois. La date de travail, elle, reste : c'est un réglage de séance.
      *
-     * La date de travail, elle, reste : c'est un réglage de séance, pas une saisie.
+     * `fill` et non `reset` : Volt ne rend pas toujours à `reset()` la valeur déclarée dans
+     * `state()`, et un `encTiers` remis à null fait sauter le rendu suivant.
      */
-    // `fill` et non `reset` : Volt ne rend pas toujours à `reset()` la valeur déclarée
-    // dans `state()`, et un `encTiers` remis à null au lieu de la chaîne vide fait sauter
-    // `facturesOuvertesDuTiers(string $tiers)` au rendu suivant. On repose donc les
-    // valeurs de départ à la main — elles sont écrites juste au-dessus, dans `state()`.
-    $this->fill(['encTiers' => '', 'encFactureId' => '', 'encMode' => '',
-        'encMontant' => '', 'encReference' => '']);
-    unset($this->ouvertes, $this->kpis, $this->tiersOuverts, $this->facturesDuTiersEncaissement, $this->factureVisee);
+    $this->fill(['encTiers' => '', 'encFactures' => [], 'encMode' => '',
+        'encMontant' => '', 'encReference' => '', 'encBanque' => '']);
+
+    unset($this->ouvertes, $this->kpis, $this->tiersOuverts, $this->facturesDuTiersEncaissement,
+        $this->encSelection, $this->encRepartition, $this->encTotalDu);
 
     $this->dispatch('annonce', ton: 'succes', texte: 'Encaissement de '.Recouvrement::fr($montant)
-        .' affecté — la balance âgée et la trésorerie sont à jour.');
+        .' affecté sur '.count($idsChoisies).' facture(s) — la balance âgée et la trésorerie sont à jour.');
 };
 
 /**
@@ -637,8 +753,21 @@ $creerTiers = function () {
         <div class="rec-carte">
             <h2>Enregistrer un encaissement <span class="chip">Tous rôles</span></h2>
 
+            {{-- **Le formulaire refait le 28/09, sur le modèle de l'écran des impayés.**
+
+                 Il ne visait qu'une facture et n'offrait que quatre champs. Le propriétaire
+                 l'a relevé : « on ne sait pas chez qui ça s'est déposé, les dates et bien
+                 d'autres — on n'a pas tous les champs nécessaires par rapport aux impayés »,
+                 et il a donné la marche à suivre : « on choisit le nom, puis la ou les
+                 factures qui vont avec, et en même temps les champs viendront se remplir ».
+
+                 D'où deux changements. Les factures du tiers ne sont plus une liste
+                 déroulante mais un **tableau à cocher**, qui montre ce que chaque créance
+                 porte — assureur, courtier, dépositaire, véhicule, dates, reste. Et le
+                 versement peut en viser **plusieurs** : un client remet un chèque pour ce
+                 qu'il doit, rarement pour une pièce précise. --}}
             <div class="rec-frm">
-                <div class="rec-fld">
+                <div class="rec-fld" style="grid-column:span 2;">
                     {{-- Deux mille quatre cent cinquante tiers : une liste déroulante nue est
                          un mur. Le champ de recherche filtre sans quitter le `<select>`. --}}
                     <x-select-cherchable id="enc-tiers" label="Tiers / assurance"
@@ -646,88 +775,207 @@ $creerTiers = function () {
                         :options="$this->tiersOuverts"
                         vide="— Tiers qui doivent encore —" placeholder="Taper le nom du tiers…" />
                 </div>
-                <div class="rec-fld">
-                    <label>Facture du tiers</label>
-                    <select wire:model.live="encFactureId">
-                        @if ($encTiers === '')
-                            <option value="">— Sélectionner le tiers d'abord —</option>
-                        @elseif ($this->facturesDuTiersEncaissement->isEmpty())
-                            <option value="">— aucune facture ouverte —</option>
-                        @else
-                            <option value="" @selected($encFactureId === '')>— Choisir la facture —</option>
-                            @foreach ($this->facturesDuTiersEncaissement as $facture)
-                                <option value="{{ $facture->id }}" @selected((string) $encFactureId === (string) $facture->id)>
-                                    N° {{ $facture->n_facture }} · {{ $facture->immatriculation ?: ($facture->vehicule ?: '—') }}
-                                    · reste {{ Recouvrement::fr(Recouvrement::reste($facture)) }}
-                                </option>
-                            @endforeach
-                        @endif
-                    </select>
-
-                    {{-- Une liste vide ne dit pas pourquoi elle est vide. On croit que
-                         l'écran n'a pas répondu, on rechoisit le tiers, on recommence. Trois
-                         causes possibles, et elles se distinguent — autant les nommer. --}}
-                    @if ($encTiers !== '' && $this->facturesDuTiersEncaissement->isEmpty())
-                        <div class="rec-hint warn" style="margin-top:6px;">
-                            <strong>Aucune facture ouverte pour « {{ $encTiers }} ».</strong>
-                            Soit son compte est soldé, soit ses dossiers sont réglés par un courtier —
-                            l'encaissement se saisit alors au nom du courtier.
-                            <a href="{{ route('recouvrement.extrait', ['tiers' => $encTiers]) }}" wire:navigate
-                               style="color:#C8102E; font-weight:700;">Voir son extrait</a>.
-                        </div>
-                    @endif
-                </div>
-                <div class="rec-fld">
-                    <label>Mode d'encaissement</label>
-                    <select wire:model="encMode">
-                        <option value="" @selected($encMode === '')>— Banque / espèce / mobile money —</option>
-                        @foreach ($this->modes as $mode)
-                            <option value="{{ $mode }}" @selected((string) $encMode === (string) $mode)>{{ $mode }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="rec-fld">
-                    {{-- La date que portera l'écriture. Elle est ici, à côté du montant, et
-                         non dans l'en-tête : c'est au moment de valider qu'on la vérifie. --}}
-                    <label for="date-enc">Date de l'écriture</label>
-                    <input type="date" id="date-enc" wire:model="dateTravail" value="{{ $dateTravail }}">
-                </div>
-                <div class="rec-fld">
-                    <label>Montant (F CFA)</label>
-                    <input type="number" min="0" wire:model.live.debounce.400ms="encMontant" value="{{ $encMontant }}">
-                </div>
-                <div class="rec-fld" style="grid-column:span 2;">
-                    <label>Référence (chèque, transaction…)</label>
-                    <input type="text" wire:model="encReference" value="{{ $encReference }}">
-                </div>
             </div>
 
-            @php
-                $visee = $this->factureVisee;
-                $reste = $visee ? Recouvrement::reste($visee) : 0;
-                $saisi = (int) ($this->encMontant ?: 0);
-            @endphp
+            @if ($encTiers === '')
+                <div class="rec-hint">
+                    Choisir un tiers : ses factures ouvertes s'affichent, avec le reste à payer de
+                    chacune. Un règlement peut en viser une ou plusieurs.
+                </div>
+            @elseif ($this->facturesDuTiersEncaissement->isEmpty())
+                {{-- Une liste vide ne dit pas pourquoi elle est vide. On croit que l'écran
+                     n'a pas répondu, on rechoisit le tiers, on recommence. --}}
+                <div class="rec-hint warn">
+                    <strong>Aucune facture ouverte pour « {{ $encTiers }} ».</strong>
+                    Soit son compte est soldé, soit ses dossiers sont réglés par un courtier —
+                    l'encaissement se saisit alors au nom du courtier.
+                    <a href="{{ route('recouvrement.extrait', ['tiers' => $encTiers]) }}" wire:navigate
+                       style="color:#C8102E; font-weight:700;">Voir son extrait</a>.
+                </div>
+            @else
+                @php
+                    /* La liste que le navigateur répartira à la frappe : identifiant, reste
+                       à payer, et l'ordre d'imputation — la plus ancienne d'abord, comme
+                       ReglementGlobal. Rendue par le serveur, calculée par le navigateur :
+                       c'est ce qui rend la déduction immédiate. */
+                    $pourLeNavigateur = $this->facturesDuTiersEncaissement
+                        ->sortBy([fn ($a, $b) => ($a->date?->timestamp ?? 0) <=> ($b->date?->timestamp ?? 0),
+                                  fn ($a, $b) => $a->id <=> $b->id])
+                        ->map(fn ($f) => ['id' => $f->id, 'reste' => (int) Recouvrement::reste($f)])
+                        ->values();
+                @endphp
+
+                {{-- **La répartition se calcule dans le navigateur, et c'est une correction.**
+
+                     « La déduction du montant se fait lentement et n'est pas immédiate » —
+                     relevé le 28/09. Le montant passait par un aller-retour Livewire avant
+                     que le reste ne bouge : on tapait, et le chiffre suivait une demi-seconde
+                     plus tard, ce qui donne l'impression que l'écran hésite.
+
+                     La règle est donc rejouée ici, à l'identique : la plus ancienne d'abord,
+                     jusqu'à épuisement. Ce n'est qu'un **aperçu** — le serveur la refait sous
+                     verrou, sur les restes à jour, et c'est lui qui écrit. Mais l'aperçu est
+                     instantané, et c'est ce qu'on regarde en tapant. --}}
+                <div x-data="{
+                        factures: {{ Illuminate\Support\Js::from($pourLeNavigateur) }},
+                        get coches() {
+                            return this.factures.filter(f => $wire.encFactures[f.id]);
+                        },
+                        get du() {
+                            return this.coches.reduce((t, f) => t + f.reste, 0);
+                        },
+                        get verse() {
+                            return Math.max(0, parseInt($wire.encMontant || 0, 10) || 0);
+                        },
+                        /** Ce que reçoit une facture : la plus ancienne servie d'abord. */
+                        part(id) {
+                            let reste = this.verse;
+                            for (const f of this.coches) {
+                                const part = Math.min(f.reste, reste);
+                                if (f.id === id) { return part; }
+                                reste -= part;
+                            }
+                            return 0;
+                        },
+                        get trop() { return Math.max(0, this.verse - this.du); },
+                        fr(n) { return new Intl.NumberFormat('fr-FR').format(n) + ' F'; },
+                    }">
+
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 8px;">
+                        <button type="button" class="rec-btn n" style="padding:5px 11px; font-size:12px;"
+                            wire:click="toutCocherEncaissement">Tout cocher</button>
+                        <button type="button" class="rec-btn" style="padding:5px 11px; font-size:12px;"
+                            wire:click="toutDecocherEncaissement">Tout décocher</button>
+                        <span style="font-size:12.5px; color:#6B6E76;">
+                            <span x-text="coches.length"></span> facture(s) cochée(s) —
+                            dû : <b x-text="fr(du)"></b>
+                        </span>
+                    </div>
+
+                    <div class="tableau-conteneur" style="max-height:290px; overflow:auto;">
+                        <table class="tableau" style="font-size:12.5px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:28px;"></th>
+                                    <th>N° facture</th>
+                                    <th>Date</th>
+                                    <th>Reçue le</th>
+                                    <th>Assureur</th>
+                                    <th>Courtier</th>
+                                    <th>Déposée chez</th>
+                                    <th>Véhicule</th>
+                                    <th style="text-align:right;">Montant</th>
+                                    <th style="text-align:right;">Déjà réglé</th>
+                                    <th style="text-align:right;">Reste</th>
+                                    <th style="text-align:right;">Imputé</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($this->facturesDuTiersEncaissement as $facture)
+                                    @php $resteFacture = (int) Recouvrement::reste($facture); @endphp
+                                    <tr wire:key="enc-fac-{{ $facture->id }}"
+                                        style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                        <td>
+                                            <input type="checkbox" wire:model.live="encFactures.{{ $facture->id }}"
+                                                style="width:15px; height:15px; cursor:pointer;">
+                                        </td>
+                                        <td style="font-weight:600;">{{ $facture->n_facture ?: $facture->numero }}</td>
+                                        <td style="white-space:nowrap;">{{ $facture->date?->format('d/m/Y') ?? '—' }}</td>
+                                        <td style="white-space:nowrap; color:#6B6E76;">{{ $facture->date_reception?->format('d/m/Y') ?? '—' }}</td>
+                                        <td style="color:#6B6E76;">{{ $facture->assureur ?: '—' }}</td>
+                                        <td style="color:#6B6E76;">{{ $facture->courtier ?: '—' }}</td>
+                                        {{-- Le champ qui manquait, nommément cité le 28/09. --}}
+                                        <td style="color:#6B6E76;">{{ $facture->depose_chez ?: '—' }}</td>
+                                        <td style="color:#6B6E76;">
+                                            {{ $facture->immatriculation ?: ($facture->vehicule ?: '—') }}
+                                        </td>
+                                        <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $facture->montant) }}</td>
+                                        <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
+                                            {{ ae((int) $facture->montant - $resteFacture) }}
+                                        </td>
+                                        <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($resteFacture) }}</td>
+                                        {{-- Ce que ce versement lui donnerait, mis à jour à la frappe. --}}
+                                        <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; color:#2563EB;"
+                                            x-text="$wire.encFactures[{{ $facture->id }}] ? fr(part({{ $facture->id }})) : '—'">—</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="rec-frm" style="margin-top:12px;">
+                        <div class="rec-fld">
+                            <label>Montant reçu (F CFA)</label>
+                            {{-- `.live` sans délai : le serveur suit, mais l'affichage n'attend
+                                 pas son retour — c'est Alpine qui recalcule à chaque touche. --}}
+                            <input type="number" min="0" wire:model.live="encMontant" value="{{ $encMontant }}"
+                                x-on:input="$wire.encMontant = $event.target.value">
+                        </div>
+                        <div class="rec-fld">
+                            <label>Mode d'encaissement</label>
+                            <select wire:model="encMode">
+                                <option value="" @selected($encMode === '')>— Banque / espèce / mobile money —</option>
+                                @foreach ($this->modes as $mode)
+                                    <option value="{{ $mode }}" @selected((string) $encMode === (string) $mode)>{{ $mode }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="rec-fld">
+                            {{-- La date que portera l'écriture. Elle est ici, à côté du montant, et
+                                 non dans l'en-tête : c'est au moment de valider qu'on la vérifie. --}}
+                            <label for="date-enc">Date de l'écriture</label>
+                            <input type="date" id="date-enc" wire:model="dateTravail" value="{{ $dateTravail }}">
+                        </div>
+                        <div class="rec-fld">
+                            <label>Banque</label>
+                            <input type="text" wire:model="encBanque" value="{{ $encBanque }}"
+                                placeholder="Celle du chèque, s'il y en a un">
+                        </div>
+                        <div class="rec-fld" style="grid-column:span 2;">
+                            <label>Référence (chèque, transaction…)</label>
+                            <input type="text" wire:model="encReference" value="{{ $encReference }}">
+                        </div>
+                    </div>
+
+                    {{-- Le récapitulatif, instantané lui aussi. Il dit les trois cas et un
+                         seul à la fois : trop-perçu, solde partiel, ou compte apuré. --}}
+                    <div class="rec-hint" x-show="coches.length > 0" x-cloak
+                         x-bind:class="trop > 0 ? 'warn' : 'ok'">
+                        <template x-if="trop > 0">
+                            <span>
+                                ⚠ Le versement dépasse de <b x-text="fr(trop)"></b> le total dû sur les
+                                factures cochées. Un trop-perçu est une décision — avoir, ou avance sur
+                                une facture à venir — et ne s'impute pas ici : cochez une facture de plus,
+                                ou corrigez le montant.
+                            </span>
+                        </template>
+                        <template x-if="trop === 0 && verse > 0">
+                            <span>
+                                ✓ <b x-text="fr(verse)"></b> réparti sur <b x-text="coches.length"></b>
+                                facture(s) — la plus ancienne d'abord.
+                                <template x-if="du - verse > 0">
+                                    <span>Restera dû : <b x-text="fr(du - verse)"></b>.</span>
+                                </template>
+                                <template x-if="du - verse === 0">
+                                    <span>Ces factures seront soldées.</span>
+                                </template>
+                                <template x-if="coches.length > 1">
+                                    <span style="display:block; margin-top:5px; color:#6B6E76;">
+                                        Ces écritures porteront une <b>référence de versement commune</b> :
+                                        l'état des impayés l'affichera en colonne « Règlement global ».
+                                    </span>
+                                </template>
+                            </span>
+                        </template>
+                        <template x-if="verse === 0">
+                            <span>Saisir le montant reçu : il se répartira sur les factures cochées.</span>
+                        </template>
+                    </div>
+                </div>
+            @endif
 
             @error('encMontant')
                 <div class="rec-hint warn">⚠ {{ $message }}</div>
-            @else
-                @if (! $visee)
-                    <div class="rec-hint">
-                        Choisir un tiers puis la facture : la liste affiche le reste à payer de chacune.
-                    </div>
-                @elseif ($saisi > $reste)
-                    <div class="rec-hint warn">
-                        ⚠ Montant supérieur au reste à payer de la facture ({{ Recouvrement::fr($reste) }}).
-                        Corriger avant enregistrement.
-                    </div>
-                @else
-                    <div class="rec-hint ok">
-                        ✓ Facture n° {{ $visee->n_facture }} — reste à payer : {{ Recouvrement::fr($reste) }}
-                        @if ($saisi > 0)
-                            · après encaissement : {{ Recouvrement::fr($reste - $saisi) }}
-                        @endif
-                    </div>
-                @endif
             @enderror
 
             <x-erreurs-du-bloc prefixe="enc" />

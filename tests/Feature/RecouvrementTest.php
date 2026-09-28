@@ -374,7 +374,7 @@ class RecouvrementTest extends TestCase
 
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
-            ->set('encFactureId', (string) $facture->id)
+            ->set('encFactures.'.$facture->id, true)
             ->set('encMontant', '200000')
             ->set('encMode', 'CHÈQUE')
             ->call('enregistrerEncaissement')
@@ -409,7 +409,7 @@ class RecouvrementTest extends TestCase
         // rend ceux de sa carte.
         Volt::actingAs($superviseur)->test('recouvrement.saisie')
             ->set('encTiers', '')
-            ->set('encFactureId', '')
+            ->set('encFactures', [])
             ->set('encMode', '')
             ->set('encMontant', '')
             ->call('enregistrerEncaissement')
@@ -573,7 +573,7 @@ class RecouvrementTest extends TestCase
 
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
-            ->set('encFactureId', $facture->id)
+            ->set('encFactures.'.$facture->id, true)
             ->set('encMode', 'CHÈQUE')
             ->set('encMontant', 1_000_000)
             ->call('enregistrerEncaissement')
@@ -594,7 +594,7 @@ class RecouvrementTest extends TestCase
 
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
-            ->set('encFactureId', $facture->id)
+            ->set('encFactures.'.$facture->id, true)
             ->set('encMode', 'ESPÈCE')
             ->set('encMontant', 900_000)
             ->call('enregistrerEncaissement')
@@ -791,7 +791,7 @@ class RecouvrementTest extends TestCase
         // chercher sous le nom de l'assuré revient à ne jamais la trouver.
         $this->assertSame(['F-001'], $composant->instance()->facturesDuTiersEncaissement->pluck('n_facture')->all());
 
-        $composant->set('encFactureId', $facture->id)
+        $composant->set('encFactures.'.$facture->id, true)
             ->set('encMode', 'VIREMENT — BGFI')
             ->set('encMontant', 800_000)
             ->call('enregistrerEncaissement')
@@ -917,7 +917,7 @@ class RecouvrementTest extends TestCase
 
         $this->assertSame(['F-001'], $composant->instance()->facturesDuTiersEncaissement->pluck('n_facture')->all());
 
-        $composant->set('encFactureId', $facture->id)
+        $composant->set('encFactures.'.$facture->id, true)
             ->set('encMode', 'ESPÈCE')
             ->set('encMontant', 300_000)
             ->call('enregistrerEncaissement')
@@ -1044,7 +1044,7 @@ class RecouvrementTest extends TestCase
 
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
-            ->set('encFactureId', $facture->id)
+            ->set('encFactures.'.$facture->id, true)
             ->set('encMode', 'VIREMENT — ECOBANK')
             ->set('encMontant', 400_000)
             ->call('enregistrerEncaissement')
@@ -1063,7 +1063,7 @@ class RecouvrementTest extends TestCase
         // bancaire impointable.
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
-            ->set('encFactureId', $facture->id)
+            ->set('encFactures.'.$facture->id, true)
             ->set('encMode', 'ENVELOPPE')
             ->set('encMontant', 400_000)
             ->call('enregistrerEncaissement')
@@ -1257,12 +1257,17 @@ class RecouvrementTest extends TestCase
 
         $ecran = Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie');
 
-        $this->assertStringContainsString("Sélectionner le tiers d'abord", $ecran->html());
+        // Tant qu'aucun tiers n'est choisi, l'écran le dit plutôt que d'afficher un
+        // tableau vide qu'on prendrait pour une panne. Le libellé a changé le 28/09 avec
+        // le passage de la liste déroulante au tableau à cocher.
+        $this->assertStringContainsString('Choisir un tiers', $ecran->html());
 
         $rempli = $ecran->set('encTiers', 'SIFCA')->html();
 
-        $this->assertStringNotContainsString("Sélectionner le tiers d'abord", $rempli);
+        $this->assertStringNotContainsString('Choisir un tiers :', $rempli);
         $this->assertStringContainsString('F-2001', $rempli);
+        // Les colonnes que le propriétaire demandait le 28/09, dont celle qui manquait.
+        $this->assertStringContainsString('Déposée chez', $rempli);
     }
 
     /**
@@ -1281,7 +1286,7 @@ class RecouvrementTest extends TestCase
         // façon de prouver que la liste se vide bien après un règlement.
         Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie')
             ->set('encTiers', 'PAYEUR SOLDE')
-            ->set('encFactureId', $solde->id)
+            ->set('encFactures.'.$solde->id, true)
             ->set('encMode', 'CHÈQUE')
             ->set('encMontant', 200_000)
             ->call('enregistrerEncaissement')

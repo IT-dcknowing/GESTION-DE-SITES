@@ -335,6 +335,17 @@ $graphique = computed(fn () => [
                                          title="Aucun compte n'est relié à ce commercial : il n'a donc pas de code de plateforme.">
                                         sans compte relié
                                     </div>
+                                @else
+                                    {{-- **L'ancien numéro reste lisible, et c'est demandé.** Il a
+                                         été dicté et noté pendant des mois : le retirer d'un coup
+                                         obligerait à deviner qui était « C-0001 ». Il est ici en
+                                         regard du nouveau, pour que la correspondance se lise d'un
+                                         coup d'œil — et il reste accepté à la saisie, même s'il
+                                         n'est plus celui qu'on affiche. --}}
+                                    <div style="font-size:10.5px; font-weight:400; color:#6B6E76;"
+                                         title="Ancien numéro, toujours reconnu à la saisie mais remplacé à l'affichage.">
+                                        anciennement {{ $ligne['commercial']->numero }}
+                                    </div>
                                 @endif
                             </td>
                             <td style="font-weight:700;">{{ $ligne['commercial']->nom }}</td>

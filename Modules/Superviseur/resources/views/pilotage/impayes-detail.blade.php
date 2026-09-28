@@ -95,6 +95,10 @@ $traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::de
             $reste = Recouvrement::reste($f);
             $age = Recouvrement::anciennete($f, now());
             $niveau = Recouvrement::niveau($f, now());
+            /* Le tableau de l'état affiche « Mode de règlement » et « Date de règlement » :
+               ce sont ceux du dernier encaissement enregistré. Le détail doit les porter
+               aussi — il est le récapitulatif du tableau, pas un sous-ensemble. */
+            $dernier = $f->encaissements->first();
             $cellule = 'padding:7px 10px; border-bottom:1px solid var(--th-ligne,#E2E0D8); vertical-align:top;';
             $intitule = $cellule.' color:#6B6E76; font-size:12px; text-transform:uppercase; letter-spacing:.4px; width:42%;';
         @endphp
@@ -149,7 +153,12 @@ $traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::de
         </div>
 
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:16px; margin-bottom:16px;">
-            {{-- Les colonnes du classeur, sous ses mots et dans son ordre. --}}
+            {{-- Les colonnes du classeur, sous ses mots et dans son ordre.
+
+                 **Et toutes, sans condition.** Cette page est le récapitulatif de la ligne
+                 du tableau : chaque colonne de l'état y a sa ligne, renseignée ou non. Une
+                 ligne qui disparaît quand elle est vide se lit comme un oubli, et oblige à
+                 retourner au tableau pour s'assurer qu'on n'a rien manqué. --}}
             <div class="carte">
                 <h3 style="font-size:15px; font-weight:700; margin:0 0 10px;">La créance</h3>
                 <table style="width:100%; border-collapse:collapse; font-size:13.5px;">
@@ -158,6 +167,19 @@ $traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::de
                     <tr><td style="{{ $intitule }}">SITE</td><td style="{{ $cellule }}">{{ $f->site?->nom ?? 'atelier à préciser' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Ville</td><td style="{{ $cellule }}">{{ $f->site?->ville?->nom ?? $f->ville?->nom ?? 'à préciser' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Courtier</td><td style="{{ $cellule }}">{{ $f->courtier ?: '—' }}</td></tr>
+                    {{-- **Toujours affichée, même vide.** Elle ne l'était que renseignée, et
+                         le propriétaire a relevé son absence le 28/09 : une ligne qui
+                         disparaît quand elle est vide se lit comme une colonne oubliée, et
+                         l'on va la chercher dans le tableau pour vérifier. Un détail est le
+                         récapitulatif du tableau : toutes ses colonnes y figurent, et un
+                         tiret dit « pas renseigné ». --}}
+                    <tr><td style="{{ $intitule }}">Déposée chez</td>
+                        <td style="{{ $cellule }}">
+                            {{ $f->depose_chez ?: '—' }}
+                            @if ($f->depose_chez)
+                                <div style="font-size:11.5px; color:#6B6E76; font-weight:400;">c'est lui qu'on relance</div>
+                            @endif
+                        </td></tr>
                     <tr><td style="{{ $intitule }}">Date de réception (dépôt)</td><td style="{{ $cellule }}">{{ $f->date_reception?->format('d/m/Y') ?? 'non renseignée' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Date d'édition</td><td style="{{ $cellule }}">{{ $f->date?->format('d/m/Y') ?? '—' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Numéro de la facture</td><td style="{{ $cellule }}">{{ $f->n_facture ?: '—' }}</td></tr>
@@ -165,6 +187,32 @@ $traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::de
                     <tr><td style="{{ $intitule }}">Véhicule</td><td style="{{ $cellule }}">{{ $f->vehicule ?: '—' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Immatriculation</td><td style="{{ $cellule }}">{{ $f->immatriculation ?: '—' }}</td></tr>
                     <tr><td style="{{ $intitule }}">banque</td><td style="{{ $cellule }}">{{ $f->banque ?: '—' }}</td></tr>
+                    {{-- Les deux colonnes que le tableau lit sur le dernier règlement. Le
+                         détail les portait dans la liste des règlements plus bas, ce qui est
+                         plus riche mais ne répondait pas à la même question : « où en est
+                         cette ligne du tableau ? ». --}}
+                    <tr><td style="{{ $intitule }}">Mode de règlement</td>
+                        <td style="{{ $cellule }}">{{ $dernier?->moyen ?: '—' }}</td></tr>
+                    <tr><td style="{{ $intitule }}">Date de règlement</td>
+                        <td style="{{ $cellule }}">{{ $dernier?->date?->format('d/m/Y') ?? '—' }}</td></tr>
+                    {{-- Le versement unique qui a soldé cette créance avec d'autres. La
+                         référence est portée par les encaissements, pas par la facture :
+                         une créance peut recevoir un versement groupé puis un versement
+                         isolé — c'est le règlement qui est groupé, pas la créance. --}}
+                    @php $global = $f->encaissements->pluck('reglement_global')->filter()->unique(); @endphp
+                    <tr><td style="{{ $intitule }}">Règlement global</td>
+                        <td style="{{ $cellule }}">
+                            @if ($global->isEmpty())
+                                —
+                            @else
+                                @foreach ($global as $reference)
+                                    <div style="font-family:ui-monospace,Consolas,monospace;">{{ $reference }}</div>
+                                @endforeach
+                                <div style="font-size:11.5px; color:#6B6E76; font-weight:400;">
+                                    un seul versement a soldé plusieurs factures
+                                </div>
+                            @endif
+                        </td></tr>
                     <tr><td style="{{ $intitule }}">Commentaires</td><td style="{{ $cellule }}">{{ $f->observations ?: '—' }}</td></tr>
                 </table>
             </div>
@@ -177,9 +225,13 @@ $traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::de
                     <tr><td style="{{ $intitule }}">Année de l'état</td><td style="{{ $cellule }}">{{ $f->exercice_impayes }}</td></tr>
                     <tr><td style="{{ $intitule }}">Report</td><td style="{{ $cellule }}">{{ EtatDesImpayes::libelleReport($f, (int) now()->year) }}</td></tr>
                     <tr><td style="{{ $intitule }}">Activité</td><td style="{{ $cellule }}">{{ $f->activite ?? '—' }}</td></tr>
-                    @if ($f->depose_chez)
-                        <tr><td style="{{ $intitule }}">Déposée chez</td><td style="{{ $cellule }}">{{ $f->depose_chez }}</td></tr>
-                    @endif
+                    {{-- La colonne « Année antérieure » du tableau : oui ou non, et rien
+                         d'autre. « Report » dit de quelle année ; celle-ci dit s'il y en a
+                         une. Les deux sont dans le tableau, donc les deux sont ici. --}}
+                    <tr><td style="{{ $intitule }}">Année antérieure</td>
+                        <td style="{{ $cellule }}">
+                            {{ EtatDesImpayes::estReportee($f, (int) ($f->exercice_impayes ?: now()->year)) ? 'Oui' : '—' }}
+                        </td></tr>
                     {{-- Dire d'où vient le payeur évite la question suivante : pourquoi la
                          relance ne part-elle pas au nom inscrit sur la facture ? --}}
                     <tr><td style="{{ $intitule }}">Tiers payant (celui qu'on relance)</td><td style="{{ $cellule }}">{{ $f->tiersPayant() }}@if ($f->depose_chez)<span style="color:#6B6E76;"> — parce que la facture est déposée chez lui</span>@endif</td></tr>
