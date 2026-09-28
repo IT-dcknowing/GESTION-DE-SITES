@@ -6,6 +6,7 @@ use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Exploitation\Services\StatistiquesDevis;
 use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Tracabilite\Services\QuiAAgi;
 use function Livewire\Volt\{state, computed, mount};
 
 state([
@@ -198,6 +199,16 @@ $detail = computed(function () {
     return $q->get();
 });
 
+/**
+ * Qui s'est chargé des lignes affichées — une requête pour la page, pas une par ligne.
+ *
+ * On ne mesure que la page : le filtre peut ramener des milliers de devis, et personne ne
+ * lit la centième page.
+ *
+ * @see QuiAAgi
+ */
+$traitants = computed(fn () => QuiAAgi::pour($this->detail->forPage($this->pageDetail, 10)));
+
 ?>
 
 <div>
@@ -306,6 +317,10 @@ $detail = computed(function () {
                         <th>Montant restant</th>
                         <th>Activité</th>
                         <th>Observations</th>
+                        {{-- Qui s'est chargé de cette ligne. Le nom ici, les dates dans le
+                             détail : demandé le 25/09, et pour toute l'application. --}}
+                        <th>Traité par</th>
+                        <th class="colonne-collee"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -318,7 +333,13 @@ $detail = computed(function () {
                             $delaiDepasse = $delaiHeures !== null && $delaiHeures > 24;
                         @endphp
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                            <td><x-numero-ligne :ligne="$ligne" /></td>
+                            {{-- Le nom du commercial sous le numéro, comme ailleurs.
+
+                                 Un devis importé n'a pas de saisisseur — `cree_par` est vide —
+                                 et le code seul (« MT ») ne se retient pas. Ce qu'on veut lire
+                                 sous le numéro, c'est la personne à qui ce devis compte.
+                                 Demandé le 25/09. --}}
+                            <td><x-numero-ligne :ligne="$ligne" :nom="$ligne->commercial?->nom" /></td>
                             <td>{{ $ligne->date_reception?->format('d/m/Y') ?? '—' }}</td>
                             <td>
                                 @if ($ligne->n_fiche_reception && PisteDeLaFiche::peutOuvrir(auth()->user()))
@@ -355,9 +376,17 @@ $detail = computed(function () {
                             <td style="font-variant-numeric:tabular-nums; font-weight:700; color:{{ $couleurRestant }};">{{ $montantRestant !== null ? ae($montantRestant) : '—' }}</td>
                             <td>{{ $ligne->activite }}</td>
                             <td style="color:#6B6E76;">{{ $ligne->observations ?? '—' }}</td>
+                            <td><x-qui-a-agi :personnes="$this->traitants[$ligne->id] ?? []" /></td>
+                            <td class="colonne-collee" style="text-align:right;">
+                                {{-- Le détail a sa page : il se lit au large, se rouvre dans un
+                                     autre onglet et se transmet par son adresse. --}}
+                                <a href="{{ route('devis.detail', $ligne->id) }}" wire:navigate
+                                    class="bouton bouton-secondaire"
+                                    style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
+                            </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 14 : 13" texte="Aucun devis enregistré sur cette période." />
+                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 16 : 15" texte="Aucun devis enregistré sur cette période." />
                     @endforelse
                 </tbody>
             </table>

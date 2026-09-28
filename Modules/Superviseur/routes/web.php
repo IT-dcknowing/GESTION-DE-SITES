@@ -30,6 +30,9 @@ use Modules\Superviseur\Http\Controllers\TelechargerLesFournisseurs;
 Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|responsable_commercial'])->group(function () {
     Volt::route('/prospects', 'pilotage.prospects')->name('prospects');
     Volt::route('/devis', 'pilotage.devis')->name('devis');
+    // Le détail d'un devis a sa page, comme la créance et la pièce fournisseur : toutes
+    // ses colonnes au large, et une adresse qu'on transmet.
+    Volt::route('/devis/{id}', 'pilotage.devis-detail')->name('devis.detail')->whereNumber('id');
     Volt::route('/chiffre-affaires', 'pilotage.chiffre-affaires')->name('chiffre-affaires');
     Volt::route('/commerciaux', 'pilotage.commerciaux')->name('commerciaux');
 });

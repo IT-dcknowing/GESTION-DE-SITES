@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **25 septembre 2026** (13e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **28 septembre 2026** (14e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 28/09 | voir `git log` | **fournisseurs-et-tracabilite** | la **clé de rapprochement des fournisseurs n'était pas infaillible** : les deux classeurs n'écrivent pas le n° de pièce pareil, et 562 factures seraient entrées deux fois — le numéro se compare désormais par son noyau ; **aucun des deux classeurs n'est « celui de sa ville »** ; les **devis importés retrouvent leur commercial** (2 432 sur 2 432 n'en avaient aucun) ; le commercial se désigne par le **code de la plateforme** et non par « C-0010 » ; **« Traité par »** dans les tableaux, avec les dates dans le détail seulement ; **page de détail d'un devis** ; cocher « devis après passage » **demande enfin son numéro**, et « passage » se coche sur une ligne transmise ; « Créer une facture » masquée du recouvrement |
 | 25/09 | voir `git log` | **finitions-du-25** | « **Créer une facture** » ne réagissait pas : `wire:model.blur` n'écoute que `blur`, et le champ masqué des listes cherchables ne le reçoit jamais — la valeur ne partait pas, et le refus ne s'affichait nulle part ; **les trois formulaires du recouvrement se vident** après enregistrement ; **tableau initial des fournisseurs** (`/fournisseurs/tableau-initial`), le pendant de celui des impayés ; « Référentiel » devient « **Conditions de règlement** » ; **la loupe ville lit enfin le périmètre** du lecteur ; **une seule numérotation** de facture et **une seule expression** de « réglée » ; le journal de caisse annonce **Excel avant PDF** |
 | 24/09 | voir `git log` | **caisse-tableur-et-fournisseurs** | le **journal de caisse se lit aussi en tableur**, sous le même type que le PDF (sept mouvements comparés ligne à ligne, identiques) ; la **saisie d'une pièce fournisseur couvre les quarante colonnes** des deux classeurs, repliées par blocs, et demande l'atelier là où la ville en compte deux ; le **référentiel fournisseur dit enfin pourquoi il est vide** — le classeur est entré le 8/09, la feuille « Liste fournisseurs » n'est lue que depuis le 24/09, et 282 fiches attendent une relecture du même dépôt ; un **encaissement saisi sur une facture sans atelier en reçoit un**, sans quoi il n'apparaîtrait jamais en trésorerie ; le champ « Atelier » du dépôt n'oblige plus à recharger la page |
 | 24/09 | voir `git log` | **corrections-du-soir** | **la création d'une facture depuis le recouvrement était cassée en production** (colonne `numero` NOT NULL jamais posée : MySQL refusait, SQLite l'acceptait, aucun test ne le voyait) ; **le bandeau vert ne s'affichait jamais après une navigation** — troisième piège de la même famille ; le filtre « Réglées » du chiffre d'affaires lisait l'état des impayés au lieu des encaissements (2 480 annoncées, 7 616 réelles) ; l'extrait de compte filtre à la frappe et n'offre plus que les tiers qui portent une facture (273 au lieu de 2 446) ; le dépôt avertit quand le fichier n'est pas de l'exercice déclaré ; « Rectification » entre au barème, à côté de « Enregistrer la modification » |
@@ -1509,6 +1510,155 @@ se tromper de colonne, la seconde le peut. Le libellé dit donc lequel apporter 
 le choix. L'autre type de caisse, « le classeur tenu à la main (Excel) », n'a jamais été
 que du tableur. Et le lecteur `Classeur` choisit de toute façon par la **signature** du
 fichier, pas par son extension : n'importe quel type accepte l'un ou l'autre.
+
+### La clé des fournisseurs n'était pas infaillible
+
+✅ **Corrigé le 28/09**, et c'est une question du propriétaire qui l'a trouvé : « cette
+règle est-elle infaillible, et le n° est-ce le numéro de la pièce ? les deux fichiers n'ont
+pas la même formalisation du numéro de saisie ». Elle ne l'était pas, et c'était exactement
+par là.
+
+**Les deux classeurs désignent la même facture de deux façons.** Mesuré sur les fichiers
+réels, feuille `DETAIL` :
+
+| Abidjan écrit | San Pédro écrit |
+|---|---|
+| `0001827` | `22319I091/0001827` |
+| `000 1876` | `22319I091/0001876` |
+| `00 32165` | `23005S023/0032165` |
+| `02015` | `0 2015` |
+
+Le préfixe est le **code du bon de commande du fournisseur**, et un seul des deux classeurs
+le recopie. Ce qui identifie la pièce est ce qui suit le dernier « / », une fois retirés
+les séparateurs et les zéros qui alignent la colonne.
+
+**Ce que la comparaison littérale coûtait** : elle reconnaissait 2 648 lignes comme déjà
+vues ; la comparaison au noyau en reconnaît **3 210**. **562 factures seraient donc entrées
+deux fois** au dépôt du second classeur, et la dette aurait été comptée double sans qu'une
+ligne ne le signale.
+
+**Et elle ne confond rien.** Les neuf seuls cas où le noyau rapproche deux lignes qu'un
+numéro littéral séparait ont été ouverts un par un : neuf fois la **même pièce écrite deux
+fois dans le même classeur** — « FC26-00278 » et « FC2600278 », « 0 23982 » et « 23982 ».
+Aucune facture distincte n'y perd son identité.
+
+**Sur la base en ligne au 28/09 : zéro groupe concerné.** Un seul des deux classeurs a été
+déposé (1 848 pièces). La correction ne déplace donc rien de ce qui existe — elle empêche
+ce qui serait arrivé au prochain dépôt. Voir `NumeroDePiece`, et le test qui reprend les
+paires réelles.
+
+### Aucun des deux classeurs n'est « celui de sa ville »
+
+✅ **Mesuré et dit à l'écran le 28/09.** On pouvait croire à deux périmètres — un fichier
+pour San Pédro, un pour Abidjan. C'est faux, et l'inverse de ce qu'on aurait parié :
+
+| Classeur | Abidjan | San Pédro | Bouaké | Sans ville |
+|---|---:|---:|---:|---:|
+| FICHIER SUIVI FOURNISSEURS (FSF L2A) | 5 461 | 852 | 30 | 1 082 |
+| SanPedro_SUIVI FACTURES FOURNISSEURS SP-26 | 2 862 | 921 | — | 1 557 |
+
+Le classeur de San Pédro porte **trois fois plus de lignes d'Abidjan que de San Pédro**. Ce
+sont deux copies partiellement recouvrantes du même suivi, pas deux périmètres : il faut
+**les deux**, et la ville se lit ligne à ligne dans la colonne SITE. Le tableau initial le
+dit maintenant en chiffres.
+
+### Les devis importés retrouvent leur commercial
+
+✅ **Réparé le 28/09**, après une remarque du propriétaire : « tous les devis ne sont pas
+liés à un commercial, j'espère que tu l'as pris en compte ». Il avait raison, et c'était
+pire que cela — mesuré : **2 432 devis importés sur 2 432** n'avaient ni code ni
+commercial, alors que leur numéro le dit tous (« PR-MT-11434 » porte MT).
+
+**Deux causes, et une seule était un défaut de code.** L'import extrayait bien le code — il
+s'en sert pour ranger la ligne dans sa ville — puis le jetait : il l'écrit désormais sur le
+devis. Reste la seconde, qui n'est pas un bug : **aucun des 39 codes de l'atelier n'est
+relié à un compte**, donc à un commercial. Tant que ce lien n'est pas fait, il n'y a
+personne à désigner, et inventer un rattachement attribuerait un chiffre d'affaires sur une
+ressemblance. Le lien se fait à l'écran, une fois par personne.
+
+**L'écran des codes disait une promesse, il dit maintenant une mesure.** « C'est par elles
+que les devis importés rejoignent leur commercial » était faux, et un écran qui promet ce
+qu'il ne fait pas coûte plus cher qu'un écran qui se tait : on ne cherche pas la cause d'un
+manque qu'on croit déjà couvert. Il affiche « X code(s) sur Y désignent un commercial », et
+le tableau le montre code par code, avec le nombre de devis que chacun porte.
+
+La mention « N code(s) n'apparaissent dans aucun fichier importé » a été retirée : elle
+n'appelait aucune action.
+
+### Le commercial se désigne par le code de la plateforme
+
+✅ **Corrigé le 28/09.** Les écrans affichaient encore « C-0010 », un compteur posé à la
+création de la fiche et qui ne dit rien. La maison s'est donnée depuis un code qui dit la
+ville, le rôle et la personne — `A-C-KY-0007` —, celui que porte chaque saisie et que
+l'écran des accès montre à la création. **C'est celui-là qu'il faut écrire dans le logiciel
+d'atelier.** Deux identifiants pour la même personne, c'est un de trop : celui qu'on dicte
+au téléphone n'est jamais celui qu'on cherche à l'écran.
+
+L'ancien reste **lu** — il a été dicté et noté pendant des mois — mais il n'est plus
+**affiché**. On lit large, on écrit étroit.
+
+### « Traité par » : le nom dans le tableau, les dates dans le détail
+
+✅ **Fait le 28/09**, demandé pour toute l'application : « dès qu'une personne aura à agir
+sur une ligne, cela devra être marqué par son identifiant, et aussi le ou les dates où
+elle a agi — cette information doit apparaître uniquement dans le détail ».
+
+La répartition est la consigne, et elle est juste : un tableau répond à « qui suit ce
+dossier ? », un détail à « que s'est-il passé, et quand ? ». Une colonne de dates dans un
+tableau de vingt-quatre colonnes n'aiderait personne à décider.
+
+**Rien n'est stocké pour cela** : le journal d'audit consigne déjà chaque écriture avec son
+auteur et son horodatage, la ligne porte `cree_par`. `QuiAAgi` réunit les deux. Une colonne
+« traité par » tenue à part aurait fini par diverger du journal — et c'est le journal qui
+fait foi. Une requête par page, pas une par ligne.
+
+Posé sur l'état des impayés et sur les devis ; le service est commun, et le composant
+`x-qui-a-agi` aussi.
+
+### Cocher « devis après passage » demande enfin son numéro
+
+✅ **Corrigé le 28/09.** Le formulaire exigeait le n° du devis ; la case du tableau ne
+l'exigeait pas — et c'est par cette case que passent presque tous les devis, puisqu'un
+devis arrive après la visite, donc après la transmission. Sans ce numéro, la prospection ne
+peut plus être reliée au devis importé : il ne reste que le rapprochement par la plaque et
+le nom, qui se trompe dès que le même client revient dans le mois.
+
+La case ouvre donc une question **sur la ligne** — pas une boîte du navigateur — et le
+devis n'est posé qu'une fois le numéro donné.
+
+**Et « passage » se coche sur une ligne transmise.** « C'est impossible de cliquer sur
+passage » : c'était exact, et incohérent. Le passage est un **constat**, pas une
+déclaration, et la case était déjà ouverte par la bande — cocher le devis mettait `passage`
+à vrai. Ce qui est déclaré reste fermé : la date, le moyen, l'activité.
+
+Les champs liés paraissent maintenant **à la coche** et non au retour du serveur (`x-show`
+sur l'état que Livewire tient déjà en page). Ils restent rendus par le serveur : le
+chemin sans JavaScript est intact.
+
+### « Créer une facture » est masquée du recouvrement
+
+✅ **Le 28/09**, à la demande du propriétaire, et **masquée, non supprimée**. Une facture
+naît dans le logiciel d'atelier au bout d'une procédure — devis, validation, facturation —
+et entre ici par l'import. En créer une à la main ouvrait une seconde porte sur la même
+table, avec sa propre numérotation ; c'est d'ailleurs par là que le numéro manquant était
+passé.
+
+L'action reste écrite, testée et gardée par l'habilitation : le besoin peut revenir — une
+reprise de garantie, une facture que le logiciel n'a pas produite. Ce qui disparaît, c'est
+la porte, pas la serrure. Une constante à passer à `true` la rouvre.
+
+### Ce qui reste à faire de la demande du 25/09
+
+⏳ **Le lien prospection → devis → import n'est pas fait.** Demandé : qu'une prospection
+passée en devis prenne le statut « en attente d'import », que la correspondance se fasse
+d'elle-même au dépôt suivant, et qu'une colonne du tableau montre le numéro auquel elle a
+été reliée. Les deux moitiés existent déjà — le numéro de devis est maintenant exigé à la
+coche, et le devis importé porte son code — mais le rapprochement automatique reste à
+écrire.
+
+⏳ **Les sections « 2 — Devis », « Encaissements » et « Chiffre d'affaires facturé » de la
+saisie du responsable** n'ont pas été retirées, et la question posée sur l'encaissement du
+recouvrement — même rôle que celui des impayés ? — appelle une décision avant d'y toucher.
 
 ### Pour le jour où les API répondront
 

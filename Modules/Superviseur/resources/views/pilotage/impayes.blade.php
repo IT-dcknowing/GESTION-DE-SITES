@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Carbon;
+use Modules\Noyau\Tracabilite\Services\QuiAAgi;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Modules\Noyau\Commun\Modeles\Referentiel;
@@ -352,6 +353,20 @@ $pageLignes = computed(function () {
         ->forPage($page, 15)
         ->get();
 });
+
+/**
+ * Qui s'est chargé des lignes affichées — en une seule requête pour toute la page.
+ *
+ * Demandé le 25/09, et pour toute l'application. Le journal d'audit porte déjà chaque
+ * geste avec son auteur : ce service ne fait que le réunir avec `cree_par`, et rendre le
+ * tout lisible. Tenir une colonne « traité par » à part aurait fini par diverger du
+ * journal — et c'est le journal qui fait foi.
+ *
+ * Une requête par ligne aurait fait quinze requêtes par page ; on interroge par lot.
+ *
+ * @see \Modules\Noyau\Tracabilite\Services\QuiAAgi
+ */
+$traitants = computed(fn () => QuiAAgi::pour($this->pageLignes));
 
 /** Le numéro que portera la prochaine créance — montré, pas consommé. */
 $apercuNumero = computed(fn () => EtatDesImpayes::apercuDuNumero(
@@ -962,6 +977,11 @@ $basculerPortage = function () {
                              les deux se déduisent de l'année de la créance. --}}
                         <th>Année antérieure</th>
                         <th>Report</th>
+                        {{-- Demandé le 25/09, et pour toute l'application : qui s'est chargé
+                             des traitements de cette ligne. Le nom ici, les dates dans le
+                             détail — un tableau répond à « qui suit ce dossier ? », pas à
+                             « que s'est-il passé et quand ? ». --}}
+                        <th>Traité par</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -1049,6 +1069,9 @@ $basculerPortage = function () {
                             <td style="color:#B87A00; font-weight:600; white-space:nowrap;">
                                 {{ EtatDesImpayes::libelleReport($ligne, $this->annee) }}
                             </td>
+                            <td>
+                                <x-qui-a-agi :personnes="$this->traitants[$ligne->id] ?? []" />
+                            </td>
                             <td style="white-space:nowrap;">
                                 {{-- Le détail a sa page : il se lit au large, et se rouvre dans un autre onglet. --}}
                                 <a href="{{ route('impayes.detail', $ligne->id) }}" wire:navigate class="bouton bouton-secondaire"
@@ -1080,7 +1103,7 @@ $basculerPortage = function () {
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="23"
+                        <x-table-vide :colspan="24"
                             texte="Aucune créance dans l'état {{ $this->annee }}. Le bouton « Ajouter une créance » ouvre la saisie." />
                     @endforelse
                 </tbody>
