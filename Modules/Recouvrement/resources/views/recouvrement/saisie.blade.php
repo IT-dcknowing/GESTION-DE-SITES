@@ -65,6 +65,16 @@ state([
     // Relance
     'relTiers' => '',
     'relFacture' => '',
+    /*
+     * Les factures que la relance vise, cochées une à une.
+     *
+     * **Demandé le 28/09** : « au niveau des impayés et des relances, on aimerait pouvoir
+     * sélectionner les factures qu'on veut traiter ». Une relance porte rarement sur une
+     * seule pièce : on écrit au client pour ce qu'il doit, et l'on cite les factures
+     * concernées. Le champ n'en acceptait qu'une, ou « situation globale » — c'est-à-dire
+     * tout ou une, sans milieu.
+     */
+    'relFactures' => [],
     // La relance a sa propre date. Elle empruntait celle du formulaire d'encaissement,
     // qui est à l'autre bout de l'écran : on traçait un appel du jour à la date d'une
     // écriture qu'on venait de reculer, sans que rien ne le montre.
@@ -273,6 +283,7 @@ $updatedEncFactures = function () {
 
 $updatedRelTiers = function () {
     $this->relFacture = '';
+    $this->relFactures = [];
     // Le niveau que le dossier appelle, sans rabot : il découle de l'ancienneté de la
     // facture la plus vieille du tiers, et c'est cette ancienneté-là qui commande le
     // protocole AUPSRVE, pas le grade de celui qui la regarde.
@@ -483,6 +494,55 @@ $atelierPour = protect(function (Facture $facture): ?int {
     return auth()->user()->site_id ? (int) auth()->user()->site_id : null;
 });
 
+/**
+ * Les factures cochées pour la relance, dans l'ordre du tiers.
+ *
+ * On repart toujours de la liste du tiers plutôt que des identifiants reçus : des cases
+ * cochées puis un changement de tiers feraient citer les créances de quelqu'un d'autre
+ * dans une mise en demeure.
+ */
+$relSelection = computed(fn () => $this->facturesDuTiersRelance->filter(
+    fn (Facture $f) => ! empty($this->relFactures[$f->id]),
+)->values());
+
+$relTotalVise = computed(fn () => $this->relSelection->sum(fn (Facture $f) => Recouvrement::reste($f)));
+
+/** Cocher toutes les factures ouvertes du tiers — le cas le plus fréquent d'une relance. */
+$toutCocherRelance = function () {
+    $this->relFactures = $this->facturesDuTiersRelance
+        ->mapWithKeys(fn (Facture $f) => [$f->id => true])->all();
+
+    unset($this->relSelection, $this->relTotalVise);
+};
+
+$toutDecocherRelance = function () {
+    $this->relFactures = [];
+    unset($this->relSelection, $this->relTotalVise);
+};
+
+$updatedRelFactures = function () {
+    unset($this->relSelection, $this->relTotalVise);
+};
+
+/**
+ * Le libellé que portera la relance : les pièces citées, ou le compte entier.
+ *
+ * Protégé plutôt que public : c'est une règle de rédaction du document, et elle n'a pas à
+ * être appelable depuis le navigateur.
+ */
+$libelleDesFacturesRelancees = protect(function (): string {
+    $cochees = $this->relSelection;
+
+    if ($cochees->isNotEmpty()) {
+        return $cochees
+            ->map(fn (Facture $f) => 'N° '.($f->n_facture ?: $f->numero)
+                .' · reste '.Recouvrement::fr(Recouvrement::reste($f)))
+            ->implode(' ; ');
+    }
+
+    return trim((string) $this->relFacture) ?: 'Situation globale';
+});
+
 /*
 |--------------------------------------------------------------------------
 | Relance
@@ -529,7 +589,15 @@ $enregistrerRelance = function () {
         'responsable' => auth()->user()->name,
         'date' => $donnees['relDate'],
         'tiers' => $donnees['relTiers'],
-        'factures_visees' => $donnees['relFacture'] ?: 'Situation globale',
+        /*
+         * Ce que la relance cite, et dans quel ordre on le décide.
+         *
+         * Les factures cochées d'abord — c'est le cas le plus précis, et celui qu'on écrit
+         * dans une mise en demeure. Le champ libre ensuite, pour ce qui ne tient pas dans
+         * une case. « Situation globale » en dernier : on relance sur l'ensemble du compte
+         * quand on ne vise rien de particulier, et c'est un choix, pas un défaut.
+         */
+        'factures_visees' => $this->libelleDesFacturesRelancees(),
         'niveau' => (int) $donnees['relNiveau'],
         'canal' => $donnees['relCanal'],
         'interlocuteur' => $donnees['relInterlocuteur'] ?: null,
@@ -545,7 +613,7 @@ $enregistrerRelance = function () {
     // Vidé en entier, pour la même raison que l'encaissement : une relance N5 qu'on
     // enregistre deux fois part deux fois chez l'huissier. Le niveau revient à N1 et le
     // statut à « En cours » — leurs valeurs de départ —, la date de relance reste.
-    $this->fill(['relTiers' => '', 'relFacture' => '', 'relNiveau' => 1, 'relCanal' => '',
+    $this->fill(['relTiers' => '', 'relFacture' => '', 'relFactures' => [], 'relNiveau' => 1, 'relCanal' => '',
         'relInterlocuteur' => '', 'relResultat' => '', 'relPromis' => '', 'relStatut' => 'En cours']);
     unset($this->nombreRelances);
 
@@ -1241,42 +1309,82 @@ $annulerLeTiers = function () {
 
                      « Situation globale » reste un choix à part entière : on relance
                      souvent sur l'ensemble du compte plutôt que pièce par pièce. --}}
-                <div class="rec-fld">
-                    <label for="rel-facture">Facture(s) visée(s)</label>
-                    <select id="rel-facture" wire:model="relFacture" @disabled($relTiers === '')>
-                        @if ($relTiers === '')
-                            <option value="">— Choisissez d'abord le tiers —</option>
-                        @else
-                            <option value="" @selected($relFacture === '')>
-                                Situation globale ({{ $this->facturesDuTiersRelance->count() }} facture(s) ouverte(s))
-                            </option>
-                            @foreach ($this->facturesDuTiersRelance as $facture)
-                                <option value="N° {{ $facture->n_facture }} · reste {{ Recouvrement::fr(Recouvrement::reste($facture)) }}"
-                                    @selected($relFacture === 'N° '.$facture->n_facture.' · reste '.Recouvrement::fr(Recouvrement::reste($facture)))>
-                                    N° {{ $facture->n_facture }} · reste {{ Recouvrement::fr(Recouvrement::reste($facture)) }}
-                                </option>
-                            @endforeach
-                        @endif
-                    </select>
+                <div class="rec-fld" style="grid-column:span 2;">
+                    <label>Facture(s) visée(s)</label>
 
+                    {{-- **Cocher les pièces, plutôt qu'en choisir une.**
+
+                         Demandé le 28/09 : « au niveau des impayés et des relances, on
+                         aimerait pouvoir sélectionner les factures qu'on veut traiter ».
+                         Le champ n'acceptait qu'une facture, ou « situation globale » —
+                         c'est-à-dire tout ou une, sans milieu. Or une mise en demeure cite
+                         presque toujours plusieurs pièces, et rarement toutes.
+
+                         Ne rien cocher reste un choix à part entière : on relance sur
+                         l'ensemble du compte quand on ne vise rien de particulier. --}}
                     @if ($relTiers === '')
-                        <div class="rec-hint" style="margin-top:6px;">
-                            Une facture appartient à un tiers&nbsp;: la liste se remplit dès que
-                            vous en choisissez un. Vous pourrez alors viser une pièce précise, ou
-                            rester sur la <strong>situation globale</strong> du compte.
+                        <div class="rec-hint">
+                            Une facture appartient à un tiers&nbsp;: la liste se remplit dès que vous
+                            en choisissez un. Vous pourrez alors cocher les pièces à citer, ou rester
+                            sur la <strong>situation globale</strong> du compte.
                         </div>
-                    @elseif ($this->facturesDuTiersRelance->isEmpty())
+                    @elseif ($this->facturesDuTiersRelance->isNotEmpty())
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 6px;">
+                            <button type="button" class="rec-btn n" style="padding:4px 10px; font-size:11.5px;"
+                                wire:click="toutCocherRelance">Tout cocher</button>
+                            <button type="button" class="rec-btn" style="padding:4px 10px; font-size:11.5px;"
+                                wire:click="toutDecocherRelance">Tout décocher</button>
+                            <span style="font-size:12px; color:#6B6E76;">
+                                @if ($this->relSelection->isEmpty())
+                                    aucune cochée — la relance portera sur la situation globale
+                                @else
+                                    {{ $this->relSelection->count() }} citée(s) —
+                                    <b>{{ Recouvrement::fr($this->relTotalVise) }}</b> réclamé(s)
+                                @endif
+                            </span>
+                        </div>
+
+                        <div class="rec-tbl-wrap" style="max-height:190px; overflow:auto;">
+                            <table class="rec-tbl" style="font-size:12px;">
+                                <tbody>
+                                    @foreach ($this->facturesDuTiersRelance as $facture)
+                                        <tr wire:key="rel-fac-{{ $facture->id }}">
+                                            <td style="width:26px;">
+                                                <input type="checkbox" wire:model.live="relFactures.{{ $facture->id }}"
+                                                    style="width:15px; height:15px; cursor:pointer;">
+                                            </td>
+                                            <td style="font-weight:600;">N° {{ $facture->n_facture ?: $facture->numero }}</td>
+                                            <td style="white-space:nowrap; color:#6B6E76;">{{ $facture->date?->format('d/m/Y') ?? '—' }}</td>
+                                            <td class="num" style="font-weight:700;">{{ Recouvrement::fr(Recouvrement::reste($facture)) }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+
+                    @if ($relTiers !== '' && $this->facturesDuTiersRelance->isEmpty())
                         <div class="rec-hint warn" style="margin-top:6px;">
                             <strong>Aucune facture ouverte pour « {{ $relTiers }} ».</strong>
                             Une relance reste possible sur la situation globale, mais vérifiez d'abord
                             qu'il reste bien quelque chose à réclamer.
                         </div>
-                    @else
+                    @elseif ($relTiers !== '')
                         <div class="rec-hint ok" style="margin-top:6px;">
                             {{ $this->facturesDuTiersRelance->count() }} facture(s) ouverte(s) pour
                             « {{ $relTiers }} », soit {{ Recouvrement::fr($this->soldeDuTiersRelance) }}
                             à réclamer.
                         </div>
+                    @endif
+
+                    {{-- Le champ libre reste, pour ce qui ne tient pas dans une case : un
+                         numéro de dossier, un lot, une référence du client. Il ne sert que
+                         si rien n'est coché — les pièces citées priment, parce qu'elles
+                         sont vérifiables. --}}
+                    @if ($relTiers !== '' && $this->relSelection->isEmpty())
+                        <input type="text" wire:model="relFacture" value="{{ $relFacture }}"
+                            style="margin-top:6px;"
+                            placeholder="Ou une mention libre — sinon : situation globale">
                     @endif
                 </div>
                 {{-- Les cinq niveaux sont ouverts à tous les rôles du module.

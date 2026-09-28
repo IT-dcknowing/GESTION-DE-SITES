@@ -13,6 +13,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Noyau\Exploitation\Services\ReglementGlobal;
 use Spatie\Permission\PermissionRegistrar;
@@ -226,6 +227,53 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
         $ecran->assertSet('encMontant', '1000000');
 
         $ecran->call('toutDecocherEncaissement')->assertSet('encFactures', []);
+    }
+
+    /**
+     * La relance cite les factures cochées, et non plus une seule.
+     *
+     * Demandé le 28/09 : « au niveau des impayés et des relances, on aimerait pouvoir
+     * sélectionner les factures qu'on veut traiter ». Une mise en demeure cite presque
+     * toujours plusieurs pièces, et rarement toutes — le champ n'offrait que tout ou une.
+     */
+    public function test_la_relance_cite_les_factures_cochees(): void
+    {
+        $vieille = $this->facture('F-001', 700_000, now()->subDays(120));
+        $moyenne = $this->facture('F-002', 300_000, now()->subDays(60));
+        $this->facture('F-003', 100_000, now()->subDays(10));
+
+        Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie')
+            ->set('relTiers', 'SIFCA')
+            ->set('relFactures.'.$vieille->id, true)
+            ->set('relFactures.'.$moyenne->id, true)
+            ->set('relCanal', RelanceRecouvrement::CANAUX[0])
+            ->set('relStatut', RelanceRecouvrement::STATUTS[0])
+            ->call('enregistrerRelance')
+            ->assertHasNoErrors();
+
+        $citees = RelanceRecouvrement::withoutGlobalScopes()->firstOrFail()->factures_visees;
+
+        $this->assertStringContainsString('F-001', $citees);
+        $this->assertStringContainsString('F-002', $citees);
+        $this->assertStringNotContainsString('F-003', $citees, 'Une pièce non cochée ne se réclame pas.');
+    }
+
+    /** Ne rien cocher reste un choix : on relance alors sur l'ensemble du compte. */
+    public function test_sans_facture_cochee_la_relance_porte_sur_la_situation_globale(): void
+    {
+        $this->facture('F-001', 700_000, now()->subDays(120));
+
+        Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie')
+            ->set('relTiers', 'SIFCA')
+            ->set('relCanal', RelanceRecouvrement::CANAUX[0])
+            ->set('relStatut', RelanceRecouvrement::STATUTS[0])
+            ->call('enregistrerRelance')
+            ->assertHasNoErrors();
+
+        $this->assertSame(
+            'Situation globale',
+            RelanceRecouvrement::withoutGlobalScopes()->firstOrFail()->factures_visees,
+        );
     }
 
     // ------------------------------------------------------------------ le décor

@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **28 septembre 2026** (14e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **28 septembre 2026** (15e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 28/09 | voir `git log` | **encaissement-et-tiers** | **un versement solde plusieurs factures** — sélection à cocher, répartition « la plus ancienne d'abord », référence de règlement global et colonne dans l'état ; l'**encaissement du recouvrement refait sur le modèle des impayés** (banque, dépositaire, dates, déduction instantanée) ; la **relance cite les factures cochées** ; **un code par tiers et par fournisseur**, avec avertissement de ressemblance qui ne bloque pas ; **liste des fournisseurs** et ajout ; la **prospection attend son devis** et le récupère seule à l'import ; trois sections de la saisie du responsable masquées ; le détail d'une créance porte enfin toutes les colonnes |
 | 28/09 | voir `git log` | **fournisseurs-et-tracabilite** | la **clé de rapprochement des fournisseurs n'était pas infaillible** : les deux classeurs n'écrivent pas le n° de pièce pareil, et 562 factures seraient entrées deux fois — le numéro se compare désormais par son noyau ; **aucun des deux classeurs n'est « celui de sa ville »** ; les **devis importés retrouvent leur commercial** (2 432 sur 2 432 n'en avaient aucun) ; le commercial se désigne par le **code de la plateforme** et non par « C-0010 » ; **« Traité par »** dans les tableaux, avec les dates dans le détail seulement ; **page de détail d'un devis** ; cocher « devis après passage » **demande enfin son numéro**, et « passage » se coche sur une ligne transmise ; « Créer une facture » masquée du recouvrement |
 | 25/09 | voir `git log` | **finitions-du-25** | « **Créer une facture** » ne réagissait pas : `wire:model.blur` n'écoute que `blur`, et le champ masqué des listes cherchables ne le reçoit jamais — la valeur ne partait pas, et le refus ne s'affichait nulle part ; **les trois formulaires du recouvrement se vident** après enregistrement ; **tableau initial des fournisseurs** (`/fournisseurs/tableau-initial`), le pendant de celui des impayés ; « Référentiel » devient « **Conditions de règlement** » ; **la loupe ville lit enfin le périmètre** du lecteur ; **une seule numérotation** de facture et **une seule expression** de « réglée » ; le journal de caisse annonce **Excel avant PDF** |
 | 24/09 | voir `git log` | **caisse-tableur-et-fournisseurs** | le **journal de caisse se lit aussi en tableur**, sous le même type que le PDF (sept mouvements comparés ligne à ligne, identiques) ; la **saisie d'une pièce fournisseur couvre les quarante colonnes** des deux classeurs, repliées par blocs, et demande l'atelier là où la ville en compte deux ; le **référentiel fournisseur dit enfin pourquoi il est vide** — le classeur est entré le 8/09, la feuille « Liste fournisseurs » n'est lue que depuis le 24/09, et 282 fiches attendent une relecture du même dépôt ; un **encaissement saisi sur une facture sans atelier en reçoit un**, sans quoi il n'apparaîtrait jamais en trésorerie ; le champ « Atelier » du dépôt n'oblige plus à recharger la page |
@@ -1659,6 +1660,132 @@ coche, et le devis importé porte son code — mais le rapprochement automatique
 ⏳ **Les sections « 2 — Devis », « Encaissements » et « Chiffre d'affaires facturé » de la
 saisie du responsable** n'ont pas été retirées, et la question posée sur l'encaissement du
 recouvrement — même rôle que celui des impayés ? — appelle une décision avant d'y toucher.
+
+### Un versement solde plusieurs factures
+
+✅ **Fait le 28/09.** « Imaginons qu'un client donne un montant de 5 000 000 pour ses
+créances, et que cela concerne 3 ou plusieurs factures : il faudra permettre de
+sélectionner les factures et de remplir les informations une seule fois. Maintenant la
+question qui reste posée, c'est comment le montant sera sur chaque facture — le système
+devra répartir. »
+
+**La règle retenue : la plus ancienne d'abord, jusqu'à épuisement.** C'est la convention
+comptable ordinaire, et c'est la seule qui serve le recouvrement — elle fait tomber les
+créances les plus vieilles, donc celles qui déclenchent les niveaux de relance et les
+procédures. Répartir au prorata laisserait toutes les factures partiellement ouvertes :
+aucune ne sortirait de la balance âgée, et l'on continuerait de relancer un client qui
+vient de payer.
+
+À date égale, l'identifiant départage — sans quoi la répartition changerait d'une lecture
+à l'autre.
+
+**Un versement partiel ne se refuse pas** : « la somme donnée ne veut pas dire que ça
+couvrira toutes les créances ». La dernière facture servie peut ne l'être qu'en partie.
+**Un trop-perçu, lui, est refusé** et dit pourquoi : c'est une décision — un avoir, une
+avance sur une facture à venir — et non un reliquat qu'un écran impute tout seul.
+
+**La marque du versement.** Au-delà d'une facture, les écritures partagent une référence
+— `RG-2809-0001` — que l'état des impayés affiche en colonne « Règlement global ». Elle
+permet de dire six mois plus tard : « ce chèque a soldé ces trois factures et laissé
+300 000 sur la quatrième ». Un versement d'une seule facture n'en porte pas : le marquer
+ferait apparaître des paiements groupés qui n'en sont pas, et la colonne cesserait de
+vouloir dire quelque chose. Migration additive `2026_09_28_000001`.
+
+**La déduction est instantanée.** Elle passait par un aller-retour serveur à chaque
+touche : on tapait, et le chiffre suivait une demi-seconde plus tard. La répartition est
+maintenant rejouée dans le navigateur, à l'identique, et le serveur la refait **sous
+verrou** sur les restes à jour avant d'écrire. L'aperçu est immédiat, la vérité reste au
+serveur.
+
+### L'encaissement du recouvrement, refait sur le modèle des impayés
+
+✅ **Le 28/09.** « On ne sait pas chez qui ça s'est déposé, les dates et bien d'autres — on
+n'a pas tous les champs nécessaires par rapport aux impayés. »
+
+Le formulaire ne visait qu'une facture et n'offrait que quatre champs. Les factures du
+tiers sont désormais un **tableau à cocher** qui montre ce que chaque créance porte —
+assureur, courtier, **dépositaire**, véhicule, dates, montant, déjà réglé, reste — et le
+formulaire reçoit la **banque**. C'est la marche à suivre que le propriétaire a donnée :
+« on choisit le nom, puis la ou les factures qui vont avec, et en même temps les champs
+viennent se remplir ».
+
+**La relance aussi cite les factures cochées**, avec « tout cocher » : une mise en demeure
+nomme presque toujours plusieurs pièces, et rarement toutes. Le champ n'offrait que tout ou
+une. Ne rien cocher reste un choix — on relance alors sur la situation globale.
+
+### Un code par tiers, un code par fournisseur
+
+✅ **Le 28/09.** Un nom ne peut pas à la fois **empêcher le doublon d'orthographe** et
+**permettre l'homonyme volontaire**. « NSIA ASSURANCES » et « Nsia Assurance » doivent se
+confondre — sinon l'encours se coupe en deux et l'on relance deux fois la moitié de la
+dette. Deux sociétés réellement homonymes doivent se distinguer — sinon l'une est saisie
+sous un nom faux, ce qui est le même doublon dans l'autre sens.
+
+**D'où : on avertit, on ne bloque pas.** Le premier clic montre les noms voisins, le second
+crée, et c'est le code qui distingue. L'écran refusait jusqu'ici tout nom déjà connu.
+
+**Pourquoi une table, et pas une colonne sur `referentiels`.** Mesuré : cette table est
+**vide** en production. Les tiers n'existent que comme chaînes dans les quatre colonnes des
+factures. Le nom **reste** la clé de regroupement — onze mille factures portent des noms,
+pas des identifiants — et le code sert à **nommer sans ambiguïté**, pas à relier.
+
+**Les codes ne sont pas posés d'office.** Ce serait écrire des milliers de lignes que
+personne n'a demandées, sur une base qui porte de vraies données. Ils s'attribuent par un
+geste — ligne par ligne, ou en une fois — qui dit combien il écrit et se trace.
+
+**Et la liste des fournisseurs existe enfin** (`/fournisseurs/liste`). L'écran des
+fournisseurs liste des **pièces**, les conditions de règlement listent des **accords** ;
+aucun ne répondait à « quels fournisseurs connaissons-nous ? », qui est pourtant la
+première question avant de saisir. Elle réunit ceux qu'on facture et ceux qu'on a déclarés,
+avec code, terme et reste dû, et un bouton pour en ajouter un — même contrôle de
+ressemblance. Migration additive `2026_09_28_000002`.
+
+### La prospection attend son devis, et le récupère seule
+
+✅ **Le 28/09.** « Pour toute prospection en devis, après avoir marqué passage, on devra
+mettre comme statut "en attente d'import" ; dès que l'import est fait et qu'il y a
+correspondance, automatiquement cela est pris et rangé comme si on avait fait le
+parcours. »
+
+**Trois états, et le deuxième manquait** : « aucun », « **en attente d'import** », « devis
+rattaché » — plus « devis sans numéro », qui dit qu'aucun import ne reliera rien. Sans
+l'état d'attente, la ligne était indistinguable d'une visite sans suite : on la relançait,
+on redemandait le numéro. La colonne « Rattachement » du tableau porte aussi **le numéro
+auquel elle a été liée**.
+
+**Pourquoi ce rattachement-ci est automatique alors que les autres ne le sont pas.** Les
+trois autres pistes — n° de fiche, plaque, nom du client — sont des *rapprochements* :
+elles concluent à partir d'indices, et un même client revient plusieurs fois par an. Le
+numéro de devis n'est pas un indice : **le commercial l'a écrit lui-même**, en cochant
+« devis après passage », en tenant le devis. C'est une lecture, et une lecture n'a pas à
+être confirmée à la main. La documentation du service le disait déjà ; il restait à en
+tirer la conséquence.
+
+Trois gardes : une prospection qui a son devis n'en reçoit pas un second ; un devis
+rattaché ne change pas de prospection ; le périmètre de l'atelier est respecté. Et le devis
+déposé **avant** que la case ne soit cochée se relie au dépôt suivant — c'est le cas
+ordinaire, le fichier arrive le soir et le commercial coche le lendemain.
+
+### Trois sections de la saisie du responsable sont masquées
+
+✅ **Le 28/09**, à la demande du propriétaire : « 2 — Devis », « Encaissements » et
+« Chiffre d'affaires facturé », « car elles n'ont plus d'utilité du moment où les
+informations éditées n'iront pas dans le logiciel ».
+
+Un devis, une facture et un encaissement naissent dans le logiciel d'atelier et entrent
+ici **par l'import**. Les saisir à la main ouvrait une seconde source pour les mêmes
+tables, sans rien qui relie les deux, et sans que la saisie ne remonte jamais au logiciel :
+deux vérités pour un même chiffre. **Masquées, non supprimées** — une constante les rouvre
+le jour où le logiciel saura recevoir ce qu'on lui envoie.
+
+Ce qui reste : la prospection, qui n'existe que chez nous, les charges et l'atelier.
+
+### Ce qui reste en attente
+
+⏳ **Les deux classeurs fournisseurs**, mis de côté à la demande du propriétaire, le temps
+qu'il dispose des fichiers définitifs — « pour éviter de bâtir sur ce qui n'est pas
+correct ». La correction de la clé (comparaison du n° par son noyau) reste en place : elle
+ne déplace rien de ce qui existe, elle empêche ce qui serait arrivé.
 
 ### Pour le jour où les API répondront
 

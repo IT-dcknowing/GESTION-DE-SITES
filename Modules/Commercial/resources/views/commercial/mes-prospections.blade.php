@@ -70,7 +70,9 @@ $optionsMoyen = computed(fn () => Referentiel::options(Referentiel::MOYEN_PROSPE
 
 /** Requête filtrée : chaque filtre est appliqué dès la frappe. */
 $requete = computed(function () {
-    $q = Prospection::where('commercial_id', $this->commercial?->id ?? 0)->with('donneesLibres');
+    // Le devis est chargé avec la ligne : la colonne « Rattachement » le lit pour chacune,
+    // et une requête par ligne ferait vingt requêtes par page.
+    $q = Prospection::where('commercial_id', $this->commercial?->id ?? 0)->with(['donneesLibres', 'devis']);
 
     if ($this->fNumero !== '') {
         $q->where('numero', 'like', '%'.$this->fNumero.'%');
@@ -766,6 +768,17 @@ $transmettreSelection = function () {
                             <th>✓</th><th>N°</th><th>Date</th><th>Clients visités</th><th>Localisation</th>
                             <th>Véhicule</th><th>N° de fiche</th><th>Moyens</th><th>Activité</th>
                             <th>Passage</th><th>Devis après passage</th><th>N° du devis</th>
+                            {{-- **Où en est le devis annoncé.** Demandé le 28/09 : « dans le
+                                 tableau des prospections, on doit avoir une colonne qui marque
+                                 la correspondance avec le numéro auquel il a été lié ».
+
+                                 Trois états qui ne veulent pas dire la même chose, et le
+                                 deuxième manquait : « en attente d'import » dit que la visite
+                                 a produit un devis, que son numéro est donné, et que le
+                                 fichier de l'atelier n'est pas encore passé. Sans lui, la
+                                 ligne était indistinguable d'une visite sans suite — on la
+                                 relançait, on redemandait le numéro. --}}
+                            <th>Rattachement</th>
                             <th>Observations</th><th>Informations libres</th><th>Statut</th>
                             <th>Décision</th><th></th>
                         </tr>
@@ -946,6 +959,26 @@ $transmettreSelection = function () {
                                      passage en devis : il doit donc se relire ici, sans quoi on
                                      l'aurait saisi pour personne. --}}
                                 <td style="color:var(--th-gris,#6B6E76);">{{ $ligne->n_devis ?: '—' }}</td>
+                                @php $etatDevis = $ligne->etatDuDevis(); @endphp
+                                <td style="white-space:nowrap;">
+                                    @if ($etatDevis['cle'] === 'aucun')
+                                        <span style="color:var(--th-gris,#6B6E76);">—</span>
+                                    @else
+                                        <span class="pastille {{ $etatDevis['classe'] }}">{{ $etatDevis['libelle'] }}</span>
+                                        @if ($etatDevis['cle'] === 'rapproche')
+                                            {{-- Le numéro auquel elle a été liée : c'est lui qu'on
+                                                 cherche quand on veut vérifier le rattachement. --}}
+                                            <div style="font-size:11px; color:var(--th-gris,#6B6E76); margin-top:2px;">
+                                                {{ $ligne->devis->numero }}
+                                            </div>
+                                        @elseif ($etatDevis['cle'] === 'attente_import')
+                                            <div style="font-size:11px; color:var(--th-gris,#6B6E76); margin-top:2px;"
+                                                 title="Le rattachement se fera tout seul au prochain dépôt du fichier des devis.">
+                                                au prochain dépôt
+                                            </div>
+                                        @endif
+                                    @endif
+                                </td>
 
                                 {{-- Sur une ligne transmise, les informations libres restent
                                      ouvertes — mais il n'y a plus de brouillon : ce qui est écrit
@@ -1045,7 +1078,7 @@ $transmettreSelection = function () {
                             </tr>
                             @endif
                         @empty
-                            <x-table-vide :colspan="16" texte="Aucune prospection ne correspond à ces filtres." />
+                            <x-table-vide :colspan="17" texte="Aucune prospection ne correspond à ces filtres." />
                         @endforelse
                     </tbody>
                 </table>
