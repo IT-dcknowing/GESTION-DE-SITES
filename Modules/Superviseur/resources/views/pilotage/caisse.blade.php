@@ -1,6 +1,7 @@
 <?php
 
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
@@ -61,6 +62,12 @@ state([
     'sensFiltre' => '',
     'recherche' => '',
     'pageDetail' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 mount(function () {
@@ -127,17 +134,45 @@ $colonnesDuFichier = computed(fn () => [
     'caisse' => count($this->caisses) > 1,
 ]);
 
-$requete = computed(fn () => (clone $this->perimetre)
-    ->when($this->sensFiltre, fn ($q) => $q->where('sens', $this->sensFiltre))
-    ->when(trim($this->recherche) !== '', function ($q) {
-        $terme = '%'.trim($this->recherche).'%';
+/**
+ * Les colonnes du journal qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : la période, la ville, le sens, et la
+ * recherche sur le libellé, le bénéficiaire, le motif, la pièce et la plaque.
+ *
+ * `caisse` est une liste : le journal ne connaît qu'une poignée de caisses nommées, et les
+ * taper à la main avec une faute ne trouverait rien.
+ */
+$colonnesFiltrables = computed(fn () => [
+    // `caisses` rend un tableau simple : on le retourne en valeur => libellé, qui est ce
+    // qu'une liste déroulante attend.
+    'mouvements_caisse.caisse' => FiltreLibre::colonne('Caisse', 'liste',
+        array_combine($this->caisses, $this->caisses) ?: []),
+    'mouvements_caisse.type_piece' => FiltreLibre::colonne('Type de pièce'),
+    'mouvements_caisse.role_tiers' => FiltreLibre::colonne('Rôle du tiers'),
+    'mouvements_caisse.beneficiaire' => FiltreLibre::colonne('Bénéficiaire / remettant'),
+    'mouvements_caisse.motif' => FiltreLibre::colonne('Motif'),
+    'mouvements_caisse.numero_piece' => FiltreLibre::colonne('N° de pièce'),
+    'mouvements_caisse.immatriculation' => FiltreLibre::colonne('Immatriculation'),
+    'mouvements_caisse.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+    'mouvements_caisse.date' => FiltreLibre::colonne('Date du mouvement', 'date'),
+]);
 
-        $q->where(fn ($sous) => $sous->where('libelle', 'like', $terme)
-            ->orWhere('beneficiaire', 'like', $terme)
-            ->orWhere('motif', 'like', $terme)
-            ->orWhere('numero_piece', 'like', $terme)
-            ->orWhere('immatriculation', 'like', $terme));
-    }));
+$requete = computed(fn () => FiltreLibre::appliquer(
+    (clone $this->perimetre)
+        ->when($this->sensFiltre, fn ($q) => $q->where('sens', $this->sensFiltre))
+        ->when(trim($this->recherche) !== '', function ($q) {
+            $terme = '%'.trim($this->recherche).'%';
+
+            $q->where(fn ($sous) => $sous->where('libelle', 'like', $terme)
+                ->orWhere('beneficiaire', 'like', $terme)
+                ->orWhere('motif', 'like', $terme)
+                ->orWhere('numero_piece', 'like', $terme)
+                ->orWhere('immatriculation', 'like', $terme));
+        }),
+    $this->colonnesFiltrables,
+    (array) $this->filtresLibres,
+));
 
 /**
  * Ce que la caisse contenait avant le premier jour regardé.
@@ -559,6 +594,10 @@ $saisiesHorsJournal = computed(function () {
                     <option value="entree" @selected($sensFiltre === 'entree')>Entrées seulement</option>
                     <option value="sortie" @selected($sensFiltre === 'sortie')>Sorties seulement</option>
                 </select>
+
+                {{-- Les colonnes du journal qu'aucun filtre ne couvre : la caisse, le type de
+                     pièce, le rôle du tiers, le montant, la date. Demandé le 28/09. --}}
+                <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
             </div>
         </div>
 

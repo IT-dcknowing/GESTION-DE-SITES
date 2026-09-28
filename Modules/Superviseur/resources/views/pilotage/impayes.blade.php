@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Carbon;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Tracabilite\Services\QuiAAgi;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -69,6 +70,19 @@ state(['siteFiltre' => ''])->url(except: '');
 state(['statutFiltre' => 'ouvertes'])->url(except: 'ouvertes');
 state(['reportFiltre' => ''])->url(except: '');
 state(['recherche' => ''])->url(except: '');
+
+/*
+ * Les filtres posés sur les colonnes qu'aucun filtre du haut ne couvre.
+ *
+ * Volontairement **hors de l'adresse**, contrairement aux autres : un tableau de tableaux
+ * ne se sérialise pas lisiblement dans une URL, et le lien deviendrait illisible pour un
+ * gain nul — on ne transmet pas « les factures dont la banque contient SGBCI », on les
+ * regarde. Les filtres du haut, eux, restent dans l'adresse : ce sont ceux qu'on partage.
+ */
+state(['filtresLibres' => []]);
+
+/* Un filtre qui change doit ramener à la première page, comme tous les autres. */
+$updatedFiltresLibres = function () { $this->page = 1; };
 
 /*
  * Les deux bornes du filtre « du … au … ».
@@ -329,6 +343,17 @@ $requeteDesLignes = protect(function () {
 
     EtatDesImpayes::filtrerLeSolde($requete, $this->statutFiltre);
 
+    /*
+     * Les colonnes que les filtres du haut ne couvrent pas — voir `FiltreLibre`.
+     *
+     * Posé **après** les filtres de l'écran et avant le retour : ce sont des conditions
+     * supplémentaires, jamais des conditions de remplacement. Et seules les colonnes
+     * déclarées plus bas sont applicables : les noms arrivent de l'état Livewire, donc du
+     * navigateur, et les prendre tels quels laisserait composer une condition sur
+     * n'importe quelle colonne de la table.
+     */
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
+
     // Même règle que EtatDesImpayes::estReportee() : reportée = née une année d'avant.
     if ($this->reportFiltre === 'reportees') {
         $requete->where('factures.exercice_impayes', '<', $this->annee);
@@ -338,6 +363,38 @@ $requeteDesLignes = protect(function () {
 
     return $requete;
 });
+
+/**
+ * Les colonnes du tableau qu'aucun filtre du haut ne couvre.
+ *
+ * **Demandé le 28/09** : un bouton « Autre filtre » qui ouvre la liste des colonnes
+ * manquantes, et un ou deux champs selon le type de la donnée.
+ *
+ * Déclarées à la main plutôt que devinées du schéma : deviner donnerait des filtres sur
+ * `id`, `created_at` et `lot_import_id` — du bruit sur lequel on ne cherche jamais, au
+ * milieu duquel on ne trouverait plus les trois qui comptent. Ne figurent donc ici que les
+ * colonnes qu'on cherche réellement, et pas celles qui ont déjà leur filtre en haut : la
+ * période, la ville, le solde, le report et la recherche.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'factures.assureur' => FiltreLibre::colonne('Assureur'),
+    'factures.courtier' => FiltreLibre::colonne('Courtier'),
+    'factures.depose_chez' => FiltreLibre::colonne('Déposée chez'),
+    'factures.client' => FiltreLibre::colonne('Client'),
+    'factures.n_facture' => FiltreLibre::colonne('N° de facture'),
+    'factures.n_sinistre' => FiltreLibre::colonne('N° de sinistre'),
+    'factures.vehicule' => FiltreLibre::colonne('Véhicule'),
+    'factures.immatriculation' => FiltreLibre::colonne('Immatriculation'),
+    'factures.banque' => FiltreLibre::colonne('Banque'),
+    'factures.observations' => FiltreLibre::colonne('Commentaires'),
+    // Une valeur fixe : la taper avec une faute ne trouverait rien, et l'on croirait qu'il
+    // n'y a pas de lignes.
+    'factures.activite' => FiltreLibre::colonne('Activité', 'liste', Referentiel::options(Referentiel::ACTIVITE)),
+    // Deux champs : une tranche est ce qu'on cherche, pas un jour exact.
+    'factures.date' => FiltreLibre::colonne("Date d'édition", 'date'),
+    'factures.date_reception' => FiltreLibre::colonne('Date de réception', 'date'),
+    'factures.montant' => FiltreLibre::colonne('Montant TTC', 'nombre'),
+]);
 
 /** Les totaux de toutes les lignes retenues, additionnés par la base. */
 $totaux = computed(fn () => EtatDesImpayes::totauxEnBase($this->requeteDesLignes(), $this->annee));
@@ -806,6 +863,11 @@ $basculerPortage = function () {
 
             <x-champ label="Recherche" model="recherche" :live="true"
                 placeholder="Client, assureur, n° facture, immatriculation, commentaire…" />
+
+            {{-- Les colonnes qu'aucun filtre du haut ne couvre — demandé le 28/09. Un
+                 filtre par colonne rendrait cette barre illisible et ferait perdre les
+                 quatre qui servent tous les jours ; ici on choisit la colonne d'abord. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
 
             {{-- Ouvrir un formulaire ne demande rien au serveur.
                  Le bouton faisait un aller-retour complet : le serveur relisait les totaux et la

@@ -5,6 +5,7 @@ use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Commun\Services\VentilationActivite;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use function Livewire\Volt\{state, computed, mount, protect};
@@ -20,6 +21,12 @@ state([
     'siteFiltre' => '',
     'activiteFiltre' => '',
     'pageEncaissements' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
     'pageDecaissements' => 1,
 
     /*
@@ -144,9 +151,31 @@ $graphique = computed(function () {
  * (pour un encaissement) et le lot d'import dont elle vient. Préchargés ici, sans quoi
  * ouvrir un détail déclencherait trois requêtes de plus par ligne affichée.
  */
-$detailEncaissements = computed(fn () => (clone $this->encaissementsQ)
-    ->with(['site', 'facture:id,numero,n_facture,client,immatriculation', 'lot:id,nom_fichier,format,created_at'])
-    ->latest('date')->latest('id')->get());
+/**
+ * Les colonnes du tableau des encaissements qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : la période, la ville, l'atelier et
+ * l'activité. Le filtre ne porte que sur les **encaissements** : les décaissements sont un
+ * autre tableau, avec d'autres colonnes, et mêler les deux dans un même panneau ferait
+ * poser une condition sur une colonne que l'autre n'a pas.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'encaissements.client' => FiltreLibre::colonne('Client'),
+    'encaissements.autres_tiers' => FiltreLibre::colonne('Autres tiers'),
+    'encaissements.type' => FiltreLibre::colonne("Type d'encaissement"),
+    'encaissements.moyen' => FiltreLibre::colonne('Moyen'),
+    'encaissements.numero' => FiltreLibre::colonne('Référence'),
+    'encaissements.reference_origine' => FiltreLibre::colonne("Référence d'origine"),
+    'encaissements.reglement_global' => FiltreLibre::colonne('Règlement global'),
+    'encaissements.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+]);
+
+$detailEncaissements = computed(fn () => FiltreLibre::appliquer(
+    (clone $this->encaissementsQ)
+        ->with(['site', 'facture:id,numero,n_facture,client,immatriculation', 'lot:id,nom_fichier,format,created_at']),
+    $this->colonnesFiltrables,
+    (array) $this->filtresLibres,
+)->latest('date')->latest('id')->get());
 
 $detailDecaissements = computed(fn () => (clone $this->chargesQ)
     ->with(['site', 'lot:id,nom_fichier,format,created_at'])
@@ -339,7 +368,12 @@ $origineDe = protect(function ($ligne) {
          côte à côte : à moins de 430 px chacun, ils ne montraient plus rien d'utile. --}}
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(430px, 1fr)); gap:20px;">
         <div class="carte">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Encaissements ({{ $this->detailEncaissements->count() }})</h3>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:0 0 14px;">
+                <h3 style="font-size:15px; font-weight:700; margin:0;">Encaissements ({{ $this->detailEncaissements->count() }})</h3>
+                {{-- Les colonnes qu'aucun filtre ne couvre : le client, le type, le moyen,
+                     la référence, le règlement global, le montant. Demandé le 28/09. --}}
+                <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
+            </div>
             <div class="tableau-conteneur">
                 <table class="tableau">
                     <thead>

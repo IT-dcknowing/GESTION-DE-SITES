@@ -5,6 +5,7 @@ use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Exploitation\Services\StatistiquesDevis;
 use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Tracabilite\Services\QuiAAgi;
 use function Livewire\Volt\{state, computed, mount};
@@ -25,6 +26,12 @@ state([
     'dateFiltre' => '',
     'nFactureFiltre' => '',
     'pageDetail' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 mount(function () {
@@ -196,8 +203,32 @@ $detail = computed(function () {
         $q->whereHas('facture', fn ($f) => $f->where('n_facture', 'like', '%'.$this->nFactureFiltre.'%'));
     }
 
+    // Les colonnes qu'aucun filtre du haut ne couvre. Posées après celles de l'écran : ce
+    // sont des conditions supplémentaires, jamais des conditions de remplacement.
+    FiltreLibre::appliquer($q, $this->colonnesFiltrables, (array) $this->filtresLibres);
+
     return $q->get();
 });
+
+/**
+ * Les colonnes du tableau qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : la période, la ville, l'atelier,
+ * l'activité, le commercial, le statut, la date d'émission et le n° de facture.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'devis.client' => FiltreLibre::colonne('Client'),
+    'devis.n_fiche_reception' => FiltreLibre::colonne('N° de fiche de réception'),
+    'devis.numero' => FiltreLibre::colonne('N° de proforma'),
+    // Le code du rédacteur, lu dans le numéro de proforma. C'est par lui qu'un devis
+    // rejoint son commercial — et le chercher permet de voir ce qu'une personne a chiffré.
+    'devis.code_auteur' => FiltreLibre::colonne('Code du rédacteur'),
+    'devis.motif_refus' => FiltreLibre::colonne('Motif du refus'),
+    'devis.observations' => FiltreLibre::colonne('Observations'),
+    'devis.montant_devis' => FiltreLibre::colonne('Montant du devis', 'nombre'),
+    'devis.montant_valide' => FiltreLibre::colonne('Montant validé', 'nombre'),
+    'devis.date_reception' => FiltreLibre::colonne('Date de réception', 'date'),
+]);
 
 /**
  * Qui s'est chargé des lignes affichées — une requête pour la page, pas une par ligne.
@@ -296,6 +327,9 @@ $traitants = computed(fn () => QuiAAgi::pour($this->detail->forPage($this->pageD
                 style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
             <input type="text" wire:model.live.debounce.400ms="nFactureFiltre" value="{{ $nFactureFiltre }}" placeholder="N° de facture…"
                 style="width:160px; padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
+            {{-- Les colonnes qu'aucun filtre ne couvre : le client, la fiche, le code du
+                 rédacteur, les montants, le motif du refus. Demandé le 28/09. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
         <div class="tableau-conteneur">
             <table class="tableau">

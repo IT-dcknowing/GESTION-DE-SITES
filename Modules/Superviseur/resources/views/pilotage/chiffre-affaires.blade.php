@@ -1,6 +1,7 @@
 <?php
 
 use Modules\Noyau\Exploitation\Modeles\Charge;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
@@ -33,6 +34,14 @@ state([
      */
     'origineFiltre' => '',
     'etatImpayesFiltre' => '',
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse, contrairement aux autres : un tableau
+     * de tableaux ne se sérialise pas lisiblement dans une URL, et le lien deviendrait
+     * illisible pour un gain nul — on ne transmet pas « les Hilux entre 200 000 et
+     * 500 000 », on les regarde.
+     */
+    'filtresLibres' => [],
     'pageDetail' => 1,
 ]);
 
@@ -46,6 +55,7 @@ $updatedSemaineFiltre = function () { $this->jourFiltre = ''; };
 /** Changer de ville rend caduc le lieu choisi dans la précédente. */
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; };
 $updatedOrigineFiltre = function () { $this->pageDetail = 1; };
+$updatedFiltresLibres = function () { $this->pageDetail = 1; };
 $updatedRecherche = function () { $this->pageDetail = 1; };
 $updatedCommercialFiltre = function () { $this->pageDetail = 1; };
 
@@ -227,8 +237,39 @@ $appliquerEtat = protect(function ($q, ?string $etat = null) {
 $requeteDetail = computed(function () {
     $q = $this->appliquerOrigine(clone $this->requeteBase);
 
+    /*
+     * Les colonnes du fichier CATTC qu'aucun filtre du haut ne couvre — voir `FiltreLibre`.
+     * Posées après les filtres de l'écran : ce sont des conditions supplémentaires, jamais
+     * des conditions de remplacement.
+     */
+    FiltreLibre::appliquer($q, $this->colonnesFiltrables, (array) $this->filtresLibres);
+
         return $this->appliquerEtat($q);
 });
+
+/**
+ * Les colonnes du tableau qu'aucun filtre du haut ne couvre.
+ *
+ * Le détail porte les colonnes du fichier CATTC : le n° de sinistre, la plaque, la marque,
+ * le modèle, le code client, le sticker. Aucune n'avait de filtre, et l'on exportait pour
+ * chercher « toutes les Hilux » ou « les factures entre 200 000 et 500 000 ».
+ *
+ * Ne figurent pas ici celles qui ont déjà leur filtre : la période, la ville, l'activité,
+ * le commercial, l'état, l'origine, et la recherche sur le client et la référence.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'factures.n_sinistre' => FiltreLibre::colonne('N° de sinistre'),
+    'factures.immatriculation' => FiltreLibre::colonne('Immatriculation'),
+    'factures.marque' => FiltreLibre::colonne('Marque'),
+    'factures.modele' => FiltreLibre::colonne('Modèle'),
+    'factures.code_client' => FiltreLibre::colonne('Code client'),
+    'factures.n_sticker' => FiltreLibre::colonne('N° de sticker'),
+    'factures.assureur' => FiltreLibre::colonne('Assureur'),
+    'factures.courtier' => FiltreLibre::colonne('Courtier'),
+    'factures.observations' => FiltreLibre::colonne('Observations'),
+    'factures.montant' => FiltreLibre::colonne('Montant de la facture', 'nombre'),
+    'factures.date_reception' => FiltreLibre::colonne('Date de réception', 'date'),
+]);
 
 /*
  * « Porter à l'état » n'est offert qu'à qui ouvre l'état des impayés : sa route est fermée au
@@ -382,6 +423,10 @@ $comptesParOrigine = computed(function () {
                     Saisies sur la plateforme ({{ $this->comptesParOrigine['local'] }})
                 </option>
             </select>
+            {{-- Les colonnes du fichier CATTC qu'aucun filtre ne couvre : le n° de sinistre,
+                 la plaque, la marque, le modèle, le code client, le sticker. On exportait
+                 pour chercher « toutes les Hilux ». Demandé le 28/09. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
         <div class="tableau-conteneur">
             <table class="tableau">

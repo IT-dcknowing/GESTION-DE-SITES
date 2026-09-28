@@ -211,11 +211,19 @@ class LeVehiculeEtLaComptabiliteTest extends TestCase
             'client' => $facture->tiersPayant(),
         ]);
 
-        Volt::actingAs($gerant)->test('pilotage.tresorerie')
-            ->call('voirEncaissement', $encaissement->id)
-            ->assertSee('Saisie dans l\'application')
+        // Le détail a sa page depuis le 28/09 : « les encaissements de la trésorerie
+        // viennent avec moins de détails comparé à ceux des impayés, et les détails
+        // doivent ouvrir dans une page ». Un panneau déplié poussait le tableau vers le
+        // bas, se perdait au changement de page et ne se transmettait pas.
+        // `false` : le texte de la page porte une apostrophe, et `assertSee` échappe son
+        // aiguille par défaut — elle ne rencontrerait jamais le texte rendu.
+        Volt::actingAs($gerant)->test('pilotage.encaissement-detail', ['id' => $encaissement->id])
+            ->assertSee('Saisi dans l\'application', false)
             ->assertSee('F-800')
             ->assertSee('5678 CD 01');
+
+        // Et l'origine se lit désormais en colonne, sans avoir à ouvrir quoi que ce soit.
+        Volt::actingAs($gerant)->test('pilotage.tresorerie')->assertSee('Saisi ici');
     }
 
     /*

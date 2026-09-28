@@ -1,6 +1,7 @@
 <?php
 
 use Modules\Noyau\Commun\Services\NombreDeJours;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
@@ -56,6 +57,12 @@ state([
     'etatFiltre' => 'ouvertes',
     'recherche' => '',
     'pageDetail' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
     'formulaireOuvert' => false,
 ]);
 
@@ -209,6 +216,12 @@ $requete = computed(function () {
                 ->orWhere('immatriculation', 'like', $terme)
                 ->orWhere('imputation', 'like', $terme));
         });
+
+    /*
+     * Les colonnes des quarante du classeur qu'aucun filtre du haut ne couvre. Posées
+     * avant le filtre d'état, puisque celui-ci clôt la requête par un `match`.
+     */
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
 
     return match ($this->etatFiltre) {
         'ouvertes' => $requete->where('reste_a_payer', '>', 0),
@@ -497,6 +510,34 @@ $enregistrer = function () {
     $this->dispatch('annonce', texte: 'La pièce '.$numero.' est enregistrée.', ton: 'succes');
 };
 
+/**
+ * Les colonnes du tableau qu'aucun filtre du haut ne couvre.
+ *
+ * La pièce porte quarante colonnes ; l'écran en montre douze et n'en filtre que quatre.
+ * Ce sont celles qu'on cherche réellement — une section, un mode de règlement, un numéro
+ * de chèque, une tranche de montants — et qui obligeaient jusqu'ici à ouvrir le classeur.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'factures_fournisseurs.fournisseur' => FiltreLibre::colonne('Fournisseur'),
+    'factures_fournisseurs.numero_piece' => FiltreLibre::colonne('N° de pièce'),
+    'factures_fournisseurs.numero_bc' => FiltreLibre::colonne('N° de bon de commande'),
+    'factures_fournisseurs.section' => FiltreLibre::colonne('Section'),
+    'factures_fournisseurs.type_transaction' => FiltreLibre::colonne('Type de transaction'),
+    'factures_fournisseurs.mode_reglement' => FiltreLibre::colonne('Mode de règlement'),
+    'factures_fournisseurs.numero_cheque' => FiltreLibre::colonne('N° de chèque'),
+    'factures_fournisseurs.delai_reglement' => FiltreLibre::colonne('Délai de règlement'),
+    'factures_fournisseurs.imputation' => FiltreLibre::colonne('Imputation'),
+    'factures_fournisseurs.vehicule' => FiltreLibre::colonne('Véhicule'),
+    'factures_fournisseurs.immatriculation' => FiltreLibre::colonne('Immatriculation'),
+    'factures_fournisseurs.commentaires' => FiltreLibre::colonne('Commentaires'),
+    'factures_fournisseurs.actions_a_mener' => FiltreLibre::colonne('Actions à mener'),
+    'factures_fournisseurs.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+    'factures_fournisseurs.reste_a_payer' => FiltreLibre::colonne('Reste à payer', 'nombre'),
+    'factures_fournisseurs.date_reception' => FiltreLibre::colonne('Date de réception', 'date'),
+    'factures_fournisseurs.date_reglement' => FiltreLibre::colonne('Date de règlement', 'date'),
+    'factures_fournisseurs.date_echeance' => FiltreLibre::colonne('Date d’échéance', 'date'),
+]);
+
 $detail = computed(fn () => (clone $this->requete)
     ->with('ville')
     // La plus vieille dette en tête : faute d'échéance dans le fichier, c'est
@@ -784,8 +825,14 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                     <option value="toutes" @selected($etatFiltre === 'toutes')>Toutes</option>
                 </select>
 
+                {{-- Les dix-huit colonnes des quarante qu'aucun filtre ne couvre : la section,
+                     le mode de règlement, le n° de chèque, l'imputation, les tranches de
+                     montants et de dates. Demandé le 28/09. --}}
+                <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
+
                 {{-- Les filtres voyagent dans l'adresse du lien : le fichier emporté contient
-                     exactement ce que le tableau montre, et le lien se transmet tel quel. --}}
+                     exactement ce que le tableau montre, et le lien se transmet tel quel.
+                     Les filtres libres, eux, n'y sont pas — ils restent à l'écran. --}}
                 <x-telecharger route="fournisseurs.telecharger"
                     :parametres="['exercice' => $this->annee, 'ville' => $villeFiltre, 'etat' => $etatFiltre, 'recherche' => $recherche]" />
             </div>
