@@ -255,28 +255,24 @@ $updatedEncTiers = function () {
     unset($this->facturesDuTiersEncaissement, $this->encSelection, $this->encRepartition, $this->encTotalDu);
 };
 
-/**
- * Cocher toutes les factures ouvertes du tiers, et proposer leur total.
+/*
+ * **« Tout cocher » et « tout décocher » vivent dans le navigateur.**
+ *
+ * Ils étaient des actions Livewire, et chaque clic recalculait toute la page : la liste du
+ * tiers (163 factures pour CGRAE, 119 ms), le bandeau (1 339 lignes, 98 ms), la liste des
+ * débiteurs (86 ms), l'annuaire (2 446 tiers, 96 ms) — près de **400 ms de serveur pour
+ * cocher des cases**. Relevé le 28/09 : « les boutons cocher et tout cocher sont lents, et
+ * aussi les factures listées ».
+ *
+ * Le geste ne demande rien au serveur parce qu'il n'y a rien à lui demander : la sélection
+ * est posée dans l'état Livewire sans requête, et le serveur la reçoit à l'enregistrement
+ * — le seul moment où elle compte, et le seul où elle est vérifiée.
  *
  * **Le montant se propose, il ne s'impose pas.** Cocher tout veut presque toujours dire
- * « il a tout payé » ; mais pas toujours — le propriétaire l'a précisé : « la somme donnée
- * ne veut pas dire que ça couvrira toutes les créances ». Le champ reste donc modifiable,
- * et la répartition suit ce qu'on y met.
+ * « il a tout payé » ; mais pas toujours — « la somme donnée ne veut pas dire que ça
+ * couvrira toutes les créances ». Le champ reste modifiable, et la répartition suit ce
+ * qu'on y met.
  */
-$toutCocherEncaissement = function () {
-    $this->encFactures = $this->facturesDuTiersEncaissement
-        ->mapWithKeys(fn (Facture $f) => [$f->id => true])->all();
-
-    unset($this->encSelection, $this->encRepartition, $this->encTotalDu);
-
-    $this->encMontant = (string) $this->encTotalDu;
-};
-
-$toutDecocherEncaissement = function () {
-    $this->encFactures = [];
-    unset($this->encSelection, $this->encRepartition, $this->encTotalDu);
-};
-
 $updatedEncFactures = function () {
     unset($this->encSelection, $this->encRepartition, $this->encTotalDu);
 };
@@ -950,10 +946,43 @@ $annulerLeTiers = function () {
                      jusqu'à épuisement. Ce n'est qu'un **aperçu** — le serveur la refait sous
                      verrou, sur les restes à jour, et c'est lui qui écrit. Mais l'aperçu est
                      instantané, et c'est ce qu'on regarde en tapant. --}}
+                {{-- **Cocher ne parle plus au serveur, et c'est une correction mesurée.**
+
+                     Relevé le 28/09 : « les boutons cocher et tout cocher sont lents, et
+                     aussi les factures listées ». Mesuré le même jour, chaque clic
+                     déclenchait un aller-retour Livewire qui **recalculait toute la page** :
+                     la liste du tiers (163 factures pour CGRAE, 119 ms), le bandeau
+                     (`lignesOuvertes`, 1 339 lignes, 98 ms), la liste déroulante des
+                     débiteurs (86 ms) et l'annuaire complet (2 446 tiers, 96 ms) — près de
+                     **400 ms de travail serveur** pour une case à cocher, plus le rendu des
+                     163 lignes et le réseau.
+
+                     La sélection vit donc dans le navigateur. `$wire.$set(..., false)` pose
+                     la valeur dans l'état Livewire **sans requête** : le serveur la
+                     recevra avec l'enregistrement, qui est le seul moment où elle compte.
+                     Un clic coûte maintenant zéro milliseconde de serveur.
+
+                     Ce qui ne bouge pas : la validation, la vérification du tiers, la
+                     répartition et l'écriture restent au serveur, sous verrou. --}}
                 <div x-data="{
                         factures: {{ Illuminate\Support\Js::from($pourLeNavigateur) }},
+                        coche: {{ Illuminate\Support\Js::from((object) collect($encFactures)->filter()->map(fn () => true)->all()) }},
+                        basculer(id) {
+                            this.coche[id] = ! this.coche[id];
+                            $wire.$set('encFactures.' + id, this.coche[id] ? true : false, false);
+                        },
+                        tout(valeur) {
+                            this.factures.forEach(f => {
+                                this.coche[f.id] = valeur;
+                                $wire.$set('encFactures.' + f.id, valeur ? true : false, false);
+                            });
+
+                            if (valeur) {
+                                $wire.$set('encMontant', String(this.du), false);
+                            }
+                        },
                         get coches() {
-                            return this.factures.filter(f => $wire.encFactures[f.id]);
+                            return this.factures.filter(f => this.coche[f.id]);
                         },
                         get du() {
                             return this.coches.reduce((t, f) => t + f.reste, 0);
@@ -976,10 +1005,13 @@ $annulerLeTiers = function () {
                     }">
 
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 8px;">
+                        {{-- Sans requête : « tout cocher » sur 163 factures coûtait un
+                             aller-retour de 400 ms pour un geste qu'on fait au début d'une
+                             saisie, quand on a le chèque en main et qu'on est pressé. --}}
                         <button type="button" class="rec-btn n" style="padding:5px 11px; font-size:12px;"
-                            wire:click="toutCocherEncaissement">Tout cocher</button>
+                            x-on:click="tout(true)">Tout cocher</button>
                         <button type="button" class="rec-btn" style="padding:5px 11px; font-size:12px;"
-                            wire:click="toutDecocherEncaissement">Tout décocher</button>
+                            x-on:click="tout(false)">Tout décocher</button>
                         <span style="font-size:12.5px; color:#6B6E76;">
                             <span x-text="coches.length"></span> facture(s) cochée(s) —
                             dû : <b x-text="fr(du)"></b>
@@ -1010,7 +1042,9 @@ $annulerLeTiers = function () {
                                     <tr wire:key="enc-fac-{{ $facture->id }}"
                                         style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                                         <td>
-                                            <input type="checkbox" wire:model.live="encFactures.{{ $facture->id }}"
+                                            <input type="checkbox"
+                                                x-bind:checked="coche[{{ $facture->id }}]"
+                                                x-on:change="basculer({{ $facture->id }})"
                                                 style="width:15px; height:15px; cursor:pointer;">
                                         </td>
                                         <td style="font-weight:600;">{{ $facture->n_facture ?: $facture->numero }}</td>
@@ -1030,7 +1064,7 @@ $annulerLeTiers = function () {
                                         <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($resteFacture) }}</td>
                                         {{-- Ce que ce versement lui donnerait, mis à jour à la frappe. --}}
                                         <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; color:#2563EB;"
-                                            x-text="$wire.encFactures[{{ $facture->id }}] ? fr(part({{ $facture->id }})) : '—'">—</td>
+                                            x-text="coche[{{ $facture->id }}] ? fr(part({{ $facture->id }})) : '—'">—</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -1334,6 +1368,12 @@ $annulerLeTiers = function () {
                                 wire:click="toutCocherRelance">Tout cocher</button>
                             <button type="button" class="rec-btn" style="padding:4px 10px; font-size:11.5px;"
                                 wire:click="toutDecocherRelance">Tout décocher</button>
+                            {{-- Les cases de la relance restent branchées au serveur, et c'est
+                                 voulu : le compteur « n citée(s) — X réclamé(s) » se lit sur des
+                                 montants à jour, et une mise en demeure part sur ce qu'il dit.
+                                 Elles sont aussi bien moins nombreuses que celles de
+                                 l'encaissement — on relance un tiers, on n'encaisse pas 163
+                                 factures. --}}
                             <span style="font-size:12px; color:#6B6E76;">
                                 @if ($this->relSelection->isEmpty())
                                     aucune cochée — la relance portera sur la situation globale

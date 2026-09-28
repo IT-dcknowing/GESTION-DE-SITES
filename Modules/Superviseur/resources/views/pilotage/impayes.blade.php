@@ -1086,8 +1086,15 @@ $basculerPortage = function () {
                                 @if ($global->isEmpty())
                                     <span style="color:#9A9DA5;">—</span>
                                 @else
+                                    {{-- Cliquable, demandé le 28/09 : la référence seule n'était
+                                         qu'une étiquette. On voyait la part de cette créance sans
+                                         jamais voir le versement qui l'a produite. --}}
                                     @foreach ($global as $reference)
-                                        <div title="Ce règlement a soldé plusieurs factures d'un seul versement.">{{ $reference }}</div>
+                                        <a href="{{ route('impayes.reglement', $reference) }}" wire:navigate
+                                           style="color:#2563EB; font-weight:700; text-decoration:none;"
+                                           title="Voir ce versement en entier : le montant donné, et ce qu'il a payé facture par facture.">
+                                            {{ $reference }}
+                                        </a>
                                     @endforeach
                                 @endif
                             </td>

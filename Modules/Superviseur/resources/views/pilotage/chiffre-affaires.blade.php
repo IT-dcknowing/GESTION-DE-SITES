@@ -8,7 +8,7 @@ use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
-use function Livewire\Volt\{state, computed, mount};
+use function Livewire\Volt\{computed, mount, protect, state};
 
 state([
     'periode' => 'calendrier',
@@ -181,37 +181,53 @@ $graphique = computed(function () {
  * `whereNull('lot_import_id')` écrit ici : la même question se pose sur cinq écrans, et une
  * condition recopiée finit par diverger de celle qui décide ailleurs si une ligne est reprise.
  */
-$requeteDetail = computed(function () {
-    $q = clone $this->requeteBase;
-
+/**
+ * Le filtre d'origine, posé sur une requête quelconque.
+ *
+ * Écrit une fois plutôt que trois : le tableau l'applique, et les compteurs de l'autre
+ * filtre doivent l'appliquer aussi — sinon ils annoncent un nombre que le tableau ne
+ * rendra pas. C'est exactement le défaut relevé le 28/09.
+ */
+$appliquerOrigine = protect(function ($q) {
     if ($this->origineFiltre === 'import') {
         $q->importee();
     } elseif ($this->origineFiltre === 'local') {
         $q->saisieManuelle();
     }
 
-    /*
-     * **Trois états, et ils ne se déduisent pas l'un de l'autre.** Corrigé le 24/09 :
-     * « réglée » se lisait `exercice_impayes` nul, c'est-à-dire « pas portée à l'état ».
-     * Ce n'est pas la même question, et la réponse était fausse — une facture jamais
-     * relevée par le superviseur passait pour réglée alors que personne n'avait payé.
-     * Le propriétaire l'a vu : le choix « réglé » montrait des portées, le choix « porté »
-     * montrait zéro.
-     *
-     * Une facture est **réglée** quand ses encaissements couvrent son montant. Elle est
-     * **portée à l'état** quand le recouvrement l'a relevée. Et elle peut n'être ni l'un
-     * ni l'autre : due, mais pas encore portée — c'est même le cas le plus fréquent, et
-     * il a maintenant son propre choix plutôt que d'être compté avec les réglées.
-     */
-    if ($this->etatImpayesFiltre === 'portee') {
+    return $q;
+});
+
+/**
+ * Le filtre d'état, posé sur une requête quelconque.
+ *
+ * **Trois états, et ils ne se déduisent pas l'un de l'autre.** Corrigé le 24/09 :
+ * « réglée » se lisait `exercice_impayes` nul, c'est-à-dire « pas portée à l'état ». Ce
+ * n'est pas la même question, et la réponse était fausse — une facture jamais relevée par
+ * le superviseur passait pour réglée alors que personne n'avait payé.
+ *
+ * Une facture est **réglée** quand ses encaissements couvrent son montant. Elle est
+ * **portée à l'état** quand le recouvrement l'a relevée. Et elle peut n'être ni l'un ni
+ * l'autre : due, mais pas encore portée — c'est même le cas le plus fréquent.
+ */
+$appliquerEtat = protect(function ($q, ?string $etat = null) {
+    $etat ??= $this->etatImpayesFiltre;
+
+    if ($etat === 'portee') {
         $q->whereNotNull('exercice_impayes');
-    } elseif ($this->etatImpayesFiltre === 'reglee') {
+    } elseif ($etat === 'reglee') {
         $q->soldee();
-    } elseif ($this->etatImpayesFiltre === 'due') {
+    } elseif ($etat === 'due') {
         $q->avecResteAEncaisser();
     }
 
     return $q;
+});
+
+$requeteDetail = computed(function () {
+    $q = $this->appliquerOrigine(clone $this->requeteBase);
+
+        return $this->appliquerEtat($q);
 });
 
 /*
@@ -222,12 +238,34 @@ $peutPorter = computed(fn () => auth()->user()->hasAnyRole(['gerant', 'responsab
 
 $nombreDetail = computed(fn () => (clone $this->requeteDetail)->count());
 
-/* Combien de lignes derrière chaque choix, pour que le filtre annonce ce qu'il va trouver. */
-$comptesParEtat = computed(fn () => [
-    'portee' => (clone $this->requeteBase)->whereNotNull('exercice_impayes')->count(),
-    'reglee' => (clone $this->requeteBase)->soldee()->count(),
-    'due' => (clone $this->requeteBase)->avecResteAEncaisser()->count(),
-]);
+/*
+ * Combien de lignes derrière chaque choix — **et le tableau doit en rendre autant**.
+ *
+ * **Le défaut, relevé le 28/09 : « les éléments entre parenthèses ne reflètent pas la
+ * réalité dans le tableau ».** Exact, et l'écart était énorme : le filtre annonçait
+ * « Réglées (85) » et le tableau affichait « Détail des factures (2) ».
+ *
+ * La cause : ces compteurs partaient de `requeteBase`, qui ne porte ni le filtre d'état ni
+ * celui d'origine, alors que le tableau applique les deux. « Réglées (85) » voulait donc
+ * dire « 85 réglées **toutes origines confondues** », pendant que le tableau ne montrait
+ * que les réglées **saisies à la main**. Deux questions différentes, deux nombres
+ * différents, et rien pour dire lequel répondait à quoi.
+ *
+ * Un compteur de filtre ne peut dire qu'une chose pour être utile : **si je choisis
+ * celui-ci, combien de lignes vais-je voir ?** Il doit donc porter tous les autres filtres,
+ * et seulement pas le sien. C'est ce que fait la ligne ci-dessous — l'origine est
+ * appliquée, l'état ne l'est pas, puisque c'est lui qu'on compte.
+ */
+$comptesParEtat = computed(function () {
+    $avecOrigine = fn () => $this->appliquerOrigine(clone $this->requeteBase);
+
+    return [
+        'toutes' => $avecOrigine()->count(),
+        'portee' => $this->appliquerEtat($avecOrigine(), 'portee')->count(),
+        'reglee' => $this->appliquerEtat($avecOrigine(), 'reglee')->count(),
+        'due' => $this->appliquerEtat($avecOrigine(), 'due')->count(),
+    ];
+});
 
 /**
  * Seule la page affichée se charge : dix factures, et non toutes celles de la période.
@@ -243,11 +281,21 @@ $detail = computed(fn () => (clone $this->requeteDetail)
     ->forPage(max(1, (int) $this->pageDetail), 10)
     ->get());
 
-/** Combien de lignes de chaque origine, pour que le filtre annonce ce qu'il va trouver. */
-$comptesParOrigine = computed(fn () => [
-    'import' => (clone $this->requeteBase)->importee()->count(),
-    'local' => (clone $this->requeteBase)->saisieManuelle()->count(),
-]);
+/**
+ * Combien de lignes de chaque origine — avec le filtre d'état appliqué, et pas le sien.
+ *
+ * Même raison que ci-dessus : « Reprises du logiciel d'atelier (2 288) » pendant que le
+ * tableau en montrait 2 286 ne servait qu'à faire douter de l'un des deux.
+ */
+$comptesParOrigine = computed(function () {
+    $avecEtat = fn () => $this->appliquerEtat(clone $this->requeteBase);
+
+    return [
+        'toutes' => $avecEtat()->count(),
+        'import' => $avecEtat()->importee()->count(),
+        'local' => $avecEtat()->saisieManuelle()->count(),
+    ];
+});
 
 ?>
 
@@ -302,13 +350,19 @@ $comptesParOrigine = computed(fn () => [
                     <option value="{{ $commercial->id }}" @selected((string) $commercialFiltre === (string) $commercial->id)>{{ $commercial->nom }}</option>
                 @endforeach
             </select>
-            {{-- Le décompte est dans l'intitulé de chaque choix : un filtre qui annonce
-                 « 0 » avant qu'on le choisisse évite le clic qui ne trouve rien. --}}
+            {{-- **Le décompte dit ce que le tableau rendra, et rien d'autre.**
+
+                 Relevé le 28/09 : « les éléments entre parenthèses ne reflètent pas la
+                 réalité dans le tableau ». L'écart était énorme — « Réglées (85) » au-dessus
+                 d'un tableau qui affichait « Détail des factures (2) ». Les compteurs
+                 ignoraient les autres filtres ; ils répondaient à une autre question que
+                 celle qu'on lisait. Chacun porte désormais **tous les filtres sauf le
+                 sien** : choisir ce choix donnera ce nombre de lignes. --}}
             {{-- Trois états, et ils ne se déduisent pas l'un de l'autre : réglée se lit sur
                  les encaissements, portée à l'état se lit sur le recouvrement, et une
                  facture peut n'être ni l'un ni l'autre — due, mais pas encore relevée. --}}
             <select wire:model.live="etatImpayesFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
-                <option value="" @selected($etatImpayesFiltre === '')>État : toutes</option>
+                <option value="" @selected($etatImpayesFiltre === '')>État : toutes ({{ $this->comptesParEtat['toutes'] }})</option>
                 <option value="reglee" @selected($etatImpayesFiltre === 'reglee')>
                     Réglées ({{ $this->comptesParEtat['reglee'] }})
                 </option>
@@ -320,7 +374,7 @@ $comptesParOrigine = computed(fn () => [
                 </option>
             </select>
             <select wire:model.live="origineFiltre" style="padding:9px 12px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px; font-size:14px;">
-                <option value="" @selected($origineFiltre === '')>Origine : toutes</option>
+                <option value="" @selected($origineFiltre === '')>Origine : toutes ({{ $this->comptesParOrigine['toutes'] }})</option>
                 <option value="import" @selected($origineFiltre === 'import')>
                     Reprises du logiciel d'atelier ({{ $this->comptesParOrigine['import'] }})
                 </option>

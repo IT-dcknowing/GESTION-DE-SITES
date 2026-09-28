@@ -214,19 +214,35 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
         $this->assertSame(0, Encaissement::withoutGlobalScopes()->count());
     }
 
-    /** « Tout cocher » propose le total dû, sans l'imposer. */
-    public function test_tout_cocher_propose_le_total_du(): void
+    /**
+     * « Tout cocher » propose le total dû, sans l'imposer.
+     *
+     * **Le geste vit dans le navigateur depuis le 28/09**, et c'est une correction
+     * mesurée : chaque clic recalculait toute la page — la liste du tiers (163 factures
+     * pour CGRAE, 119 ms), le bandeau (1 339 lignes, 98 ms), la liste des débiteurs
+     * (86 ms), l'annuaire (2 446 tiers, 96 ms). Près de 400 ms de serveur pour une case.
+     *
+     * Ce qui se vérifie ici est donc ce que le serveur, lui, doit savoir : le total dû des
+     * factures cochées. C'est ce nombre que l'écran propose, et c'est celui contre lequel
+     * la répartition est refaite sous verrou avant d'écrire.
+     */
+    public function test_le_total_du_des_factures_cochees_est_connu_du_serveur(): void
     {
-        $this->facture('F-001', 700_000, now()->subDays(90));
-        $this->facture('F-002', 300_000, now()->subDays(30));
+        $vieille = $this->facture('F-001', 700_000, now()->subDays(90));
+        $recente = $this->facture('F-002', 300_000, now()->subDays(30));
 
         $ecran = Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie')
             ->set('encTiers', 'SIFCA')
-            ->call('toutCocherEncaissement');
+            ->set('encFactures.'.$vieille->id, true)
+            ->set('encFactures.'.$recente->id, true);
 
-        $ecran->assertSet('encMontant', '1000000');
+        $this->assertSame(1_000_000, $ecran->instance()->encTotalDu);
+        $this->assertCount(2, $ecran->instance()->encSelection);
 
-        $ecran->call('toutDecocherEncaissement')->assertSet('encFactures', []);
+        // Décoché, le total suit : rien n'est retenu d'un état précédent.
+        $ecran->set('encFactures', []);
+
+        $this->assertSame(0, $ecran->instance()->encTotalDu);
     }
 
     /**
@@ -276,6 +292,52 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
         );
     }
 
+    /**
+     * La référence porte l'année, et elle ouvre le versement entier.
+     *
+     * **Demandé le 28/09** : « RG-2809-0001 doit être RG-280926-0001, et aussi cliquable
+     * pour aller directement vers les détails ; au niveau des détails, on ne doit pas
+     * afficher uniquement le détail de cette ligne : on doit avoir le montant total
+     * donné, les lignes touchées et combien par ligne. »
+     *
+     * Les deux tiennent ensemble. « RG-2809 » seul ne dit pas de quelle année il s'agit,
+     * et on cite cette référence des mois après, sur un relevé bancaire. Et la question
+     * qu'on pose alors est celle du **versement** — « votre chèque, qu'a-t-il soldé ? » —
+     * et non celle d'une de ses parts.
+     */
+    public function test_le_versement_a_sa_page_et_sa_reference_porte_l_annee(): void
+    {
+        $this->declarerLeMode('CHÈQUE');
+
+        $vieille = $this->facture('F-001', 2_000_000, now()->subDays(90));
+        $recente = $this->facture('F-002', 2_000_000, now()->subDays(30));
+
+        Volt::actingAs($this->compte('gerant'))->test('recouvrement.saisie')
+            ->set('encTiers', 'SIFCA')
+            ->set('encFactures.'.$vieille->id, true)
+            ->set('encFactures.'.$recente->id, true)
+            ->set('encMode', 'CHÈQUE')
+            ->set('encMontant', 3_000_000)
+            ->call('enregistrerEncaissement')
+            ->assertHasNoErrors();
+
+        $reference = Encaissement::withoutGlobalScopes()->firstOrFail()->reglement_global;
+
+        // Six chiffres de date : jour, mois, année.
+        $this->assertMatchesRegularExpression('/^RG-\d{6}-\d{4}$/', (string) $reference);
+
+        $page = Volt::actingAs($this->compte('gerant'))
+            ->test('pilotage.reglement-global', ['reference' => $reference]);
+
+        // Le montant total donné, et les deux lignes qu'il a touchées.
+        $this->assertSame(3_000_000, $page->instance()->total);
+        $this->assertCount(2, $page->instance()->ecritures);
+
+        $page->assertSee('F-001')->assertSee('F-002');
+        // Combien par ligne : la plus ancienne soldée, la seconde allégée.
+        $page->assertSee('Soldée')->assertSee('Allégée');
+    }
+
     // ------------------------------------------------------------------ le décor
 
     private function facture(string $numero, int $montant, $date): Facture
@@ -302,8 +364,16 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
         ], ['est_actif' => true]);
     }
 
+    /** @var array<string, User> */
+    private array $comptes = [];
+
+    /** Le même rôle rend le même compte : deux appels ne doivent pas buter sur le courriel. */
     private function compte(string $role): User
     {
+        if (isset($this->comptes[$role])) {
+            return $this->comptes[$role];
+        }
+
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->entreprise->id);
 
         $compte = User::create([
@@ -318,6 +388,6 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
 
         $compte->assignRole($role);
 
-        return $compte->fresh();
+        return $this->comptes[$role] = $compte->fresh();
     }
 }
