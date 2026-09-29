@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **29 septembre 2026** (18e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **29 septembre 2026** (19e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -2183,14 +2183,46 @@ différence — elle est dans notre code, pas dans ce qu'il regarde.
 - **Le bouton Caisse manquait en tête de la Trésorerie** : le lien existait, noyé dans un
   paragraphe d'avertissement. Personne ne va chercher un bouton dans un paragraphe.
 
-#### L'écran de connexion, sur la maquette reçue
+#### L'écran de connexion — refait deux fois, et la seconde a corrigé la méthode
 
-Le rendu 3D de la maquette est repris tel quel (`public/logos/logo-3d.jpg`), ramené de
-**2 252 Ko à 82 Ko** en 900 × 600 — il est posé en `mix-blend-mode: multiply`, n'a donc aucune
-transparence à préserver, et c'est la première image de la première page. Les quatre outils
-dessinés se **chevauchaient** le logo : posés en absolu sur toute la colonne, ils ne réservaient
-aucune place, et un titre plus haut les faisait passer dessous. Les deux qui l'entourent sont
-désormais ancrés **sur le bloc du logo** et posés hors de sa boîte (`right:100%`, `top:100%`).
+**Le premier essai était faux sur deux points, et les deux venaient de la même erreur** :
+j'avais pris le fichier de maquette pour la cible, alors qu'il n'en est que la mise en page.
+
+1. **Le logo paraissait dans une boîte noire.** La maquette pose son rendu 3D en
+   `mix-blend-mode: multiply`, et j'ai recopié la règle sans vérifier ce qu'elle donne.
+   `multiply` multiplie la source par le fond : sur un papier clair, un fond **noir** reste
+   noir. La maquette elle-même affiche ce rectangle. Ce qu'il fallait, c'était **détourer**.
+2. **Les outils n'étaient pas les bons**, et ne pouvaient pas l'être : je les avais
+   **redessinés en SVG**, faute de les trouver en fichier. Ils n'y sont pas — la maquette ne
+   contient que deux images, le rendu du logo sur fond noir et un petit logo secondaire. La
+   bougie, la clé plate, la voiture et le trousseau n'existent que dans le **rendu** que le
+   propriétaire a montré.
+
+**Les images sont donc découpées du rendu**, par `outils/detourer-les-images-du-rendu.py` :
+un remplissage qui part des bords et n'avance que vers un voisin de couleur *proche*. Il
+traverse le quadrillage et les halos, qui varient doucement, et s'arrête net au bord d'un
+objet, qui est une rupture.
+
+| Réglage | Pourquoi |
+|---|---|
+| pas de **6 niveaux** entre voisins | à quatorze, la clé plate et la bougie disparaissaient : leur chrome est presque aussi clair que le papier, et son bord adouci offrait au remplissage un escalier de marches assez basses pour y entrer |
+| **256 couleurs** à l'enregistrement | 530 Ko contre 94 Ko sur le logo, comparés côte à côte : sur un rendu 3D l'écart ne se voit pas, et c'est la première image de la première page |
+| la bougie, le logo et la clé **en un seul fichier** | le rendu les a composés ; les séparer obligerait à replacer à la main ce qui est déjà en place — et c'est ce placement à la main qui produisait les chevauchements |
+
+**Plus rien n'est posé en absolu sur la colonne**, et c'est ce qui ferme le défaut : un élément
+en absolu ne réserve aucune place, et dès que le titre changeait de hauteur il passait sous le
+logo. Les trois outils du groupe sont maintenant *dans* l'image. Seuls la voiture et le
+trousseau restent des objets de page, en `fixed`, dans les deux coins.
+
+**Deux écarts assumés avec le rendu**, et tous deux dits au propriétaire : le libellé reste
+« Email » et non « Email ou identifiant », parce que `config/fortify.php` déclare
+`'username' => 'email'` et que promettre un identifiant ferait essayer un code d'atelier ; et
+« Se souvenir de moi » comme l'entrée par Google sont gardés bien que le rendu ne les montre
+pas, parce que les retirer fermerait la porte à qui s'est inscrit par Google.
+
+**Enfin, `/login` a maintenant un test.** Elle n'en avait aucun — la seule page que tout le
+monde traverse, et la seule qu'on ne peut pas contourner. Il vérifie les trois portes (Fortify,
+Google, création de compte), le jeton CSRF et l'existence des images.
 
 ### Pièges d'outillage déjà rencontrés
 
@@ -2216,6 +2248,7 @@ désormais ancrés **sur le bloc du logo** et posés hors de sa boîte (`right:1
 | `x-cloak` suppose une règle CSS compilée par Vite | écrire le repli initial côté serveur (`style="display:none"`) plutôt que dépendre d'une reconstruction des fichiers |
 | Un lot déposé avant que la lecture immédiate n'existe n'a plus aucun moyen de démarrer | `SuiviDuTraitement::reveiller()` depuis l'écran qui l'affiche ; la prise du lot reste atomique |
 | `Handler::render()` passe les callbacks avant `AuthenticationException` | toute page de panne doit exclure explicitement authentification et validation |
+| `mix-blend-mode: multiply` sur une image à **fond noir** : le fond reste noir sur un papier clair — recopier la règle d'une maquette ne dit pas qu'elle y rendait bien | détourer l'image, et vérifier le rendu avant de reprendre une règle |
 | `whereIn('site_id', …)` **écarte silencieusement les lignes sans atelier** — trois écrans mordus (encaissements, trésorerie, chiffre d'affaires) | passer par `EtatDesImpayes::dansLePerimetre()` : l'atelier s'il est connu, sinon la ville, sinon la ligne paraît partout |
 | La classe `.champ` porte `width:100%` : dans une rangée en flex, chaque champ réclame la largeur entière et rejette les boutons à la ligne suivante | `style="width:auto"` sur tout filtre posé dans une rangée, comme le fait `x-filtre-periode` |
 | Un droit qui ne cache que les **colonnes** laisse le **panneau de filtres** les proposer — et le filtre, lui, fonctionne | filtrer la déclaration elle-même (`array_filter` sur `colonnesFiltrables`) |
@@ -2236,4 +2269,4 @@ désormais ancrés **sur le bloc du logo** et posés hors de sa boîte (`right:1
 | Code de saisie `A-C-KY-0007` | `Modules/Noyau/app/Commun/Services/CodeAuteur.php` |
 | Formats d'import | `Modules/Noyau/app/Imports/Formats/` |
 | Fichiers réels du client | `PLAN/MODULE-2/` |
-| Maquette de l'écran de connexion | `VERSION-2-3/connexion-artisan-automobile (2).html` — **non versionnée** : 3 Mo, dont l'essentiel est le rendu 3D déjà extrait en `public/logos/logo-3d.jpg` |
+| Maquette de l'écran de connexion | `VERSION-2-3/connexion-artisan-automobile (2).html` — **non versionnée** : 3 Mo, et elle ne porte que le logo sur fond noir. Les outils viennent du **rendu**, découpés par `outils/detourer-les-images-du-rendu.py` |

@@ -3,39 +3,64 @@
     $favicon = $entreprise?->logoUrl() ?? asset('logos/artisan-automobile.png');
 @endphp
 {{--
-    L'écran de connexion, repris de la maquette fournie le 29/09
-    (`VERSION-2-3/connexion-artisan-automobile (2).html`).
+    L'écran de connexion, repris de la maquette
+    `VERSION-2-3/connexion-artisan-automobile (2).html` et de son rendu.
 
-    **Ce qui avait raté au premier essai, et que le propriétaire a relevé.** J'avais redessiné
-    le logo au lieu d'employer le rendu 3D, et posé les outils en absolu sur toute la
-    colonne : au rendu, le logo passait par-dessus la bougie et la clé. Deux erreurs de
-    nature différente —
+    ─────────────────────────────────────────────────────────────────────────────────────
 
-    1. **Le rendu 3D n'était pas reproductible en SVG**, et ne devait pas l'être. Il est
-       dans la maquette, et il en sort : `public/logos/logo-3d.jpg`.
-    2. **Les outils étaient ancrés sur la colonne**, alors que le logo vit dans le flux. Un
-       élément posé en absolu ne réserve aucune place : dès que le titre change de hauteur,
-       il passe dessous ou dessus. Ils sont maintenant ancrés **sur le bloc du logo**, et à
-       l'extérieur de sa boîte — ils ne peuvent plus le rencontrer.
+    **Le premier essai était faux sur les deux points que le propriétaire a relevés**, et
+    les deux venaient d'une même erreur de méthode : j'avais pris le fichier de maquette
+    pour la cible, alors qu'il n'en est que la mise en page.
 
-    **Le rendu 3D est posé en `mix-blend-mode: multiply`**, comme dans la maquette. C'est
-    ce qui fait disparaître son fond noir sur le papier clair, sans qu'on ait à détourer
-    l'image. Le blanc du fond reste blanc, le noir couvre : le logo paraît flotter.
+    **1. Le logo paraissait dans une boîte noire.** Le fichier de maquette pose son rendu 3D
+    en `mix-blend-mode: multiply`, et j'ai recopié la règle sans vérifier ce qu'elle donne.
+    `multiply` multiplie la source par le fond : sur un papier clair, un fond **noir** reste
+    noir. La maquette elle-même affiche donc ce rectangle. Ce qu'il fallait, c'était
+    **détourer** le logo. Voir plus bas.
 
-    **Il pèse 82 Ko au lieu de 2,3 Mo.** Il arrivait en PNG de 1 536 px. C'est la première
-    image de la première page, souvent sur un réseau lent ; comme elle est posée en
-    `multiply`, elle n'a aucune transparence à préserver, et le JPEG rend exactement la même
-    chose. 900 px de large : le bloc ne dépasse jamais 400 px à l'écran, et l'on double pour
-    les écrans à forte densité.
+    **2. Les outils n'étaient pas les bons, et ne pouvaient pas l'être.** « Les outils
+    appliqués ne sont pas les vrais » — c'est exact : je les avais **redessinés en SVG**,
+    faute de les trouver en fichier. Ils n'y sont pas : le fichier de maquette ne contient
+    que deux images, le rendu du logo sur fond noir et un petit logo secondaire. La bougie,
+    la clé plate, la voiture et le trousseau n'existent que dans le rendu que le
+    propriétaire m'a montré.
 
-    **La typographie est celle de la maquette** — Plus Jakarta Sans, en 800 pour les titres,
-    avec « intelligence » en italique. `display=swap` : le texte paraît immédiatement dans
-    la police de repli plutôt que d'attendre le téléchargement.
+    ─────────────────────────────────────────────────────────────────────────────────────
 
-    **Ce qui n'a pas changé, et ne devait pas.** Le formulaire poste vers Fortify, le jeton
-    CSRF est là, l'œil du mot de passe aussi, et la connexion Google comme l'entrée par code
-    entreprise restent offertes. Une page de connexion qui perd une de ses portes enferme
-    quelqu'un dehors.
+    **D'où viennent les images, et comment.** Elles sont découpées du rendu, par
+    `outils/detourer-les-images-du-rendu.py` : un remplissage qui part des bords de l'image
+    et n'avance que vers un voisin de couleur proche. Il traverse ainsi le quadrillage et les halos, qui
+    varient doucement, et s'arrête net au bord d'un objet, qui est une rupture. Un seuil de
+    clarté n'aurait pas marché : le chrome de la clé plate est presque aussi clair que le
+    papier.
+
+    - `atelier-logo.png` — la bougie, le logo et la clé **en un seul morceau**. Le rendu les
+      a composés ; les séparer obligerait à replacer à la main ce qui est déjà en place.
+    - `atelier-voiture.png` et `atelier-cles.png` — ces deux-là appartiennent à la page, pas
+      au logo : ils tiennent les deux coins, en `fixed`.
+
+    **Elles pèsent 107 Ko à elles trois**, ramenées à 256 couleurs : c'est la première image
+    de la première page, souvent sur un réseau lent, et sur un rendu 3D l'écart avec le
+    fichier plein ne se voit pas — comparé côte à côte avant de trancher.
+
+    **Plus aucun outil dessiné, et plus rien en absolu sur la colonne.** C'est ce qui
+    produisait les chevauchements : un élément en absolu ne réserve aucune place, et dès que
+    le titre changeait de hauteur il passait sous le logo. Les trois outils du groupe sont
+    maintenant *dans* l'image, à la place exacte que le rendu leur donne.
+
+    ─────────────────────────────────────────────────────────────────────────────────────
+
+    **Ce que je n'ai pas repris du rendu, et pourquoi.** Le libellé y est « Email ou
+    identifiant ». L'application n'authentifie que sur l'adresse — `config/fortify.php`
+    déclare `'username' => 'email'`, et `FortifyServiceProvider` cherche l'utilisateur par
+    `where('email', …)`. Promettre un identifiant ferait essayer un code d'atelier, qui ne
+    peut qu'échouer sans dire pourquoi.
+
+    **Ce que j'ai gardé alors que le rendu ne les montre pas** : « Se souvenir de moi » et
+    l'entrée par Google. Les retirer fermerait la porte à qui s'est inscrit par Google — une
+    page de connexion qui perd une de ses portes enferme quelqu'un dehors. Ils sont posés
+    sous le bouton, dans la même langue visuelle, et se retirent d'une ligne si vous les
+    voulez dehors.
 --}}
 <!DOCTYPE html>
 <html lang="fr" style="{{ collect($entreprise?->theme() ?? [])->map(fn ($v, $k) => "$k:$v")->implode(';') }}">
@@ -49,22 +74,26 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,800;1,800&display=swap" rel="stylesheet">
 
+    {{-- Le logo ouvre la page : il est demandé avant que le CSS ne le réclame. --}}
+    <link rel="preload" as="image" href="{{ asset('logos/atelier-logo.png') }}">
+
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     <style>
-        /* Les valeurs de la maquette, reprises telles quelles. */
+        /* Les valeurs viennent de la maquette ; les tailles qui s'en écartent viennent du
+           rendu, mesurées dessus. */
         .cnx {
             --red: #D7191F; --red-dk: #B01218; --ink: #161719;
             --muted: #6B6E73; --grid: rgba(22,23,25,.07);
-            --police: 'Plus Jakarta Sans', var(--font-sans);
+            --police: 'Plus Jakarta Sans', var(--font-sans, system-ui), sans-serif;
         }
 
-        .cnx-fond, .cnx-halo { position: fixed; pointer-events: none; }
+        .cnx-fond, .cnx-halo, .cnx-coin { position: fixed; pointer-events: none; }
 
-        /* Le quadrillage s'efface vers le bas : il tient le haut de page sans encombrer
-           le formulaire. */
+        /* Le quadrillage s'efface vers le bas : il tient le haut de page sans encombrer le
+           formulaire. */
         .cnx-fond {
-            inset: 0;
+            inset: 0; z-index: 0;
             background-image:
                 linear-gradient(var(--grid) 1px, transparent 1px),
                 linear-gradient(90deg, var(--grid) 1px, transparent 1px);
@@ -72,11 +101,18 @@
             -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
             mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
         }
-        .cnx-halo { border-radius: 50%; filter: blur(70px); }
+
+        .cnx-halo { z-index: 0; border-radius: 50%; filter: blur(70px); }
         .cnx-halo.a { top: -260px; left: -240px; width: 640px; height: 640px;
             background: radial-gradient(circle, rgba(215,25,31,.18), transparent 68%); }
         .cnx-halo.b { bottom: -320px; right: -200px; width: 720px; height: 720px;
             background: radial-gradient(circle, rgba(42,44,47,.14), transparent 68%); }
+
+        /* Les deux objets des coins. Découpés du rendu, donc posés tels quels : aucune
+           rotation, aucune ombre ajoutée — le rendu les porte déjà. */
+        .cnx-coin { z-index: 3; height: auto; }
+        .cnx-coin-voiture { top: 22px; left: 20px; width: 104px; }
+        .cnx-coin-cles { right: 22px; bottom: 26px; width: 62px; }
 
         .cnx {
             position: relative; z-index: 2; min-height: 100vh;
@@ -101,54 +137,43 @@
 
         .cnx-accroche {
             color: var(--muted);
-            font-size: clamp(14px, 1.1vw, 16.5px);
+            font-style: italic;
+            font-size: clamp(14px, 1.15vw, 16.5px);
             line-height: 1.6;
             letter-spacing: -.01em;
-            max-width: 44ch;
-            margin: 16px 0 0;
+            max-width: 42ch;
+            margin: 18px 0 0;
         }
 
-        /* Le bloc du logo, et les outils qui s'y accrochent. Ils sont posés **par rapport
-           à lui** : un élément en absolu ne réserve aucune place, et ancré plus haut il
-           finissait par passer sous le logo dès que le titre changeait de hauteur. */
-        .cnx-visuel { position: relative; width: min(400px, 100%); margin: 30px 0 14px; }
-        .cnx-visuel img {
-            width: 100%; height: auto; display: block;
-            mix-blend-mode: multiply;
-            filter: drop-shadow(0 22px 26px rgba(22,23,25,.16));
+        /* Le groupe d'outils est une seule image, dans le flux : rien à ancrer, donc rien
+           qui puisse chevaucher quoi que ce soit. */
+        .cnx-visuel {
+            display: block;
+            width: min(560px, 92%);
+            height: auto;
+            margin: 34px 0 0;
+            filter: drop-shadow(0 22px 26px rgba(22,23,25,.14));
         }
-
-        .cnx-stat { margin: 6px 0 0; letter-spacing: -.02em; }
-        .cnx-stat strong { display: block; font-weight: 800; font-size: 44px; line-height: 1; letter-spacing: -.04em; }
-        .cnx-stat span { font-size: 18px; color: var(--muted); }
-
-        .outil { position: absolute; pointer-events: none; }
-        /* À gauche du logo, et entièrement hors de sa boîte : `right:100%` garantit qu'ils
-           ne se rencontrent jamais, quelle que soit la largeur. */
-        .outil-bougie { right: 100%; top: 22%; width: 38px; margin-right: 6px; transform: rotate(-14deg); }
-        /* Sous le logo, décalée à droite : la maquette la pose dans le creux de la roue. */
-        .outil-cle { left: 46%; top: 100%; width: 190px; margin-top: -26px; transform: rotate(-8deg); }
-        /* Ces deux-là appartiennent à la page, pas au logo. */
-        .outil-voiture { position: fixed; top: 24px; left: 24px; width: 96px; z-index: 3; }
-        .outil-trousseau { position: fixed; right: 3vw; bottom: 4vh; width: 58px; z-index: 3; transform: rotate(12deg); }
 
         /* ───────────────────────────────────────────────── le formulaire */
         .cnx-droite { display: flex; justify-content: center; }
-        .cnx-panneau { width: 100%; max-width: 470px; }
+        .cnx-panneau { width: 100%; max-width: 540px; }
 
         .cnx-panneau h2 {
-            font-weight: 800; font-size: clamp(30px, 3.3vw, 50px);
-            line-height: 1.06; letter-spacing: -.04em; margin: 0 0 10px;
+            font-weight: 800; font-size: clamp(30px, 3.6vw, 56px);
+            line-height: 1.06; letter-spacing: -.04em; margin: 0 0 8px;
         }
-        .cnx-sous { color: #2563EB; font-size: 17px; letter-spacing: -.02em; margin: 0 0 28px; }
+        .cnx-sous { color: #2563EB; font-size: 18px; letter-spacing: -.02em; margin: 0 0 30px; }
 
-        .cnx-label { display: block; font-size: 14.5px; font-weight: 700; margin-bottom: 8px; }
+        .cnx-label { display: block; font-size: 15px; font-weight: 700; margin: 0 0 9px; }
 
+        /* `.champ-connexion` et non `.champ` : la classe commune de l'application porte
+           `width:100%` avec d'autres hauteurs, et les deux se marcheraient dessus. */
         .cnx .champ-connexion {
-            width: 100%; height: 58px; box-sizing: border-box;
+            width: 100%; height: 60px; box-sizing: border-box;
             border: 1.5px solid transparent; border-radius: 12px;
             background: #fff; box-shadow: 0 2px 14px rgba(22,23,25,.06);
-            padding: 0 20px; font: 500 16.5px var(--police); color: var(--ink);
+            padding: 0 20px; font: 500 17px var(--police); color: var(--ink);
             transition: border-color .2s, box-shadow .2s;
         }
         .cnx .champ-connexion::placeholder { color: #9A9CA1; }
@@ -157,11 +182,15 @@
             box-shadow: 0 0 0 4px rgba(215,25,31,.15);
         }
 
-        .cnx-oubli { font-size: 14px; color: var(--muted); text-decoration: none; }
+        .cnx-ligne-label {
+            display: flex; align-items: baseline; justify-content: space-between;
+            gap: 10px; margin: 26px 0 9px;
+        }
+        .cnx-oubli { font-size: 14.5px; font-style: italic; color: var(--muted); text-decoration: none; }
         .cnx-oubli:hover { color: var(--red); }
 
         .cnx-go {
-            width: 100%; height: 58px; border: 0; border-radius: 12px; margin-top: 22px;
+            width: 100%; height: 58px; border: 0; border-radius: 12px; margin-top: 26px;
             background: var(--red); color: #fff;
             font: 800 18px var(--police); letter-spacing: -.02em; cursor: pointer;
             box-shadow: 0 10px 26px rgba(215,25,31,.28);
@@ -169,17 +198,38 @@
         }
         .cnx-go:hover { background: var(--red-dk); transform: translateY(-2px); box-shadow: 0 14px 32px rgba(215,25,31,.36); }
 
-        .cnx-pied { text-align: center; margin: 30px 0 0; font-size: 16px; color: var(--muted); letter-spacing: -.02em; }
+        .cnx-memoire {
+            display: flex; align-items: center; gap: 9px; margin-top: 16px;
+            font-size: 14.5px; color: #4B4E55; cursor: pointer;
+        }
+
+        .cnx-ou { display: flex; align-items: center; gap: 12px; margin: 22px 0; }
+        .cnx-ou span { flex: 1; height: 1px; background: #E4E1DA; }
+        .cnx-ou b { font-weight: 500; font-size: 12.5px; color: #9A9DA5; }
+
+        .cnx-google {
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            width: 100%; box-sizing: border-box; padding: 14px;
+            border: 1px solid #E3E0D8; border-radius: 12px; background: #fff;
+            box-shadow: 0 2px 14px rgba(22,23,25,.06);
+            text-decoration: none; color: var(--ink); font-size: 15px; font-weight: 600;
+        }
+        .cnx-google:hover { border-color: #C9C5BB; }
+
+        .cnx-pied { text-align: center; margin: 32px 0 0; font-size: 17px; color: var(--muted); letter-spacing: -.02em; }
         .cnx-pied a { color: var(--ink); font-weight: 800; text-decoration: none; }
         .cnx-pied a:hover { color: var(--red); }
 
+        .cnx :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
         @media (max-width: 900px) {
-            .cnx { grid-template-columns: 1fr; gap: 34px; padding: 30px 22px 44px; }
+            .cnx { grid-template-columns: 1fr; gap: 32px; padding: 30px 22px 44px; }
             /* Le formulaire d'abord : c'est ce qu'on vient faire. */
             .cnx-droite { order: -1; }
             .cnx-gauche h1 { font-size: 30px; max-width: none; }
-            /* Le décor est ornemental : la place manquante revient au formulaire. */
-            .cnx-visuel, .cnx-stat, .outil-voiture, .outil-trousseau { display: none; }
+            /* Le décor est ornemental : la place qu'il prend revient au formulaire, et les
+               deux objets des coins tomberaient sur le texte à cette largeur. */
+            .cnx-visuel, .cnx-coin { display: none; }
         }
     </style>
 </head>
@@ -188,6 +238,9 @@
 <div class="cnx-fond" aria-hidden="true"></div>
 <div class="cnx-halo a" aria-hidden="true"></div>
 <div class="cnx-halo b" aria-hidden="true"></div>
+
+<img class="cnx-coin cnx-coin-voiture" src="{{ asset('logos/atelier-voiture.png') }}" alt="" aria-hidden="true">
+<img class="cnx-coin cnx-coin-cles" src="{{ asset('logos/atelier-cles.png') }}" alt="" aria-hidden="true">
 
 <main class="cnx">
 
@@ -200,18 +253,8 @@
             charges et trésorerie en temps réel, sur tous vos sites.
         </p>
 
-        <div class="cnx-visuel">
-            {{-- Le rendu 3D de la maquette. `multiply` efface son fond noir sur le papier
-                 clair, sans détourage. --}}
-            <img src="{{ asset('logos/logo-3d.jpg') }}" alt="" aria-hidden="true">
-
-            @include('auth.partials.decor-atelier', ['dans' => 'visuel'])
-        </div>
-
-        <p class="cnx-stat">
-            <strong>+500</strong>
-            <span>véhicules entretenus en 2026&nbsp;!</span>
-        </p>
+        {{-- La bougie, le logo et la clé, détourés du rendu en un seul morceau. --}}
+        <img class="cnx-visuel" src="{{ asset('logos/atelier-logo.png') }}" alt="" aria-hidden="true">
     </section>
 
     {{-- ─────────────────────────────── le formulaire --}}
@@ -240,7 +283,7 @@
                 <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus
                        autocomplete="username" placeholder="vous@entreprise.ci" class="champ-connexion">
 
-                <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:20px 0 8px;">
+                <div class="cnx-ligne-label">
                     <label for="password" class="cnx-label" style="margin:0;">Mot de passe</label>
                     <a href="{{ route('password.request') }}" class="cnx-oubli">Mot de passe oublié&nbsp;?</a>
                 </div>
@@ -251,21 +294,16 @@
                     <x-oeil-mot-de-passe />
                 </div>
 
-                <label style="display:flex; align-items:center; gap:8px; margin-top:16px; font-size:14px; color:#4B4E55; cursor:pointer;">
+                <label class="cnx-memoire">
                     <input type="checkbox" name="remember"> Se souvenir de moi
                 </label>
 
                 <button type="submit" class="cnx-go">Se connecter</button>
             </form>
 
-            <div style="display:flex; align-items:center; gap:12px; margin:22px 0;">
-                <span style="flex:1; height:1px; background:#E2E0D8;"></span>
-                <span style="font-size:12.5px; color:#9A9DA5;">ou</span>
-                <span style="flex:1; height:1px; background:#E2E0D8;"></span>
-            </div>
+            <div class="cnx-ou" aria-hidden="true"><span></span><b>ou</b><span></span></div>
 
-            <a href="{{ route('auth.google') }}"
-               style="display:flex; align-items:center; justify-content:center; gap:10px; width:100%; box-sizing:border-box; padding:13px; border:1px solid #E3E0D8; border-radius:12px; text-decoration:none; color:#161719; font-size:15px; font-weight:600; background:#fff; box-shadow:0 2px 14px rgba(22,23,25,.06);">
+            <a href="{{ route('auth.google') }}" class="cnx-google">
                 <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
                     <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.5 13.2l7.9 6.1C12.3 13.2 17.7 9.5 24 9.5z"/>
                     <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-2.8-.4-4.1H24v7.4h12.7c-.3 2.1-1.6 5.3-4.7 7.4l7.6 5.9c4.5-4.2 7.1-10.4 7.1-16.6z"/>
