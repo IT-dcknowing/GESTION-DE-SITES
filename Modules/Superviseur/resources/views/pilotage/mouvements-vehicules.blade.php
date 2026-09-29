@@ -1,6 +1,7 @@
 <?php
 
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Imports\Modeles\MouvementVehicule;
@@ -39,6 +40,12 @@ state([
     'siteFiltre' => '',
     'sensFiltre' => '',
     'pageDetail' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 /* La promesse dépassée se demande par l'adresse : c'est une question qu'on se repose, et
@@ -112,8 +119,28 @@ $requete = function (bool $avecLeFiltreDesPromesses = true) {
         MouvementVehicule::promesseDepassee($requete);
     }
 
+    // Les colonnes du mouvement qu'aucun filtre du haut ne couvre.
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
+
     return $requete;
 };
+
+/**
+ * Les colonnes du tableau qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : la période, la ville, l'atelier, le
+ * sens, la promesse dépassée, et la recherche sur la fiche, la plaque, le client, la
+ * marque et le modèle.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'mouvements_vehicules.proprietaire' => FiltreLibre::colonne('Propriétaire'),
+    'mouvements_vehicules.deposant' => FiltreLibre::colonne('Déposant'),
+    'mouvements_vehicules.motif' => FiltreLibre::colonne('Motif'),
+    'mouvements_vehicules.travaux' => FiltreLibre::colonne('Travaux'),
+    'mouvements_vehicules.observations' => FiltreLibre::colonne('Observations'),
+    'mouvements_vehicules.code_agent' => FiltreLibre::colonne('Code du rédacteur'),
+    'mouvements_vehicules.date_livraison_prevue' => FiltreLibre::colonne('Livraison promise', 'date'),
+]);
 
 $total = computed(fn () => $this->requete()->count());
 
@@ -237,13 +264,19 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
 
         {{-- La case ne s'affiche que lorsqu'elle a quelque chose à filtrer : une case qui
              ne change jamais rien apprend à ne plus lire les cases. --}}
-        @if ($this->avecPromesse > 0)
-            <label style="display:inline-flex; align-items:center; gap:7px; font-size:13px; margin-bottom:14px;">
-                <input type="checkbox" wire:model.live="promesseDepassee" @checked($promesseDepassee)>
-                Promesse de sortie dépassée seulement
-                <span style="color:#6B6E76;">— entré, date de livraison passée, aucune sortie enregistrée</span>
-            </label>
-        @endif
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+            @if ($this->avecPromesse > 0)
+                <label style="display:inline-flex; align-items:center; gap:7px; font-size:13px;">
+                    <input type="checkbox" wire:model.live="promesseDepassee" @checked($promesseDepassee)>
+                    Promesse de sortie dépassée seulement
+                    <span style="color:#6B6E76;">— entré, date de livraison passée, aucune sortie enregistrée</span>
+                </label>
+            @endif
+
+            {{-- Les colonnes du mouvement qu'aucun filtre ne couvre : le propriétaire, le
+                 déposant, le motif, les travaux, les observations, la livraison promise. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
+        </div>
 
         {{-- Les intitulés sont ceux du logiciel d'atelier, sans traduction : c'est ce qui
              permet de poser les deux écrans côte à côte et de vérifier ligne à ligne. --}}

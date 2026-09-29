@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use function Livewire\Volt\{computed, state};
@@ -22,25 +23,52 @@ state([
     'niveau' => '',
     'statut' => '',
     'page' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
+]);
+
+/**
+ * Les colonnes du journal qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : le niveau, le statut, et la recherche
+ * sur le tiers, l'interlocuteur et le responsable.
+ *
+ * Le **canal** est une liste : le référentiel n'en connaît qu'une poignée, et les taper à
+ * la main avec une faute ne trouverait rien.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'relances_recouvrement.canal' => FiltreLibre::colonne('Canal', 'liste',
+        array_combine(RelanceRecouvrement::CANAUX, RelanceRecouvrement::CANAUX)),
+    'relances_recouvrement.factures_visees' => FiltreLibre::colonne('Factures visées'),
+    'relances_recouvrement.resultat' => FiltreLibre::colonne('Résultat / engagement'),
+    'relances_recouvrement.montant_promis' => FiltreLibre::colonne('Montant promis', 'nombre'),
+    'relances_recouvrement.date' => FiltreLibre::colonne('Date de la relance', 'date'),
 ]);
 
 $relances = computed(function () {
     $recherche = trim($this->recherche);
 
-    return RelanceRecouvrement::query()
+    $requete = RelanceRecouvrement::query()
         ->when($recherche !== '', fn ($q) => $q->where(fn ($r) => $r
             ->where('tiers', 'like', "%$recherche%")
             ->orWhere('interlocuteur', 'like', "%$recherche%")
             ->orWhere('responsable', 'like', "%$recherche%")))
         ->when($this->niveau !== '', fn ($q) => $q->where('niveau', (int) $this->niveau))
-        ->when($this->statut !== '', fn ($q) => $q->where('statut', $this->statut))
-        ->orderByDesc('date')->orderByDesc('id')
-        ->get();
+        ->when($this->statut !== '', fn ($q) => $q->where('statut', $this->statut));
+
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
+
+    return $requete->orderByDesc('date')->orderByDesc('id')->get();
 });
 
 $promesses = computed(fn () => $this->relances->sum('montant_promis'));
 
 $updatedRecherche = fn () => $this->page = 1;
+$updatedFiltresLibres = fn () => $this->page = 1;
 $updatedNiveau = fn () => $this->page = 1;
 $updatedStatut = fn () => $this->page = 1;
 
@@ -65,6 +93,11 @@ $updatedStatut = fn () => $this->page = 1;
                     <option value="{{ $s }}" @selected((string) $statut === (string) $s)>{{ $s }}</option>
                 @endforeach
             </select>
+
+            {{-- Les colonnes du journal qu'aucun filtre ne couvre : le canal, les factures
+                 visées, le résultat, le montant promis, la date. Demandé le 29/09 —
+                 « et même dans le module recouvrement ». --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
     
         {{-- Le fichier emporté contient exactement ce que l'écran montre :

@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **28 septembre 2026** (16e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **29 septembre 2026** (17e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -152,6 +152,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **creances** | un fichier **écarté le dit et dit pourquoi** : troisième catégorie `Registre::ECARTES`, les fiches de réception y figurent avec la raison de la décision du 18/09 ; trois types d'import retrouvent leur compteur et deux commentaires périmés sont corrigés |
 | 24/09 | voir `git log` | **creances** | **retours du propriétaire, en sept lots** : pagination en français et sans saut de page, « Caisse par véhicule » hors du menu, journal des modifications lisible, référentiel fournisseur corrigeable avec sa trace, motif obligatoire sur tout règlement, **le barème court jusqu'à ce qu'un autre le remplace**, détail d'une facture depuis le chiffre d'affaires, rapprochement coché et paginé, bornes de date sur les clients / le rapprochement / les impayés, et le classeur du plan retrouve sa mise en forme |
 | 24/09 | voir `git log` | **recouvrement** | **seconde série de corrections du propriétaire** : la boîte de confirmation remarche après une navigation, le barème sépare ses deux rôles et comble le trou 25–30 M, « tout cocher » porte sur tout le filtre et chaque geste réussi le dit en vert, le journal cesse de lire une création comme une modification, et les filtres du tableau de bord du recouvrement ne rechargent plus la page (**3,2 s → 0,55 s** de calcul) |
+| 29/09 | voir `git log` | **caisse-saisie-et-identite** | le **filtre libre marchait dans le vide** — Livewire lit le point d'un nom de colonne comme un chemin — et son panneau **recouvrait le tableau** ; la **caisse se saisit** (encaissement, décaissement) et ses **deux tableaux n'en font plus qu'un**, avec colonne Origine et filtre ; « Autre filtre » sur **six écrans de plus**, recouvrement compris ; **écran de connexion refait** sur la maquette, décor dessiné ; **pages d'erreur refaites** avec l'ouvrier au casque et les coordonnées de l'assistance |
 | 28/09 | voir `git log` | **filtres-et-tresorerie** | les **compteurs des filtres disent ce que le tableau rend** (« Réglées (85) » au-dessus de « Détail (2) ») ; le **versement a sa page** et sa référence porte l'année ; **cocher ne parle plus au serveur** (400 ms mesurées par case) ; un bandeau dit « **enregistrement en cours** » ; bouton « **Autre filtre** » sur sept écrans, une à deux cases selon le type de la donnée ; **détail d'un encaissement en page** et colonne **Origine** ; **Caisse et Trésorerie disent ce qu'elles ne voient pas**, avec le pont des espèces saisies ; le **code d'une fiche fournisseur naît avec elle** |
 | 28/09 | voir `git log` | **encaissement-et-tiers** | **un versement solde plusieurs factures** — sélection à cocher, répartition « la plus ancienne d'abord », référence de règlement global et colonne dans l'état ; l'**encaissement du recouvrement refait sur le modèle des impayés** (banque, dépositaire, dates, déduction instantanée) ; la **relance cite les factures cochées** ; **un code par tiers et par fournisseur**, avec avertissement de ressemblance qui ne bloque pas ; **liste des fournisseurs** et ajout ; la **prospection attend son devis** et le récupère seule à l'import ; trois sections de la saisie du responsable masquées ; le détail d'une créance porte enfin toutes les colonnes |
 | 28/09 | voir `git log` | **fournisseurs-et-tracabilite** | la **clé de rapprochement des fournisseurs n'était pas infaillible** : les deux classeurs n'écrivent pas le n° de pièce pareil, et 562 factures seraient entrées deux fois — le numéro se compare désormais par son noyau ; **aucun des deux classeurs n'est « celui de sa ville »** ; les **devis importés retrouvent leur commercial** (2 432 sur 2 432 n'en avaient aucun) ; le commercial se désigne par le **code de la plateforme** et non par « C-0010 » ; **« Traité par »** dans les tableaux, avec les dates dans le détail seulement ; **page de détail d'un devis** ; cocher « devis après passage » **demande enfin son numéro**, et « passage » se coche sur une ligne transmise ; « Créer une facture » masquée du recouvrement |
@@ -1934,6 +1935,103 @@ est un code que l'un des trois oubliera, sans que l'oubli se voie. Il est posé 
 La colonne « Fiche » devient **« Échéance déductible »** — elle ne disait rien à qui n'a pas
 écrit le code, et elle répond en réalité à une question précise. Et le champ « Terme de
 règlement » explique à quoi il sert : 5 184 factures sur 7 350 n'ont pas d'échéance écrite.
+
+### Le filtre libre marchait dans le vide
+
+✅ **Corrigé le 29/09** — « le filtre ne marche pas, et il est sur les éléments en barrant ».
+Deux défauts, et le premier était invisible à la lecture du code.
+
+**Le point d'un nom de colonne est un chemin, pour Livewire.** Les colonnes sont nommées
+`devis.client` — table et colonne, pour qu'une jointure ne rende pas la condition ambiguë.
+Or `wire:model="filtresLibres.devis.client.valeur"` écrit dans
+`filtresLibres['devis']['client']['valeur']` — une structure à trois étages — quand le
+serveur allait chercher `filtresLibres['devis.client']`. **La valeur arrivait bien**, rangée
+là où personne ne la lisait : aucune erreur, aucun message, et un filtre muet. Le point
+devient un double blanc souligné dans l'état, et là seulement — la requête voit toujours le
+vrai nom.
+
+**Le panneau recouvrait le tableau** : on ne voyait plus ce qu'on filtrait pendant qu'on le
+filtrait. Il pousse maintenant le contenu au lieu de le masquer — le conteneur est en
+`display:contents` pour que le bouton et le panneau soient deux enfants directs de la barre
+de filtres, et le panneau prend sa propre ligne.
+
+**Posé sur treize écrans** : impayés, chiffre d'affaires, devis, fournisseurs, caisse,
+trésorerie, charges, parc véhicules, entrées/sorties, et — demandé nommément — le **journal
+des relances** et le **journal des encaissements** du recouvrement. Restent les clients, les
+commerciaux et les deux écrans de rapprochement.
+
+### La caisse se saisit, et ne fait plus qu'un tableau
+
+✅ **Le 29/09.** « Mettre un bouton dans cette page caisse et permettre d'ouvrir le
+formulaire et saisir […] où doit-on le mettre (caisse ou tréso ou les deux à la fois) ? »
+
+**Le bouton est sur la caisse, l'écriture va ailleurs** — et ce n'est pas une contradiction,
+c'est la réponse. Le geste appartient à la caisse : on compte des espèces, on les note. Mais
+l'écriture doit aller là où **tout le reste de l'application lit** : `encaissements` pour une
+entrée, `charges` pour une sortie. C'est de là que se lisent la trésorerie, la balance âgée,
+l'extrait de compte et le résultat.
+
+Écrire dans `mouvements_caisse` aurait fait deux dégâts : un mouvement d'argent que **seul
+cet écran** connaîtrait, et la rupture de la chaîne des soldes annoncés — la seule preuve
+qu'aucune ligne du journal n'a été perdue à l'import. Le mouvement paraît donc sur **les
+deux écrans**, et c'est par lui qu'ils communiquent.
+
+**Le moyen est imposé à « espèces » et n'est pas proposé** : un chèque n'entre pas dans un
+tiroir, et se tromper ferait apparaître en caisse de l'argent qui n'y est jamais passé.
+
+**Un seul tableau**, comme demandé : « les deux tableaux doivent rester en un, mais à
+travers le filtre on pourra retirer ». Colonne **Origine**, filtre « Journal et saisies /
+Journal du logiciel / Saisi ici », et les totaux suivent le filtre. Une seule chose n'est
+pas mélangée : le **solde annoncé** reste au journal, et la case d'une saisie reste vide
+plutôt que de porter un cumul qu'on prendrait pour une annonce.
+
+La saisie relève du gérant, du responsable de ville et du comptable — mêmes rôles que pour
+une pièce fournisseur. Le responsable d'atelier continue de lire sans écrire.
+
+### L'écran de connexion, sur la maquette
+
+✅ **Refait le 29/09.** L'ancien posait un panneau noir à gauche et une carte blanche à
+droite : correct, et anonyme — c'était l'écran de n'importe quelle application. La maquette
+met la **marque** en premier : fond clair quadrillé, lueur rouge, logo en grand, et les
+objets de l'atelier autour.
+
+**Le décor est dessiné, pas photographié** : la voiture, la bougie d'allumage, la clé plate
+et le trousseau. Trois raisons, et elles tiennent toutes à ce qu'est cette page — la
+première que l'on voit, souvent sur un réseau lent. Quatre images, c'est quatre
+allers-retours avant qu'elle ne soit entière ; ce décor pèse quelques kilo-octets et arrive
+avec le HTML, suit le thème de l'entreprise, et reste net du téléphone au grand écran.
+
+**Ce qui n'a pas changé, et ne devait pas** : le formulaire poste vers Fortify, le jeton
+CSRF est là, l'œil du mot de passe aussi, et la connexion Google comme l'entrée par code
+entreprise restent offertes. Une page de connexion qui perd une de ses portes enferme
+quelqu'un dehors.
+
+⚠️ **Un écart assumé avec la maquette** : elle écrit « Email ou identifiant ». La
+connexion ne reconnaît que l'adresse électronique — `FortifyServiceProvider` cherche sur
+`email`. Écrire « ou identifiant » ferait essayer un code qui ne marcherait pas, et l'on
+chercherait la panne du côté du mot de passe. Le libellé suivra le jour où la connexion par
+code sera ouverte.
+
+### Les pages d'erreur disent enfin à qui s'adresser
+
+✅ **Refaites le 29/09** — « je n'aime pas cette présentation ». Elles étaient justes et
+muettes : une feuille blanche, un titre, un paragraphe.
+
+Une page d'erreur a **deux** choses à faire, et elle n'en faisait qu'une : dire ce qui se
+passe, et **dire à qui s'adresser**. La seconde manquait, et c'est celle qu'on cherche
+quand on est bloqué à neuf heures du matin.
+
+Elle reprend donc le fond de l'écran de connexion, un ouvrier au casque jaune tenant une
+clé, le message que l'équipe technique s'en charge, et un encart d'assistance.
+
+**Les coordonnées viennent de la configuration**, jamais de la base — `config/assistance.php`,
+alimenté par le `.env`. Les chercher en base reviendrait à rejouer la panne au moment précis
+où l'on demande de l'aide. Non renseignées, la page renvoie au responsable de l'application
+plutôt que d'afficher un numéro inventé : un numéro faux sur une page d'erreur fait perdre
+un appel au moment où il compte le plus.
+
+**À faire au déploiement** : renseigner `ASSISTANCE_COURRIEL`, `ASSISTANCE_TELEPHONES` et
+`ASSISTANCE_HORAIRES` dans le `.env` du serveur.
 
 ### Pour le jour où les API répondront
 

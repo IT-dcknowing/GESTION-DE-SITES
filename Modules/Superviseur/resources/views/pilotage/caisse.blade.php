@@ -5,6 +5,8 @@ use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
+use Illuminate\Validation\Rule;
+use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 use Modules\Noyau\Imports\Modeles\MouvementCaisse;
 use Modules\Noyau\Imports\Modeles\OuvertureCaisse;
@@ -62,6 +64,22 @@ state([
     'sensFiltre' => '',
     'recherche' => '',
     'pageDetail' => 1,
+    /*
+     * D'où vient la ligne : du journal du logiciel, ou saisie ici. C'est un filtre de
+     * l'écran et non un « autre filtre », parce que les deux sources ne vivent pas dans la
+     * même table — la condition ne se pose pas sur une colonne, elle choisit une source.
+     */
+    'origineFiltre' => '',
+
+    // Le formulaire de saisie, replié tant qu'on ne le demande pas.
+    'saisieOuverte' => false,
+    'saisieSens' => 'entree',
+    'saisieDate' => '',
+    'saisieMontant' => '',
+    'saisieLibelle' => '',
+    'saisieTiers' => '',
+    'saisieReference' => '',
+    'saisieVilleId' => '',
     /*
      * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
      * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
@@ -217,15 +235,29 @@ $soldeAvant = computed(function () {
     ];
 });
 
+/**
+ * Les totaux de la période — les deux sources comprises.
+ *
+ * **Ils comptent aussi ce qui a été saisi ici**, et c'est nécessaire : ce sont de vraies
+ * espèces entrées ou sorties du tiroir. Les taire ferait afficher un solde de période qui
+ * ne correspondrait à rien de réel, et personne ne saurait pourquoi la caisse ne tombe pas
+ * juste. Le filtre d'origine les suit : demander « le journal seulement » donne les totaux
+ * du journal seul.
+ */
 $kpis = computed(function () {
-    $entrees = (int) (clone $this->requete)->where('sens', MouvementCaisse::ENTREE)->sum('montant');
-    $sorties = (int) (clone $this->requete)->where('sens', MouvementCaisse::SORTIE)->sum('montant');
+    $lignes = $this->mouvements;
+
+    $entrees = (int) $lignes->where('sens', MouvementCaisse::ENTREE)->sum('montant');
+    $sorties = (int) $lignes->where('sens', MouvementCaisse::SORTIE)->sum('montant');
 
     return [
         'entrees' => $entrees,
         'sorties' => $sorties,
         'solde' => $entrees - $sorties,
-        'lignes' => (clone $this->requete)->count(),
+        'lignes' => $lignes->count(),
+        // Ce que la saisie apporte, dit à part : c'est ce que le prochain état de caisse
+        // devra porter, et c'est le chiffre d'un rapprochement.
+        'saisies' => $this->origineFiltre === 'journal' ? 0 : $this->saisiesEnEspeces->count(),
     ];
 });
 
@@ -309,10 +341,165 @@ $grossesSorties = computed(function () {
         ->groupBy($colonne)->orderByDesc('total')->limit(8)->get();
 });
 
-$detail = computed(fn () => (clone $this->requete)
-    ->with('ville')
-    ->orderByDesc('date')->orderByDesc('id')
-    ->paginate(25, ['*'], 'pageDetail', $this->pageDetail));
+/**
+ * La page affichée du tableau unique.
+ *
+ * Paginée à la main plutôt que par la base : les deux sources vivent dans des tables
+ * différentes, et une union SQL entre elles coûterait plus cher à écrire et à relire
+ * qu'elle ne rapporte — la période borne déjà le volume à quelques centaines de lignes.
+ */
+$detail = computed(fn () => $this->mouvements->forPage(max(1, (int) $this->pageDetail), 25));
+
+/**
+ * Qui peut saisir un mouvement de caisse.
+ *
+ * Les mêmes que pour une pièce fournisseur : le gérant, le responsable de ville et le
+ * comptable. L'écran était en lecture seule, et c'est à ce titre qu'il avait été ouvert
+ * largement — le responsable d'atelier continue donc de lire sans écrire.
+ */
+$peutSaisir = computed(fn () => auth()->user()?->hasAnyRole(['gerant', 'responsable_ville', 'caissier']) === true);
+
+/**
+ * Saisir un mouvement d'espèces — et où il faut qu'il aille.
+ *
+ * **La demande, du 29/09** : « mettre un bouton dans cette page caisse et permettre
+ * d'ouvrir le formulaire et saisir […] où doit-on le mettre (caisse ou tréso ou les deux à
+ * la fois) ; on doit avoir le bouton encaissement et décaissement ».
+ *
+ * **Le bouton est ici, et l'écriture va ailleurs.** Ce n'est pas une contradiction, c'est
+ * la réponse à la question. Le geste appartient à la caisse — on compte des espèces, on
+ * les note — mais l'écriture doit aller là où **tout le reste de l'application lit** :
+ * `encaissements` pour une entrée, `charges` pour une sortie. C'est de là que se lisent la
+ * trésorerie, la balance âgée, l'extrait de compte et le résultat.
+ *
+ * **Pourquoi pas dans `mouvements_caisse`.** Cette table porte le journal du logiciel, et
+ * sa colonne « solde annoncé » forme une chaîne qui prouve qu'aucune ligne n'a été perdue
+ * à l'import. Y écrire romprait cette preuve, et l'écriture resterait invisible partout
+ * ailleurs — un mouvement d'argent que seul cet écran connaîtrait.
+ *
+ * Le mouvement paraît donc sur **les deux écrans** : ici sous « Saisi ici », et en
+ * trésorerie parmi les encaissements ou les charges. C'est la réponse à « les deux doivent
+ * communiquer ».
+ *
+ * **Le moyen est imposé à « ESPÈCES »**, et il n'est pas proposé : un chèque ou un virement
+ * n'entre pas dans un tiroir. Se tromper de moyen ici ferait apparaître en caisse de
+ * l'argent qui n'y est jamais passé.
+ */
+$ouvrirLaSaisie = function (string $sens) {
+    if (! $this->peutSaisir) {
+        $this->dispatch('annonce', ton: 'alerte',
+            texte: 'La saisie de caisse relève du gérant, du responsable de ville ou du comptable.');
+
+        return;
+    }
+
+    $this->fill([
+        'saisieOuverte' => true,
+        'saisieSens' => $sens === MouvementCaisse::SORTIE ? MouvementCaisse::SORTIE : MouvementCaisse::ENTREE,
+        'saisieDate' => $this->saisieDate ?: now()->toDateString(),
+        'saisieVilleId' => $this->saisieVilleId ?: (string) ($this->villeFiltre ?: (auth()->user()->ville_id ?? '')),
+    ]);
+};
+
+$fermerLaSaisie = function () {
+    $this->fill(['saisieOuverte' => false, 'saisieMontant' => '', 'saisieLibelle' => '',
+        'saisieTiers' => '', 'saisieReference' => '']);
+};
+
+$enregistrerLaSaisie = function () {
+    if (! $this->peutSaisir) {
+        $this->dispatch('annonce', ton: 'alerte',
+            texte: 'La saisie de caisse relève du gérant, du responsable de ville ou du comptable.');
+
+        return;
+    }
+
+    $donnees = $this->validate([
+        'saisieSens' => ['required', Rule::in([MouvementCaisse::ENTREE, MouvementCaisse::SORTIE])],
+        'saisieDate' => ['required', 'date'],
+        'saisieMontant' => ['required', 'numeric', 'min:1'],
+        'saisieLibelle' => ['required', 'string', 'max:255'],
+        'saisieTiers' => ['nullable', 'string', 'max:160'],
+        'saisieReference' => ['nullable', 'string', 'max:120'],
+        'saisieVilleId' => ['required', Rule::in(array_map('strval', $this->idsVilles))],
+    ], [], [
+        'saisieDate' => 'date', 'saisieMontant' => 'montant', 'saisieLibelle' => 'libellé',
+        'saisieVilleId' => 'ville',
+    ]);
+
+    /*
+     * L'atelier où ranger l'écriture. La caisse se tient par ville — le journal ne porte
+     * pas l'atelier — mais `encaissements` et `charges` se lisent par atelier : la
+     * trésorerie les retient par `whereIn('site_id', …)`, et un atelier nul n'entre dans
+     * aucun `whereIn`. On descend donc à l'unique atelier de la ville quand il n'y en a
+     * qu'un, sinon à celui de la personne qui saisit. C'est la même règle que pour un
+     * encaissement du recouvrement.
+     */
+    $villeId = (int) $donnees['saisieVilleId'];
+    $sites = Site::where('ville_id', $villeId)->where('est_actif', true)->pluck('id');
+
+    $siteId = $sites->count() === 1
+        ? (int) $sites->first()
+        : (int) (auth()->user()->site_id ?: ($sites->first() ?? 0));
+
+    if ($siteId === 0) {
+        $this->addError('saisieVilleId', "Aucun atelier actif dans cette ville : l'écriture n'aurait nulle part où être rangée.");
+
+        return;
+    }
+
+    $montant = (int) $donnees['saisieMontant'];
+    $entree = $donnees['saisieSens'] === MouvementCaisse::ENTREE;
+
+    if ($entree) {
+        Encaissement::create([
+            'entreprise_id' => auth()->user()->entreprise_id,
+            'site_id' => $siteId,
+            'date' => $donnees['saisieDate'],
+            'type' => 'Caisse',
+            // **Le moyen est imposé**, et il n'est pas proposé : une caisse tient des
+            // espèces, un chèque n'entre pas dans un tiroir. Se tromper de moyen ici ferait
+            // apparaître en caisse de l'argent qui n'y est jamais passé.
+            'moyen' => 'ESPÈCES',
+            'montant' => $montant,
+            'client' => trim((string) $donnees['saisieTiers']) ?: null,
+            'motif' => $donnees['saisieLibelle'],
+            'reference_origine' => trim((string) $donnees['saisieReference']) ?: null,
+            'cree_par' => auth()->id(),
+        ]);
+    } else {
+        Charge::create([
+            'entreprise_id' => auth()->user()->entreprise_id,
+            'site_id' => $siteId,
+            'date' => $donnees['saisieDate'],
+            'type_operation' => 'Charges',
+            'libelle' => $donnees['saisieLibelle'],
+            'moyen' => 'ESPÈCES',
+            'montant' => $montant,
+            'tiers' => trim((string) $donnees['saisieTiers']) ?: null,
+            'cree_par' => auth()->id(),
+        ]);
+    }
+
+    activity()->causedBy(auth()->user())
+        ->withProperties([
+            'sens' => $entree ? 'entree' : 'sortie',
+            'montant' => $montant,
+            'ville_id' => $villeId,
+            'libelle' => $donnees['saisieLibelle'],
+        ])
+        ->log('Caisse — mouvement saisi');
+
+    $this->fermerLaSaisie();
+
+    unset($this->saisiesEnEspeces, $this->mouvements, $this->detail, $this->kpis);
+
+    $this->dispatch('annonce', ton: 'succes',
+        texte: ($entree ? 'Entrée' : 'Sortie').' de '.ae($montant)
+            .' enregistrée — elle paraît ici et en trésorerie.');
+};
+
+
 
 /**
  * Ce que l'application a enregistré en espèces, et que le journal du logiciel ne porte pas.
@@ -348,7 +535,25 @@ $enEspeces = protect(fn (?string $moyen) => $moyen !== null
     // façons de comparer deux chaînes finissent toujours par se contredire.
     && str_contains(CorrespondanceImport::normaliser($moyen), 'ESPECE'));
 
-$saisiesHorsJournal = computed(function () {
+/**
+ * Les mouvements d'espèces saisis dans l'application, mis à la forme du journal.
+ *
+ * **Un seul tableau, et c'est la demande du 29/09** : « j'ai pas demandé de faire ce
+ * tableau, les deux tableaux doivent rester en un, mais à travers le filtre on pourra
+ * retirer ». Deux tableaux côte à côte obligent à lire deux fois et à rapprocher de tête
+ * ce qui s'est passé dans la caisse ce jour-là.
+ *
+ * Ils sont donc ramenés à la **même forme** que les lignes du journal, et la colonne
+ * « Origine » dit d'où chacune vient. Le filtre d'origine permet de n'en voir qu'une sorte.
+ *
+ * **Ce qu'on ne mélange pas pour autant : la chaîne des soldes annoncés.** Le journal
+ * porte, ligne à ligne, le solde que le logiciel a imprimé après elle ; c'est cette chaîne
+ * qui prouve qu'aucune ligne n'a été perdue à l'import. Une écriture saisie ici n'en a
+ * pas — sa colonne « Solde » reste vide — et le rapprochement plus bas continue de ne
+ * compter que le journal. Mélanger les deux ferait croire à un écart là où il n'y a qu'une
+ * écriture que le logiciel ne connaît pas encore.
+ */
+$saisiesEnEspeces = computed(function () {
     [$debut, $fin] = $this->plage;
     $sites = PerimetreSites::idsRetenus(auth()->user(), $this->villeFiltre, null);
 
@@ -356,16 +561,28 @@ $saisiesHorsJournal = computed(function () {
         ->whereIn('site_id', $sites)
         ->whereNull('lot_import_id')
         ->whereBetween('date', [$debut, $fin])
-        ->with('site')
+        ->with('site.ville')
         ->get()
         ->filter(fn ($e) => $this->enEspeces($e->moyen))
-        ->map(fn ($e) => [
+        ->map(fn ($e) => (object) [
+            'cle' => 'enc-'.$e->id,
             'date' => $e->date,
-            'sens' => 'Entrée',
-            'libelle' => $e->client ?: ($e->type ?: 'Encaissement'),
-            'reference' => $e->numero ?: $e->reference_origine,
+            'sens' => MouvementCaisse::ENTREE,
+            'numero_piece' => $e->numero,
+            'type_piece' => $e->type,
+            'page' => null,
+            'motif' => $e->motif,
+            // L'objet de l'entrée d'abord : c'est ce qu'on cherche en relisant une caisse.
+            // Il est rangé dans `motif` à la saisie — `libelle` n'existe pas sur un
+            // encaissement —, et le montrer sous le nom du remettant le perdait.
+            'libelle' => $e->motif ?: ($e->client ?: ($e->type ?: 'Encaissement')),
+            'tiers' => $e->client,
+            'immatriculation' => $e->facture?->immatriculation,
+            'caisse' => null,
+            'ville' => $e->site?->ville,
             'montant' => (int) $e->montant,
-            'site' => $e->site?->nom,
+            'solde_annonce' => null,
+            'origine' => 'saisie',
             'lien' => route('tresorerie.encaissement', $e->id),
         ]);
 
@@ -373,20 +590,73 @@ $saisiesHorsJournal = computed(function () {
         ->whereIn('site_id', $sites)
         ->whereNull('lot_import_id')
         ->whereBetween('date', [$debut, $fin])
-        ->with('site')
+        ->with('site.ville')
         ->get()
         ->filter(fn ($c) => $this->enEspeces($c->moyen))
-        ->map(fn ($c) => [
+        ->map(fn ($c) => (object) [
+            'cle' => 'dec-'.$c->id,
             'date' => $c->date,
-            'sens' => 'Sortie',
+            'sens' => MouvementCaisse::SORTIE,
+            'numero_piece' => $c->numero,
+            'type_piece' => $c->type_operation,
+            'page' => null,
+            'motif' => $c->motif,
             'libelle' => $c->libelle ?: ($c->type_operation ?: 'Charge'),
-            'reference' => $c->numero ?: null,
+            'tiers' => $c->tiers,
+            'immatriculation' => null,
+            'caisse' => null,
+            'ville' => $c->site?->ville,
             'montant' => (int) $c->montant,
-            'site' => $c->site?->nom,
+            'solde_annonce' => null,
+            'origine' => 'saisie',
             'lien' => null,
         ]);
 
-    return $entrees->concat($sorties)->sortByDesc('date')->values();
+    return $entrees->concat($sorties);
+});
+
+/**
+ * Les mouvements du journal, mis à la même forme — pour qu'un seul tableau les rende tous.
+ */
+$mouvementsDuJournal = computed(fn () => (clone $this->requete)
+    ->with('ville')
+    ->get()
+    ->map(fn (MouvementCaisse $m) => (object) [
+        'cle' => 'jrn-'.$m->id,
+        'date' => $m->date,
+        'sens' => $m->sens,
+        'numero_piece' => $m->numero_piece,
+        'type_piece' => $m->type_piece,
+        'page' => $m->page,
+        'motif' => $m->motif,
+        'libelle' => $m->libelle,
+        'tiers' => $m->tiers(),
+        'immatriculation' => $m->immatriculation,
+        'caisse' => $m->caisse,
+        'ville' => $m->ville,
+        'montant' => (int) $m->montant,
+        'solde_annonce' => $m->solde_annonce,
+        'origine' => 'journal',
+        'lien' => null,
+    ]));
+
+/**
+ * Les deux sources réunies, filtrées, et rangées de la plus récente à la plus ancienne.
+ *
+ * Le filtre d'origine est appliqué ici et non dans une requête : les deux sources vivent
+ * dans des tables différentes, et choisir « journal seulement » revient à ne pas lire la
+ * seconde, pas à poser une condition.
+ */
+$mouvements = computed(function () {
+    $lignes = match ($this->origineFiltre) {
+        'journal' => $this->mouvementsDuJournal,
+        'saisie' => $this->saisiesEnEspeces,
+        default => $this->mouvementsDuJournal->concat($this->saisiesEnEspeces),
+    };
+
+    return $lignes
+        ->sortByDesc(fn ($l) => [$l->date?->timestamp ?? 0, $l->cle])
+        ->values();
 });
 
 ?>
@@ -396,15 +666,62 @@ $saisiesHorsJournal = computed(function () {
         sous-titre="Les entrées et les sorties d'espèces, reprises des états de caisse de l'atelier.">
         {{-- L'autre question qu'on pose à la caisse, et qui ne se pose pas sur une
              période : celle d'un véhicule précis. --}}
-        <div style="margin-top:10px;">
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
             <a href="{{ route('caisse.vehicule') }}" wire:navigate class="bouton bouton-secondaire"
                 style="padding:8px 14px; text-decoration:none;">Rechercher un véhicule</a>
+
+            {{-- **Les deux gestes de la caisse, demandés le 29/09.** Le bouton est ici —
+                 c'est là qu'on compte les espèces — et l'écriture va là où tout le reste de
+                 l'application lit : les encaissements pour une entrée, les charges pour une
+                 sortie. Le mouvement paraît donc sur les deux écrans, ce qui est la réponse
+                 à « les deux doivent communiquer ». --}}
+            @if ($this->peutSaisir)
+                <button type="button" class="bouton" style="padding:8px 14px;"
+                    wire:click="ouvrirLaSaisie('entree')">+ Encaissement</button>
+                <button type="button" class="bouton bouton-secondaire"
+                    style="padding:8px 14px; color:#C8102E; border-color:#C8102E;"
+                    wire:click="ouvrirLaSaisie('sortie')">− Décaissement</button>
+            @endif
         </div>
     </x-titre-ecran>
 
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="null" :site-filtre="null"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
+
+    {{-- Le formulaire, replié tant qu'on ne le demande pas. Rendu par le serveur et non
+         ouvert par un aller-retour : ce qui s'ouvre par un clic n'a pas à faire un voyage. --}}
+    @if ($saisieOuverte && $this->peutSaisir)
+        <div class="carte" style="margin-bottom:16px; border-left:3px solid {{ $saisieSens === 'entree' ? '#0E9F6E' : '#C8102E' }};">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">
+                {{ $saisieSens === 'entree' ? 'Entrée de caisse' : 'Sortie de caisse' }}
+            </h3>
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
+                En <b>espèces</b> — c'est ce qu'une caisse tient. L'écriture paraîtra ici sous
+                « Saisi ici », et en <b>trésorerie</b> parmi
+                {{ $saisieSens === 'entree' ? 'les encaissements' : 'les charges' }}.
+            </p>
+
+            <div class="bloc-saisie" style="background:#fff; border-style:solid;">
+                <x-champ label="Date" model="saisieDate" type="date" :requis="true" width="150" />
+                <x-champ label="Montant (F CFA)" model="saisieMontant" type="number" :requis="true" width="160" />
+                <x-champ :label="$saisieSens === 'entree' ? 'Objet de l’entrée' : 'Objet de la dépense'"
+                    model="saisieLibelle" :requis="true" width="280" />
+                <x-champ :label="$saisieSens === 'entree' ? 'Remettant' : 'Bénéficiaire'"
+                    model="saisieTiers" width="220" />
+                <x-champ label="Référence" model="saisieReference" width="170"
+                    placeholder="Reçu, bordereau…" />
+                @if (count($this->mesVilles) > 1)
+                    <x-champ label="Ville" model="saisieVilleId" type="select"
+                        :options="$this->mesVilles" :requis="true" width="170" />
+                @endif
+                <button type="button" wire:click="enregistrerLaSaisie" class="bouton">Enregistrer</button>
+                <button type="button" wire:click="fermerLaSaisie" class="bouton bouton-secondaire">Annuler</button>
+            </div>
+
+            <x-erreurs-du-bloc prefixe="saisie" />
+        </div>
+    @endif
 
     {{-- **Ce que cette page lit, et ce qu'elle ne lit pas.**
 
@@ -441,64 +758,24 @@ $saisiesHorsJournal = computed(function () {
         </table>
         <p style="margin:0; font-size:13px; line-height:1.6;">
             La Caisse <b>ne regroupe donc pas</b> la trésorerie, et la Trésorerie
-            <b>ne voit pas</b> le journal de caisse. On ne les fond pas dans un seul tableau pour
-            une raison précise&nbsp;: la colonne <b>solde annoncé</b> du journal forme une chaîne
-            qui prouve qu'aucune ligne n'a été perdue à l'import. Y insérer des écritures absentes
-            du journal romprait la seule vérification qu'on ait sur ce fichier. Elles sont donc
-            montrées <b>à côté</b>, ci-dessous.
+            <b>ne voit pas</b> le journal de caisse.
+        </p>
+        <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
+            <strong>Ce que le tableau du bas rassemble, en revanche.</strong> Les mouvements du
+            journal et ceux que vous saisissez ici — boutons <b>+ Encaissement</b> et
+            <b>− Décaissement</b> en haut — sont dans un <b>seul tableau</b>, avec une colonne
+            <b>Origine</b> et un filtre pour n'en voir qu'une sorte.
+            Une écriture saisie ici part dans les <b>encaissements</b> ou les <b>charges</b> :
+            elle paraît donc aussi en trésorerie. C'est par elle que les deux écrans communiquent.
+        </p>
+        <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
+            <strong>Une seule chose n'est pas mélangée : le solde annoncé.</strong> Le journal le
+            porte ligne à ligne, et cette chaîne prouve qu'aucune ligne n'a été perdue à l'import.
+            Une écriture saisie ici n'en a pas — le logiciel ne la connaît pas encore — et sa case
+            reste vide plutôt que de porter un nombre calculé qu'on prendrait pour une annonce.
         </p>
     </div>
 
-    {{-- Le pont : ce que l'application a enregistré en espèces et que le journal ignore.
-         C'est exactement ce qu'un rapprochement de caisse cherche. --}}
-    @if ($this->saisiesHorsJournal->isNotEmpty())
-        <div class="carte" style="margin-bottom:16px; border-left:3px solid #2563EB;">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 6px;">
-                Saisi dans l'application, absent du journal
-                ({{ $this->saisiesHorsJournal->count() }})
-            </h3>
-            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
-                Des espèces encaissées ou décaissées <b>ici</b>, sur la période regardée. Le journal
-                du logiciel ne les porte pas — il n'a pas été réédité depuis. C'est l'écart qu'un
-                rapprochement de caisse cherche&nbsp;: la somme ci-dessous devrait se retrouver dans
-                le prochain état de caisse déposé.
-            </p>
-
-            <div class="tableau-conteneur">
-                <table class="tableau">
-                    <thead>
-                        <tr>
-                            <th>Date</th><th>Sens</th><th>Libellé</th><th>Référence</th>
-                            <th>Atelier</th><th style="text-align:right;">Montant</th><th>Origine</th><th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($this->saisiesHorsJournal as $ligne)
-                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                                <td style="white-space:nowrap;">{{ $ligne['date']?->format('d/m/Y') ?? '—' }}</td>
-                                <td style="font-weight:700; color:{{ $ligne['sens'] === 'Entrée' ? '#0E9F6E' : '#C8102E' }};">
-                                    {{ $ligne['sens'] }}
-                                </td>
-                                <td>{{ $ligne['libelle'] }}</td>
-                                <td style="color:#6B6E76; font-size:12px;">{{ $ligne['reference'] ?: '—' }}</td>
-                                <td style="color:#6B6E76;">{{ $ligne['site'] ?: '—' }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">
-                                    {{ ae($ligne['montant']) }}
-                                </td>
-                                <td style="font-size:12px; color:#2563EB; font-weight:600;">Saisi ici</td>
-                                <td style="text-align:right;">
-                                    @if ($ligne['lien'])
-                                        <a href="{{ $ligne['lien'] }}" wire:navigate class="bouton bouton-secondaire"
-                                            style="padding:3px 9px; font-size:11.5px; text-decoration:none;">Détail</a>
-                                    @endif
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    @endif
 
     {{-- Le choix de la caisse ne s'affiche que là où il y en a plusieurs : ailleurs, une
          liste à un seul élément fait croire qu'il existe un second choix caché. --}}
@@ -582,7 +859,7 @@ $saisiesHorsJournal = computed(function () {
     <div class="carte">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
             <h3 style="font-size:15px; font-weight:700; margin:0;">
-                Mouvements ({{ number_format($this->detail->total(), 0, ',', ' ') }})
+                Mouvements ({{ number_format($this->mouvements->count(), 0, ',', ' ') }})
             </h3>
 
             <div style="display:flex; gap:9px; flex-wrap:wrap;">
@@ -593,6 +870,23 @@ $saisiesHorsJournal = computed(function () {
                     <option value="" @selected($sensFiltre === '')>Entrées et sorties</option>
                     <option value="entree" @selected($sensFiltre === 'entree')>Entrées seulement</option>
                     <option value="sortie" @selected($sensFiltre === 'sortie')>Sorties seulement</option>
+                </select>
+
+                {{-- **Un seul tableau, et ce filtre pour n'en voir qu'une sorte.** Demandé
+                     le 29/09 : « les deux tableaux doivent rester en un, mais à travers le
+                     filtre on pourra retirer ». C'est un filtre de l'écran et non un
+                     « autre filtre » : les deux sources vivent dans des tables différentes,
+                     et choisir revient à ne pas lire l'une, pas à poser une condition. --}}
+                <select wire:model.live="origineFiltre" class="champ">
+                    <option value="" @selected($origineFiltre === '')>
+                        Journal et saisies ({{ $this->mouvementsDuJournal->count() + $this->saisiesEnEspeces->count() }})
+                    </option>
+                    <option value="journal" @selected($origineFiltre === 'journal')>
+                        Journal du logiciel ({{ $this->mouvementsDuJournal->count() }})
+                    </option>
+                    <option value="saisie" @selected($origineFiltre === 'saisie')>
+                        Saisi ici ({{ $this->saisiesEnEspeces->count() }})
+                    </option>
                 </select>
 
                 {{-- Les colonnes du journal qu'aucun filtre ne couvre : la caisse, le type de
@@ -620,15 +914,22 @@ $saisiesHorsJournal = computed(function () {
                             <th>Caisse</th>
                         @endif
                         <th>Ville</th>
+                        {{-- D'où vient la ligne. Les deux sources sont dans le même tableau
+                             depuis le 29/09 : deux tableaux côte à côte obligeaient à lire
+                             deux fois et à rapprocher de tête ce qui s'est passé ce jour-là. --}}
+                        <th>Origine</th>
                         <th style="text-align:right;">Montant</th>
                         {{-- Le solde que le fichier affiche après cette ligne. Recopié, jamais
-                             recalculé : c'est ce que la caisse déclarait à cet instant. --}}
-                        <th class="colonne-collee" style="text-align:right;">Solde</th>
+                             recalculé : c'est ce que la caisse déclarait à cet instant. Une
+                             écriture saisie ici n'en a pas — le logiciel ne la connaît pas
+                             encore — et sa case reste vide plutôt que de porter un nombre
+                             calculé qu'on prendrait pour une annonce. --}}
+                        <th class="colonne-collee" style="text-align:right;">Solde annoncé</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse ($this->detail as $ligne)
-                        <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                        <tr wire:key="{{ $ligne->cle }}" style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                             <td style="white-space:nowrap;">{{ $ligne->date?->format('d/m/Y') ?? '—' }}</td>
                             @if ($this->colonnesDuFichier['piece'])
                                 <td style="white-space:nowrap; font-variant-numeric:tabular-nums;"
@@ -647,7 +948,7 @@ $saisiesHorsJournal = computed(function () {
                                 <td style="color:#4B4E55;">{{ $ligne->motif ?: '—' }}</td>
                             @endif
                             <td>{{ $ligne->libelle ?: '—' }}</td>
-                            <td style="color:#6B6E76;">{{ $ligne->tiers() ?: '—' }}</td>
+                            <td style="color:#6B6E76;">{{ $ligne->tiers ?: '—' }}</td>
                             <td style="color:#6B6E76;">
                                 @if ($ligne->immatriculation)
                                     {{-- La plaque mène au dossier du véhicule : c'est le geste
@@ -662,6 +963,18 @@ $saisiesHorsJournal = computed(function () {
                                 <td style="color:#6B6E76;">{{ $ligne->caisse ?: '—' }}</td>
                             @endif
                             <td style="color:#6B6E76;">{{ $ligne->ville?->nom ?? '—' }}</td>
+                            <td style="white-space:nowrap; font-size:12px;">
+                                @if ($ligne->origine === 'saisie')
+                                    @if ($ligne->lien)
+                                        <a href="{{ $ligne->lien }}" wire:navigate
+                                           style="color:#2563EB; font-weight:600;">Saisi ici</a>
+                                    @else
+                                        <span style="color:#2563EB; font-weight:600;">Saisi ici</span>
+                                    @endif
+                                @else
+                                    <span style="color:#6B6E76;">Journal</span>
+                                @endif
+                            </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $ligne->sens === 'entree' ? '#1E7B34' : '#C8102E' }};">
                                 {{ ae($ligne->montant) }}
@@ -672,8 +985,8 @@ $saisiesHorsJournal = computed(function () {
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="8 + count(array_filter($this->colonnesDuFichier))"
-                            texte="Aucun mouvement de caisse sur cette période. Les états de caisse se déposent depuis le module Import." />
+                        <x-table-vide :colspan="9 + count(array_filter($this->colonnesDuFichier))"
+                            texte="Aucun mouvement de caisse sur cette période. Les états de caisse se déposent depuis le module Import, et les mouvements du jour se saisissent avec les boutons du haut." />
                     @endforelse
                 </tbody>
             </table>
@@ -682,7 +995,7 @@ $saisiesHorsJournal = computed(function () {
         {{-- Paginé par `$set` et non par un lien : le paginateur d'Eloquent rend de vraies
              ancres `?pageDetail=2`, qui rechargent la page et la ramènent en haut — on
              perdait la ligne qu'on était en train de lire à chaque page tournée. --}}
-        <x-pagination :page="$this->detail->currentPage()" :total="$this->detail->total()"
+        <x-pagination :page="$pageDetail" :total="$this->mouvements->count()"
             prop="pageDetail" :par-page="25" />
     </div>
 </div>
