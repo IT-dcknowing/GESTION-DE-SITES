@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Collection;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
@@ -40,12 +41,20 @@ state(['villeFiltre' => ''])->url(except: '');
 state(['pageAbsentes' => 1]);
 state(['pageOrphelines' => 1]);
 
+/*
+ * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+ * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se sérialise
+ * pas lisiblement dans une URL, pour un gain nul.
+ */
+state(['filtresLibres' => []]);
+
 mount(function () {
     $this->exercice ??= EtatDesImpayes::exerciceOuvert(auth()->user()->entreprise_id);
 });
 
 $updatedExercice = function () { $this->pageAbsentes = 1; $this->pageOrphelines = 1; };
 $updatedVilleFiltre = function () { $this->pageAbsentes = 1; $this->pageOrphelines = 1; };
+$updatedFiltresLibres = function () { $this->pageAbsentes = 1; $this->pageOrphelines = 1; };
 
 $annee = computed(fn () => (int) ($this->exercice ?: now()->year));
 
@@ -137,6 +146,33 @@ $indicateurs = computed(function () {
     ];
 });
 
+/**
+ * Les colonnes des deux listes qu'aucun filtre du haut ne couvre.
+ *
+ * **Un seul panneau pour les deux tableaux, et c'est voulu.** « Facturé mais non suivi » et
+ * « Créances sans facture » portent les mêmes colonnes — date, n° de facture, tiers, plaque,
+ * montant — parce qu'elles décrivent les deux moitiés du même écart. Deux panneaux séparés
+ * feraient chercher lequel des deux vient d'agir ; un seul filtre les deux, et la page
+ * répond alors à une question unique : « cet écart, sur ce client-là ».
+ *
+ * **Le filtre est posé en mémoire, et il n'y a pas d'autre choix ici.** Les deux listes ne
+ * sont pas des requêtes : elles naissent d'une comparaison clé par clé entre deux
+ * populations déjà chargées — une facture est « non suivie » parce qu'aucune créance ne
+ * porte son couple plaque + montant. Cette appartenance n'existe dans aucune colonne.
+ *
+ * Le reste à payer n'y est pas : il se calcule par `Recouvrement::reste()` à chaque lecture,
+ * et n'est une colonne ni en base ni dans la ligne.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'date' => FiltreLibre::colonne('Date de la facture', 'date'),
+    'n_facture' => FiltreLibre::colonne('N° de facture'),
+    'client' => FiltreLibre::colonne('Client'),
+    'assureur' => FiltreLibre::colonne('Assureur'),
+    'courtier' => FiltreLibre::colonne('Courtier'),
+    'immatriculation' => FiltreLibre::colonne('Immatriculation'),
+    'montant' => FiltreLibre::colonne('Montant', 'nombre'),
+]);
+
 /** Les clés du pont présentes de chaque côté, pour ne les calculer qu'une fois. */
 $clesImpayes = computed(fn () => $this->populations['impayes']
     ->map(fn (Facture $f) => EtatDesImpayes::clePont($f))
@@ -160,14 +196,18 @@ $clesCa = computed(fn () => $this->populations['ca']
  * Une facture sans immatriculation ne peut pas être rapprochée : elle est comptée à part
  * plutôt que déclarée non suivie, parce qu'on ne sait pas.
  */
-$absentes = computed(fn () => $this->populations['ca']
-    ->filter(function (Facture $f) {
-        $cle = EtatDesImpayes::clePont($f);
+$absentes = computed(fn () => FiltreLibre::filtrerCollection(
+    $this->populations['ca']
+        ->filter(function (Facture $f) {
+            $cle = EtatDesImpayes::clePont($f);
 
-        return $cle !== null && ! $this->clesImpayes->has($cle);
-    })
-    ->sortByDesc('montant')
-    ->values());
+            return $cle !== null && ! $this->clesImpayes->has($cle);
+        })
+        ->sortByDesc('montant')
+        ->values(),
+    $this->colonnesFiltrables,
+    (array) $this->filtresLibres,
+));
 
 $sansPlaque = computed(fn () => $this->populations['ca']
     ->filter(fn (Facture $f) => EtatDesImpayes::clePont($f) === null)
@@ -181,14 +221,18 @@ $sansPlaque = computed(fn () => $this->populations['ca']
  * repris. Sur les fichiers d'origine, c'est la seconde qui domine — le CATTC repris ne porte
  * que 2026, l'état des impayés remonte à 2022.
  */
-$orphelines = computed(fn () => $this->populations['impayes']
-    ->filter(function (Facture $f) {
-        $cle = EtatDesImpayes::clePont($f);
+$orphelines = computed(fn () => FiltreLibre::filtrerCollection(
+    $this->populations['impayes']
+        ->filter(function (Facture $f) {
+            $cle = EtatDesImpayes::clePont($f);
 
-        return $cle !== null && ! $this->clesCa->has($cle);
-    })
-    ->sortByDesc(fn (Facture $f) => Recouvrement::reste($f))
-    ->values());
+            return $cle !== null && ! $this->clesCa->has($cle);
+        })
+        ->sortByDesc(fn (Facture $f) => Recouvrement::reste($f))
+        ->values(),
+    $this->colonnesFiltrables,
+    (array) $this->filtresLibres,
+));
 
 /** Le rapprochement lieu par lieu : c'est là qu'un atelier qui ne suit pas se voit. */
 $parSite = computed(function () {
@@ -249,7 +293,25 @@ $parSite = computed(function () {
             @if (! $this->villeUnique && $this->mesVilles !== [])
                 <x-champ label="Ville" model="villeFiltre" type="select" :options="$this->mesVilles" vide="Toutes" :live="true" width="180" />
             @endif
+
+            {{-- Demandé le 29/09. Ce panneau gouverne **les deux listes du bas** — elles
+                 portent les mêmes colonnes et décrivent les deux moitiés du même écart.
+                 Posé nu dans la barre : le composant est en `display:contents` pour que son
+                 panneau devienne un enfant direct de cette barre et prenne sa propre ligne —
+                 l'entourer d'un `div` l'y enfermerait. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
+
+        @if (FiltreLibre::compter($this->colonnesFiltrables, (array) $filtresLibres) > 0)
+            {{-- Les quatre indicateurs comptent les populations entières, et n'ont pas à
+                 suivre ce filtre : le taux de suivi de l'année est le taux de l'année, pas
+                 celui d'un client. Le dire évite de chercher pourquoi ils ne bougent pas. --}}
+            <p style="margin:12px 0 0; font-size:12.5px; color:#6B6E76; line-height:1.55;">
+                Un filtre de colonne est posé : il réduit <b>les deux listes du bas</b>. Les
+                indicateurs et le tableau par atelier continuent de porter l'année entière —
+                un taux de suivi ne se lit pas sur une sélection.
+            </p>
+        @endif
     </div>
 
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">

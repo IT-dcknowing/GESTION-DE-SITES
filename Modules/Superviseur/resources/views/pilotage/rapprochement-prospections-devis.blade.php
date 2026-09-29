@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Devis;
@@ -73,11 +74,19 @@ state(['page' => 1]);
 state(['message' => '']);
 state(['erreur' => '']);
 
+/*
+ * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+ * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se sérialise
+ * pas lisiblement dans une URL, pour un gain nul.
+ */
+state(['filtresLibres' => []]);
+
 $updatedFenetre = function () { $this->oublier(); };
 $updatedFenetreFacture = function () { $this->oublier(); };
 $updatedVolet = function () { $this->motifFiltre = ''; $this->oublier(); };
 $updatedMotifFiltre = function () { $this->oublier(); };
 $updatedPage = function () { $this->selection = []; };
+$updatedFiltresLibres = function () { $this->oublier(); };
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; $this->oublier(); };
 $updatedSemaineFiltre = function () { $this->jourFiltre = ''; $this->oublier(); };
 $updatedJourFiltre = function () { $this->oublier(); };
@@ -104,6 +113,50 @@ $villeUnique = computed(fn () => PerimetreSites::villeUnique(auth()->user()));
 $idsSites = computed(fn () => PerimetreSites::idsRetenus(auth()->user(), $this->villeFiltre, ''));
 $idsSitesDuCompte = computed(fn () => PerimetreSites::idsRetenus(auth()->user(), '', ''));
 
+/**
+ * Les colonnes des propositions qu'aucun filtre du haut ne couvre — **celles du volet ouvert**.
+ *
+ * **Deux jeux, et non un seul, parce que les deux volets ne portent pas les mêmes pièces.**
+ * Le premier propose un couple prospection + devis, le second un couple facture + devis. La
+ * seule colonne commune est l'écart en jours ; tout le reste change de nom et de sens — le
+ * « client » du volet 1 est celui qu'un commercial est allé visiter, celui du volet 2 est
+ * celui qu'on a facturé. Offrir les deux jeux à la fois ferait proposer des colonnes absentes
+ * du tableau qu'on regarde, et un filtre posé dessus ne rendrait rien sans dire pourquoi.
+ *
+ * **Le point dans le nom n'est pas un piège ici, il est le chemin.** Une ligne de proposition
+ * n'est pas un enregistrement : c'est un tableau à deux pièces. `devis.montant_devis` se lit
+ * donc littéralement — `data_get()` descend dans la ligne. Côté navigateur, le point devient
+ * un double blanc souligné, comme partout ailleurs : Livewire y verrait sinon un chemin dans
+ * son état. Voir `FiltreLibre::alias()`.
+ *
+ * **Ce qu'on ne pouvait pas demander** : « les propositions au-dessus d'un million ». Sur une
+ * liste où l'on confirme à la main, l'ordre de traitement compte — deux cents propositions ne
+ * se traitent pas d'un coup, et celles qui portent le chiffre d'affaires méritent le premier
+ * regard. Le montant et l'écart se cherchent donc par tranche.
+ */
+$colonnesFiltrables = computed(fn () => $this->volet === 'factures'
+    ? [
+        'facture.n_facture' => FiltreLibre::colonne('N° de facture'),
+        'facture.client' => FiltreLibre::colonne('Client facturé'),
+        'facture.immatriculation' => FiltreLibre::colonne('Immatriculation'),
+        'facture.montant' => FiltreLibre::colonne('Montant facturé', 'nombre'),
+        'devis.numero' => FiltreLibre::colonne('N° du devis proposé'),
+        'devis.montant_devis' => FiltreLibre::colonne('Montant du devis', 'nombre'),
+        'devis.date_emission' => FiltreLibre::colonne('Devis émis le', 'date'),
+        'ecart' => FiltreLibre::colonne('Écart en jours', 'nombre'),
+    ]
+    : [
+        'prospection.numero' => FiltreLibre::colonne('N° de prospection'),
+        'prospection.client' => FiltreLibre::colonne('Client visité'),
+        'prospection.immatriculation' => FiltreLibre::colonne('Immatriculation'),
+        'prospection.date' => FiltreLibre::colonne('Date de la prospection', 'date'),
+        'devis.numero' => FiltreLibre::colonne('N° du devis proposé'),
+        'devis.client' => FiltreLibre::colonne('Client du devis'),
+        'devis.montant_devis' => FiltreLibre::colonne('Montant du devis', 'nombre'),
+        'devis.date_emission' => FiltreLibre::colonne('Devis émis le', 'date'),
+        'ecart' => FiltreLibre::colonne('Écart en jours', 'nombre'),
+    ]);
+
 $propositions = computed(function () {
     $lignes = RapprochementProspectionDevis::propositions(
         $this->idsSites, (int) $this->fenetre, 200, $this->plage,
@@ -113,7 +166,16 @@ $propositions = computed(function () {
         $lignes = $lignes->where('motif', $this->motifFiltre)->values();
     }
 
-    return $lignes;
+    /*
+     * Posé en mémoire, et il n'y a pas d'autre endroit : une proposition n'est pas une ligne
+     * de table. Elle naît d'une comparaison entre une prospection et les devis des jours qui
+     * la suivent, et « l'écart en jours » comme « le devis proposé » n'existent qu'ici.
+     *
+     * C'est aussi ce qui borne la sélection, et il faut que ce soit posé ici pour cela :
+     * cocher porte sur ce que les filtres retiennent, celui-ci compris. Appliqué plus tard,
+     * « tout cocher » cocherait des lignes que le tableau ne montre pas.
+     */
+    return FiltreLibre::filtrerCollection($lignes, $this->colonnesFiltrables, (array) $this->filtresLibres);
 });
 
 /**
@@ -131,7 +193,7 @@ $propositionsFactures = computed(function () {
         $lignes = $lignes->where('motif', $this->motifFiltre)->values();
     }
 
-    return $lignes;
+    return FiltreLibre::filtrerCollection($lignes, $this->colonnesFiltrables, (array) $this->filtresLibres);
 });
 
 /** Combien de factures ne sont comptées à personne — le chiffre qui a motivé ce volet. */
@@ -449,6 +511,11 @@ $confirmerLesCertains = function () {
             <x-champ label="Rapprochement par" model="motifFiltre" type="select" :live="true" width="230"
                 :options="\Modules\Noyau\Exploitation\Services\RapprochementProspectionDevis::MOTIFS" vide="Toutes les pistes" />
 
+            {{-- Les colonnes du couple prospection + devis. Demandé le 29/09. Posé nu dans la
+                 barre : le composant est en `display:contents` pour que son panneau devienne
+                 un enfant direct de cette barre et prenne sa propre ligne. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
+
             @if ($this->propositions->whereIn('motif', \Modules\Noyau\Exploitation\Services\RapprochementProspectionDevis::MOTIFS_CERTAINS)->isNotEmpty())
                 <button type="button" wire:click="confirmerLesCertains" class="bouton bouton-sombre"
                     style="padding:9px 16px; white-space:nowrap;">
@@ -593,6 +660,10 @@ $confirmerLesCertains = function () {
 
                 <x-champ label="Rapprochement par" model="motifFiltre" type="select" :live="true" width="250"
                     :options="\Modules\Noyau\Exploitation\Services\RapprochementDevisFacture::MOTIFS" vide="Toutes les pistes" />
+
+                {{-- Les colonnes du couple facture + devis — celles de ce volet, et non celles
+                     du premier : les deux ne portent pas les mêmes pièces. Demandé le 29/09. --}}
+                <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
 
                 @if ($this->propositionsFactures->whereIn('motif', \Modules\Noyau\Exploitation\Services\RapprochementDevisFacture::MOTIFS_CERTAINS)->isNotEmpty())
                     <button type="button" wire:click="confirmerLesFacturesCertaines" class="bouton bouton-sombre"

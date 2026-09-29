@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Imports\Modeles\SoldeFournisseur;
 
 use function Livewire\Volt\{computed, state};
@@ -26,8 +27,35 @@ state(['recherche' => ''])->url(except: '');
 state(['ecartsSeulement' => false])->url(except: false);
 state(['page' => 1]);
 
+/*
+ * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+ * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se sérialise
+ * pas lisiblement dans une URL, pour un gain nul.
+ */
+state(['filtresLibres' => []]);
+
 $updatedRecherche = function () { $this->page = 1; };
 $updatedEcartsSeulement = function () { $this->page = 1; };
+$updatedFiltresLibres = function () { $this->page = 1; };
+
+/**
+ * Les colonnes de cette balance qu'aucun filtre du haut ne couvre.
+ *
+ * Trois, et ce sont des montants : la recherche prend le nom, la case à cocher prend
+ * l'écart, et il ne reste que le débit, le crédit et le solde. On les cherche par tranche —
+ * « les comptes qui dépassent deux millions » est la question qu'un comptable pose à une
+ * balance ; « exactement 2 134 500 » n'est la question de personne.
+ *
+ * Le solde **annoncé** est celui qu'on filtre, et non le recalculé : le recalcul et l'écart
+ * se font à la lecture, ligne par ligne, et n'existent dans aucune colonne — la base ne
+ * peut donc pas les comparer. C'est déjà pour cela que la case « comptes en écart » filtre
+ * la collection et non la requête.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'soldes_fournisseur.debit' => FiltreLibre::colonne('Débit', 'nombre'),
+    'soldes_fournisseur.credit' => FiltreLibre::colonne('Crédit', 'nombre'),
+    'soldes_fournisseur.solde' => FiltreLibre::colonne('Solde annoncé', 'nombre'),
+]);
 
 /**
  * Les soldes, chacun avec son recalcul et son écart.
@@ -42,6 +70,10 @@ $lignes = computed(function () {
     if (trim($this->recherche) !== '') {
         $requete->where('fournisseur', 'like', '%'.trim($this->recherche).'%');
     }
+
+    // Posés sur la requête, donc avant le `get()` : filtrer la collection ensuite
+    // ramènerait toute la balance pour n'en garder que trois lignes.
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
 
     $lignes = $requete->orderByDesc('solde')->get()->map(function ($ligne) {
         $recalcule = (int) $ligne->credit - (int) $ligne->debit;
@@ -96,6 +128,9 @@ $totaux = computed(fn () => [
         <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
             <x-champ label="Rechercher un fournisseur" model="recherche" :live="true" placeholder="Nom du fournisseur…" />
             <x-champ label="Comptes en écart seulement" model="ecartsSeulement" type="checkbox" live="true" />
+
+            {{-- Les montants, par tranche. Demandé le 29/09 pour cette page nommément. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
 
         @if ($this->lignes->isEmpty() && $recherche === '' && ! $ecartsSeulement)

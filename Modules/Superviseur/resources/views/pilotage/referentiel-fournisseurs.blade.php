@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
@@ -48,13 +49,50 @@ state(['recherche' => ''])->url(except: '');
 state(['sansTerme' => false])->url(except: false);
 state(['page' => 1]);
 
+/*
+ * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+ * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se sérialise
+ * pas lisiblement dans une URL, pour un gain nul.
+ */
+state(['filtresLibres' => []]);
+
 $updatedRecherche = function () { $this->page = 1; };
 $updatedSansTerme = function () { $this->page = 1; };
+$updatedFiltresLibres = function () { $this->page = 1; };
 
 /* La fiche en cours de correction, et les trois champs corrigeables. */
 state(['ficheId' => null, 'nom' => '', 'delai' => '', 'tva' => '', 'note' => '']);
 
 $peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()));
+
+/**
+ * Les colonnes de cette liste qu'aucun filtre du haut ne couvre.
+ *
+ * **Le code y figure, et c'est le filtre qui manquait le plus.** La recherche du haut ne
+ * cherche que dans le nom ; or on arrive ici avec un code sous les yeux — sur une pièce, dans
+ * un message — et l'on veut savoir de qui il s'agit. On ne pouvait pas le demander.
+ *
+ * **La TVA est déclarée `videEstNull`, et ce n'est pas un détail.** C'est une colonne
+ * booléenne : « — non renseigné — » traduit d'ordinaire par « nul ou vide » aurait aussi
+ * rendu toutes les fiches **non assujetties**, MySQL comparant `''` à `0`. On aurait lu une
+ * liste de fiches à compléter dont la plupart étaient complètes. Voir `FiltreLibre::colonne()`.
+ *
+ * « Échéance comptée » n'y est pas : elle n'est pas une colonne mais la lecture du libellé,
+ * refaite à l'affichage. Les jours qui la composent, eux, se filtrent.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'referentiel_fournisseurs.code' => FiltreLibre::colonne('Code du fournisseur'),
+    'referentiel_fournisseurs.delai_reglement' => FiltreLibre::colonne('Terme de règlement'),
+    'referentiel_fournisseurs.note' => FiltreLibre::colonne('Note du classeur'),
+    'referentiel_fournisseurs.source_feuille' => FiltreLibre::colonne('Feuille d’origine'),
+    'referentiel_fournisseurs.jours_reglement' => FiltreLibre::colonne('Jours de règlement', 'nombre'),
+    'referentiel_fournisseurs.assujetti_tva' => FiltreLibre::colonne(
+        'TVA', 'liste', ['1' => 'Assujetti', '0' => 'Non assujetti'], videEstNull: true,
+    ),
+    'referentiel_fournisseurs.fin_de_mois' => FiltreLibre::colonne(
+        'Échéance en fin de mois', 'liste', ['1' => 'Oui', '0' => 'Non'], videEstNull: true,
+    ),
+]);
 
 $fiche = computed(fn () => $this->ficheId === null
     ? null
@@ -146,6 +184,8 @@ $fiches = computed(function () {
     if ($this->sansTerme) {
         $requete->whereNull('jours_reglement');
     }
+
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
 
     return $requete->orderBy('nom')->get();
 });
@@ -327,6 +367,12 @@ $orphelins = computed(fn () => ConditionsFournisseur::sansFiche(
         <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
             <x-champ label="Rechercher un fournisseur" model="recherche" :live="true" placeholder="Nom du fournisseur…" />
             <x-champ label="Sans terme de règlement seulement" model="sansTerme" type="checkbox" live="true" />
+
+            {{-- Le code, la note, les jours, la TVA. Demandé le 29/09 pour cette page
+                 nommément. Posé nu dans la barre : le composant est en `display:contents`
+                 pour que son panneau devienne un enfant direct de cette barre et prenne sa
+                 propre ligne — l'entourer d'un `div` l'y enfermerait. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
 
         @if ($this->totaux['fiches'] === 0)

@@ -106,6 +106,21 @@ $plage = computed(fn () => PeriodeCalculateur::plage(
 ));
 
 $mesVilles = computed(fn () => PerimetreSites::optionsVilles(auth()->user()));
+
+/*
+ * Les villes **du formulaire de saisie**, en `id => nom`.
+ *
+ * `optionsVilles()` rend des modèles Ville, et le filtre de période sait les lire : il
+ * parcourt la collection et prend `$ville->nom`. Le composant `x-champ`, lui, parcourt ses
+ * options en `valeur => libellé` : donnez-lui des modèles et il affiche la clé numérique de
+ * la collection en valeur et **le modèle lui-même en libellé**, que Blade rend alors en
+ * JSON. C'est la liste illisible relevée le 29/09.
+ *
+ * Elle rend un tableau vide plutôt que null, et ce n'est pas du zèle : la vue compte ces
+ * villes pour décider d'afficher le champ, et `count(null)` est fatal en PHP 8 — le
+ * formulaire entier serait tombé pour un chef d'atelier qui ne voit qu'une ville.
+ */
+$villesDeSaisie = computed(fn () => $this->mesVilles?->pluck('nom', 'id')->all() ?? []);
 $villeUnique = computed(fn () => PerimetreSites::villeUnique(auth()->user()));
 $idsVilles = computed(fn () => PerimetreSites::idsVillesRetenus(auth()->user(), $this->villeFiltre));
 $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->user(), $this->villeFiltre));
@@ -711,9 +726,9 @@ $mouvements = computed(function () {
                     model="saisieTiers" width="220" />
                 <x-champ label="Référence" model="saisieReference" width="170"
                     placeholder="Reçu, bordereau…" />
-                @if (count($this->mesVilles) > 1)
+                @if (count($this->villesDeSaisie) > 1)
                     <x-champ label="Ville" model="saisieVilleId" type="select"
-                        :options="$this->mesVilles" :requis="true" width="170" />
+                        :options="$this->villesDeSaisie" :requis="true" width="170" />
                 @endif
                 <button type="button" wire:click="enregistrerLaSaisie" class="bouton">Enregistrer</button>
                 <button type="button" wire:click="fermerLaSaisie" class="bouton bouton-secondaire">Annuler</button>
@@ -782,7 +797,7 @@ $mouvements = computed(function () {
     @if (count($this->caisses) > 1)
         <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:14px;">
             <span style="font-size:12.5px; color:#6B6E76;">Caisse</span>
-            <select wire:model.live="caisseFiltre" class="champ" style="min-width:220px;">
+            <select wire:model.live="caisseFiltre" class="champ" style="width:auto;">
                 <option value="" @selected($caisseFiltre === '')>Toutes les caisses</option>
                 @foreach ($this->caisses as $uneCaisse)
                     <option value="{{ $uneCaisse }}" @selected($caisseFiltre === $uneCaisse)>{{ $uneCaisse }}</option>
@@ -864,7 +879,7 @@ $mouvements = computed(function () {
 
             <div style="display:flex; gap:9px; flex-wrap:wrap;">
                 <input type="search" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}"
-                    placeholder="Libellé, bénéficiaire, immatriculation…" class="champ" style="min-width:260px;">
+                    placeholder="Libellé, bénéficiaire…" class="champ" style="width:auto; min-width:0; flex:0 1 230px;">
 
                 <select wire:model.live="sensFiltre" class="champ">
                     <option value="" @selected($sensFiltre === '')>Entrées et sorties</option>

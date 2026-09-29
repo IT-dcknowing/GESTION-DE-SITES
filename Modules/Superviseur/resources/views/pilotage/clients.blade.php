@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ExerciceDeTravail;
@@ -28,6 +29,12 @@ state([
     'villeFiltre' => '',
     'siteFiltre' => '',
     'page' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 /*
@@ -74,6 +81,31 @@ $sites = computed(fn () => $this->villeFiltre === ''
 
 $parPage = computed(fn () => 30);
 
+/**
+ * Les colonnes de cet annuaire qu'aucun filtre du haut ne couvre.
+ *
+ * **Sans nom de table, parce qu'aucune table ne porte ces colonnes.** L'annuaire des clients
+ * est un rapprochement : il additionne les factures et les fiches d'atelier d'un même nom,
+ * compte les véhicules distincts et retient la dernière visite. « Factures », « Fiches »,
+ * « Véhicules » sont des comptages faits en mémoire. Le filtre se pose donc sur les lignes
+ * en main, par `FiltreLibre::filtrerCollection()`.
+ *
+ * **Ce sont les questions qu'on posait en exportant.** « Qui n'est venu qu'une fois »,
+ * « qui a plus de trois véhicules », « qui n'est pas revenu depuis six mois » : trois
+ * questions de fidélisation qu'un annuaire devrait savoir répondre, et qui demandaient
+ * jusqu'ici d'ouvrir le fichier dans un tableur.
+ *
+ * La colonne « Ateliers » n'y est pas : elle porte une liste de noms, pas une valeur — et la
+ * ville comme l'atelier ont déjà leur filtre au-dessus.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'factures' => FiltreLibre::colonne('Nombre de factures', 'nombre'),
+    'montant' => FiltreLibre::colonne('Montant facturé', 'nombre'),
+    'fiches' => FiltreLibre::colonne('Nombre de fiches', 'nombre'),
+    'vehicules' => FiltreLibre::colonne('Véhicules distincts', 'nombre'),
+    'derniere' => FiltreLibre::colonne('Dernière facture', 'date'),
+]);
+
 $annuaire = computed(fn () => (new AnnuaireDesClients((int) auth()->user()->entreprise_id))->lignes(
     $this->villeFiltre === '' ? null : (int) $this->villeFiltre,
     $this->siteFiltre === '' ? null : (int) $this->siteFiltre,
@@ -83,11 +115,13 @@ $annuaire = computed(fn () => (new AnnuaireDesClients((int) auth()->user()->entr
 $lignes = computed(function () {
     $cherche = trim(mb_strtolower($this->recherche));
 
-    return $this->annuaire
+    $lignes = $this->annuaire
         ->when($cherche !== '', fn ($lignes) => $lignes->filter(
             fn (array $c) => str_contains(mb_strtolower($c['nom']), $cherche),
         ))
         ->values();
+
+    return FiltreLibre::filtrerCollection($lignes, $this->colonnesFiltrables, (array) $this->filtresLibres);
 });
 
 $pageCourante = computed(fn () => min(
@@ -109,6 +143,7 @@ $totaux = computed(fn () => [
 $updatedRecherche = function () { $this->page = 1; };
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; $this->page = 1; };
 $updatedSiteFiltre = function () { $this->page = 1; };
+$updatedFiltresLibres = function () { $this->page = 1; };
 
 ?>
 
@@ -200,6 +235,15 @@ $updatedSiteFiltre = function () { $this->page = 1; };
                     @endif
                 </select>
             </div>
+        </div>
+
+        {{-- **Sur sa propre rangée, et non dans la grille au-dessus.** Demandé le 29/09. Le
+             panneau du composant prend toute la largeur de son conteneur pour pousser le
+             tableau au lieu de le couvrir ; dans une grille à trois colonnes, « toute la
+             largeur » vaut une seule cellule, et le panneau s'y replierait sur un tiers de
+             l'écran. Une rangée en `flex-wrap` lui rend sa ligne entière. --}}
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px;">
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
 
         @if ($villeFiltre !== '' || $siteFiltre !== '')

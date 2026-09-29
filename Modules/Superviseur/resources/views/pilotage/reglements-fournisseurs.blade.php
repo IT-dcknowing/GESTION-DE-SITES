@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Imports\Modeles\ReglementFournisseur;
 
@@ -25,9 +26,56 @@ state(['dateDebut' => ''])->url(except: '');
 state(['dateFin' => ''])->url(except: '');
 state(['page' => 1]);
 
+/*
+ * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+ * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se sérialise
+ * pas lisiblement dans une URL, pour un gain nul.
+ */
+state(['filtresLibres' => []]);
+
 $updatedRecherche = function () { $this->page = 1; };
 $updatedDateDebut = function () { $this->page = 1; };
 $updatedDateFin = function () { $this->page = 1; };
+$updatedFiltresLibres = function () { $this->page = 1; };
+
+/**
+ * Les modes de règlement réellement présents, pour la liste déroulante.
+ *
+ * Lus dans le fichier et non écrits à la main : le logiciel comptable les nomme comme il
+ * veut — « CHQ », « Chèque », « VIREMENT BANCAIRE » — et une liste tenue ici finirait par
+ * proposer un mode que l'export n'emploie plus, ou par taire celui qu'il vient d'introduire.
+ * Ils ne se comptent pas par centaines : la liste reste courte.
+ */
+$modesDeReglement = computed(function () {
+    $modes = ReglementFournisseur::query()
+        ->where('entreprise_id', auth()->user()->entreprise_id)
+        ->whereNotNull('mode_reglement')
+        ->where('mode_reglement', '!=', '')
+        ->distinct()
+        ->orderBy('mode_reglement')
+        ->pluck('mode_reglement')
+        ->all();
+
+    return array_combine($modes, $modes) ?: [];
+});
+
+/**
+ * Les colonnes de cette liste qu'aucun filtre du haut ne couvre.
+ *
+ * La recherche du haut cherche dans trois colonnes **à la fois** — fournisseur, code et
+ * mode — et c'est bien ce qu'on veut quand on ne sait pas où regarder. Elle ne sait pas
+ * faire l'inverse : « les virements de ce fournisseur-là », deux conditions qui doivent
+ * tenir ensemble. C'est ce que ces quatre colonnes ajoutent, le montant par tranche avec.
+ *
+ * La date n'y est pas : les deux bornes du haut sont ce filtre-là, et la proposer deux fois
+ * laisserait poser deux intervalles contradictoires sur la même colonne.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'reglements_fournisseur.fournisseur' => FiltreLibre::colonne('Fournisseur'),
+    'reglements_fournisseur.code_reglement' => FiltreLibre::colonne('Code de règlement'),
+    'reglements_fournisseur.mode_reglement' => FiltreLibre::colonne('Mode de règlement', 'liste', $this->modesDeReglement),
+    'reglements_fournisseur.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+]);
 
 $lignes = computed(function () {
     $requete = ReglementFournisseur::query()->where('entreprise_id', auth()->user()->entreprise_id);
@@ -49,6 +97,8 @@ $lignes = computed(function () {
     if ($jusqua = PeriodeCalculateur::borne($this->dateFin, true)) {
         $requete->whereDate('date_reglement', '<=', $jusqua->toDateString());
     }
+
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
 
     return $requete->orderByDesc('date_reglement')->orderByDesc('id')->get();
 });
@@ -89,6 +139,14 @@ $totaux = computed(fn () => [
                 placeholder="Fournisseur, code de règlement, mode…" />
             <x-champ label="Du" model="dateDebut" type="date" :live="true" width="150" />
             <x-champ label="au" model="dateFin" type="date" :live="true" width="150" />
+
+            {{-- Le code, le mode et le montant. Demandé le 29/09 pour cette page nommément.
+                 Posé nu dans la barre, sans conteneur : le composant est en
+                 `display:contents` pour que son panneau devienne un enfant direct de cette
+                 barre et prenne sa propre ligne. L'entourer d'un `div` le rendrait
+                 prisonnier de ce `div`, et le panneau se replierait dans la largeur d'un
+                 bouton. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
     </div>
 

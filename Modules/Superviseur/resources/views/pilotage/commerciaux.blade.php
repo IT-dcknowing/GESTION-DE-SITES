@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
@@ -19,6 +20,12 @@ state([
     'activiteFiltre' => '',
     'commercialFiltre' => '',
     'pageClassement' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 mount(function () {
@@ -30,6 +37,7 @@ $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre 
 $updatedSemaineFiltre = function () { $this->jourFiltre = ''; };
 /** Changer de ville rend caduc le lieu choisi dans la précédente. */
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; };
+$updatedFiltresLibres = function () { $this->pageClassement = 1; };
 
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin, $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null
@@ -105,6 +113,44 @@ $couvertureCommerciale = computed(function () {
     return ['total' => $total, 'attribuees' => $total === 0 ? 0 : (clone $base)->whereNotNull('commercial_id')->count()];
 });
 
+/**
+ * Les colonnes du classement qu'aucun filtre du haut ne couvre.
+ *
+ * **Sans nom de table, et il n'y en a aucune à nommer.** Ce classement ne lit pas une
+ * table : pour chaque commercial il additionne ses factures de la période, calcule
+ * l'objectif au prorata des jours, en déduit l'écart et le taux, rapporte sa réalisation au
+ * chiffre d'affaires de sa ville, puis passe chaque mois au barème en vigueur ce mois-là.
+ * **Aucune de ces colonnes n'existe en base** — pas même l'objectif, qui est un mensuel
+ * ramené à la période. Le filtre se pose donc sur les lignes en main, par
+ * `FiltreLibre::filtrerCollection()`.
+ *
+ * **Ce qu'on ne pouvait pas demander, et qui est la question de cet écran** : « qui est
+ * sous les 80 % de son objectif ». On lisait le tableau à l'œil, page par page, dix lignes
+ * à la fois. Le taux et la contribution sont des **proportions** : elles se déclarent en
+ * nombre, et se saisissent comme le tableau les affiche — 0,8 pour 80 %.
+ *
+ * Le nom du commercial n'y est pas : la liste déroulante du haut le fait déjà, et mieux —
+ * elle ne propose que des commerciaux qui existent.
+ *
+ * **La commission n'est proposée qu'à qui la voit**, et le test
+ * `test_le_classement_montre_la_commission_au_gerant_et_la_cache_aux_autres` l'a relevé tout
+ * de suite. Les colonnes du tableau se cachent déjà au non-gérant ; le panneau de filtres,
+ * lui, se rendait en entier. Deux fuites, et la seconde est la vraie : le libellé annonçait à
+ * un chef d'atelier qu'une rémunération se calcule ici, et **le filtre aurait fonctionné** —
+ * « commission d'au moins 300 000 » ne montre aucun montant, mais il désigne exactement les
+ * personnes qui les touchent. Un droit qui ne porte que sur l'affichage n'est pas un droit.
+ */
+$colonnesFiltrables = computed(fn () => array_filter([
+    'objectif' => FiltreLibre::colonne('Objectif de la période', 'nombre'),
+    'realisation' => FiltreLibre::colonne('Réalisation', 'nombre'),
+    'ecart' => FiltreLibre::colonne('Écart', 'nombre'),
+    'taux' => FiltreLibre::colonne('Taux de réalisation (0,8 = 80 %)', 'nombre'),
+    'contribution' => FiltreLibre::colonne('Contribution au CA de la ville (0,1 = 10 %)', 'nombre'),
+    'commission' => $this->voitLesCommissions
+        ? FiltreLibre::colonne('Commission de la période', 'nombre')
+        : null,
+]));
+
 $classement = computed(function () {
     [$debut, $fin] = $this->plage;
 
@@ -134,7 +180,7 @@ $classement = computed(function () {
     $anneeDeFin = $fin->format('Y');
     $entrepriseId = auth()->user()->entreprise_id;
 
-    return $commerciaux->map(function ($commercial) use ($debut, $fin, $caParVille, $caMensuel, $moisDeLaPeriode, $anneeDeFin, $entrepriseId) {
+    $lignes = $commerciaux->map(function ($commercial) use ($debut, $fin, $caParVille, $caMensuel, $moisDeLaPeriode, $anneeDeFin, $entrepriseId) {
         $lignesFactures = Facture::where('commercial_id', $commercial->id)
             ->whereIn('site_id', $this->idsSites)
             ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
@@ -192,6 +238,14 @@ $classement = computed(function () {
             'contribution' => $caVille > 0 ? $realisation / $caVille : null,
         ];
     })->sortByDesc(fn ($l) => $l['taux'] ?? -1)->values();
+
+    /*
+     * Posé après le calcul, et il ne peut pas l'être avant : les colonnes filtrées **sont**
+     * ce calcul. Les indicateurs du haut lisent ce classement, et se recomptent donc sur ce
+     * que le tableau montre — c'est la règle de la maison, un compteur ne doit jamais
+     * annoncer autre chose que ce qui est en dessous.
+     */
+    return FiltreLibre::filtrerCollection($lignes, $this->colonnesFiltrables, (array) $this->filtresLibres);
 });
 
 $kpis = computed(function () {
@@ -244,6 +298,12 @@ $graphique = computed(fn () => [
             <a href="{{ route('bareme-commission') }}" wire:navigate class="bouton bouton-secondaire"
                 style="padding:8px 14px; white-space:nowrap;">Barème de commission</a>
         @endif
+
+        {{-- « Qui est sous les 80 % de son objectif » — la question de cet écran, qu'on ne
+             pouvait pas poser. Demandé le 29/09. Dans le corps du filtre de période, qui est
+             une rangée en `flex-wrap` : le panneau du composant y prend sa propre ligne et
+             pousse le tableau au lieu de le couvrir. --}}
+        <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
     </x-filtre-periode>
 
     <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px;">

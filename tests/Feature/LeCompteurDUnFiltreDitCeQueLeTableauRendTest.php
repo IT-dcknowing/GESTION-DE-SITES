@@ -132,6 +132,47 @@ class LeCompteurDUnFiltreDitCeQueLeTableauRendTest extends TestCase
         $this->assertSame(1, $ecran->instance()->nombreDetail);
     }
 
+    /**
+     * Une facture sans atelier entre quand même dans le chiffre d'affaires.
+     *
+     * **Le défaut, relevé le 29/09** : « pourquoi dans cette page la valeur portée à
+     * l'état est 0 alors que j'ai des factures qui sont marquées porté à l'état ? »
+     *
+     * L'écran retenait ses lignes par `whereIn('site_id', …)`, et un `site_id` nul n'entre
+     * dans aucun `whereIn`. Or **8 848 des 8 852 factures portées à l'état n'ont pas
+     * d'atelier** : la colonne SITE des exports dit « ABIDJAN », et Abidjan en a deux, si
+     * bien que l'import s'arrête à la ville.
+     *
+     * Le compteur à zéro n'était donc que le symptôme. Le vrai dégât est plus grave :
+     * **le chiffre d'affaires lui-même** ne comptait pas ces factures — 2 021 sur 4 412
+     * pour le seul exercice 2026. Le total de l'écran n'était pas le chiffre d'affaires de
+     * l'entreprise, mais celui de ses factures rattachées à un atelier.
+     */
+    public function test_une_facture_sans_atelier_compte_dans_le_chiffre_d_affaires(): void
+    {
+        $avecAtelier = $this->facture('F-001', 100_000, reglee: false, importee: true);
+
+        // Celle que la colonne SITE n'a pas su ranger : sa ville est connue, son atelier non.
+        $sansAtelier = $this->facture('F-002', 400_000, reglee: false, importee: true);
+        $sansAtelier->forceFill([
+            'site_id' => null,
+            'ville_id' => $this->site->ville_id,
+            'exercice_impayes' => now()->year,
+        ])->save();
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.chiffre-affaires');
+
+        $this->assertSame(2, $ecran->instance()->nombreDetail, 'Les deux factures doivent paraître.');
+        $this->assertSame(500_000, $ecran->instance()->kpis['total'], "Le chiffre d'affaires les compte toutes.");
+
+        // Et le filtre annonce enfin ce qu'il trouvera.
+        $this->assertSame(1, $ecran->instance()->comptesParEtat['portee']);
+
+        $ecran->set('etatImpayesFiltre', 'portee');
+        $this->assertSame(1, $ecran->instance()->nombreDetail);
+        $ecran->assertSee('F-002');
+    }
+
     // ------------------------------------------------------------------ le décor
 
     private function facture(string $numero, int $montant, bool $reglee, bool $importee): Facture

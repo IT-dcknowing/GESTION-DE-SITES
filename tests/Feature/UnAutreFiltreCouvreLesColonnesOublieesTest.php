@@ -12,6 +12,7 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Imports\Modeles\FournisseurReferentiel;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -267,6 +268,154 @@ class UnAutreFiltreCouvreLesColonnesOublieesTest extends TestCase
         ]));
     }
 
+    // -------------------------------------------- les tableaux que la base n'a pas construits
+
+    /**
+     * Le même filtre, sur un tableau calculé en mémoire.
+     *
+     * **Pourquoi ce second chemin existe.** Cinq écrans ne listent pas des lignes de table :
+     * ils rapprochent. L'annuaire des fournisseurs réunit les fiches déclarées et les
+     * fournisseurs que seules les pièces connaissent ; le classement des commerciaux croise un
+     * chiffre d'affaires, un objectif au prorata et un barème. Leurs colonnes — « pièces »,
+     * « taux de réalisation » — n'existent dans aucune table, et une condition SQL n'a rien sur
+     * quoi se poser. Le propriétaire a demandé le bouton sur ces écrans comme sur les autres,
+     * et il a raison de ne pas voir la différence : elle est dans notre code.
+     */
+    public function test_un_tableau_calcule_se_filtre_par_tranche(): void
+    {
+        $lignes = collect([
+            ['nom' => 'CFAO', 'pieces' => 12, 'reste' => 1_500_000],
+            ['nom' => 'TOTAL', 'pieces' => 1, 'reste' => 40_000],
+            ['nom' => 'SICTA', 'pieces' => 3, 'reste' => 900_000],
+        ]);
+
+        $declarees = ['pieces' => FiltreLibre::colonne('Pièces', 'nombre')];
+
+        $retenus = FiltreLibre::filtrerCollection($lignes, $declarees, ['pieces' => ['de' => '3']]);
+
+        $this->assertSame(['CFAO', 'SICTA'], $retenus->pluck('nom')->all());
+    }
+
+    /** Le texte contient, et sans se soucier de la casse : personne ne tape comme le classeur. */
+    public function test_un_tableau_calcule_se_cherche_sans_souci_de_casse(): void
+    {
+        $lignes = collect([
+            ['nom' => 'CFAO MOTORS'],
+            ['nom' => 'Total Énergies'],
+        ]);
+
+        $retenus = FiltreLibre::filtrerCollection(
+            $lignes,
+            ['nom' => FiltreLibre::colonne('Nom')],
+            ['nom' => ['valeur' => 'cfao']],
+        );
+
+        $this->assertSame(['CFAO MOTORS'], $retenus->pluck('nom')->all());
+    }
+
+    /**
+     * Le point descend dans la ligne au lieu de nommer une table.
+     *
+     * Une proposition de rapprochement n'est pas un enregistrement : c'est un couple de deux
+     * pièces. `devis.montant_devis` se lit donc littéralement, et c'est ce que le
+     * rapprochement prospections / devis déclare.
+     */
+    public function test_une_colonne_en_deux_etages_se_lit_dans_la_ligne(): void
+    {
+        $lignes = collect([
+            ['ecart' => 2, 'devis' => ['numero' => 'D-1', 'montant_devis' => 2_000_000]],
+            ['ecart' => 5, 'devis' => ['numero' => 'D-2', 'montant_devis' => 300_000]],
+        ]);
+
+        $retenus = FiltreLibre::filtrerCollection(
+            $lignes,
+            ['devis.montant_devis' => FiltreLibre::colonne('Montant du devis', 'nombre')],
+            ['devis__montant_devis' => ['de' => '1000000']],
+        );
+
+        $this->assertSame(['D-1'], $retenus->pluck('devis.numero')->all());
+    }
+
+    /**
+     * Une ligne sans date n'entre pas dans une tranche de dates.
+     *
+     * La garder ferait croire qu'elle y tombe, alors que c'est le contraire qu'il faut voir :
+     * une colonne de classeur porte parfois « à confirmer » à la place d'une échéance.
+     */
+    public function test_une_ligne_sans_date_sort_de_l_intervalle(): void
+    {
+        $lignes = collect([
+            ['nom' => 'datée', 'derniere' => '2026-03-15'],
+            ['nom' => 'sans date', 'derniere' => null],
+            ['nom' => 'illisible', 'derniere' => 'à confirmer'],
+        ]);
+
+        $retenus = FiltreLibre::filtrerCollection(
+            $lignes,
+            ['derniere' => FiltreLibre::colonne('Dernière facture', 'date')],
+            ['derniere' => ['de' => '2026-03-01', 'a' => '2026-03-31']],
+        );
+
+        $this->assertSame(['datée'], $retenus->pluck('nom')->all());
+    }
+
+    /** La garde vaut pour les deux chemins : une clé non déclarée ne filtre rien. */
+    public function test_une_cle_non_declaree_ne_filtre_pas_un_tableau_calcule(): void
+    {
+        $lignes = collect([
+            ['nom' => 'CFAO', 'entreprise_id' => 1],
+            ['nom' => 'TOTAL', 'entreprise_id' => 1],
+        ]);
+
+        $retenus = FiltreLibre::filtrerCollection(
+            $lignes,
+            ['nom' => FiltreLibre::colonne('Nom')],
+            ['entreprise_id' => ['valeur' => '999']],
+        );
+
+        $this->assertCount(2, $retenus, 'Une clé non déclarée ne doit poser aucune condition.');
+    }
+
+    /**
+     * « Non renseigné » sur une colonne booléenne ne rend pas les lignes à faux.
+     *
+     * **Le piège que cela ferme.** « Rien dedans » se traduit d'ordinaire par « nul **ou**
+     * vide », parce qu'un import laisse aussi bien l'un que l'autre. Sur une colonne
+     * booléenne, MySQL compare `''` à `0` : demander les fiches dont l'assujettissement à la
+     * TVA n'est pas renseigné rendait **aussi toutes les non-assujetties**. On aurait lu une
+     * liste de fiches à compléter dont la plupart étaient complètes.
+     */
+    public function test_le_vide_d_une_colonne_booleenne_ne_prend_que_les_nuls(): void
+    {
+        // La vraie colonne du vrai écran : l'assujettissement à la TVA d'une fiche
+        // fournisseur, qui vaut oui, non, ou « le classeur ne le dit pas ».
+        $this->fiche('CFAO MOTORS', assujettiTva: true);
+        $this->fiche('TOTAL', assujettiTva: false);
+        $this->fiche('SNPC', assujettiTva: null);
+
+        $declaree = [
+            'referentiel_fournisseurs.assujetti_tva' => FiltreLibre::colonne(
+                'TVA', 'liste', ['1' => 'Assujetti', '0' => 'Non assujetti'], videEstNull: true,
+            ),
+        ];
+
+        $requete = FournisseurReferentiel::query();
+        FiltreLibre::appliquer($requete, $declaree, [
+            'referentiel_fournisseurs__assujetti_tva' => ['valeur' => '__vide__'],
+        ]);
+
+        $this->assertSame(['SNPC'], $requete->pluck('nom')->all(),
+            'Seule la fiche réellement non renseignée doit sortir — pas les non-assujetties.');
+
+        // Et le choix « non assujetti » ne ramasse pas non plus celle qu'on ne sait pas.
+        $requete = FournisseurReferentiel::query();
+        FiltreLibre::appliquer($requete, $declaree, [
+            'referentiel_fournisseurs__assujetti_tva' => ['valeur' => '0'],
+        ]);
+
+        $this->assertSame(['TOTAL'], $requete->pluck('nom')->all());
+    }
+
     // ------------------------------------------------------------------ le décor
 
     private function creance(
@@ -287,6 +436,16 @@ class UnAutreFiltreCouvreLesColonnesOublieesTest extends TestCase
             'activite' => $activite,
             'montant' => $montant,
             'exercice_impayes' => (int) substr($date ?? now()->toDateString(), 0, 4),
+        ]);
+    }
+
+    private function fiche(string $nom, ?bool $assujettiTva): FournisseurReferentiel
+    {
+        return FournisseurReferentiel::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'nom' => $nom,
+            'nom_normalise' => FournisseurReferentiel::clePour($nom),
+            'assujetti_tva' => $assujettiTva,
         ]);
     }
 

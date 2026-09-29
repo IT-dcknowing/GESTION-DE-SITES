@@ -2,6 +2,7 @@
 
 use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Commun\Services\FiltreLibre;
+use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
@@ -70,7 +71,34 @@ $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->u
 
 $requeteBase = computed(function () {
     [$debut, $fin] = $this->plage;
-    $q = Facture::query()->whereIn('site_id', $this->idsSites)
+
+    /*
+     * **Le périmètre passe par `EtatDesImpayes::dansLePerimetre()`, et c'est une
+     * correction.** Il s'écrivait ici `whereIn('site_id', …)`, et un `site_id` nul n'entre
+     * dans aucun `whereIn`.
+     *
+     * Ce n'est pas un cas de bord : mesuré le 29/09, **8 848 factures sur les 8 852 portées
+     * à l'état n'ont pas d'atelier** — la colonne SITE des exports dit « ABIDJAN », et
+     * Abidjan en a deux, si bien que l'import s'arrête à la ville. Sur le seul exercice
+     * 2026, **2 021 factures sur 4 412** étaient donc écartées de cet écran.
+     *
+     * Deux conséquences, et la seconde est la plus grave :
+     *
+     *   - le filtre annonçait « Portées à l'état (0) » alors que 1 932 factures de 2026 le
+     *     sont — c'est ce que le propriétaire a relevé ;
+     *   - le **chiffre d'affaires lui-même** ne comptait pas ces factures. Le total de
+     *     l'écran n'était pas le chiffre d'affaires de l'entreprise, mais celui de ses
+     *     factures rattachées à un atelier.
+     *
+     * La règle est celle de l'état des impayés, et elle est écrite une seule fois : l'atelier
+     * s'il est connu, sinon la ville, sinon la ligne paraît partout — on ne sait pas où elle
+     * est, et la cacher reviendrait à la perdre.
+     */
+    $q = EtatDesImpayes::dansLePerimetre(
+        Facture::query(),
+        $this->idsSites,
+        EtatDesImpayes::villesDesSites($this->idsSites),
+    )
         ->when($this->activiteFiltre, fn ($r) => $r->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 

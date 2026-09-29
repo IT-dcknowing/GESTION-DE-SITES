@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
@@ -33,11 +34,19 @@ state(['soldeFiltre' => ''])->url(except: '');
 state(['recherche' => ''])->url(except: '');
 state(['page' => 1]);
 
+/*
+ * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+ * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se sérialise
+ * pas lisiblement dans une URL, pour un gain nul.
+ */
+state(['filtresLibres' => []]);
+
 $updatedAnneeFiltre = function () { $this->page = 1; };
 $updatedVilleFiltre = function () { $this->page = 1; };
 $updatedOrigineFiltre = function () { $this->page = 1; };
 $updatedSoldeFiltre = function () { $this->page = 1; };
 $updatedRecherche = function () { $this->page = 1; };
+$updatedFiltresLibres = function () { $this->page = 1; };
 
 /*
  * Le périmètre se lit sur l'identité du lecteur, jamais sur le paramètre reçu.
@@ -58,6 +67,39 @@ $annees = computed(function () {
 
     return array_combine($annees, $annees) ?: [];
 });
+
+/**
+ * Les colonnes du classeur qu'aucun filtre du haut ne couvre.
+ *
+ * **C'est l'écran où ce bouton sert le plus**, et c'est pour cela que le propriétaire l'a
+ * nommé le 29/09. Le tableau porte **vingt-cinq colonnes** — c'est sa raison d'être : il
+ * montre la reprise telle qu'elle est entrée, pour qu'on la vérifie. Cinq filtres en haut
+ * en couvrent quatre, la recherche en balaie sept d'un coup, et les quatorze autres
+ * n'étaient atteignables qu'en exportant tout vers un classeur — sur un écran qui existe
+ * précisément pour ne plus avoir à ouvrir le classeur.
+ *
+ * Les colonnes que la recherche balaie déjà n'y sont pas redéclarées : elle les prend
+ * ensemble, ce qui est ce qu'on veut quand on ne sait pas où regarder.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'factures_fournisseurs.mois' => FiltreLibre::colonne('Mois'),
+    'factures_fournisseurs.nature_piece' => FiltreLibre::colonne('Nature de la pièce'),
+    'factures_fournisseurs.section' => FiltreLibre::colonne('Section'),
+    'factures_fournisseurs.type_transaction' => FiltreLibre::colonne('Type de transaction'),
+    'factures_fournisseurs.mode_reglement' => FiltreLibre::colonne('Mode de règlement'),
+    'factures_fournisseurs.delai_reglement' => FiltreLibre::colonne('Délai de règlement'),
+    'factures_fournisseurs.commentaires' => FiltreLibre::colonne('Commentaires'),
+    'factures_fournisseurs.actions_a_mener' => FiltreLibre::colonne('Actions à mener'),
+    'factures_fournisseurs.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+    'factures_fournisseurs.montant_ht' => FiltreLibre::colonne('Montant HT', 'nombre'),
+    'factures_fournisseurs.tva' => FiltreLibre::colonne('TVA', 'nombre'),
+    'factures_fournisseurs.montant_regle' => FiltreLibre::colonne('Montant réglé', 'nombre'),
+    'factures_fournisseurs.reste_a_payer' => FiltreLibre::colonne('Reste à payer', 'nombre'),
+    'factures_fournisseurs.montant_refacture' => FiltreLibre::colonne('Montant refacturé', 'nombre'),
+    'factures_fournisseurs.date_reception' => FiltreLibre::colonne('Date de réception', 'date'),
+    'factures_fournisseurs.date_reglement' => FiltreLibre::colonne('Date de règlement', 'date'),
+    'factures_fournisseurs.date_echeance' => FiltreLibre::colonne('Date d’échéance', 'date'),
+]);
 
 /**
  * Toutes les pièces, sans découpage par exercice.
@@ -102,6 +144,8 @@ $requete = computed(function () {
             ->orWhere('numero_cheque', 'like', $terme)
             ->orWhere('imputation', 'like', $terme));
     }
+
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
 
     return $requete->orderByDesc('date_facture')->orderByDesc('id');
 });
@@ -192,7 +236,13 @@ $lignes = computed(fn () => (clone $this->requete)->forPage($this->page, 20)->ge
                 :options="['ouvertes' => 'Non soldées', 'soldees' => 'Soldées']" vide="Toutes" />
 
             <x-champ label="Recherche" model="recherche" :live="true"
-                placeholder="Fournisseur, n° de pièce, BC, chèque, immatriculation…" />
+                placeholder="Fournisseur, n° de pièce, BC, chèque…" />
+
+            {{-- Les quatorze colonnes que rien d'autre n'atteint. Demandé le 29/09 pour cette
+                 page nommément. Posé nu dans la barre : le composant est en
+                 `display:contents` pour que son panneau devienne un enfant direct de cette
+                 barre et prenne sa propre ligne — l'entourer d'un `div` l'y enfermerait. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
     </div>
 

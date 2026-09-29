@@ -3,6 +3,8 @@
 namespace Modules\Noyau\Commun\Services;
 
 use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Filtrer sur les colonnes qu'aucun filtre ne couvre.
@@ -56,16 +58,25 @@ class FiltreLibre
      * vingt, et une clé mal orthographiée dans l'un d'eux produirait un filtre muet —
      * sans erreur, sans rien à l'écran, et l'on chercherait la panne ailleurs.
      *
+     * **`$videEstNull` n'est pas un réglage de confort.** « — non renseigné — » se traduit
+     * d'ordinaire par « la colonne est nulle **ou** vide », parce qu'un import laisse aussi
+     * bien l'une que l'autre. Sur une colonne booléenne ou numérique, ce « ou vide » est un
+     * piège : MySQL compare `''` à `0`, si bien que demander les fiches dont l'assujettissement
+     * à la TVA n'est pas renseigné rendrait **aussi toutes les non-assujetties**. On aurait lu
+     * une liste de fiches à compléter dont la plupart n'avaient rien à compléter. Sur ces
+     * colonnes-là, vide veut dire nul, et rien d'autre.
+     *
      * @param  string  $colonne  la colonne en base, préfixée de sa table si besoin
      * @param  array<int|string, string>  $options  pour un type `liste` : valeur => libellé
-     * @return array{libelle: string, type: string, options: array<int|string, string>}
+     * @return array{libelle: string, type: string, options: array<int|string, string>, videEstNull: bool}
      */
-    public static function colonne(string $libelle, string $type = 'texte', array $options = []): array
+    public static function colonne(string $libelle, string $type = 'texte', array $options = [], bool $videEstNull = false): array
     {
         return [
             'libelle' => $libelle,
             'type' => array_key_exists($type, self::TYPES) ? $type : 'texte',
             'options' => $options,
+            'videEstNull' => $videEstNull,
         ];
     }
 
@@ -112,15 +123,139 @@ class FiltreLibre
                 continue;
             }
 
+            $videEstNull = (bool) ($declaree['videEstNull'] ?? false);
+
             match ($declaree['type']) {
-                'liste' => self::appliquerListe($requete, $colonne, $valeurs),
+                'liste' => self::appliquerListe($requete, $colonne, $valeurs, $videEstNull),
                 'date' => self::appliquerIntervalle($requete, $colonne, $valeurs, 'date'),
                 'nombre' => self::appliquerIntervalle($requete, $colonne, $valeurs, 'nombre'),
-                default => self::appliquerTexte($requete, $colonne, $valeurs),
+                default => self::appliquerTexte($requete, $colonne, $valeurs, $videEstNull),
             };
         }
 
         return $requete;
+    }
+
+    /**
+     * Le même filtre, sur un tableau que la base n'a pas construit.
+     *
+     * **Pourquoi une seconde écriture, et non un seul chemin.** Cinq écrans ne listent pas
+     * des lignes de table : ils rapprochent. L'annuaire des fournisseurs réunit les fiches
+     * déclarées et les fournisseurs que seules les pièces connaissent ; le classement des
+     * commerciaux croise un chiffre d'affaires, un objectif et un barème ; les deux écrans de
+     * rapprochement comparent deux populations plaque par plaque. Leurs colonnes — « pièces »,
+     * « atteinte de l'objectif », « écart » — **n'existent dans aucune table** : elles sont
+     * calculées en mémoire, ligne par ligne. Une condition SQL n'a rien sur quoi se poser.
+     *
+     * Le propriétaire a demandé le bouton « Autre filtre » sur ces écrans-là comme sur les
+     * autres, et il a raison de ne pas voir la différence : elle est dans notre code, pas dans
+     * ce qu'il regarde. Les deux chemins partagent donc la déclaration, les quatre types, le
+     * composant et le compteur ; seule la mise en œuvre change.
+     *
+     * **Ce qu'on accepte en le faisant** : ces écrans chargent déjà tout pour agréger, et le
+     * filtre ne fait que réduire ce qui est en main. Il n'y a rien de plus à lire.
+     *
+     * Les colonnes se déclarent ici **sans préfixe de table** : ce n'est plus une colonne
+     * qu'on nomme, c'est la clé de la ligne — `pieces`, `reste`, `nom`.
+     *
+     * @param  Collection<int, mixed>  $lignes
+     * @param  array<string, array{libelle: string, type: string, options: array}>  $declarees
+     * @param  array<string, array{de?: string, a?: string, valeur?: string}>  $retenus
+     * @return Collection<int, mixed>
+     */
+    public static function filtrerCollection(Collection $lignes, array $declarees, array $retenus): Collection
+    {
+        foreach ($declarees as $champ => $declaree) {
+            $valeurs = $retenus[self::alias($champ)] ?? $retenus[$champ] ?? null;
+
+            if (! is_array($valeurs) || ! self::estRempli($valeurs)) {
+                continue;
+            }
+
+            $lignes = $lignes->filter(fn ($ligne) => self::ligneRetenue(
+                data_get($ligne, $champ), $declaree, $valeurs,
+            ));
+        }
+
+        return $lignes->values();
+    }
+
+    /**
+     * Une ligne passe-t-elle la condition posée sur un de ses champs ?
+     *
+     * Séparée du parcours pour être lisible seule : c'est ici que se joue la comparaison,
+     * et c'est ici qu'une erreur serait invisible.
+     */
+    private static function ligneRetenue(mixed $lu, array $declaree, array $valeurs): bool
+    {
+        $type = $declaree['type'];
+
+        if (in_array($type, ['liste', 'texte'], true)) {
+            $cherche = trim((string) ($valeurs['valeur'] ?? ''));
+
+            if ($cherche === '') {
+                return true;
+            }
+
+            // Un booléen se lit « 1 » / « 0 » dans une liste déroulante, comme en base.
+            $valeur = is_bool($lu) ? ($lu ? '1' : '0') : (string) ($lu ?? '');
+
+            if ($cherche === '__vide__') {
+                return $lu === null || $valeur === '';
+            }
+
+            // La liste compare à l'identique — ses valeurs viennent d'elle-même. Le texte
+            // contient, et sans se soucier de la casse : personne ne tape « CFAO » comme le
+            // classeur l'écrit.
+            return $type === 'liste'
+                ? $valeur === $cherche
+                : mb_stripos($valeur, $cherche) !== false;
+        }
+
+        $de = trim((string) ($valeurs['de'] ?? ''));
+        $a = trim((string) ($valeurs['a'] ?? ''));
+
+        if ($type === 'date') {
+            $date = self::enDate($lu);
+
+            // Une ligne sans date ne peut pas être dans une tranche de dates. La garder
+            // ferait croire qu'elle y tombe ; c'est le contraire qu'il faut voir.
+            if ($date === null) {
+                return false;
+            }
+
+            return ($de === '' || $date->startOfDay()->gte(Carbon::parse($de)->startOfDay()))
+                && ($a === '' || $date->startOfDay()->lte(Carbon::parse($a)->startOfDay()));
+        }
+
+        if (! is_numeric($lu) && ! is_bool($lu)) {
+            return false;
+        }
+
+        $nombre = (float) $lu;
+
+        return ($de === '' || ! is_numeric($de) || $nombre >= (float) $de)
+            && ($a === '' || ! is_numeric($a) || $nombre <= (float) $a);
+    }
+
+    /** Une date, quelle que soit la forme sous laquelle la ligne la porte. */
+    private static function enDate(mixed $lu): ?Carbon
+    {
+        if ($lu instanceof \DateTimeInterface) {
+            return Carbon::instance($lu);
+        }
+
+        if (! is_string($lu) || trim($lu) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($lu);
+        } catch (\Throwable) {
+            // Une colonne de classeur porte parfois « à confirmer » à la place d'une date.
+            // Ce n'est pas une panne, et cela ne doit pas en devenir une.
+            return null;
+        }
     }
 
     /** Combien de filtres sont réellement posés — pour que le bouton le dise. */
@@ -153,7 +288,7 @@ class FiltreLibre
 
     // ------------------------------------------------------------------ les trois formes
 
-    private static function appliquerListe(Builder $requete, string $colonne, array $valeurs): void
+    private static function appliquerListe(Builder $requete, string $colonne, array $valeurs, bool $videEstNull = false): void
     {
         $valeur = trim((string) ($valeurs['valeur'] ?? ''));
 
@@ -164,7 +299,7 @@ class FiltreLibre
         // « — Non renseigné — » est un choix à part entière, et souvent celui qu'on
         // cherche : les lignes dont la colonne est vide sont celles qu'il faut compléter.
         if ($valeur === '__vide__') {
-            $requete->where(fn ($q) => $q->whereNull($colonne)->orWhere($colonne, ''));
+            self::appliquerVide($requete, $colonne, $videEstNull);
 
             return;
         }
@@ -172,7 +307,7 @@ class FiltreLibre
         $requete->where($colonne, $valeur);
     }
 
-    private static function appliquerTexte(Builder $requete, string $colonne, array $valeurs): void
+    private static function appliquerTexte(Builder $requete, string $colonne, array $valeurs, bool $videEstNull = false): void
     {
         $valeur = trim((string) ($valeurs['valeur'] ?? ''));
 
@@ -181,12 +316,24 @@ class FiltreLibre
         }
 
         if ($valeur === '__vide__') {
-            $requete->where(fn ($q) => $q->whereNull($colonne)->orWhere($colonne, ''));
+            self::appliquerVide($requete, $colonne, $videEstNull);
 
             return;
         }
 
         $requete->where($colonne, 'like', '%'.$valeur.'%');
+    }
+
+    /** « Rien dedans » : nul, et vide aussi tant que la colonne porte du texte. */
+    private static function appliquerVide(Builder $requete, string $colonne, bool $videEstNull): void
+    {
+        if ($videEstNull) {
+            $requete->whereNull($colonne);
+
+            return;
+        }
+
+        $requete->where(fn ($q) => $q->whereNull($colonne)->orWhere($colonne, ''));
     }
 
     /**

@@ -814,10 +814,19 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
             </h3>
 
             <div style="display:flex; gap:9px; flex-wrap:wrap; align-items:center;">
+{{-- **`width:auto` n'est pas un détail de style, c'est la correction du 29/09** :
+                     « les deux filtres sont longs pour rien, aligne-les sur la ligne des boutons
+                     PDF et Word ». La classe `.champ` porte `width:100%` — elle est faite pour un
+                     formulaire en colonnes, où un champ occupe sa ligne. Posée dans une rangée en
+                     flex, elle demande à chaque champ la largeur entière de la rangée : la
+                     recherche prenait une ligne, le sélecteur une autre, et les boutons se
+                     retrouvaient rejetés trois lignes plus bas. Le reste de la maison écrit déjà
+                     `width:auto` sur ses filtres en rangée (voir `x-filtre-periode`) ; ces deux-là
+                     l'avaient oublié. --}}
                 <input type="search" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}"
-                    placeholder="Fournisseur, n° de pièce, immatriculation…" class="champ" style="min-width:280px;">
+                    placeholder="Fournisseur, n° de pièce…" class="champ" style="width:auto; min-width:0; flex:0 1 230px;">
 
-                <select wire:model.live="etatFiltre" class="champ">
+                <select wire:model.live="etatFiltre" class="champ" style="width:auto;">
                     <option value="ouvertes" @selected($etatFiltre === 'ouvertes')>Reste à payer</option>
                     <option value="anciennes" @selected($etatFiltre === 'anciennes')>Dues depuis plus de 90 jours</option>
                     <option value="echues" @selected($etatFiltre === 'echues')>Échues</option>

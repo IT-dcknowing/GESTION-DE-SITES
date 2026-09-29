@@ -212,6 +212,87 @@ class LaCaisseSeSaisitEtSeLitEnUnSeulTableauTest extends TestCase
 
     // ------------------------------------------------------------------ le décor
 
+    // ------------------------------------------------------------------ le pont entre les deux
+
+    /**
+     * La Trésorerie porte un bouton qui mène à la Caisse.
+     *
+     * **Demandé le 29/09** : « mets cette page Caisse dans la page trésorerie, ajoute le bouton
+     * caisse, ce bouton devra maintenant ouvrir la page ». Le lien existait déjà, mais noyé au
+     * milieu d'un paragraphe d'avertissement : personne ne va chercher un bouton dans un
+     * paragraphe.
+     *
+     * **Pourquoi les deux écrans restent deux, et pourquoi le passage doit être immédiat.** Ils
+     * ne lisent pas les mêmes sources : la Trésorerie porte les règlements clients et les
+     * charges — ce que l'application connaît — et la Caisse porte en plus le journal du logiciel
+     * et l'écart entre les deux. Les fondre effacerait cet écart, qui est justement ce qu'un
+     * comptable cherche. Passer de l'un à l'autre est donc son geste le plus fréquent.
+     */
+    public function test_la_tresorerie_mene_a_la_caisse_par_un_bouton(): void
+    {
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.tresorerie')
+            ->assertOk()
+            // Un bouton, et non une mention dans un paragraphe : la classe le dit.
+            ->assertSeeHtml('class="bouton"')
+            ->assertSeeHtml('href="'.route('caisse').'"');
+    }
+
+    // ------------------------------------------------------------------ la liste des villes
+
+    /**
+     * La liste déroulante Ville de la saisie propose des villes, pas du JSON.
+     *
+     * **Le défaut relevé le 29/09** : « Ville *, /caisse : corrige la liste déroulante ». Elle
+     * affichait une ligne de JSON par option — l'objet Ville tout entier, accolades comprises.
+     *
+     * La cause tenait à deux lectures différentes d'une même valeur. `optionsVilles()` rend des
+     * **modèles** Ville, et le filtre de période sait les lire : il parcourt la collection et
+     * prend `$ville->nom`. Le composant `x-champ`, lui, parcourt ses options en
+     * `valeur => libellé` : reçus tels quels, les modèles donnaient la clé numérique de la
+     * collection en valeur et **le modèle lui-même en libellé**, que Blade rend en JSON. Aucune
+     * erreur nulle part, et un champ requis illisible au milieu d'un formulaire d'écriture.
+     *
+     * Ce test regarde le rendu et non la propriété : c'est le rendu qui était faux.
+     */
+    public function test_la_liste_des_villes_de_la_saisie_affiche_des_noms(): void
+    {
+        // Le champ ne paraît qu'à partir de deux villes : avec une seule, il n'y a pas de
+        // choix à faire et l'écriture est rangée d'office.
+        Ville::create([
+            'entreprise_id' => $this->entreprise->id, 'code' => 'SPD', 'nom' => 'San Pédro', 'est_actif' => true,
+        ]);
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.caisse')
+            ->call('ouvrirLaSaisie', 'entree');
+
+        $ecran->assertSee('<option value="'.$this->ville->id.'">Abidjan</option>', false)
+            ->assertDontSee('entreprise_id', false);
+    }
+
+    /** Et les options sont bien un tableau `id => nom`, jamais des modèles. */
+    public function test_les_villes_de_la_saisie_sont_un_tableau_de_noms(): void
+    {
+        $villes = Volt::actingAs($this->compte('gerant'))->test('pilotage.caisse')
+            ->instance()->villesDeSaisie;
+
+        $this->assertSame([$this->ville->id => 'Abidjan'], $villes);
+    }
+
+    /**
+     * Un compte qui ne voit qu'une ville n'a pas de champ Ville, et le formulaire tient.
+     *
+     * `optionsVilles()` rend `null` dans ce cas, et la vue compte ces villes pour décider
+     * d'afficher le champ : `count(null)` est fatal en PHP 8. Le formulaire entier serait
+     * tombé pour un chef d'atelier — c'est-à-dire pour la plupart de ceux qui saisissent.
+     */
+    public function test_un_compte_a_une_seule_ville_garde_un_formulaire_entier(): void
+    {
+        $ecran = Volt::actingAs($this->compte('responsable_site'))->test('pilotage.caisse');
+
+        $this->assertSame([], $ecran->instance()->villesDeSaisie);
+        $ecran->assertOk();
+    }
+
     private function mouvementDuJournal(string $libelle, int $montant, ?int $solde = null): MouvementCaisse
     {
         return MouvementCaisse::withoutGlobalScopes()->create([

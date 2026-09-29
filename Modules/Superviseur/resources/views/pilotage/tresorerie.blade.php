@@ -268,7 +268,18 @@ $origineDe = protect(function ($ligne) {
 
 <div>
     <x-titre-ecran titre="Trésorerie"
-        sous-titre="Ce qui est entré, ce qui est sorti, et ce qu'il reste en caisse." />
+        sous-titre="Ce qui est entré, ce qui est sorti, et ce qu'il reste en caisse.">
+        {{-- **Le bouton Caisse, demandé le 29/09.** Le lien existait déjà, mais noyé dans
+             l'encart d'avertissement en dessous : personne ne va chercher un bouton dans un
+             paragraphe. Les deux écrans se répondent — la Trésorerie porte les règlements et
+             les charges, la Caisse porte en plus le journal du logiciel et l'écart entre les
+             deux — et passer de l'un à l'autre est le geste le plus fréquent d'un comptable.
+             Il est donc là où se trouvent les autres actions d'écran. --}}
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+            <a href="{{ route('caisse') }}" wire:navigate class="bouton"
+                style="padding:8px 14px; text-decoration:none;">Caisse</a>
+        </div>
+    </x-titre-ecran>
 
     {{-- **Ce que cette page ne voit pas**, et il vaut mieux le dire que le laisser
          découvrir. Question posée le 28/09 : « est-ce que ces deux pages communiquent ? ».
@@ -280,7 +291,7 @@ $origineDe = protect(function ($ligne) {
             <strong>Cette page ne regroupe pas tout.</strong> Elle lit les <b>règlements clients</b>
             et les <b>charges</b> — ce que l'application connaît comme entrées et sorties. Le
             <b>journal de caisse du logiciel</b> (1 155 mouvements) est une autre source, lue par
-            l'écran <a href="{{ route('caisse') }}" wire:navigate style="color:#C8102E; font-weight:700;">Caisse</a>,
+            l'écran <b>Caisse</b> — le bouton est en haut de cette page —
             et il n'entre dans aucun total d'ici. L'écart entre les deux — les espèces saisies ici
             que le journal ne porte pas encore — se lit sur cet écran-là.
         </p>

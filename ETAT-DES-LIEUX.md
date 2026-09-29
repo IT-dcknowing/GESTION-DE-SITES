@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **29 septembre 2026** (17e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **29 septembre 2026** (18e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -161,6 +161,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **corrections-du-soir** | **la création d'une facture depuis le recouvrement était cassée en production** (colonne `numero` NOT NULL jamais posée : MySQL refusait, SQLite l'acceptait, aucun test ne le voyait) ; **le bandeau vert ne s'affichait jamais après une navigation** — troisième piège de la même famille ; le filtre « Réglées » du chiffre d'affaires lisait l'état des impayés au lieu des encaissements (2 480 annoncées, 7 616 réelles) ; l'extrait de compte filtre à la frappe et n'offre plus que les tiers qui portent une facture (273 au lieu de 2 446) ; le dépôt avertit quand le fichier n'est pas de l'exercice déclaré ; « Rectification » entre au barème, à côté de « Enregistrer la modification » |
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
+| 29/09 | voir `git log` | **identite-et-filtres** | **« Portées à l'état (0) » cachait une erreur de chiffre d'affaires** : 8 848 des 8 852 factures portées n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` — **2 021 factures de 2026 sur 4 412** étaient écartées du total de l'écran ; « Autre filtre » sur les **neuf écrans restants**, dont cinq dont le tableau est calculé en mémoire et non lu en base (`FiltreLibre::filtrerCollection()`) ; la **commission n'est plus proposée en filtre** à qui n'a pas le droit de la voir ; la **liste Ville de la caisse** rendait du JSON ; un bouton **Caisse** en tête de la Trésorerie ; les filtres de `/fournisseurs` et de `/caisse` tenaient une ligne chacun à cause de `.champ { width:100% }` ; **écran de connexion** refait sur la maquette avec le rendu 3D (2 252 Ko → 82 Ko) et les outils ancrés au bloc du logo |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -2111,6 +2112,86 @@ php artisan migrate:status | grep Pending
 php artisan test
 ```
 
+### La séance du 29/09 — le filtre partout, et ce que le filtre a révélé
+
+**Le défaut le plus grave de la séance n'était pas celui qu'on venait corriger.** Le
+propriétaire signale un compteur à zéro : « pourquoi dans cette page la valeur portée à l'état
+est 0 alors que j'ai des factures qui sont marquées portées à l'état ». Mesuré avant de toucher
+au code :
+
+| Constat | Mesure |
+|---|---|
+| Factures portées à l'état | 8 852 |
+| … dont l'atelier est inconnu | **8 848** |
+| Factures de l'exercice 2026 | 4 412 |
+| … écartées de l'écran *Chiffre d'affaires* | **2 021** |
+
+`requeteBase` s'écrivait `whereIn('site_id', $this->idsSites)`, et **un `site_id` nul n'entre
+dans aucun `whereIn`**. Le compteur à zéro n'était que le symptôme visible ; le total affiché
+n'était pas le chiffre d'affaires de l'entreprise, mais celui de ses factures rattachées à un
+atelier. La colonne SITE des exports dit « ABIDJAN », Abidjan a deux ateliers, et l'import
+s'arrête donc à la ville. La correction passe par `EtatDesImpayes::dansLePerimetre()`, où la
+règle est écrite une seule fois : l'atelier s'il est connu, sinon la ville, sinon la ligne
+paraît partout — on ne sait pas où elle est, et la cacher reviendrait à la perdre.
+
+**C'est le troisième écran mordu par le même `whereIn`** (encaissements, trésorerie, chiffre
+d'affaires). La parade est désormais nommée dans les pièges ci-dessous.
+
+#### « Autre filtre » sur les neuf écrans restants, et un second chemin pour cinq d'entre eux
+
+Demandé trois fois, la dernière nommément : *Tableau initial / Liste des fournisseurs /
+Conditions de règlement / Balance fournisseurs / Règlements fournisseurs*, plus les quatre
+écrans de consolidation. Quatre se posent sur une requête ; **cinq ne pouvaient pas**, et c'est
+la découverte de la séance :
+
+| Écran | Ce que son tableau est |
+|---|---|
+| Liste des fournisseurs | fiches déclarées **+** fournisseurs que seules les pièces connaissent |
+| Clients de l'entreprise | factures **+** fiches d'atelier d'un même nom, véhicules distincts comptés |
+| Commerciaux | chiffre d'affaires **×** objectif au prorata **×** barème du mois |
+| Rapprochement prospections / devis | couples formés par comparaison dans une fenêtre de jours |
+| Rapprochement CA / impayés | deux populations comparées plaque par plaque |
+
+Leurs colonnes — « pièces », « taux de réalisation », « écart en jours » — **n'existent dans
+aucune table**. Une condition SQL n'a rien sur quoi se poser. `FiltreLibre` a donc reçu
+`filtrerCollection()` : mêmes déclarations, mêmes quatre types, même composant, même compteur
+de bouton ; seule la mise en œuvre change. Le propriétaire a raison de ne pas voir la
+différence — elle est dans notre code, pas dans ce qu'il regarde.
+
+#### Deux défauts que les tests ont trouvés avant le propriétaire
+
+1. **La commission était proposée en filtre à qui n'a pas le droit de la voir.** Les colonnes se
+   cachaient déjà au non-gérant ; le panneau de filtres, lui, se rendait en entier. Deux fuites,
+   et la seconde est la vraie : le filtre **aurait fonctionné**. « Commission d'au moins
+   300 000 » ne montre aucun montant, mais il désigne exactement les personnes qui les touchent.
+   Un droit qui ne porte que sur l'affichage n'est pas un droit.
+
+2. **« — non renseigné — » sur une colonne booléenne ramenait aussi les lignes à faux**, MySQL
+   comparant `''` à `0`. La liste des fiches fournisseur à compléter aurait contenu, pour
+   l'essentiel, des fiches complètes. `FiltreLibre::colonne()` prend désormais `videEstNull`.
+
+#### Trois défauts d'affichage, et une seule cause pour deux d'entre eux
+
+- **La liste Ville de la saisie de caisse rendait du JSON.** `optionsVilles()` donne des
+  *modèles* Ville. Le filtre de période sait les lire — il prend `$ville->nom` ; `x-champ`
+  parcourt ses options en `valeur => libellé` et affichait donc **le modèle entier en libellé**.
+- **Les filtres de `/fournisseurs` et de `/caisse` tenaient une ligne chacun.** La classe
+  `.champ` porte `width: 100%` : faite pour un formulaire en colonnes, elle demande dans une
+  rangée en flex la largeur entière de la rangée, et rejetait les boutons PDF/Word trois lignes
+  plus bas. Le reste de la maison écrit `width:auto` sur ses filtres en rangée ; ces trois-là
+  l'avaient oublié.
+- **Le bouton Caisse manquait en tête de la Trésorerie** : le lien existait, noyé dans un
+  paragraphe d'avertissement. Personne ne va chercher un bouton dans un paragraphe.
+
+#### L'écran de connexion, sur la maquette reçue
+
+Le rendu 3D de la maquette est repris tel quel (`public/logos/logo-3d.jpg`), ramené de
+**2 252 Ko à 82 Ko** en 900 × 600 — il est posé en `mix-blend-mode: multiply`, n'a donc aucune
+transparence à préserver, et c'est la première image de la première page. Les quatre outils
+dessinés se **chevauchaient** le logo : posés en absolu sur toute la colonne, ils ne réservaient
+aucune place, et un titre plus haut les faisait passer dessous. Les deux qui l'entourent sont
+désormais ancrés **sur le bloc du logo** et posés hors de sa boîte (`right:100%`, `top:100%`).
+
 ### Pièges d'outillage déjà rencontrés
 
 | Piège | Parade |
@@ -2135,6 +2216,11 @@ php artisan test
 | `x-cloak` suppose une règle CSS compilée par Vite | écrire le repli initial côté serveur (`style="display:none"`) plutôt que dépendre d'une reconstruction des fichiers |
 | Un lot déposé avant que la lecture immédiate n'existe n'a plus aucun moyen de démarrer | `SuiviDuTraitement::reveiller()` depuis l'écran qui l'affiche ; la prise du lot reste atomique |
 | `Handler::render()` passe les callbacks avant `AuthenticationException` | toute page de panne doit exclure explicitement authentification et validation |
+| `whereIn('site_id', …)` **écarte silencieusement les lignes sans atelier** — trois écrans mordus (encaissements, trésorerie, chiffre d'affaires) | passer par `EtatDesImpayes::dansLePerimetre()` : l'atelier s'il est connu, sinon la ville, sinon la ligne paraît partout |
+| La classe `.champ` porte `width:100%` : dans une rangée en flex, chaque champ réclame la largeur entière et rejette les boutons à la ligne suivante | `style="width:auto"` sur tout filtre posé dans une rangée, comme le fait `x-filtre-periode` |
+| Un droit qui ne cache que les **colonnes** laisse le **panneau de filtres** les proposer — et le filtre, lui, fonctionne | filtrer la déclaration elle-même (`array_filter` sur `colonnesFiltrables`) |
+| `whereNull($col)->orWhere($col, '')` sur une colonne **booléenne ou numérique** : MySQL compare `''` à `0` et ramène les lignes à faux | `FiltreLibre::colonne(..., videEstNull: true)` |
+| Le panneau d'`x-autre-filtre` prend « toute la largeur de son conteneur » : enfermé dans un `div` ou une cellule de grille, il se replie sur un tiers d'écran | le poser **nu** dans une rangée en `flex-wrap` (le composant est en `display:contents`) |
 
 ### Où regarder
 
@@ -2145,7 +2231,9 @@ php artisan test
 | Périmètre visible | `Modules/Noyau/app/Entreprises/Support/PerimetreSites.php` |
 | Règles du recouvrement | `Modules/Noyau/app/Exploitation/Services/Recouvrement.php` |
 | Règles de l'état des impayés | `Modules/Noyau/app/Exploitation/Services/EtatDesImpayes.php` |
+| Filtre libre « Autre filtre » (SQL **et** mémoire) | `Modules/Noyau/app/Commun/Services/FiltreLibre.php` |
 | Numérotation des pièces | `Modules/Noyau/app/Exploitation/Services/GenerateurNumero.php` |
 | Code de saisie `A-C-KY-0007` | `Modules/Noyau/app/Commun/Services/CodeAuteur.php` |
 | Formats d'import | `Modules/Noyau/app/Imports/Formats/` |
 | Fichiers réels du client | `PLAN/MODULE-2/` |
+| Maquette de l'écran de connexion | `VERSION-2-3/connexion-artisan-automobile (2).html` — **non versionnée** : 3 Mo, dont l'essentiel est le rendu 3D déjà extrait en `public/logos/logo-3d.jpg` |

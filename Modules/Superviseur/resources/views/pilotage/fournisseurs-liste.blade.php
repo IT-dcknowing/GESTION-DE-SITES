@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Modeles\FournisseurReferentiel;
@@ -31,6 +32,13 @@ use function Livewire\Volt\{computed, state};
 state(['recherche' => ''])->url(except: '');
 state(['page' => 1]);
 
+/*
+ * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+ * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se sérialise
+ * pas lisiblement dans une URL, pour un gain nul.
+ */
+state(['filtresLibres' => []]);
+
 // L'ajout d'un fournisseur, replié tant qu'on ne le demande pas.
 state([
     'formulaireOuvert' => false,
@@ -41,8 +49,30 @@ state([
 ]);
 
 $updatedRecherche = function () { $this->page = 1; };
+$updatedFiltresLibres = function () { $this->page = 1; };
 
 $peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()));
+
+/**
+ * Les colonnes de cet annuaire qu'aucun filtre du haut ne couvre.
+ *
+ * **Elles se déclarent sans nom de table, et c'est voulu** : cet annuaire n'est pas une
+ * table. Il réunit les fiches déclarées et les fournisseurs que seules les pièces
+ * connaissent, et ses colonnes « pièces » et « reste dû » sont comptées ligne par ligne —
+ * aucune table ne les porte. Le filtre se pose donc sur les lignes en main, par
+ * `FiltreLibre::filtrerCollection()`, qui partage avec la version SQL la déclaration, les
+ * quatre types et le compteur du bouton.
+ *
+ * Les trois qui servent : le **nombre de pièces** — « ceux qu'on n'a facturés qu'une fois »
+ * dit à quoi tient l'annuaire —, le **reste dû** par tranche, et le **terme de règlement**,
+ * qui n'était filtrable qu'en passant par l'écran des conditions.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'terme' => FiltreLibre::colonne('Terme de règlement'),
+    'pieces' => FiltreLibre::colonne('Nombre de pièces', 'nombre'),
+    'reste' => FiltreLibre::colonne('Reste dû', 'nombre'),
+    'fiche' => FiltreLibre::colonne('Fiche déclarée', 'liste', ['1' => 'Oui', '0' => 'Non']),
+]);
 
 /**
  * L'annuaire : les fiches déclarées, et les fournisseurs que seules les pièces connaissent.
@@ -97,10 +127,12 @@ $annuaire = computed(function () {
 $filtrees = computed(function () {
     $cherche = mb_strtolower(trim($this->recherche));
 
-    return $cherche === ''
+    $lignes = $cherche === ''
         ? $this->annuaire
         : $this->annuaire->filter(fn (array $l) => str_contains(mb_strtolower($l['nom']), $cherche)
             || str_contains(mb_strtolower((string) $l['code']), $cherche))->values();
+
+    return FiltreLibre::filtrerCollection($lignes, $this->colonnesFiltrables, (array) $this->filtresLibres);
 });
 
 $sansCode = computed(fn () => $this->annuaire->whereNull('code')->count());
@@ -312,6 +344,12 @@ $ajouter = function () {
     <div class="carte" style="margin-bottom:16px;">
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
             <x-champ label="Chercher" model="recherche" :live="true" placeholder="Nom ou code…" />
+
+            {{-- Le nombre de pièces, le reste dû, le terme. Demandé le 29/09 pour cette page
+                 nommément. Posé nu dans la barre : le composant est en `display:contents`
+                 pour que son panneau devienne un enfant direct de cette barre et prenne sa
+                 propre ligne — l'entourer d'un `div` l'y enfermerait. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
 
         @if ($this->sansCode > 0 && $this->peutEcrire)
