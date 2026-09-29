@@ -213,10 +213,41 @@ class UnAutreFiltreCouvreLesColonnesOublieesTest extends TestCase
 
         // La banque n'a pas de filtre en haut de l'écran — c'est exactement le cas que le
         // bouton « Autre filtre » couvre.
-        $ecran->set('filtresLibres', ['factures.banque' => ['valeur' => 'SGB']]);
+        // **La clé porte l'alias, et c'est tout le défaut du 28/09** : Livewire lit le
+        // point comme un séparateur de chemin, si bien que « factures.banque » écrivait
+        // dans une structure à trois étages que le serveur n'allait jamais lire. Aucune
+        // erreur, aucun message, et un filtre muet.
+        $ecran->set('filtresLibres', ['factures__banque' => ['valeur' => 'SGB']]);
 
         $this->assertSame(1, $ecran->instance()->totaux['lignes']);
         $ecran->assertSee('F-001')->assertDontSee('F-002');
+    }
+
+    /**
+     * Le point d'un nom de colonne devient un double blanc souligné dans l'état.
+     *
+     * **C'est la correction du 28/09** — « le filtre ne marche pas ». Les colonnes sont
+     * nommées `table.colonne` pour qu'une jointure ne rende pas la condition ambiguë, et
+     * Livewire lit le point comme un chemin. Ce test verrouille la traduction, dans les
+     * deux sens : le nom écrit par l'écran et celui reçu du navigateur.
+     */
+    public function test_le_point_du_nom_de_colonne_ne_casse_pas_le_filtre(): void
+    {
+        $this->creance('F-001', 'A', 'SGBCI');
+        $this->creance('F-002', 'B', 'BICICI');
+
+        $this->assertSame('factures__banque', FiltreLibre::alias('factures.banque'));
+
+        $requete = Facture::query();
+
+        // Ce que le navigateur renvoie : la clé sous sa forme d'alias.
+        FiltreLibre::appliquer(
+            $requete,
+            ['factures.banque' => FiltreLibre::colonne('Banque')],
+            ['factures__banque' => ['valeur' => 'SGB']],
+        );
+
+        $this->assertSame(['F-001'], $requete->pluck('n_facture')->all());
     }
 
     /** Le compteur du bouton dit combien de filtres sont réellement posés. */
@@ -228,11 +259,11 @@ class UnAutreFiltreCouvreLesColonnesOublieesTest extends TestCase
         ];
 
         // Une ligne ouverte mais vide n'est pas un filtre : elle ne retire rien.
-        $this->assertSame(0, FiltreLibre::compter($declarees, ['factures.banque' => ['valeur' => '']]));
-        $this->assertSame(1, FiltreLibre::compter($declarees, ['factures.banque' => ['valeur' => 'SGB']]));
+        $this->assertSame(0, FiltreLibre::compter($declarees, ['factures__banque' => ['valeur' => '']]));
+        $this->assertSame(1, FiltreLibre::compter($declarees, ['factures__banque' => ['valeur' => 'SGB']]));
         $this->assertSame(2, FiltreLibre::compter($declarees, [
-            'factures.banque' => ['valeur' => 'SGB'],
-            'factures.date' => ['de' => '2026-03-01'],
+            'factures__banque' => ['valeur' => 'SGB'],
+            'factures__date' => ['de' => '2026-03-01'],
         ]));
     }
 

@@ -70,23 +70,45 @@ class FiltreLibre
     }
 
     /**
+     * Le nom sous lequel une colonne vit dans l'état Livewire.
+     *
+     * **Le défaut que cela répare, relevé le 28/09 : « le filtre ne marche pas ».** Il ne
+     * marchait pas, et la cause était invisible à la lecture du code.
+     *
+     * Les colonnes sont nommées `devis.client`, `factures.banque` — table et colonne, pour
+     * qu'une jointure ne rende pas la condition ambiguë. Or **Livewire lit le point comme
+     * un séparateur de chemin** : `wire:model="filtresLibres.devis.client.valeur"` écrit
+     * dans `filtresLibres['devis']['client']['valeur']` — une structure à trois étages —
+     * et non dans `filtresLibres['devis.client']['valeur']`, que le serveur allait chercher.
+     * La valeur arrivait donc bien au serveur, rangée là où personne ne la lisait : aucune
+     * erreur, aucun message, et un filtre qui ne filtre rien.
+     *
+     * Le point devient donc un double blanc souligné dans l'état, et nulle part ailleurs :
+     * la requête, elle, continue de voir le vrai nom.
+     */
+    public static function alias(string $colonne): string
+    {
+        return str_replace('.', '__', $colonne);
+    }
+
+    /**
      * Applique les filtres retenus à une requête.
      *
-     * **Rien n'est appliqué sur une colonne non déclarée.** Les noms arrivent de l'état
-     * Livewire, donc du navigateur : les prendre tels quels laisserait composer une
-     * condition sur n'importe quelle colonne de la table — `mot_de_passe`, `entreprise_id`.
-     * La déclaration de l'écran est la seule liste autorisée, et elle est vérifiée ici,
-     * pas à l'affichage.
+     * **Rien n'est appliqué sur une colonne non déclarée.** On parcourt la **déclaration**
+     * et non ce qui arrive du navigateur : l'état Livewire pourrait porter n'importe quelle
+     * clé, et s'en servir laisserait composer une condition sur n'importe quelle colonne de
+     * la table — `mot_de_passe`, `entreprise_id`. La déclaration de l'écran est la seule
+     * liste autorisée, et c'est elle qui mène la boucle.
      *
      * @param  array<string, array{libelle: string, type: string, options: array}>  $declarees
      * @param  array<string, array{de?: string, a?: string, valeur?: string}>  $retenus
      */
     public static function appliquer(Builder $requete, array $declarees, array $retenus): Builder
     {
-        foreach ($retenus as $colonne => $valeurs) {
-            $declaree = $declarees[$colonne] ?? null;
+        foreach ($declarees as $colonne => $declaree) {
+            $valeurs = $retenus[self::alias($colonne)] ?? $retenus[$colonne] ?? null;
 
-            if ($declaree === null) {
+            if (! is_array($valeurs)) {
                 continue;
             }
 
@@ -106,12 +128,10 @@ class FiltreLibre
     {
         $poses = 0;
 
-        foreach ($retenus as $colonne => $valeurs) {
-            if (! isset($declarees[$colonne])) {
-                continue;
-            }
+        foreach ($declarees as $colonne => $declaree) {
+            $valeurs = $retenus[self::alias($colonne)] ?? $retenus[$colonne] ?? null;
 
-            if (self::estRempli($valeurs)) {
+            if (is_array($valeurs) && self::estRempli($valeurs)) {
                 $poses++;
             }
         }

@@ -2,6 +2,7 @@
 
 use Modules\Noyau\Commun\Modeles\Referentiel;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use function Livewire\Volt\{computed, state};
 
@@ -24,6 +25,12 @@ state([
     'au' => fn () => now()->toDateString(),
     'recherche' => '',
     'page' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 $periode = computed(fn () => [
@@ -44,9 +51,24 @@ $encaissements = computed(function () {
             ->where('client', 'like', "%$recherche%")
             ->orWhere('reference_origine', 'like', "%$recherche%")))
         ->with(['facture:id,n_facture', 'site:id,nom'])
+        ->tap(fn ($q) => FiltreLibre::appliquer($q, $this->colonnesFiltrables, (array) $this->filtresLibres))
         ->orderByDesc('date')->orderByDesc('id')
         ->get();
 });
+
+/**
+ * Les colonnes du journal qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : les bornes de dates, et la recherche sur
+ * le client et la référence d'origine.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'encaissements.moyen' => FiltreLibre::colonne("Mode d'encaissement"),
+    'encaissements.numero' => FiltreLibre::colonne('Référence de la pièce'),
+    'encaissements.reglement_global' => FiltreLibre::colonne('Règlement global'),
+    'encaissements.activite' => FiltreLibre::colonne('Activité'),
+    'encaissements.montant' => FiltreLibre::colonne('Montant', 'nombre'),
+]);
 
 $auteurs = computed(fn () => \App\Models\User::whereIn('id', $this->encaissements->pluck('cree_par')->filter()->unique())
     ->pluck('name', 'id'));
@@ -86,6 +108,10 @@ $updatedAu = fn () => $this->page = 1;
                 style="border:1px solid #E3E0D8; border-radius:6px; padding:6px 8px; font-size:13px;">
             <input type="search" wire:model.live.debounce.300ms="recherche" value="{{ $recherche }}" placeholder="Tiers ou référence…"
                 style="border:1px solid #E3E0D8; border-radius:6px; padding:6px 9px; font-size:13px; min-width:180px;">
+
+            {{-- Les colonnes du journal qu'aucun filtre ne couvre : le mode, la référence
+                 de la pièce, le règlement global, l'activité, le montant. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
     
         {{-- Le fichier emporté contient exactement ce que l'écran montre :

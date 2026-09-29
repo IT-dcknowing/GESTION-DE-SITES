@@ -2,6 +2,7 @@
 
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
@@ -32,6 +33,12 @@ state([
     'statutFiltre' => '',
     'motifFiltre' => '',
     'pageDetail' => 1,
+    /*
+     * Les filtres posés sur les colonnes sans filtre propre — voir `FiltreLibre` et le
+     * composant `x-autre-filtre`. Hors de l'adresse : un tableau de tableaux ne se
+     * sérialise pas lisiblement dans une URL, pour un gain nul.
+     */
+    'filtresLibres' => [],
 ]);
 
 $parPage = computed(fn () => 25);
@@ -118,8 +125,32 @@ $requete = function () {
         $requete->where('motif', $this->motifFiltre);
     }
 
+    // Les colonnes de la fiche qu'aucun filtre du haut ne couvre.
+    FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
+
     return $requete;
 };
+
+/**
+ * Les colonnes du tableau qu'aucun filtre du haut ne couvre.
+ *
+ * Ne figurent pas ici celles qui en ont déjà un : la période, la ville, l'atelier, le
+ * statut, le motif, et la recherche sur la fiche, la plaque, le client, le propriétaire,
+ * la marque et le modèle.
+ *
+ * « Informations sur la situation » est la colonne libre de la fiche de réception — celle
+ * où le saisisseur met le commercial en première position. La chercher permet de retrouver
+ * ce qu'une fiche disait quand le rattachement n'a pas abouti.
+ */
+$colonnesFiltrables = computed(fn () => [
+    'dossiers_vehicules.travaux' => FiltreLibre::colonne('Travaux'),
+    'dossiers_vehicules.informations' => FiltreLibre::colonne('Informations sur la situation'),
+    'dossiers_vehicules.commercial_saisi' => FiltreLibre::colonne('Commercial écrit sur la fiche'),
+    'dossiers_vehicules.code_agent' => FiltreLibre::colonne('Code du rédacteur'),
+    'dossiers_vehicules.date_fin_prevue' => FiltreLibre::colonne('Date de fin prévue', 'date'),
+    'dossiers_vehicules.date_transmission_devis' => FiltreLibre::colonne('Date de transmission du devis', 'date'),
+    'dossiers_vehicules.date_fin_travaux' => FiltreLibre::colonne('Date de fin des travaux', 'date'),
+]);
 
 $total = computed(fn () => $this->requete()->count());
 
@@ -286,11 +317,16 @@ $couleurStatut = fn (?string $statut) => match (true) {
             </div>
         </div>
 
-        <div style="margin-top:11px;">
+        <div style="margin-top:11px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start;">
             <button type="button" wire:click="reinitialiser"
                 style="background:#fff; border:1px solid var(--th-ligne,#E2E0D8); border-radius:6px; padding:6px 13px; font-size:12.5px; font-weight:600; cursor:pointer; color:#4B4E55;">
                 Tout effacer
             </button>
+
+            {{-- Les colonnes de la fiche qu'aucun filtre ne couvre : les travaux, la
+                 colonne libre « informations sur la situation », le code du rédacteur, les
+                 dates de fin prévue et de transmission du devis. --}}
+            <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
     </x-carte-section>
 
