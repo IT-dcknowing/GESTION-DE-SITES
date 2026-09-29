@@ -1,14 +1,14 @@
 @extends('errors.enveloppe')
 @section('titre', 'Maintenance en cours')
 @section('contenu')
-    <span class="code">Maintenance planifiée</span>
-    <h1>L'application est en cours de mise à jour</h1>
+    <span class="code">Maintenance</span>
+    <h1>Cette page est en maintenance</h1>
     <p>
-        Une intervention est en cours sur le serveur. L'accès revient de lui-même dès
-        qu'elle est terminée&nbsp;; il n'y a rien à faire de votre côté.
+        <b>Notre équipe technique s'en charge.</b> L'accès revient de lui-même dès
+        l'intervention terminée&nbsp;; il n'y a rien à faire de votre côté.
     </p>
     <p class="gris">
-        Vos données ne sont pas touchées pendant une mise à jour&nbsp;: seule la
+        Vos données ne sont pas touchées pendant une maintenance&nbsp;: seule la
         consultation est suspendue.
     </p>
     <div class="actions">
