@@ -162,6 +162,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
 | 29/09 | voir `git log` | **identite-et-filtres** | **« Portées à l'état (0) » cachait une erreur de chiffre d'affaires** : 8 848 des 8 852 factures portées n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` — **2 021 factures de 2026 sur 4 412** étaient écartées du total de l'écran ; « Autre filtre » sur les **neuf écrans restants**, dont cinq dont le tableau est calculé en mémoire et non lu en base (`FiltreLibre::filtrerCollection()`) ; la **commission n'est plus proposée en filtre** à qui n'a pas le droit de la voir ; la **liste Ville de la caisse** rendait du JSON ; un bouton **Caisse** en tête de la Trésorerie ; les filtres de `/fournisseurs` et de `/caisse` tenaient une ligne chacun à cause de `.champ { width:100% }` ; **écran de connexion** refait sur la maquette avec le rendu 3D (2 252 Ko → 82 Ko) et les outils ancrés au bloc du logo |
+| 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | la **Trésorerie devient un tableau de bord** : quatre cases disent où est l'argent — caisse, banque, mobile money, moyen non précisé — et chacune pose son filtre ; **écran Banques** avec un bouton par banque et des indicateurs qui suivent, qui **range ce qu'il reconnaît et montre le reste** (quatorze orthographes pour quatre banques) ; le **moyen commande le support** à la saisie — caisse ou banque, jamais les deux, par la structure et non par un verrou ; le **relevé bancaire** est déclaré au registre avec ses huit colonnes, avant d'être écrit |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **la Trésorerie affichait 35 265 270 F d'encaissements au lieu de 5 518 858 674 F** — 7 627 des 7 714 règlements n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` : la page en montrait **87 sur 7 714**, soit 0,6 % de la réalité ; un encaissement se place désormais par **la ville de sa facture** (`PerimetreDeTresorerie`) ; la **Caisse se lit en trois vues** — consolidée, saisie ici, importée — dont les indicateurs changent avec la vue, parce que le solde d'avant, celui de fin et l'écart se lisent sur la chaîne des soldes du journal, que la saisie n'a pas ; **« Ventiler »** descend enfin au tableau qu'il filtre |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
@@ -2336,6 +2337,100 @@ sens : l'état des impayés **surestime la dette**, et l'on relance des gens pou
 qu'on leur doit en partie. Rien n'a été changé — deux questions attendent une réponse, au § des
 décisions en attente.
 
+### La séance du 01/10, suite — où est l'argent
+
+#### La Trésorerie répond enfin à la question qu'on lui pose
+
+Demandé le 30/09 : « elle sera une page de KPI, montrant ce que la tréso regroupe ». Pour le
+montrer, il fallait un axe — et **l'axe n'est pas « importé ou saisi »**, qui dit d'où vient la
+*ligne*, mais **par où est passé l'argent**, qui dit où il est.
+
+| Support | Encaissements | Charges |
+|---|---|---|
+| Caisse (espèces) | 121 — 51 709 421 F | 84 — 12 215 823 F |
+| Banque (chèque, virement) | 7 102 — 4 966 606 665 F | 114 — 13 039 754 F |
+| Mobile money | 19 — 7 127 560 F | — |
+| Moyen non précisé | 472 — 493 415 028 F | — |
+
+**Il n'existe aucune colonne « support », et il n'en fallait pas.** Le moyen la désigne sans
+ambiguïté : un chèque passe par une banque, des espèces par un tiroir. En ajouter une serait
+écrire dans une base réelle une donnée qu'on sait déjà lire.
+
+**Trois décisions de lecture, toutes mesurées :**
+
+- **Le mobile money n'est pas rangé en banque.** Un portefeuille Orange Money ou Wave ne paraît
+  sur aucun relevé ; l'y mettre ferait chercher 19 écritures dans un fichier qui ne les portera
+  jamais.
+- **« Non précisé » reste « non précisé ».** 472 encaissements, tous repris d'un fichier muet
+  sur le moyen. Les répartir au jugé fausserait le total de banque de six pour cent ; les taire
+  fausserait le total général d'autant.
+- **Le filtre se pose en `whereIn` sur des libellés relevés, pas en `LIKE`.** MySQL compare sans
+  accents, SQLite non : une condition qui filtre en production et pas en test est pire qu'une
+  condition fausse — **elle passe les tests**. Les libellés réellement présents sont une
+  poignée ; on les classe en PHP et l'on filtre sur la liste obtenue.
+
+#### L'écran Banques, et ce qu'il refuse de deviner
+
+**Le nom de la banque est un champ libre depuis le début.** Relevé dans `factures.banque` :
+
+| Propre | Sale |
+|---|---|
+| BGFI 5 472 · BNI 287 · BDA 106 · AFG 77 | `BGFIU`, `BGFI+BNI`, `BGFI/BGFI`, `BNI/BGFI`, `BNI+BGFI`, `BGFI/AFG`, `234665`, **`CAISSE`**, `wave` |
+
+`CAISSE` et `wave` écrits dans la colonne *banque* disent tout : quelqu'un avait besoin d'une
+colonne « support » et l'a mise là, faute de mieux.
+
+**Trois verdicts et non deux**, parce que deux ne suffisent pas. Entre « c'est la BGFI » et « je
+ne sais pas » il y a « cela ressemble à la BGFI », et c'est le cas de `BGFIU` :
+
+| Cas | Verdict | Pourquoi |
+|---|---|---|
+| `BGFI`, `B.G.F.I`, `BGFI/BGFI` | **reconnu** | une seule banque citée |
+| `BGFIU` | **proposé** | 88 % de ressemblance — à confirmer, jamais posé d'office |
+| `BGFI+BNI`, `BNI/BGFI` | **refusé** | deux banques : choisir l'une fausserait les deux totaux |
+| `234665` | **refusé** | aucune lettre — ce n'est pas un nom |
+| `CAISSE`, `wave` | **refusé** | des supports, pas des banques |
+
+**Le seuil est à 78 % et non à 55 % comme chez les fournisseurs** : un nom de fournisseur fait
+vingt lettres, un nom de banque en fait quatre, et sur quatre lettres 55 % ferait ressembler
+`BDA` à `BNI`.
+
+**Et la part non reconnue est montrée, pas tue.** Un écran qui n'afficherait que ce qu'il a su
+classer serait juste pour ce qu'il montre et faux pour ce qu'il prétend. La liste des libellés
+non rangés **est** le travail à faire, et chaque ligne porte la raison du refus — une faute de
+frappe ne se corrige pas comme deux banques notées dans la même case.
+
+**Les banques se déclarent, elles ne se devinent pas.** Poser d'office une fiche par valeur
+trouvée créerait `BGFIU` et `234665` comme banques de l'entreprise.
+
+#### Caisse ou banque, jamais les deux — et sans verrou
+
+Demandé le 30/09 : « si caisse est cliqué, banque doit être fermé et vice versa ; cette partie
+doit être prise en compte même au niveau des impayées ».
+
+**L'exclusion vient de la structure, pas d'un script.** Le moyen commande le support, et le
+champ de l'autre **n'existe pas** : il n'y a rien à désactiver, donc rien à contourner. Cela
+tient sans JavaScript, ce qui est la règle de la maison sur le chemin critique. La même règle
+est revérifiée à la validation, parce qu'un champ caché à l'écran part quand même dans la
+requête si quelqu'un le remet.
+
+**Et changer de moyen efface la banque du précédent** : choisir « chèque », désigner la BGFI,
+puis revenir à « espèces » laissait sinon la BGFI dans l'état — le champ avait disparu de
+l'écran, la valeur partait quand même dans la créance.
+
+#### Le relevé bancaire est annoncé avant d'être écrit
+
+`Registre::ANNONCES` s'était vidée le 21/09 ; elle se remplit à nouveau, et c'est son usage. Les
+huit colonnes sont relevées sur l'écran du logiciel : date, code et référence de la pièce,
+banque émettrice, type de pièce, modèle de règlement, bénéficiaire ou remettant, montant.
+
+**Il manque la colonne la plus importante : le compte.** Sur cet écran, le compte bancaire se
+choisit **hors de la grille**, dans une liste au-dessus — AFG BANK, BGFI BANK, BNI. L'export ne
+portera donc probablement pas le nom de *votre* banque : « BANQUE ÉMETTRICE » est celle du chèque
+**reçu**, ce qui n'est pas du tout la même chose. Confondre les deux rangerait sous la BGFI tout
+règlement reçu par chèque BGFI, quel que soit le compte où il a été déposé. C'est pourquoi la
+banque se choisira **au dépôt**.
+
 ### Pièges d'outillage déjà rencontrés
 
 | Piège | Parade |
@@ -2364,6 +2459,8 @@ décisions en attente.
 | `whereIn('site_id', …)` **écarte silencieusement les lignes sans atelier** — trois écrans mordus (encaissements, trésorerie, chiffre d'affaires), le dernier pour **5,48 milliards** | `EtatDesImpayes::dansLePerimetre()` pour les factures, `PerimetreDeTresorerie` pour les encaissements et les charges. Ne jamais réécrire la règle dans un écran |
 | Écrire un repli `orWhereNull` « par symétrie » sur une colonne `NOT NULL` | lire la migration avant : une condition qui ne se vérifie jamais raconte une histoire fausse à qui la lit ensuite |
 | Un bouton dont l'effet est **hors de l'écran** (filtre d'un tableau situé plus bas) | une ancre `#...` dans le lien, et le tableau filtré dit quel filtre il porte |
+| Filtrer en SQL sur un libellé **sans accents** : MySQL compare en `…_ci` et trouve, SQLite non — la condition marche en production et pas en test, donc **passe les tests** | relever les libellés réellement présents, les classer en PHP, filtrer en `whereIn` |
+| `x-filtre-periode` attend des **modèles** Ville, `x-champ` un tableau `valeur => libellé` | les deux composants ne lisent pas la même forme ; c'est à l'écran de donner la bonne à chacun |
 | La classe `.champ` porte `width:100%` : dans une rangée en flex, chaque champ réclame la largeur entière et rejette les boutons à la ligne suivante | `style="width:auto"` sur tout filtre posé dans une rangée, comme le fait `x-filtre-periode` |
 | Un droit qui ne cache que les **colonnes** laisse le **panneau de filtres** les proposer — et le filtre, lui, fonctionne | filtrer la déclaration elle-même (`array_filter` sur `colonnesFiltrables`) |
 | `whereNull($col)->orWhere($col, '')` sur une colonne **booléenne ou numérique** : MySQL compare `''` à `0` et ramène les lignes à faux | `FiltreLibre::colonne(..., videEstNull: true)` |
@@ -2380,6 +2477,8 @@ décisions en attente.
 | Règles de l'état des impayés | `Modules/Noyau/app/Exploitation/Services/EtatDesImpayes.php` |
 | Filtre libre « Autre filtre » (SQL **et** mémoire) | `Modules/Noyau/app/Commun/Services/FiltreLibre.php` |
 | Périmètre des écritures de trésorerie | `Modules/Noyau/app/Exploitation/Services/PerimetreDeTresorerie.php` |
+| Caisse, banque ou mobile : par où l'argent passe | `Modules/Noyau/app/Exploitation/Services/SupportDeReglement.php` |
+| Reconnaître une banque dans un libellé libre | `Modules/Noyau/app/Exploitation/Services/ReconnaissanceDeBanque.php` |
 | Numérotation des pièces | `Modules/Noyau/app/Exploitation/Services/GenerateurNumero.php` |
 | Code de saisie `A-C-KY-0007` | `Modules/Noyau/app/Commun/Services/CodeAuteur.php` |
 | Formats d'import | `Modules/Noyau/app/Imports/Formats/` |

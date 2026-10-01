@@ -71,6 +71,13 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // quelque chose ? » — a sa page : elle ne se pose pas sur une période, et la mêler à
     // l'écran de caisse aurait donné un écran qui répond mal aux deux questions.
     Volt::route('/caisse/vehicule', 'pilotage.caisse-vehicule')->name('caisse.vehicule');
+    // Les banques, pendant de la caisse : l'argent passe par un tiroir ou par un compte, et
+    // les deux écrans répondent à la même question sur deux supports. Demandé le 30/09.
+    //
+    // Le nom de la banque vient aujourd'hui de `factures.banque`, écrit à la main ; l'import
+    // des relevés n'existe pas encore, et l'écran le dit plutôt que de laisser croire que ses
+    // totaux viennent d'un relevé.
+    Volt::route('/banques', 'pilotage.banques')->name('banques');
     Volt::route('/fournisseurs', 'pilotage.fournisseurs')->name('fournisseurs');
     // La reprise des deux classeurs a son adresse propre, comme celle du classeur des
     // impayés : toutes années mêlées, en lecture seule. L'état par année ne peut pas la

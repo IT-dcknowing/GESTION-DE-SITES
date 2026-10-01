@@ -7,6 +7,8 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
+use Modules\Noyau\Exploitation\Modeles\Banque;
+use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use function Livewire\Volt\{computed, mount, protect, state};
@@ -205,6 +207,49 @@ $villesSaisissables = computed(fn () => Ville::query()
 $modes = computed(fn () => Referentiel::options(Referentiel::MODE_RECOUVREMENT));
 
 /**
+ * Les banques déclarées, et le support que le moyen choisi commande.
+ *
+ * Même règle qu'au recouvrement, et pour la même raison : le champ « banque » était libre, et
+ * `factures.banque` porte aujourd'hui quatorze orthographes pour quatre banques — dont
+ * `BGFIU`, `BGFI+BNI`, `234665`, `CAISSE` et `wave`.
+ *
+ * **L'exclusion « caisse ou banque » vient de la structure** : le moyen commande le support,
+ * et le champ de l'autre n'existe pas. Rien à désactiver, donc rien à contourner — et cela
+ * tient sans JavaScript.
+ */
+$banquesDeclarees = computed(fn () => Banque::query()->where('est_active', true)->orderBy('nom')->get());
+
+$passeParUneBanque = computed(
+    fn () => SupportDeReglement::pour($this->pModeReglement) === SupportDeReglement::BANQUE,
+);
+
+/** Les règles du champ Banque : elles dépendent du moyen, et de ce qui est déclaré. */
+$reglesDeLaBanque = computed(function () {
+    // Sans règlement saisi, le bloc entier est hors sujet : la facture est simplement portée.
+    if (trim((string) $this->pRegle) === '' || (int) $this->pRegle === 0) {
+        return ['nullable', 'string', 'max:120'];
+    }
+
+    if (! $this->passeParUneBanque) {
+        return ['nullable', 'prohibited'];
+    }
+
+    if ($this->banquesDeclarees->isEmpty()) {
+        return ['nullable', 'string', 'max:120'];
+    }
+
+    return ['required', Rule::in($this->banquesDeclarees->pluck('nom')->all())];
+});
+
+/* Changer de moyen efface la banque retenue pour le précédent — sinon elle partirait quand
+   même dans la créance, le champ ayant disparu de l'écran. */
+$updatedPModeReglement = function () {
+    if (! $this->passeParUneBanque) {
+        $this->pBanque = '';
+    }
+};
+
+/**
  * Remplit ce qui peut l'être depuis la facture, et vide le reste.
  *
  * Par affectation et non par `reset()` : dans Volt, `reset()` rend null, et la règle « un
@@ -307,6 +352,15 @@ $porter = function () {
         // dépasser le montant facturé.
         'pRegle' => ['nullable', 'integer', 'min:0', 'max:'.$this->avance['reste']],
         'pModeReglement' => ['exclude_if:pRegle,', 'required_unless:pRegle,0', Rule::in(array_keys($this->modes))],
+        /*
+         * **La banque suit le moyen, ici comme au recouvrement.** Demandé le 30/09 : « cette
+         * partie doit être prise en compte même au niveau des impayées ».
+         *
+         * Un règlement en espèces ne passe par aucun compte, et la règle est posée dans
+         * l'action autant que dans la vue : un champ caché à l'écran part quand même dans la
+         * requête si quelqu'un le remet.
+         */
+        'pBanque' => $this->reglesDeLaBanque,
         'pDateReglement' => ['exclude_if:pRegle,', 'required_unless:pRegle,0', 'date', 'before_or_equal:today'],
     ], [
         'pDateReception.required' => "La date de réception est obligatoire : c'est la date du dépôt chez le client.",
@@ -509,7 +563,23 @@ $porter = function () {
                 <x-champ label="Nouveau règlement" model="pRegle" type="number" width="140" />
                 <x-champ label="Modederèglement" model="pModeReglement" type="select" :options="$this->modes" vide="— aucun —" width="160" />
                 <x-champ label="Datederèglement" model="pDateReglement" type="date" width="140" />
-                <x-champ label="banque" model="pBanque" width="140" />
+
+                {{-- **Le support suit le moyen**, comme au recouvrement : une liste de banques
+                     quand le règlement passe par un compte, la mention « Caisse » quand il
+                     entre en espèces, et rien à remplir dans les deux cas qui ne le
+                     demandent pas. Voir `SupportDeReglement`. --}}
+                @if ($this->passeParUneBanque)
+                    @if ($this->banquesDeclarees->isEmpty())
+                        <x-champ label="banque" model="pBanque" width="140" />
+                    @else
+                        <x-champ label="banque" model="pBanque" type="select" width="150"
+                            :options="$this->banquesDeclarees->pluck('nom', 'nom')->all()" vide="— choisir —" />
+                    @endif
+                @elseif (trim((string) $pRegle) !== '' && (int) $pRegle !== 0)
+                    <x-champ-fige label="Support"
+                        :valeur="SupportDeReglement::libelle(SupportDeReglement::pour($pModeReglement))"
+                        width="170" aide="déduit du mode de règlement" />
+                @endif
                 <x-champ label="Commentaires" model="pCommentaires" width="185" />
             </div>
 

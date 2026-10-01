@@ -55,15 +55,44 @@ class Registre
     /**
      * Ce qui reste à écrire.
      *
-     * **Vide, et c'est le but atteint.** Les dix types de fichiers sont désormais lus — les
-     * huit du logiciel d'atelier, plus la balance et les règlements fournisseurs exportés du
-     * logiciel comptable, écrits le 21/09/2026. Cette liste reste en place parce qu'elle a une fonction : elle dit
-     * honnêtement ce qui manque plutôt que de laisser croire que tout est couvert. Le jour
-     * où un nouveau fichier apparaît, il s'y déclare avant d'être écrit.
+     * **Elle s'est remplie à nouveau le 01/10, et c'est son usage.** Les dix types de
+     * fichiers du logiciel d'atelier et du logiciel comptable sont lus depuis le 21/09 ;
+     * un onzième est apparu — les **relevés bancaires** —, et il se déclare ici avant d'être
+     * écrit plutôt que d'exister à moitié. L'écran de dépôt le montre comme prévu et non
+     * comme disponible : il serait malhonnête d'afficher une entrée qui refuserait le fichier.
      *
      * @var array<string, array{libelle: string, source: string, note: string}>
      */
-    public const ANNONCES = [];
+    public const ANNONCES = [
+        /*
+         * **Les relevés bancaires — annoncés le 30/09, fichier pas encore reçu.**
+         *
+         * Les colonnes sont connues : elles ont été relevées sur l'écran « Liste de toutes
+         * les pièces comptables » du logiciel, que le propriétaire a montré le 30/09.
+         *
+         *   DATE PIÈCE · CODE PIÈCE · RÉFÉRENCE PIÈCE · BANQUE ÉMETTRICE ·
+         *   TYPE DE PIÈCES · MODÈLE DE RÈGLEMENT · BÉNÉFICIAIRES / REMETTANT · MONTANT PIÈCE
+         *
+         * **Et il manque la colonne la plus importante : le compte.** Sur cet écran, le
+         * compte bancaire se choisit **hors de la grille**, dans une liste au-dessus (AFG
+         * BANK, BGFI BANK, BNI). L'export ne portera donc probablement pas le nom de *votre*
+         * banque — « BANQUE ÉMETTRICE » est celle du chèque **reçu**, ce qui n'est pas du
+         * tout la même chose. C'est pourquoi la banque se choisira **au dépôt**, et c'est la
+         * demande du propriétaire : « dès que le type banque sera sélectionné, un champ doit
+         * s'ouvrir pour choisir la banque, ou la saisir si elle n'existe pas ».
+         *
+         * Confondre les deux rangerait sous la BGFI tout règlement reçu par chèque BGFI,
+         * quel que soit le compte où il a été déposé.
+         */
+        'banque' => [
+            'libelle' => 'Relevé bancaire',
+            'source' => 'Logiciel comptable — « Liste de toutes les pièces comptables », export Excel',
+            'note' => 'Huit colonnes relevées : date, code et référence de la pièce, banque émettrice, '
+                .'type de pièce, modèle de règlement, bénéficiaire ou remettant, montant. '
+                .'Le compte bancaire ne figure pas dans la grille — il se choisit à l’écran, '
+                .'au-dessus — et se déclarera donc au dépôt, avec la ville et l’atelier.',
+        ],
+    ];
 
     /*
      * Les fichiers qu'on a regardés puis écartés ne figurent pas ici, et n'ont pas de

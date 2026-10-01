@@ -3,6 +3,7 @@
 use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
+use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
@@ -65,6 +66,18 @@ $idsSites = computed(fn () => PerimetreSites::idsRetenus(auth()->user(), $this->
  * la ville, sinon la ligne paraît partout. Voir `PerimetreDeTresorerie`.
  */
 $idsVilles = computed(fn () => EtatDesImpayes::villesDesSites($this->idsSites));
+
+/*
+ * **Le filtre par support, demandé le 30/09** : « tu ajoutes un filtre en fonction de toute
+ * la tréso qu'on a ».
+ *
+ * L'axe n'est pas « importé ou saisi » — celui-là dit d'où vient la *ligne* — mais **par où
+ * est passé l'argent**, qui dit où il est. C'est le seul qui permette de répondre à « combien
+ * ai-je en caisse » et « combien en banque », qui sont les deux questions de cet écran.
+ *
+ * Dans l'adresse, comme les autres filtres de la page : un lien se transmet tel quel.
+ */
+state(['supportFiltre' => ''])->url(except: '');
 $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->user(), $this->villeFiltre, $this->siteFiltre, $this->activiteFiltre));
 
 /*
@@ -85,8 +98,12 @@ $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->u
 $encaissementsQ = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return PerimetreDeTresorerie::encaissements(
-        Encaissement::query(), $this->idsSites, $this->idsVilles,
+    return SupportDeReglement::appliquer(
+        PerimetreDeTresorerie::encaissements(
+            Encaissement::query(), $this->idsSites, $this->idsVilles,
+        ),
+        'encaissements',
+        $this->supportFiltre,
     )
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
@@ -95,7 +112,11 @@ $encaissementsQ = computed(function () {
 $chargesQ = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return PerimetreDeTresorerie::charges(Charge::query(), $this->idsSites)
+    return SupportDeReglement::appliquer(
+        PerimetreDeTresorerie::charges(Charge::query(), $this->idsSites),
+        'charges',
+        $this->supportFiltre,
+    )
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 });
@@ -140,6 +161,53 @@ $kpis = computed(function () {
             VentilationActivite::difference($factureVentile, $encaisseVentile),
         ),
     ];
+});
+
+/**
+ * Ce que la trésorerie regroupe, support par support.
+ *
+ * **Le cœur de la demande du 30/09** : « la page tréso servira d'une grande page de tableau
+ * de bord pour toutes ces informations de la tréso, elle sera une page de KPI, montrant ce
+ * que la tréso regroupe ».
+ *
+ * **Calculé sans le filtre de support**, et c'est tout l'intérêt : ce bloc est la carte des
+ * lieux où l'argent se trouve. La réduire au support déjà choisi afficherait une seule case
+ * pleine et trois vides, c'est-à-dire répéterait le filtre au lieu de le situer. Les autres
+ * filtres — ville, atelier, période, activité — s'appliquent, eux : ils disent de quel
+ * périmètre on parle, pas de quel support.
+ *
+ * La période et le périmètre sont donc refaits ici plutôt que repris de `encaissementsQ`,
+ * qui porte déjà le support.
+ */
+$parSupport = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    $encaissements = PerimetreDeTresorerie::encaissements(
+        Encaissement::query(), $this->idsSites, $this->idsVilles,
+    )
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->whereBetween('date', [$debut, $fin]);
+
+    $charges = PerimetreDeTresorerie::charges(Charge::query(), $this->idsSites)
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->whereBetween('date', [$debut, $fin]);
+
+    $entrees = SupportDeReglement::repartirParRequete($encaissements, 'encaissements');
+    $sorties = SupportDeReglement::repartirParRequete($charges, 'charges');
+
+    $lignes = [];
+
+    foreach (SupportDeReglement::options() as $support => $libelle) {
+        $lignes[$support] = [
+            'libelle' => $libelle,
+            'entrees' => $entrees[$support]['montant'],
+            'sorties' => $sorties[$support]['montant'],
+            'net' => $entrees[$support]['montant'] - $sorties[$support]['montant'],
+            'nombre' => $entrees[$support]['nombre'] + $sorties[$support]['nombre'],
+        ];
+    }
+
+    return $lignes;
 });
 
 $graphique = computed(function () {
@@ -305,6 +373,8 @@ $origineDe = protect(function ($ligne) {
         <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
             <a href="{{ route('caisse') }}" wire:navigate class="bouton"
                 style="padding:8px 14px; text-decoration:none;">Caisse</a>
+            <a href="{{ route('banques') }}" wire:navigate class="bouton"
+                style="padding:8px 14px; text-decoration:none;">Banques</a>
         </div>
     </x-titre-ecran>
 
@@ -327,6 +397,74 @@ $origineDe = protect(function ($ligne) {
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
+
+    {{-- ─────────────────────────────── ce que la trésorerie regroupe
+
+         **Le cœur de la demande du 30/09** : « elle sera une page de KPI, montrant ce que la
+         tréso regroupe ». Quatre cases, et elles répondent à la question qu'on pose à une
+         trésorerie — *où est l'argent* —, pas à celle de savoir d'où vient la ligne.
+
+         Ce bloc **ignore le filtre de support** : il est la carte des lieux. Le réduire au
+         support déjà choisi afficherait une case pleine et trois vides, c'est-à-dire
+         répéterait le filtre au lieu de le situer. Chaque case est cliquable et pose le
+         filtre : on lit d'abord la carte, puis on entre. --}}
+    <div class="carte" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0;">Ce que la trésorerie regroupe</h3>
+            @if ($supportFiltre !== '')
+                <button type="button" wire:click="$set('supportFiltre', '')" class="bouton bouton-secondaire"
+                    style="padding:4px 11px; font-size:12px;">Voir tous les supports</button>
+            @endif
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px;">
+            @foreach ($this->parSupport as $cle => $part)
+                @php $actif = $supportFiltre === $cle; @endphp
+                <button type="button" wire:click="$set('supportFiltre', '{{ $actif ? '' : $cle }}')"
+                    @if ($actif) aria-current="true" @endif
+                    style="text-align:left; cursor:pointer; font-family:inherit; padding:13px 15px;
+                           border:1.5px solid {{ $actif ? '#191B20' : 'var(--th-ligne,#E2E0D8)' }};
+                           border-radius:10px; background:{{ $actif ? '#FBFAF7' : '#fff' }};">
+                    <div style="font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#6B6E76; font-weight:700;">
+                        {{ $part['libelle'] }}
+                    </div>
+                    <div style="font-family:'Barlow Condensed',sans-serif; font-size:25px; font-weight:700;
+                                font-variant-numeric:tabular-nums; white-space:nowrap;
+                                color:{{ $part['net'] >= 0 ? '#0E9F6E' : '#C8102E' }};">
+                        {{ ae($part['net']) }}
+                    </div>
+                    <div style="margin-top:6px; padding-top:6px; border-top:1px solid var(--th-ligne,#E2E0D8);
+                                font-size:11.5px; color:#4B4E55; display:flex; flex-direction:column; gap:2px;">
+                        <span style="display:flex; justify-content:space-between; gap:8px;">
+                            <span>Encaissé</span><b style="font-variant-numeric:tabular-nums;">{{ ae($part['entrees']) }}</b>
+                        </span>
+                        <span style="display:flex; justify-content:space-between; gap:8px;">
+                            <span>Décaissé</span><b style="font-variant-numeric:tabular-nums;">{{ ae($part['sorties']) }}</b>
+                        </span>
+                    </div>
+                    <div style="margin-top:5px; font-size:11px; color:#6B6E76;">
+                        {{ number_format($part['nombre'], 0, ',', ' ') }} écriture(s)
+                    </div>
+                </button>
+            @endforeach
+        </div>
+
+        {{-- Dire ce que « non précisé » recouvre évite qu'on le prenne pour une anomalie :
+             ce sont des lignes reprises d'un fichier qui ne disait pas le moyen. --}}
+        <p style="margin:12px 0 0; font-size:12.5px; color:#6B6E76; line-height:1.55;">
+            Le support se lit sur le <b>moyen de règlement</b> : un chèque et un virement passent
+            par une banque, des espèces par le tiroir. « Moyen non précisé » n'est pas une
+            anomalie — ce sont des lignes reprises d'un fichier qui ne disait pas comment.
+            Le <b>mobile money</b> est à part : un portefeuille Orange Money ou Wave ne paraît
+            sur aucun relevé bancaire.
+        </p>
+    </div>
+
+    @if ($supportFiltre !== '')
+        <p style="margin:-6px 0 14px; font-size:13px; color:#4B4E55;">
+            Tout ce qui suit est filtré sur <b>{{ \Modules\Noyau\Exploitation\Services\SupportDeReglement::libelle($supportFiltre) }}</b>.
+        </p>
+    @endif
 
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp

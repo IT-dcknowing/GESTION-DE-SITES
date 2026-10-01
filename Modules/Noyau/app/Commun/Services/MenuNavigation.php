@@ -109,6 +109,11 @@ class MenuNavigation
                 // caisse, là où la plaque est sous les yeux. Un menu qui énumère tout finit
                 // par ne plus rien mettre en avant.
                 ['label' => 'Caisse', 'route' => 'caisse'],
+                // Les banques sont le pendant de la caisse : l'argent passe par un
+                // tiroir ou par un compte, et les deux écrans répondent à la même
+                // question sur deux supports. Elles suivent donc la caisse, jamais
+                // loin d'elle.
+                ['label' => 'Banques', 'route' => 'banques'],
                 ['label' => 'Trésorerie', 'route' => 'tresorerie'],
                 ['label' => 'Charges', 'route' => 'charges'],
                 ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
@@ -233,6 +238,11 @@ class MenuNavigation
                 // garde sa page et son adresse, et s'ouvre depuis l'écran de caisse — d'un
                 // bouton en tête, ou en cliquant l'immatriculation d'une ligne.
                 ['label' => 'Caisse', 'route' => 'caisse'],
+                // Les banques sont le pendant de la caisse : l'argent passe par un
+                // tiroir ou par un compte, et les deux écrans répondent à la même
+                // question sur deux supports. Elles suivent donc la caisse, jamais
+                // loin d'elle.
+                ['label' => 'Banques', 'route' => 'banques'],
                 ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
                 ['label' => 'Commerciaux', 'route' => 'commerciaux'],
             ],
