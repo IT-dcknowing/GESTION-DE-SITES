@@ -172,23 +172,29 @@ $horsCourtage = computed(fn () => $this->toutes
                                 <td class="num">{{ $ligne['assurances'] }}</td>
                                 <td><span class="pill {{ $ligne['niveau']['classe'] }}">{{ $ligne['niveau']['libelle'] }}</span></td>
                                 <td class="no-print" style="white-space:nowrap;">
-                                    {{-- **Un lien, pas un bouton**, et il porte une ancre.
+                                    {{-- **Trois essais sur ce seul geste, et voici pourquoi.**
 
-                                         Deux défauts successifs sur ce même geste. Le premier :
-                                         « Ventiler » ne répondait pas du tout — rien n'atteignait le
-                                         serveur ; une adresse, elle, part toujours.
+                                         1. Il ne répondait pas du tout : rien n'atteignait le serveur.
+                                         2. Devenu un lien `wire:navigate` avec une ancre, il agissait —
+                                            mais `wire:navigate` **remonte toujours en haut** après la
+                                            navigation, et reprend la main sur l'ancre. On revoyait donc
+                                            le haut de page, et le clic paraissait mort une seconde fois.
+                                         3. Il ne navigue plus. Le filtre est un simple changement d'état :
+                                            seul le tableau ② se redessine, la page ne bouge pas, et
+                                            `scrollIntoView` emmène le lecteur là où son clic a agi.
 
-                                         Le second, relevé le 30/09 : « le clic ne fait rien ». Il
-                                         faisait quelque chose, mais **six écrans plus bas** — le
-                                         filtre agit sur le tableau ②, et la page se rechargeait à la
-                                         même hauteur. Une action dont l'effet est hors de l'écran est
-                                         indistinguable d'une action morte. L'ancre `#ventilation`
-                                         amène le lecteur là où son clic a agi. --}}
-                                    <a href="{{ route('recouvrement.courtiers', array_merge($this->periode->parametres(), ['courtier' => $ligne['courtier']])) }}#ventilation"
-                                        wire:navigate class="rec-btn o"
-                                        style="padding:3px 9px; font-size:11px; text-decoration:none; display:inline-block;">
+                                         **Le `x-on:click` n'attend pas le serveur, et c'est voulu** : le
+                                         tableau ② est déjà à l'écran — plus bas — et l'on descend pendant
+                                         que la requête part. Attendre le retour ferait un trajet saccadé
+                                         pour rien. --}}
+                                    <button type="button"
+                                        wire:click="$set('courtier', '{{ addslashes($ligne['courtier']) }}')"
+                                        x-on:click="document.getElementById('ventilation')
+                                            ?.scrollIntoView({ behavior: 'smooth', block: 'start' })"
+                                        class="rec-btn o"
+                                        style="padding:3px 9px; font-size:11px;">
                                         Ventiler
-                                    </a>
+                                    </button>
                                     <a href="{{ route('recouvrement.extrait', ['tiers' => $ligne['courtier']]) }}"
                                         wire:navigate class="rec-btn o"
                                         style="padding:3px 9px; font-size:11px; text-decoration:none; display:inline-block;">
@@ -230,8 +236,9 @@ $horsCourtage = computed(fn () => $this->toutes
                 <div class="rec-hint" style="margin-top:0; margin-bottom:12px;">
                     Ce tableau ne montre que <b>{{ $this->filtre }}</b> : pour le compte de quelles
                     compagnies il porte son encours, et ce que chacune pèse dans son reste à payer.
-                    <a href="{{ route('recouvrement.courtiers', $this->periode->parametres()) }}#ventilation"
-                        wire:navigate style="font-weight:700;">Voir tous les courtiers</a>.
+                    <button type="button" wire:click="$set('courtier', '')"
+                        style="border:0; background:none; padding:0; cursor:pointer; font:inherit;
+                               font-weight:700; color:inherit; text-decoration:underline;">Voir tous les courtiers</button>.
                 </div>
             @endif
 

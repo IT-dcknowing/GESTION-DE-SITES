@@ -162,6 +162,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
 | 29/09 | voir `git log` | **identite-et-filtres** | **« Portées à l'état (0) » cachait une erreur de chiffre d'affaires** : 8 848 des 8 852 factures portées n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` — **2 021 factures de 2026 sur 4 412** étaient écartées du total de l'écran ; « Autre filtre » sur les **neuf écrans restants**, dont cinq dont le tableau est calculé en mémoire et non lu en base (`FiltreLibre::filtrerCollection()`) ; la **commission n'est plus proposée en filtre** à qui n'a pas le droit de la voir ; la **liste Ville de la caisse** rendait du JSON ; un bouton **Caisse** en tête de la Trésorerie ; les filtres de `/fournisseurs` et de `/caisse` tenaient une ligne chacun à cause de `.champ { width:100% }` ; **écran de connexion** refait sur la maquette avec le rendu 3D (2 252 Ko → 82 Ko) et les outils ancrés au bloc du logo |
+| 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **reprise des corrections du propriétaire** : la Trésorerie **regroupe tout**, journal de caisse compris, et son encart « cette page ne regroupe pas tout » disparaît ; Caisse et Banques **quittent le menu** et ne s'ouvrent plus que depuis elle ; les **tableaux superposés deviennent deux boutons** ; « Ventiler » **ne recharge plus la page** ; l'**import du relevé bancaire est écrit** — table `pieces_bancaires`, compte déclaré au dépôt, huit colonnes ; la **ville quitte le formulaire de banque** et les comptes déclarés se proposent partout |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | la **Trésorerie devient un tableau de bord** : quatre cases disent où est l'argent — caisse, banque, mobile money, moyen non précisé — et chacune pose son filtre ; **écran Banques** avec un bouton par banque et des indicateurs qui suivent, qui **range ce qu'il reconnaît et montre le reste** (quatorze orthographes pour quatre banques) ; le **moyen commande le support** à la saisie — caisse ou banque, jamais les deux, par la structure et non par un verrou ; le **relevé bancaire** est déclaré au registre avec ses huit colonnes, avant d'être écrit |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **la Trésorerie affichait 35 265 270 F d'encaissements au lieu de 5 518 858 674 F** — 7 627 des 7 714 règlements n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` : la page en montrait **87 sur 7 714**, soit 0,6 % de la réalité ; un encaissement se place désormais par **la ville de sa facture** (`PerimetreDeTresorerie`) ; la **Caisse se lit en trois vues** — consolidée, saisie ici, importée — dont les indicateurs changent avec la vue, parce que le solde d'avant, celui de fin et l'écart se lisent sur la chaîne des soldes du journal, que la saisie n'a pas ; **« Ventiler »** descend enfin au tableau qu'il filtre |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
@@ -2431,6 +2432,75 @@ portera donc probablement pas le nom de *votre* banque : « BANQUE ÉMETTRICE »
 règlement reçu par chèque BGFI, quel que soit le compte où il a été déposé. C'est pourquoi la
 banque se choisira **au dépôt**.
 
+### La séance du 01/10, reprise — ce que j'avais mal compris
+
+Le propriétaire a repris sept points le soir même. Trois étaient des **malentendus de ma
+part**, et ils se ressemblent : j'avais décrit un défaut au lieu de le corriger, ou ajouté une
+commande là où il en demandait une plus simple.
+
+#### « Ne me dis pas que la tréso ne voit que les encaissements de l'application »
+
+L'encart « cette page ne regroupe pas tout » **disait honnêtement un défaut au lieu de le
+réparer**. Une trésorerie qui ignore la caisse n'est pas une trésorerie, c'est un extrait. Les
+1 155 mouvements du journal y entrent, et l'encart disparaît — un écran qui explique ce qu'il
+ne sait pas faire use la confiance qu'on lui porte sur ce qu'il sait faire.
+
+**Ils ne font double emploi avec rien** : le journal vient du logiciel, les espèces saisies ici
+sont celles qu'il ne connaît pas encore. Deux sources, aucune ligne commune.
+
+#### Caisse et Banques quittent le menu
+
+« On n'aura plus les liens directs caisse et banque dans les indicateurs, on va directement
+passer par la tréso. » Ce ne sont pas deux écrans de plus : ce sont les **deux moitiés** de la
+trésorerie, et les lister à côté d'elle laissait croire à trois totaux indépendants. Ils gardent
+leur adresse et s'ouvrent des deux boutons en tête.
+
+#### Les tableaux superposés deviennent des boutons
+
+« Où part l'argent » se lisait **au-dessus** des mouvements, et repoussait de huit cents pixels
+le tableau qu'on vient ouvrir. Deux questions — *qu'est-ce qui est passé* et *où cela part* — et
+l'on en pose une à la fois.
+
+**Et les filtres s'empilaient pour la même cause que trois fois déjà** : un `select` sans
+`width:auto`, donc à `width:100%`, réclamant la largeur entière de sa barre.
+
+#### « Ventiler » : troisième essai, et le bon
+
+| Essai | Ce qui se passait |
+|---|---|
+| 1 | rien n'atteignait le serveur |
+| 2 | lien `wire:navigate` + ancre — mais **`wire:navigate` remonte toujours en haut** et reprend la main sur l'ancre |
+| 3 | plus de navigation : le filtre est un changement d'état, et `scrollIntoView` descend pendant que la requête part |
+
+#### L'écran Banques, repris sur trois points
+
+- **Une banque déclarée paraît même vide.** On la crée *avant* d'y encaisser ; un bouton qui
+  n'apparaîtrait qu'à la première écriture laisserait croire que la déclaration n'a pas pris.
+- **Les portefeuilles mobiles et le reliquat ont leur bouton**, lus dans les écritures : un
+  quatrième opérateur paraîtra sans qu'on y touche, et celui qu'on cesse d'employer disparaîtra.
+- **L'origine est un filtre, pas des boutons.** Les boutons disent *où* est l'argent ; l'origine
+  dit *d'où vient la ligne*. Deux questions, deux formes.
+- **La ville quitte le formulaire** : « la banque créée devra s'afficher en liste déroulante
+  partout ». Un compte rattaché à une ville ne se proposerait pas aux autres, alors qu'il sert
+  l'entreprise entière — et c'est ce que le logiciel comptable fait déjà.
+
+#### L'import du relevé bancaire est écrit
+
+Il était annoncé le matin, il est disponible le soir : table `pieces_bancaires`, format aux huit
+colonnes de l'écran du logiciel, et le type « Relevé bancaire » dans la liste du dépôt.
+
+**Le compte se déclare au dépôt**, et c'est toute la difficulté : sur l'écran du logiciel, il se
+choisit **au-dessus de la grille**, et l'export ne le porte pas. Sa colonne « BANQUE EMETRICE »
+est celle du chèque **reçu** — les confondre rangerait sous la BGFI tout règlement reçu par
+chèque BGFI, quel que soit le compte crédité.
+
+| Décision | Pourquoi |
+|---|---|
+| `lots_import.banque_id` | le compte appartient au dépôt, comme la ville — une fois pour tout le fichier |
+| clé unique `(banque_id, code_piece)` | deux banques peuvent numéroter pareil ; confondre leurs pièces écraserait l'une par l'autre |
+| `sens` **nul** quand le type ne se lit pas | les libellés réels ne seront connus qu'au premier fichier ; poser « entrée » par défaut ferait des sorties des entrées, et le total serait faux du **double** de leur montant |
+| le champ du compte **rendu par le serveur**, masqué par le script | le dépôt est le chemin critique du module : il doit tenir sans JavaScript |
+
 ### Pièges d'outillage déjà rencontrés
 
 | Piège | Parade |
@@ -2460,6 +2530,8 @@ banque se choisira **au dépôt**.
 | Écrire un repli `orWhereNull` « par symétrie » sur une colonne `NOT NULL` | lire la migration avant : une condition qui ne se vérifie jamais raconte une histoire fausse à qui la lit ensuite |
 | Un bouton dont l'effet est **hors de l'écran** (filtre d'un tableau situé plus bas) | une ancre `#...` dans le lien, et le tableau filtré dit quel filtre il porte |
 | Filtrer en SQL sur un libellé **sans accents** : MySQL compare en `…_ci` et trouve, SQLite non — la condition marche en production et pas en test, donc **passe les tests** | relever les libellés réellement présents, les classer en PHP, filtrer en `whereIn` |
+| `wire:navigate` **remonte toujours en haut de page** et reprend la main sur une ancre `#...` | ne pas naviguer : un `wire:click` qui change l'état, et `scrollIntoView` côté Alpine |
+| Un écran qui **décrit un défaut** au lieu de le corriger (« cette page ne regroupe pas tout ») | le corriger ; un avertissement permanent use la confiance qu'on porte au reste de l'écran |
 | `x-filtre-periode` attend des **modèles** Ville, `x-champ` un tableau `valeur => libellé` | les deux composants ne lisent pas la même forme ; c'est à l'écran de donner la bonne à chacun |
 | La classe `.champ` porte `width:100%` : dans une rangée en flex, chaque champ réclame la largeur entière et rejette les boutons à la ligne suivante | `style="width:auto"` sur tout filtre posé dans une rangée, comme le fait `x-filtre-periode` |
 | Un droit qui ne cache que les **colonnes** laisse le **panneau de filtres** les proposer — et le filtre, lui, fonctionne | filtrer la déclaration elle-même (`array_filter` sur `colonnesFiltrables`) |
@@ -2479,6 +2551,7 @@ banque se choisira **au dépôt**.
 | Périmètre des écritures de trésorerie | `Modules/Noyau/app/Exploitation/Services/PerimetreDeTresorerie.php` |
 | Caisse, banque ou mobile : par où l'argent passe | `Modules/Noyau/app/Exploitation/Services/SupportDeReglement.php` |
 | Reconnaître une banque dans un libellé libre | `Modules/Noyau/app/Exploitation/Services/ReconnaissanceDeBanque.php` |
+| Import d'un relevé bancaire | `Modules/Noyau/app/Imports/Formats/FormatDesPiecesBancaires.php` |
 | Numérotation des pièces | `Modules/Noyau/app/Exploitation/Services/GenerateurNumero.php` |
 | Code de saisie `A-C-KY-0007` | `Modules/Noyau/app/Commun/Services/CodeAuteur.php` |
 | Formats d'import | `Modules/Noyau/app/Imports/Formats/` |

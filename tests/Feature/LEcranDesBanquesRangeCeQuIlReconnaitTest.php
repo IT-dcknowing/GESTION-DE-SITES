@@ -13,6 +13,7 @@ use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Imports\Modeles\LotImport;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -61,24 +62,62 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
 
     public function test_les_reglements_se_rangent_sous_la_banque_declaree(): void
     {
-        $this->banque('BGFI');
-        $this->banque('BNI');
+        $bgfi = $this->banque('BGFI');
+        $bni = $this->banque('BNI');
 
         $this->reglement('BGFI', 400_000);
         $this->reglement('BGFI', 100_000);
         $this->reglement('BNI', 250_000);
 
-        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques');
+        $comptes = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques')->instance()->comptes;
 
-        $parBanque = collect($ecran->instance()->repartition['parBanque']);
-
-        $this->assertSame(500_000, (int) $parBanque->firstWhere('banque.nom', 'BGFI')['montant']);
-        $this->assertSame(250_000, (int) $parBanque->firstWhere('banque.nom', 'BNI')['montant']);
-        $this->assertSame([], $ecran->instance()->repartition['nonRanges']);
+        $this->assertSame(500_000, (int) $comptes['b'.$bgfi->id]['montant']);
+        $this->assertSame(250_000, (int) $comptes['b'.$bni->id]['montant']);
     }
 
-    /** Les indicateurs suivent la banque choisie — c'est le cœur de la demande. */
-    public function test_les_indicateurs_suivent_la_banque_choisie(): void
+    /**
+     * Une banque déclarée paraît dans la ligne **même sans une seule écriture**.
+     *
+     * Demandé le 01/10 : « d'abord les banques seront créées manuellement dans la page banque
+     * à travers le formulaire, et elle devra se mettre directement sur la ligne des banques,
+     * même si elle est sans donnée ». La raison tient : on la crée *avant* d'y encaisser, et
+     * un bouton qui n'apparaîtrait qu'à la première écriture laisserait croire que la
+     * déclaration n'a pas pris.
+     */
+    public function test_une_banque_declaree_parait_meme_sans_ecriture(): void
+    {
+        $vide = $this->banque('ECOBANK');
+
+        $comptes = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques')->instance()->comptes;
+
+        $this->assertArrayHasKey('b'.$vide->id, $comptes);
+        $this->assertTrue($comptes['b'.$vide->id]['vide']);
+        $this->assertSame('ECOBANK', $comptes['b'.$vide->id]['libelle']);
+    }
+
+    /**
+     * Les portefeuilles mobiles employés ont leur bouton, et le reliquat aussi.
+     *
+     * Demandé le 01/10 : « si on a ORANGE MONEY mets-le, si on a MTN money mets-le ; et pour
+     * le dernier, ceux dont le mode n'a pas été déclaré, mets Moyen non précisé ». Ils sont
+     * lus dans les écritures et non écrits à la main : un quatrième opérateur paraîtra sans
+     * qu'on y touche, et celui qu'on cesse d'employer disparaîtra.
+     */
+    public function test_les_portefeuilles_mobiles_et_le_reliquat_ont_leur_bouton(): void
+    {
+        $this->reglement('BGFI', 400_000, moyen: 'MOBILE MONEY — WAVE');
+        $this->reglement('BGFI', 60_000, moyen: 'Non précisé');
+
+        $comptes = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques')->instance()->comptes;
+
+        $libelles = collect($comptes)->pluck('libelle')->all();
+
+        $this->assertContains('MOBILE MONEY — WAVE', $libelles);
+        $this->assertContains('Moyen non précisé', $libelles);
+    }
+
+    /** Les indicateurs suivent le compte choisi — c'est le cœur de la demande. */
+    public function test_les_indicateurs_suivent_le_compte_choisi(): void
     {
         $bgfi = $this->banque('BGFI');
         $this->banque('BNI');
@@ -88,12 +127,38 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
 
         $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques');
 
-        $this->assertSame(650_000, $ecran->instance()->kpis['montant'], 'Toutes banques : les deux.');
+        $this->assertSame(650_000, $ecran->instance()->kpis['montant'], 'Tous les comptes : les deux.');
 
-        $ecran->set('banqueFiltre', (string) $bgfi->id);
+        $ecran->set('supportFiltre', 'b'.$bgfi->id);
 
         $this->assertSame(400_000, $ecran->instance()->kpis['montant']);
         $this->assertSame(1, $ecran->instance()->kpis['nombre']);
+    }
+
+    /**
+     * L'origine se filtre, et ne fait pas de boutons.
+     *
+     * Demandé le 01/10 : « au niveau de chacune des banques ajoute un filtre pour pouvoir
+     * trier ce qui est saisi dans l'application, ce qui est importé, et les deux à la fois —
+     * au lieu de venir mettre des boutons ». Les boutons disent *où* est l'argent ; l'origine
+     * dit *d'où vient la ligne*.
+     */
+    public function test_l_origine_se_filtre_sur_chaque_compte(): void
+    {
+        $this->banque('BGFI');
+
+        $this->reglement('BGFI', 400_000);                      // saisi ici
+        $this->reglement('BGFI', 150_000, importe: true);       // venu d'un fichier
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques');
+
+        $this->assertSame(550_000, $ecran->instance()->kpis['montant']);
+
+        $ecran->set('origineFiltre', 'saisie');
+        $this->assertSame(400_000, $ecran->instance()->kpis['montant']);
+
+        $ecran->set('origineFiltre', 'import');
+        $this->assertSame(150_000, $ecran->instance()->kpis['montant']);
     }
 
     /**
@@ -189,7 +254,7 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
 
         $apres = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques');
         $this->assertSame([], $apres->instance()->repartition['nonRanges']);
-        $this->assertSame(400_000, $apres->instance()->kpis['montant']);
+        $this->assertSame(400_000, (int) $apres->instance()->comptes['b'.$banque->id]['montant']);
     }
 
     // ------------------------------------------------------------------ le décor
@@ -208,6 +273,7 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
         int $montant,
         string $moyen = 'Chèque',
         string $client = 'NSIA ASSURANCES',
+        bool $importe = false,
     ): Encaissement {
         $facture = Facture::withoutGlobalScopes()->create([
             'entreprise_id' => $this->entreprise->id,
@@ -225,11 +291,30 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
             'entreprise_id' => $this->entreprise->id,
             'site_id' => $this->site->id,
             'facture_id' => $facture->id,
+            // L'origine ne se lit qu'à cela : un lot d'import, ou son absence.
+            'lot_import_id' => $importe ? $this->lotDImport()->id : null,
             'date' => now()->toDateString(),
             'type' => 'Client',
             'moyen' => $moyen,
             'montant' => $montant,
             'client' => $client,
+        ]);
+    }
+
+    private ?LotImport $lot = null;
+
+    /** Un lot d'import, posé une fois : l'origine d'une ligne ne se lit qu'à sa présence. */
+    private function lotDImport(): LotImport
+    {
+        return $this->lot ??= LotImport::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'ville_id' => $this->ville->id,
+            'format' => 'impayes',
+            'nom_fichier' => 'etat-des-impayes.xlsx',
+            'deposant' => 'KOFFI Désirée',
+            // L'empreinte est obligatoire : c'est elle qui reconnaît un fichier redéposé.
+            'empreinte' => hash('sha256', 'etat-des-impayes.xlsx'),
+            'etat' => 'termine',
         ]);
     }
 

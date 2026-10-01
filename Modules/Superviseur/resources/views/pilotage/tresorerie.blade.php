@@ -4,6 +4,7 @@ use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
 use Modules\Noyau\Exploitation\Services\SupportDeReglement;
+use Modules\Noyau\Imports\Modeles\MouvementCaisse;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
@@ -137,8 +138,15 @@ $facturesQ = computed(function () {
  * existent bel et bien — trompeur plutôt qu'informatif. Ces KPI restent consolidés.
  */
 $kpis = computed(function () {
-    $encaisse = (int) (clone $this->encaissementsQ)->sum('montant');
-    $decaisse = (int) (clone $this->chargesQ)->sum('montant');
+    /*
+     * **Les trois sources, et non plus deux.** Le journal de caisse était hors de ce total,
+     * et l'écran l'annonçait au lieu de le corriger. Une trésorerie qui ignore la caisse
+     * n'est pas une trésorerie.
+     */
+    $journal = $this->journalTotaux;
+
+    $encaisse = (int) (clone $this->encaissementsQ)->sum('montant') + $journal['entrees'];
+    $decaisse = (int) (clone $this->chargesQ)->sum('montant') + $journal['sorties'];
     $facture = (int) (clone $this->facturesQ)->sum('montant');
 
     // Un encaissement ou un décaissement ne porte son activité que si celui qui l'a
@@ -160,6 +168,53 @@ $kpis = computed(function () {
             fn ($v) => max(0, $v),
             VentilationActivite::difference($factureVentile, $encaisseVentile),
         ),
+    ];
+});
+
+/**
+ * **Le journal de caisse entre dans la trésorerie — 01/10.**
+ *
+ * Il en était dehors, et un encart l'annonçait : « cette page ne regroupe pas tout ». Le
+ * propriétaire a tranché, et il a raison : *« ne me dis pas que la tréso ne voit que les
+ * encaissements de l'application : non. Comme le nom le dit, c'est une trésorerie. »*
+ *
+ * Une trésorerie qui ignore la caisse n'est pas une trésorerie, c'est un extrait. Les
+ * 1 155 mouvements du journal sont de l'argent réellement entré et sorti du tiroir : ils
+ * comptent ici comme le reste.
+ *
+ * **Et ils ne font double emploi avec rien.** Le journal vient du logiciel d'atelier ; les
+ * espèces saisies ici sont celles qu'il ne connaît pas encore — c'est tout l'objet de
+ * l'écart que l'écran Caisse affiche. Deux sources, aucune ligne commune.
+ */
+$journalQ = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return PerimetreDeTresorerie::mouvementsDeCaisse(
+        MouvementCaisse::query(), $this->idsSites, $this->idsVilles,
+    )->whereBetween('mouvements_caisse.date', [$debut, $fin]);
+});
+
+/**
+ * Le journal compte-t-il, vu le filtre de support posé ?
+ *
+ * Il est de la caisse par nature : un journal de caisse ne porte que des espèces. Filtrer
+ * sur « banque » doit donc l'écarter en entier, et non en retenir une part.
+ */
+$journalCompte = computed(fn () => in_array(
+    $this->supportFiltre, ['', SupportDeReglement::CAISSE], true,
+));
+
+$journalTotaux = computed(function () {
+    if (! $this->journalCompte) {
+        return ['entrees' => 0, 'sorties' => 0, 'nombre' => 0];
+    }
+
+    $base = $this->journalQ;
+
+    return [
+        'entrees' => (int) (clone $base)->where('sens', MouvementCaisse::ENTREE)->sum('montant'),
+        'sorties' => (int) (clone $base)->where('sens', MouvementCaisse::SORTIE)->sum('montant'),
+        'nombre' => (clone $base)->count(),
     ];
 });
 
@@ -194,6 +249,22 @@ $parSupport = computed(function () {
 
     $entrees = SupportDeReglement::repartirParRequete($encaissements, 'encaissements');
     $sorties = SupportDeReglement::repartirParRequete($charges, 'charges');
+
+    /*
+     * Le journal de caisse rejoint la case « Caisse », et aucune autre : un journal de
+     * caisse ne porte que des espèces. C'est aussi la case que l'écran Caisse appelle
+     * « consolidée » — les deux doivent tomber sur le même nombre, sans quoi l'un des deux
+     * ment.
+     */
+    $journal = [
+        'entrees' => (int) (clone $this->journalQ)->where('sens', MouvementCaisse::ENTREE)->sum('montant'),
+        'sorties' => (int) (clone $this->journalQ)->where('sens', MouvementCaisse::SORTIE)->sum('montant'),
+        'nombre' => (clone $this->journalQ)->count(),
+    ];
+
+    $entrees[SupportDeReglement::CAISSE]['montant'] += $journal['entrees'];
+    $entrees[SupportDeReglement::CAISSE]['nombre'] += $journal['nombre'];
+    $sorties[SupportDeReglement::CAISSE]['montant'] += $journal['sorties'];
 
     $lignes = [];
 
@@ -378,21 +449,14 @@ $origineDe = protect(function ($ligne) {
         </div>
     </x-titre-ecran>
 
-    {{-- **Ce que cette page ne voit pas**, et il vaut mieux le dire que le laisser
-         découvrir. Question posée le 28/09 : « est-ce que ces deux pages communiquent ? ».
-         Non. Mesuré le même jour : la Trésorerie lit les règlements clients (7 714 lignes)
-         et les charges (198) ; le **journal de caisse du logiciel** (1 155 mouvements)
-         n'est lu que par l'écran Caisse, et n'entre dans aucun total d'ici. --}}
-    <div class="carte" style="margin-bottom:16px; border-left:3px solid #B87A00;">
-        <p style="margin:0; font-size:13px; line-height:1.6;">
-            <strong>Cette page ne regroupe pas tout.</strong> Elle lit les <b>règlements clients</b>
-            et les <b>charges</b> — ce que l'application connaît comme entrées et sorties. Le
-            <b>journal de caisse du logiciel</b> (1 155 mouvements) est une autre source, lue par
-            l'écran <b>Caisse</b> — le bouton est en haut de cette page —
-            et il n'entre dans aucun total d'ici. L'écart entre les deux — les espèces saisies ici
-            que le journal ne porte pas encore — se lit sur cet écran-là.
-        </p>
-    </div>
+    {{-- **L'encart « cette page ne regroupe pas tout » a été retiré le 01/10, et il le
+         fallait.** Il décrivait honnêtement un défaut au lieu de le corriger : le journal de
+         caisse restait dehors, et la page disait qu'elle n'était pas une trésorerie.
+
+         *« Ne me dis pas que la tréso ne voit que les encaissements de l'application : non.
+         Comme le nom le dit, c'est une trésorerie. »* Le journal y entre désormais — voir
+         `$journalQ` —, et il n'y a plus rien à avertir. Un écran qui explique ce qu'il ne
+         sait pas faire use la confiance qu'on lui porte sur ce qu'il sait faire. --}}
 
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"

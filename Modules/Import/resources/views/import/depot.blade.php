@@ -2,6 +2,7 @@
 
 use Modules\Import\Http\Controllers\DepotController;
 use Modules\Import\Support\AccesImport;
+use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Modeles\CodeAgent;
 use Modules\Noyau\Imports\Modeles\LotImport;
@@ -76,6 +77,23 @@ $ateliersParVille = computed(function () {
 });
 
 $formats = computed(fn () => Registre::options());
+
+/**
+ * Les comptes de l'entreprise, pour le dépôt d'un relevé bancaire.
+ *
+ * **Déclarés à la main sur l'écran Banques**, et nulle part ailleurs : *« d'abord les banques
+ * seront créées manuellement dans la page banque à travers le formulaire, et ces banques
+ * créées, ce sont elles qui devront s'afficher en liste déroulante au niveau de l'import »*.
+ *
+ * Le fichier ne porte pas le compte — sur l'écran du logiciel comptable, il se choisit
+ * au-dessus de la grille. Sa colonne « BANQUE EMETRICE », elle, est la banque du chèque
+ * **reçu**, ce qui n'est pas du tout la même chose.
+ */
+$banquesDeclarees = computed(fn () => Banque::query()
+    ->where('est_active', true)
+    ->orderBy('nom')
+    ->pluck('nom', 'id')
+    ->all());
 
 $peutDeposer = computed(fn () => AccesImport::peutDeposer(auth()->user()));
 
@@ -287,6 +305,44 @@ $abandonner = function () {
                         @error('format') <div class="imp-hint warn">{{ $message }}</div> @enderror
                     </div>
 
+                    {{-- ─────────────────────────────── le compte, pour le seul relevé bancaire
+
+                         **Demandé le 30/09** : « dès que le type banque sera sélectionné, un
+                         champ doit s'ouvrir pour choisir la banque qu'on importe ».
+
+                         **Il est rendu par le serveur et masqué, non fabriqué au clic.** Sans
+                         JavaScript, il reste donc visible et utilisable — et le dépôt, qui est
+                         le chemin critique du module, ne dépend pas d'un script. Le `hidden`
+                         n'est qu'un confort : le serveur, lui, exige la banque pour ce type et
+                         pour lui seul. --}}
+                    <div class="imp-fld" id="champ-banque"
+                         @unless (old('format') === 'banque') hidden @endunless>
+                        <label for="banque">Compte bancaire</label>
+                        <select id="banque" name="banque">
+                            <option value="">— à choisir —</option>
+                            @foreach ($this->banquesDeclarees as $id => $nom)
+                                <option value="{{ $id }}" @selected((string) old('banque') === (string) $id)>
+                                    {{ $nom }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('banque') <div class="imp-hint warn">{{ $message }}</div> @enderror
+
+                        @if ($this->banquesDeclarees === [])
+                            <div class="imp-hint warn">
+                                <strong>Aucun compte n'est déclaré.</strong> Déclarez-le d'abord sur
+                                l'écran <b>Banques</b> — il s'ouvre depuis la trésorerie. Un relevé
+                                déposé sans compte ne se rattacherait à aucune banque.
+                            </div>
+                        @else
+                            <div class="imp-hint">
+                                Le fichier ne porte pas le nom de votre banque : sur l'écran du
+                                logiciel, le compte se choisit au-dessus de la grille. Sa colonne
+                                « banque émettrice » est celle du <b>chèque reçu</b>, pas la vôtre.
+                            </div>
+                        @endif
+                    </div>
+
                     <div class="imp-fld">
                         <label for="ville">Ville du dépôt</label>
                         <select id="ville" name="ville" required
@@ -441,7 +497,21 @@ $abandonner = function () {
                         ville: document.getElementById('ville'),
                         site: document.getElementById('site'),
                         format: document.getElementById('format'),
+                        banque: document.getElementById('champ-banque'),
                     };
+                };
+
+                /*
+                 * Le compte bancaire ne se demande qu'au relevé bancaire. Masquer plutôt que
+                 * retirer : le champ est rendu par le serveur, et reste donc utilisable si le
+                 * script ne s'exécute pas — le dépôt est le chemin critique de ce module.
+                 */
+                var rafraichirLeCompte = function () {
+                    var c = champs();
+
+                    if (! c.format || ! c.banque) { return; }
+
+                    c.banque.hidden = c.format.value !== 'banque';
                 };
 
                 /*
@@ -512,6 +582,7 @@ $abandonner = function () {
 
                     rafraichirLesAvis();
 
+                    if (cible.id === 'format') { rafraichirLeCompte(); }
                     if (cible.id === 'ville') { filtrerLesAteliers(); }
                 });
 
@@ -554,6 +625,7 @@ $abandonner = function () {
                  */
                 var remettreEnPlace = function () {
                     rafraichirLesAvis();
+                    rafraichirLeCompte();
                     filtrerLesAteliers();
                 };
 

@@ -108,12 +108,18 @@ class MenuNavigation
                 // qu'on se pose **devant une plaque**. Elle s'ouvre donc depuis l'écran de
                 // caisse, là où la plaque est sous les yeux. Un menu qui énumère tout finit
                 // par ne plus rien mettre en avant.
-                ['label' => 'Caisse', 'route' => 'caisse'],
-                // Les banques sont le pendant de la caisse : l'argent passe par un
-                // tiroir ou par un compte, et les deux écrans répondent à la même
-                // question sur deux supports. Elles suivent donc la caisse, jamais
-                // loin d'elle.
-                ['label' => 'Banques', 'route' => 'banques'],
+                /*
+                 * **Caisse et Banques ne sont plus au menu, et c'est voulu — 01/10.**
+                 *
+                 * « On n'aura plus les liens directs caisse et banque dans les indicateurs,
+                 * on va directement passer par la tréso. » La raison tient en une phrase :
+                 * ce ne sont pas deux écrans de plus, ce sont les **deux moitiés** de la
+                 * trésorerie. Les lister à côté d'elle laisse croire à trois totaux
+                 * indépendants, et c'est exactement la confusion qu'on vient de défaire.
+                 *
+                 * Ils gardent leur adresse et s'ouvrent des deux boutons en tête de la
+                 * trésorerie — `/caisse` et `/banques` restent donc partageables.
+                 */
                 ['label' => 'Trésorerie', 'route' => 'tresorerie'],
                 ['label' => 'Charges', 'route' => 'charges'],
                 ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
@@ -237,12 +243,18 @@ class MenuNavigation
                 // une question qu'on se pose devant une plaque, pas en ouvrant un menu. Elle
                 // garde sa page et son adresse, et s'ouvre depuis l'écran de caisse — d'un
                 // bouton en tête, ou en cliquant l'immatriculation d'une ligne.
-                ['label' => 'Caisse', 'route' => 'caisse'],
-                // Les banques sont le pendant de la caisse : l'argent passe par un
-                // tiroir ou par un compte, et les deux écrans répondent à la même
-                // question sur deux supports. Elles suivent donc la caisse, jamais
-                // loin d'elle.
-                ['label' => 'Banques', 'route' => 'banques'],
+                /*
+                 * **Caisse et Banques ne sont plus au menu, et c'est voulu — 01/10.**
+                 *
+                 * « On n'aura plus les liens directs caisse et banque dans les indicateurs,
+                 * on va directement passer par la tréso. » La raison tient en une phrase :
+                 * ce ne sont pas deux écrans de plus, ce sont les **deux moitiés** de la
+                 * trésorerie. Les lister à côté d'elle laisse croire à trois totaux
+                 * indépendants, et c'est exactement la confusion qu'on vient de défaire.
+                 *
+                 * Ils gardent leur adresse et s'ouvrent des deux boutons en tête de la
+                 * trésorerie — `/caisse` et `/banques` restent donc partageables.
+                 */
                 ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
                 ['label' => 'Commerciaux', 'route' => 'commerciaux'],
             ],

@@ -39,6 +39,10 @@ class Registre
         // quand un fournisseur réclame.
         'balance-fournisseurs' => FormatDeLaBalanceFournisseur::class,
         'reglements-fournisseurs' => FormatDesReglementsFournisseurs::class,
+        // Le relevé d'un compte bancaire. Il se dépose **par compte** : le fichier ne porte
+        // pas le nom de notre banque — elle se choisit à l'écran du logiciel, au-dessus de
+        // la grille — et le dépôt la demande donc, comme il demande la ville.
+        'banque' => FormatDesPiecesBancaires::class,
         'caisse' => FormatDeLaCaisse::class,
         // Le journal de caisse imprimé vient juste après le classeur tenu à la main : ils
         // décrivent la même caisse par deux bouts, et ce sont deux villes différentes qui
@@ -63,36 +67,21 @@ class Registre
      *
      * @var array<string, array{libelle: string, source: string, note: string}>
      */
-    public const ANNONCES = [
-        /*
-         * **Les relevés bancaires — annoncés le 30/09, fichier pas encore reçu.**
-         *
-         * Les colonnes sont connues : elles ont été relevées sur l'écran « Liste de toutes
-         * les pièces comptables » du logiciel, que le propriétaire a montré le 30/09.
-         *
-         *   DATE PIÈCE · CODE PIÈCE · RÉFÉRENCE PIÈCE · BANQUE ÉMETTRICE ·
-         *   TYPE DE PIÈCES · MODÈLE DE RÈGLEMENT · BÉNÉFICIAIRES / REMETTANT · MONTANT PIÈCE
-         *
-         * **Et il manque la colonne la plus importante : le compte.** Sur cet écran, le
-         * compte bancaire se choisit **hors de la grille**, dans une liste au-dessus (AFG
-         * BANK, BGFI BANK, BNI). L'export ne portera donc probablement pas le nom de *votre*
-         * banque — « BANQUE ÉMETTRICE » est celle du chèque **reçu**, ce qui n'est pas du
-         * tout la même chose. C'est pourquoi la banque se choisira **au dépôt**, et c'est la
-         * demande du propriétaire : « dès que le type banque sera sélectionné, un champ doit
-         * s'ouvrir pour choisir la banque, ou la saisir si elle n'existe pas ».
-         *
-         * Confondre les deux rangerait sous la BGFI tout règlement reçu par chèque BGFI,
-         * quel que soit le compte où il a été déposé.
-         */
-        'banque' => [
-            'libelle' => 'Relevé bancaire',
-            'source' => 'Logiciel comptable — « Liste de toutes les pièces comptables », export Excel',
-            'note' => 'Huit colonnes relevées : date, code et référence de la pièce, banque émettrice, '
-                .'type de pièce, modèle de règlement, bénéficiaire ou remettant, montant. '
-                .'Le compte bancaire ne figure pas dans la grille — il se choisit à l’écran, '
-                .'au-dessus — et se déclarera donc au dépôt, avec la ville et l’atelier.',
-        ],
-    ];
+    /**
+     * Ce qui reste à écrire.
+     *
+     * **Vide à nouveau le 01/10.** Le relevé bancaire y a figuré une journée : ses huit
+     * colonnes étaient relevées, son fichier ne l'était pas. Il est passé dans `DISPONIBLES`
+     * dès que son format a su les lire — l'annonce n'a de sens que tant qu'on ne peut rien
+     * recevoir.
+     *
+     * Cette liste reste en place parce qu'elle a une fonction : elle dit honnêtement ce qui
+     * manque plutôt que de laisser croire que tout est couvert. Le jour où un nouveau fichier
+     * apparaît, il s'y déclare avant d'être écrit.
+     *
+     * @var array<string, array{libelle: string, source: string, note: string}>
+     */
+    public const ANNONCES = [];
 
     /*
      * Les fichiers qu'on a regardés puis écartés ne figurent pas ici, et n'ont pas de

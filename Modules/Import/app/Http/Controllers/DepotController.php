@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Modules\Import\Support\AccesImport;
 use Modules\Noyau\Entreprises\Services\ExerciceDeTravail;
+use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Imports\Formats\Registre;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Services\ControlePrealable;
@@ -86,11 +87,28 @@ class DepotController
             $choixDeVille[] = self::TOUTES_LES_VILLES;
         }
 
+        // Les comptes de l'entreprise, pour le seul relevé bancaire. Une liste vide fera
+        // échouer la validation plutôt que d'accepter n'importe quel identifiant : on ne
+        // dépose pas un relevé sans avoir déclaré le compte qu'il décrit.
+        $banquesOuvertes = Banque::query()
+            ->where('entreprise_id', $entrepriseId)
+            ->where('est_active', true)
+            ->pluck('id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+
         $requete->validate([
             'fichier' => [$garde === null ? 'required' : 'nullable', 'file', 'max:40960'],
             'format' => ['required', Rule::in(array_keys(Registre::DISPONIBLES))],
             'ville' => ['required', Rule::in($choixDeVille)],
             'site' => ['nullable', 'integer'],
+            /*
+             * **La banque, exigée pour le seul relevé bancaire.** Sans compte, une pièce
+             * bancaire n'est rattachable à rien : elle gonflerait le total général sans
+             * paraître sous aucune banque. Le format pose la même garde de son côté — une
+             * route ne protège que l'entrée.
+             */
+            'banque' => ['exclude_unless:format,banque', 'required', Rule::in($banquesOuvertes)],
         ], [
             'fichier.required' => "Choisissez d'abord un fichier.",
             'fichier.max' => 'Le fichier dépasse 40 Mo.',
@@ -116,6 +134,10 @@ class DepotController
         $site = $requete->input('site');
         $siteId = ($site !== null && $site !== '' && isset($sites[(int) $site])) ? (int) $site : null;
 
+        // Le compte n'a de sens que pour le relevé bancaire : partout ailleurs il reste nul,
+        // même si quelqu'un le glisse dans la requête.
+        $banqueId = $format === 'banque' ? (int) $requete->input('banque') : null;
+
         if (! $requete->boolean('confirme')) {
             // Avec « toutes les villes », il n'y a pas de ville annoncée à contredire : le
             // contrôle se limite alors au type de fichier.
@@ -127,7 +149,9 @@ class DepotController
         }
 
         try {
-            $lot = $service->recevoir($utilisateur, $fichier, $format, $villeId, false, $siteId, $toutesVilles);
+            $lot = $service->recevoir(
+                $utilisateur, $fichier, $format, $villeId, false, $siteId, $toutesVilles, $banqueId,
+            );
         } catch (DepotEnDouble $double) {
             // Un doublon n'est pas une faute : c'est le plus souvent quelqu'un qui vérifie
             // que le travail a bien été fait. On répond en montrant le dépôt d'origine.

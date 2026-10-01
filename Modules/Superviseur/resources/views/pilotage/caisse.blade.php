@@ -70,6 +70,15 @@ state([
      * même table — la condition ne se pose pas sur une colonne, elle choisit une source.
      */
     'origineFiltre' => '',
+    /*
+     * **Lequel des deux tableaux est à l'écran.** Demandé le 01/10 : « au lieu de faire deux
+     * tableaux superposés, fais deux boutons ; au clic le tableau change ».
+     *
+     * Ils se suivaient l'un l'autre, et le second — celui qu'on vient lire — commençait à
+     * huit cents pixels du haut. Les mettre côte à côte n'était pas possible : l'un porte
+     * huit lignes larges, l'autre huit cents lignes à douze colonnes.
+     */
+    'tableauAffiche' => 'mouvements',
 
     // Le formulaire de saisie, replié tant qu'on ne le demande pas.
     'saisieOuverte' => false,
@@ -418,6 +427,14 @@ $peutSaisir = computed(fn () => auth()->user()?->hasAnyRole(['gerant', 'responsa
  * l'argent qui n'y est jamais passé.
  */
 $ouvrirLaSaisie = function (string $sens) {
+    /*
+     * **Le geste emmène sur sa vue.** Les deux boutons ne vivent plus que sous « Saisie dans
+     * l'application » ; s'y poser ici évite qu'une écriture enregistrée depuis ailleurs
+     * — un lien, un retour d'historique — n'apparaisse dans aucun tableau sous les yeux de
+     * qui vient de la taper.
+     */
+    $this->origineFiltre = 'saisie';
+
     if (! $this->peutSaisir) {
         $this->dispatch('annonce', ton: 'alerte',
             texte: 'La saisie de caisse relève du gérant, du responsable de ville ou du comptable.');
@@ -725,18 +742,14 @@ $mouvements = computed(function () {
             <a href="{{ route('caisse.vehicule') }}" wire:navigate class="bouton bouton-secondaire"
                 style="padding:8px 14px; text-decoration:none;">Rechercher un véhicule</a>
 
-            {{-- **Les deux gestes de la caisse, demandés le 29/09.** Le bouton est ici —
-                 c'est là qu'on compte les espèces — et l'écriture va là où tout le reste de
-                 l'application lit : les encaissements pour une entrée, les charges pour une
-                 sortie. Le mouvement paraît donc sur les deux écrans, ce qui est la réponse
-                 à « les deux doivent communiquer ». --}}
-            @if ($this->peutSaisir)
-                <button type="button" class="bouton" style="padding:8px 14px;"
-                    wire:click="ouvrirLaSaisie('entree')">+ Encaissement</button>
-                <button type="button" class="bouton bouton-secondaire"
-                    style="padding:8px 14px; color:#C8102E; border-color:#C8102E;"
-                    wire:click="ouvrirLaSaisie('sortie')">− Décaissement</button>
-            @endif
+            {{-- **Les deux gestes de saisie ont quitté l'en-tête le 01/10**, et sont
+                 descendus dans la vue « Saisie dans l'application ».
+
+                 « Les + Encaissement / − Décaissement peuvent maintenant aller dans la
+                 caisse, mais dans ce qui est saisie. » C'est juste : offerts en tête de
+                 l'écran, ils s'offraient aussi devant la caisse importée, où l'on ne saisit
+                 rien — et devant la consolidée, où l'on compare. Ils appartiennent à la vue
+                 où l'on écrit. --}}
 
             {{-- **Le retour, demandé le 30/09 : « ajoute un bouton retour dans toutes ces
                  pages ».** Poussé à droite plutôt que collé aux autres : ce n'est pas une
@@ -749,6 +762,25 @@ $mouvements = computed(function () {
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="null" :site-filtre="null"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
+
+    {{-- ─────────────────────────────── les deux gestes, dans la vue où l'on écrit
+
+         Demandé le 01/10. Ils ne paraissent que sous « Saisie dans l'application » : c'est
+         la seule vue où écrire a un sens, et la seule dont le tableau montrera aussitôt ce
+         qu'on vient d'ajouter.
+
+         **Où va l'écriture n'a pas changé** : les encaissements pour une entrée, les charges
+         pour une sortie — là où tout le reste de l'application lit. Le mouvement paraît donc
+         aussi en trésorerie. --}}
+    @if ($this->vue === 'saisie' && $this->peutSaisir && ! $saisieOuverte)
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+            <button type="button" class="bouton" style="padding:8px 14px;"
+                wire:click="ouvrirLaSaisie('entree')">+ Encaissement</button>
+            <button type="button" class="bouton bouton-secondaire"
+                style="padding:8px 14px; color:#C8102E; border-color:#C8102E;"
+                wire:click="ouvrirLaSaisie('sortie')">− Décaissement</button>
+        </div>
+    @endif
 
     {{-- Le formulaire, replié tant qu'on ne le demande pas. Rendu par le serveur et non
          ouvert par un aller-retour : ce qui s'ouvre par un clic n'a pas à faire un voyage. --}}
@@ -784,86 +816,29 @@ $mouvements = computed(function () {
         </div>
     @endif
 
-    {{-- **Ce que cette page lit, et ce qu'elle ne lit pas.**
+    {{-- **Cet encart faisait vingt-cinq lignes le 30/09, il en fait quatre.**
 
-         Question posée le 28/09 : « est-ce que ces deux pages communiquent ? ». Non, et la
-         compréhension qu'on pouvait en avoir était l'inverse de la réalité. Mesuré le même
-         jour, et c'est sans appel. --}}
-    <div class="carte" style="margin-bottom:16px; border-left:3px solid #B87A00;">
-        <p style="margin:0 0 9px; font-size:13px; line-height:1.6;">
-            <strong>Caisse et Trésorerie ne lisent pas la même chose, et ne se parlent pas.</strong>
+         « Ces informations ci-dessus, ça prend trop d'espace » — c'est exact, et deux choses
+         le justifiaient qui ne valent plus. Il expliquait d'abord que la Trésorerie ne voyait
+         pas le journal de caisse : c'est corrigé, elle le voit. Il détaillait ensuite, en un
+         tableau de six lignes, ce que chaque écran lit — or c'est ce que les trois boutons
+         juste en dessous disent déjà, et mieux, puisqu'ils le montrent.
+
+         Reste la seule chose qu'on ne devine pas en regardant : pourquoi la colonne « Solde
+         annoncé » est vide sur certaines lignes. Repliée, parce qu'on ne se pose la question
+         qu'une fois. --}}
+    <details style="margin-bottom:16px;">
+        <summary style="cursor:pointer; font-size:13px; color:#6B6E76; padding:4px 0;">
+            Pourquoi la colonne « Solde annoncé » reste vide sur les écritures saisies ici
+        </summary>
+        <p style="margin:8px 0 0; font-size:13px; line-height:1.6; color:#4B4E55;">
+            Le journal du logiciel porte, ligne à ligne, le solde imprimé après elle : c'est cette
+            chaîne qui prouve qu'aucune ligne n'a été perdue à l'import. Une écriture saisie ici
+            n'en a pas — le logiciel ne la connaît pas encore — et sa case reste vide plutôt que de
+            porter un nombre calculé qu'on prendrait pour une annonce. C'est aussi pourquoi la vue
+            « Saisie dans l'application » n'affiche ni solde d'avant, ni solde de fin, ni écart.
         </p>
-        <table class="tableau" style="font-size:12.5px; margin:0 0 9px; max-width:640px;">
-            <thead>
-                <tr><th>Écran</th><th>Ce qu'il lit</th><th style="text-align:right;">Lignes</th><th>Origine</th></tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><b>Caisse</b> (cet écran)</td>
-                    <td>le journal de caisse du logiciel</td>
-                    <td style="text-align:right;">1 155</td>
-                    <td>100&nbsp;% importées</td>
-                </tr>
-                <tr>
-                    <td rowspan="2"><b>Trésorerie</b></td>
-                    <td>les règlements clients</td>
-                    <td style="text-align:right;">7 714</td>
-                    <td>7 629 importées · 85 saisies</td>
-                </tr>
-                <tr>
-                    <td>les charges</td>
-                    <td style="text-align:right;">198</td>
-                    <td>100&nbsp;% saisies ici</td>
-                </tr>
-            </tbody>
-        </table>
-        <p style="margin:0; font-size:13px; line-height:1.6;">
-            La Caisse <b>ne regroupe donc pas</b> la trésorerie, et la Trésorerie
-            <b>ne voit pas</b> le journal de caisse.
-        </p>
-        <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
-            <strong>Ce que les trois boutons du haut font.</strong> Le journal du logiciel et ce
-            que vous saisissez ici — boutons <b>+ Encaissement</b> et <b>− Décaissement</b> —
-            vivent dans un <b>seul tableau</b>, avec une colonne <b>Origine</b>. Les trois vues
-            n'en découpent pas trois : elles en donnent trois lectures, et <b>les indicateurs
-            changent avec elles</b>, parce qu'on ne peut pas dire la même chose des deux sources.
-        </p>
-        <table class="tableau" style="font-size:12.5px; margin:9px 0 0; max-width:640px;">
-            <thead>
-                <tr><th>Vue</th><th>Ce qu'elle montre</th><th>Ce qu'elle sait dire en plus</th></tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><b>Caisse consolidée</b></td>
-                    <td>tout ce qui est passé par le tiroir</td>
-                    <td>la part qui vient de vos saisies</td>
-                </tr>
-                <tr>
-                    <td><b>Saisie dans l'application</b></td>
-                    <td>vos écritures en espèces</td>
-                    <td>ce que le prochain état de caisse devra porter</td>
-                </tr>
-                <tr>
-                    <td><b>Caisse importée</b></td>
-                    <td>le journal du logiciel</td>
-                    <td>le solde d'avant, celui de fin, et l'écart avec le fichier</td>
-                </tr>
-            </tbody>
-        </table>
-        <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
-            Une écriture saisie ici part dans les <b>encaissements</b> ou les <b>charges</b> : elle
-            paraît donc aussi en trésorerie. C'est par elle que les deux écrans communiquent.
-        </p>
-        <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
-            <strong>Une seule chose n'est pas mélangée : le solde annoncé.</strong> Le journal le
-            porte ligne à ligne, et cette chaîne prouve qu'aucune ligne n'a été perdue à l'import.
-            Une écriture saisie ici n'en a pas — le logiciel ne la connaît pas encore — et sa case
-            reste vide plutôt que de porter un nombre calculé qu'on prendrait pour une annonce.
-            C'est aussi pourquoi la vue « Saisie dans l'application » n'affiche ni solde d'avant,
-            ni solde de fin, ni écart : ces trois-là se lisent sur cette chaîne, et elle n'existe
-            que pour le journal.
-        </p>
-    </div>
+    </details>
 
 
     {{-- ─────────────────────────────── les trois vues de la caisse
@@ -979,47 +954,42 @@ $mouvements = computed(function () {
         @endif
     </div>
 
-    @if ($this->vue !== 'saisie' && $this->grossesSorties->isNotEmpty())
-        <div class="carte" style="margin-bottom:16px;">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 12px;">Où part l'argent — huit premiers postes</h3>
-            <div class="tableau-conteneur">
-                <table class="tableau">
-                    <thead>
-                        <tr>
-                            <th>{{ $this->colonnesDuFichier['motif'] ? 'Motif' : 'Libellé' }}</th>
-                            <th style="text-align:right;">Mouvements</th>
-                            <th style="text-align:right;">Total</th>
-                            <th style="text-align:right;">Part des sorties</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($this->grossesSorties as $poste)
-                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                                <td>{{ $poste->poste ?: '—' }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ $poste->nombre }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $poste->total) }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
-                                    {{ $this->kpis['sorties'] > 0 ? round($poste->total / $this->kpis['sorties'] * 100) : 0 }} %
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    @endif
-
     <div class="carte">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
-            <h3 style="font-size:15px; font-weight:700; margin:0;">
-                Mouvements ({{ number_format($this->mouvements->count(), 0, ',', ' ') }})
-            </h3>
+            {{-- ─────────────────────────────── les deux tableaux, en deux boutons
 
-            <div style="display:flex; gap:9px; flex-wrap:wrap;">
+                 Demandé le 01/10. « Où part l'argent » se lisait **au-dessus** des
+                 mouvements, et repoussait de huit cents pixels le tableau qu'on vient
+                 ouvrir. Ce sont deux questions, pas deux parties d'une même : « qu'est-ce
+                 qui est passé » et « où cela part ». On en pose une à la fois. --}}
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" wire:click="$set('tableauAffiche', 'mouvements')"
+                    class="bouton {{ $tableauAffiche === 'mouvements' ? '' : 'bouton-secondaire' }}"
+                    @if ($tableauAffiche === 'mouvements') aria-current="true" @endif
+                    style="padding:7px 14px;">
+                    Mouvements
+                    <span style="opacity:.72; font-weight:600;">({{ number_format($this->mouvements->count(), 0, ',', ' ') }})</span>
+                </button>
+
+                @if ($this->vue !== 'saisie' && $this->grossesSorties->isNotEmpty())
+                    <button type="button" wire:click="$set('tableauAffiche', 'postes')"
+                        class="bouton {{ $tableauAffiche === 'postes' ? '' : 'bouton-secondaire' }}"
+                        @if ($tableauAffiche === 'postes') aria-current="true" @endif
+                        style="padding:7px 14px;">
+                        Où part l’argent
+                    </button>
+                @endif
+            </div>
+
+            <div style="display:flex; gap:9px; flex-wrap:wrap; align-items:center;">
                 <input type="search" wire:model.live.debounce.400ms="recherche" value="{{ $recherche }}"
                     placeholder="Libellé, bénéficiaire…" class="champ" style="width:auto; min-width:0; flex:0 1 230px;">
 
-                <select wire:model.live="sensFiltre" class="champ">
+                {{-- `width:auto` : sans elle, la classe `.champ` porte `width:100%` — faite
+                     pour un formulaire en colonnes — et réclamait ici la largeur entière de
+                     la barre, ce qui empilait les trois filtres les uns sous les autres.
+                     Même cause que sur `/fournisseurs` et la recherche juste au-dessus. --}}
+                <select wire:model.live="sensFiltre" class="champ" style="width:auto;">
                     <option value="" @selected($sensFiltre === '')>Entrées et sorties</option>
                     <option value="entree" @selected($sensFiltre === 'entree')>Entrées seulement</option>
                     <option value="sortie" @selected($sensFiltre === 'sortie')>Sorties seulement</option>
@@ -1036,6 +1006,38 @@ $mouvements = computed(function () {
             </div>
         </div>
 
+        {{-- ─────────────────────────────── « Où part l'argent »
+
+             Même carte, autre bouton. Le tableau garde ses huit postes et son calcul : seul
+             l'endroit change. Il ne paraît pas dans la vue « Saisie dans l'application » —
+             il se lit sur le journal, qui a seul un motif par ligne. --}}
+        @if ($tableauAffiche === 'postes' && $this->vue !== 'saisie' && $this->grossesSorties->isNotEmpty())
+                <h3 style="font-size:15px; font-weight:700; margin:0 0 12px;">Où part l'argent — huit premiers postes</h3>
+                <div class="tableau-conteneur">
+                    <table class="tableau">
+                        <thead>
+                            <tr>
+                                <th>{{ $this->colonnesDuFichier['motif'] ? 'Motif' : 'Libellé' }}</th>
+                                <th style="text-align:right;">Mouvements</th>
+                                <th style="text-align:right;">Total</th>
+                                <th style="text-align:right;">Part des sorties</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($this->grossesSorties as $poste)
+                                <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                    <td>{{ $poste->poste ?: '—' }}</td>
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ $poste->nombre }}</td>
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $poste->total) }}</td>
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
+                                        {{ $this->kpis['sorties'] > 0 ? round($poste->total / $this->kpis['sorties'] * 100) : 0 }} %
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+        @else
         <div class="tableau-conteneur">
             <table class="tableau">
                 <thead>
@@ -1138,5 +1140,6 @@ $mouvements = computed(function () {
              perdait la ligne qu'on était en train de lire à chaque page tournée. --}}
         <x-pagination :page="$pageDetail" :total="$this->mouvements->count()"
             prop="pageDetail" :par-page="25" />
+        @endif
     </div>
 </div>

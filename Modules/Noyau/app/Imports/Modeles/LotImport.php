@@ -27,7 +27,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
  * le traitement.
  */
 #[Fillable([
-    'entreprise_id', 'ville_id', 'site_id', 'user_id', 'deposant',
+    'entreprise_id', 'ville_id', 'site_id', 'banque_id', 'user_id', 'deposant',
     'format', 'controle', 'nom_fichier', 'empreinte', 'taille', 'periode',
     'lignes_lues', 'lignes_estimees', 'lignes_creees', 'lignes_majs', 'lignes_ignorees', 'lignes_rejetees',
     'etat', 'message', 'demarre_le', 'termine_le', 'annule_le', 'annule_par',

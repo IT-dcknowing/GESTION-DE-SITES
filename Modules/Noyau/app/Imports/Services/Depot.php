@@ -53,6 +53,15 @@ class Depot
         bool $simuler = false,
         ?int $siteId = null,
         bool $toutesVilles = false,
+        /*
+         * **Le compte bancaire du dépôt — seul le relevé bancaire en porte un.**
+         *
+         * Il est déclaré au dépôt et non lu dans le fichier, parce que le fichier ne le
+         * porte pas : sur l'écran du logiciel comptable, le compte se choisit **au-dessus**
+         * de la grille. Sa colonne « BANQUE EMETRICE », elle, est la banque du chèque reçu —
+         * ce qui n'est pas du tout la même chose.
+         */
+        ?int $banqueId = null,
     ): LotImport {
         if (! Registre::connait($format)) {
             throw new RuntimeException("Ce type de fichier n'est pas encore pris en charge.");
@@ -101,6 +110,7 @@ class Depot
             'entreprise_id' => $this->entrepriseId,
             'ville_id' => $villeId,
             'site_id' => $siteId,
+            'banque_id' => $banqueId,
             'user_id' => $deposant->id,
             // Le nom est recopié à côté du lien : l'auteur peut partir, ce qu'il a importé
             // reste, et le journal doit rester lisible.

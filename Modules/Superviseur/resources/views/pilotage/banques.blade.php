@@ -1,46 +1,55 @@
 <?php
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
-use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Banque;
+use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
 use Modules\Noyau\Exploitation\Services\ReconnaissanceDeBanque;
 use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 
-use function Livewire\Volt\{computed, mount, protect, state};
+use function Livewire\Volt\{computed, mount, state};
 
 /*
 |--------------------------------------------------------------------------
 | Banques — ce qui est passé par chaque compte
 |--------------------------------------------------------------------------
-| **Demandé le 30/09** : « tout comme nous avons la page Caisse à travers le bouton Caisse
-| dans la page tréso, on fera aussi pareillement pour les banques. Et lorsque le bouton sera
-| cliqué, on aura différents boutons en dessous qui seront les banques, sur une même ligne.
-| Donc les KPI vont devoir changer en fonction de la banque sélectionnée. »
+| **Le pendant de la caisse.** L'argent passe par un tiroir ou par un compte ; les deux
+| écrans répondent à la même question sur deux supports, et tous deux s'ouvrent depuis la
+| trésorerie, qui les additionne.
 |
-| **D'où vient le nom de la banque, aujourd'hui.** D'aucun relevé : l'import bancaire n'existe
-| pas encore. Il vient de `factures.banque`, où il est écrit à la main depuis le début — c'est
-| la banque du chèque reçu, notée sur la créance au moment de l'encaisser. Un encaissement
-| hérite donc de la banque de sa facture.
+| **La ligne de boutons, telle que demandée le 01/10.** « Toutes les banques », puis une par
+| banque de l'entreprise — *« et si on a ORANGE MONEY mets-le, si on a MTN money mets-le ; et
+| pour le dernier, ceux dont le mode n'a pas été déclaré, mets Moyen non précisé »*.
 |
-| **Et c'est un champ libre, avec ce que cela produit.** Relevé le 01/10 : quatre banques pour
-| quatorze orthographes, dont `BGFIU`, `BGFI+BNI`, `234665`, `CAISSE` et `wave`. Cet écran ne
-| devine pas : il range ce qu'il reconnaît, et **montre à part ce qu'il ne reconnaît pas** —
-| c'est la liste à corriger, et elle vaut mieux qu'un total faux qui ne dit rien.
+| Trois sortes de boutons, donc, et elles ne naissent pas de la même façon :
 |
-| **Les banques se déclarent, elles ne se devinent pas.** Poser d'office une fiche par valeur
-| trouvée créerait `BGFIU` et `234665` comme banques de l'entreprise. L'écran propose, le
-| lecteur tranche.
+| | Bouton | D'où il vient | Paraît |
+| |---|---|---|
+| | une banque | d'une fiche déclarée à la main | **toujours**, même sans une seule écriture |
+| | un portefeuille mobile | d'un moyen trouvé dans les écritures | dès qu'une écriture le porte |
+| | Moyen non précisé | des écritures sans moyen lisible | dès qu'il y en a une |
+|
+| **Une banque déclarée paraît même vide**, et c'est voulu : on la crée *avant* d'y encaisser,
+| et un bouton qui n'apparaîtrait qu'une fois la première écriture passée laisserait croire que
+| la déclaration n'a pas pris.
+|
+| **Ce sont nos comptes, pas ceux des autres.** La colonne « banque émettrice » d'un relevé
+| désigne la banque du chèque **reçu** ; elle n'a rien à faire ici. Ce que cet écran range,
+| c'est l'argent qui entre sur **nos** comptes.
+|
+| **L'origine se filtre, elle ne fait pas de boutons.** *« Au niveau de chacune des banques
+| ajoute un filtre pour pouvoir trier ce qui est saisi dans l'application, ce qui est importé,
+| et les deux à la fois — au lieu de venir mettre des boutons. »* Les boutons disent *où* est
+| l'argent ; l'origine dit *d'où vient la ligne*. Deux questions, deux formes.
 */
 
 state(['villeFiltre' => ''])->url(except: '');
-state(['banqueFiltre' => ''])->url(except: '');
+state(['supportFiltre' => ''])->url(except: '');
+state(['origineFiltre' => ''])->url(except: '');
 state(['recherche' => '']);
 state(['page' => 1]);
 state(['filtresLibres' => []]);
@@ -55,8 +64,16 @@ state([
     'jourFiltre' => '',
 ]);
 
-/* La déclaration d'une banque, repliée tant qu'on ne la demande pas. */
-state(['formulaireOuvert' => false, 'nom' => '', 'code' => '', 'villeDeLaBanque' => '', 'note' => '']);
+/*
+ * La déclaration d'une banque, repliée tant qu'on ne la demande pas.
+ *
+ * **Sans ville, et c'est une correction du 01/10** : « retire le champ ville au niveau du
+ * formulaire, car la banque créée devra s'afficher en liste déroulante partout ». Une banque
+ * rattachée à une ville ne se proposerait pas aux autres, alors que le compte sert
+ * l'entreprise entière — et c'est ce que le logiciel comptable fait déjà : il demande le
+ * compte sans demander de site.
+ */
+state(['formulaireOuvert' => false, 'nom' => '', 'code' => '', 'note' => '']);
 
 mount(function () {
     $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
@@ -64,7 +81,8 @@ mount(function () {
 });
 
 $updatedVilleFiltre = function () { $this->page = 1; };
-$updatedBanqueFiltre = function () { $this->page = 1; };
+$updatedSupportFiltre = function () { $this->page = 1; };
+$updatedOrigineFiltre = function () { $this->page = 1; };
 $updatedRecherche = function () { $this->page = 1; };
 $updatedFiltresLibres = function () { $this->page = 1; };
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; $this->page = 1; };
@@ -79,15 +97,7 @@ $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null,
 ));
 
-/*
- * Les villes **en modèles**, et non en `id => nom`.
- *
- * `x-filtre-periode` les parcourt et lit `$ville->id` : lui donner un tableau de chaînes
- * fait tomber l'écran sur « Attempt to read property "id" on string ». C'est le pendant du
- * défaut inverse corrigé le 29/09 sur la caisse, où `x-champ` recevait des modèles alors
- * qu'il attend `valeur => libellé`. Les deux composants ne lisent pas la même forme, et
- * c'est à l'écran de donner la bonne à chacun.
- */
+/* Les villes **en modèles** : `x-filtre-periode` lit `$ville->id`. */
 $mesVilles = computed(fn () => PerimetreSites::optionsVilles(auth()->user()));
 $villeUnique = computed(fn () => PerimetreSites::villeUnique(auth()->user()));
 $idsSites = computed(fn () => PerimetreSites::idsRetenus(auth()->user(), $this->villeFiltre, ''));
@@ -97,55 +107,48 @@ $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->u
 /** Le gérant déclare les banques ; les autres les lisent. Vérifié ici **et** dans l'action. */
 $peutDeclarer = computed(fn () => auth()->user()->hasRole('gerant'));
 
-/** Les banques déclarées de l'entreprise, actives d'abord. */
-$banques = computed(fn () => Banque::query()->orderBy('nom')->get());
+$banques = computed(fn () => Banque::query()->where('est_active', true)->orderBy('nom')->get());
 
-$villes = computed(fn () => Ville::query()->where('est_actif', true)->orderBy('nom')->pluck('nom', 'id')->all());
+// ------------------------------------------------------------------ ce que la page lit
 
 /**
- * Les règlements passés par une banque, dans le périmètre et la période.
+ * Les entrées et les sorties qui ne sont pas passées par le tiroir.
  *
- * **Le support fait le tri avant la banque**, et c'est l'ordre juste : un encaissement en
- * espèces n'a pas de banque, et sa facture peut pourtant en porter une — celle du chèque
- * reçu la fois d'avant. Ranger les 121 règlements en espèces sous une banque gonflerait son
- * total de ce qui n'y est jamais passé.
+ * **Le support fait le tri avant la banque**, et c'est l'ordre juste : un règlement en espèces
+ * n'a pas de compte, et sa facture peut pourtant porter une banque — celle du chèque reçu la
+ * fois d'avant. Les ranger ici gonflerait un compte de ce qui n'y est jamais passé.
  */
-$requeteDeBase = computed(function () {
+$entreesQ = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return SupportDeReglement::appliquer(
-        PerimetreDeTresorerie::encaissements(
-            Encaissement::query(), $this->idsSites, $this->idsVilles,
-        ),
-        'encaissements',
-        SupportDeReglement::BANQUE,
-    )->whereBetween('encaissements.date', [$debut, $fin]);
+    return PerimetreDeTresorerie::encaissements(
+        Encaissement::query(), $this->idsSites, $this->idsVilles,
+    )
+        ->whereBetween('encaissements.date', [$debut, $fin])
+        ->whereNotIn('encaissements.moyen', SupportDeReglement::moyensDuSupport('encaissements', SupportDeReglement::CAISSE));
+});
+
+$sortiesQ = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return PerimetreDeTresorerie::charges(Charge::query(), $this->idsSites)
+        ->whereBetween('charges.date', [$debut, $fin])
+        ->whereNotIn('charges.moyen', SupportDeReglement::moyensDuSupport('charges', SupportDeReglement::CAISSE));
 });
 
 /**
- * Ce que chaque libellé de banque porte — avant toute reconnaissance.
+ * Les libellés de banque trouvés sur les créances, et ce que chacun porte.
  *
- * Compté par la base, en une requête : un `join` sur les factures, un `group by` sur leur
+ * Compté par la base en une requête : un `join` sur les factures, un `group by` sur leur
  * colonne `banque`. Quatorze lignes reviennent, pas sept mille.
- *
- * @return \Illuminate\Support\Collection<int, object{libelle: ?string, nombre: int, montant: int}>
  */
-$libelles = computed(fn () => (clone $this->requeteDeBase)
+$libelles = computed(fn () => (clone $this->entreesQ)
     ->leftJoin('factures', 'factures.id', '=', 'encaissements.facture_id')
     ->selectRaw('factures.banque as libelle, count(*) as nombre, sum(encaissements.montant) as montant')
     ->groupBy('factures.banque')
-    ->orderByDesc('montant')
     ->get());
 
-/**
- * Les libellés rangés sous la banque qu'ils désignent — et ceux qu'on ne sait pas ranger.
- *
- * **Les deux sont rendus**, et c'est le point de l'écran. Un total qui ne montrerait que ce
- * qu'il a su classer serait juste pour ce qu'il affiche et faux pour ce qu'il prétend : la
- * part non reconnue est précisément ce qu'il faut aller corriger.
- *
- * @return array{parBanque: array<int, array{banque: Banque, nombre: int, montant: int, libelles: array<int, string>}>, nonRanges: array<int, array{libelle: ?string, nombre: int, montant: int, raison: string}>}
- */
+/** Les libellés rangés sous la banque qu'ils désignent, et ceux qu'on ne sait pas ranger. */
 $repartition = computed(function () {
     $banques = $this->banques;
     $parBanque = [];
@@ -160,7 +163,7 @@ $repartition = computed(function () {
         if ($verdict['verdict'] === ReconnaissanceDeBanque::CERTAINE) {
             $id = $verdict['banque']->id;
 
-            $parBanque[$id] ??= ['banque' => $verdict['banque'], 'nombre' => 0, 'montant' => 0, 'libelles' => []];
+            $parBanque[$id] ??= ['nombre' => 0, 'montant' => 0, 'libelles' => []];
             $parBanque[$id]['nombre'] += (int) $ligne->nombre;
             $parBanque[$id]['montant'] += (int) $ligne->montant;
             $parBanque[$id]['libelles'][] = (string) $ligne->libelle;
@@ -173,62 +176,161 @@ $repartition = computed(function () {
             'nombre' => (int) $ligne->nombre,
             'montant' => (int) $ligne->montant,
             'raison' => $verdict['raison'],
-            'proposee' => $verdict['verdict'] === ReconnaissanceDeBanque::PROPOSEE ? $verdict['banque'] : null,
         ];
     }
-
-    uasort($parBanque, fn ($a, $b) => $b['montant'] <=> $a['montant']);
 
     return ['parBanque' => $parBanque, 'nonRanges' => $nonRanges];
 });
 
-/** La banque regardée, ramenée à la liste connue : un identifiant tapé à la main ne vaut rien. */
-$banqueChoisie = computed(fn () => $this->banqueFiltre === ''
-    ? null
-    : $this->banques->firstWhere('id', (int) $this->banqueFiltre));
-
 /**
- * Les libellés que la banque choisie recouvre — pour filtrer le tableau.
+ * Les portefeuilles mobiles réellement employés, et ce qu'ils portent.
  *
- * On filtre sur les **libellés** et non sur un identifiant, parce qu'aucune colonne ne
- * porte l'identifiant : la banque est un nom écrit sur la facture. C'est ce que l'import
- * bancaire changera, et c'est pourquoi ce chemin est isolé ici.
- *
- * @return array<int, string>
+ * Lus dans les écritures et non écrits à la main : le jour où un quatrième opérateur
+ * apparaît, son bouton paraît sans qu'on y touche. Et le jour où l'on cesse de s'en servir,
+ * il disparaît — un bouton qui ne mène à rien use la confiance qu'on porte aux autres.
  */
-$libellesDeLaBanque = computed(function () {
-    $id = $this->banqueChoisie?->id;
+$portefeuilles = computed(function () {
+    $parMoyen = [];
 
-    if ($id === null) {
-        return [];
-    }
+    $compter = function ($requete, string $table, string $signe) use (&$parMoyen) {
+        $groupes = (clone $requete)
+            ->selectRaw($table.'.moyen as moyen, count(*) as nombre, sum('.$table.'.montant) as montant')
+            ->groupBy($table.'.moyen')
+            ->get();
 
-    return $this->repartition['parBanque'][$id]['libelles'] ?? ['__aucun__'];
+        foreach ($groupes as $groupe) {
+            if (SupportDeReglement::pour($groupe->moyen) !== SupportDeReglement::MOBILE) {
+                continue;
+            }
+
+            $cle = (string) $groupe->moyen;
+            $parMoyen[$cle] ??= ['libelle' => $cle, 'nombre' => 0, 'montant' => 0];
+            $parMoyen[$cle]['nombre'] += (int) $groupe->nombre;
+            $parMoyen[$cle]['montant'] += $signe === '+' ? (int) $groupe->montant : -(int) $groupe->montant;
+        }
+    };
+
+    $compter($this->entreesQ, 'encaissements', '+');
+    $compter($this->sortiesQ, 'charges', '-');
+
+    ksort($parMoyen);
+
+    return $parMoyen;
 });
 
+/** Ce que les écritures sans moyen lisible pèsent — le dernier bouton, s'il a lieu d'être. */
+$nonPrecise = computed(function () {
+    $entrees = SupportDeReglement::appliquer(
+        clone $this->entreesQ, 'encaissements', SupportDeReglement::INCONNU,
+    );
+    $sorties = SupportDeReglement::appliquer(
+        clone $this->sortiesQ, 'charges', SupportDeReglement::INCONNU,
+    );
+
+    return [
+        'nombre' => (clone $entrees)->count() + (clone $sorties)->count(),
+        'montant' => (int) (clone $entrees)->sum('encaissements.montant')
+            - (int) (clone $sorties)->sum('charges.montant'),
+    ];
+});
+
+/**
+ * La ligne de boutons, dans l'ordre demandé.
+ *
+ * @return array<string, array{libelle: string, montant: int, nombre: int, sorte: string, vide: bool}>
+ */
+$comptes = computed(function () {
+    $comptes = [];
+
+    foreach ($this->banques as $banque) {
+        $part = $this->repartition['parBanque'][$banque->id] ?? ['nombre' => 0, 'montant' => 0];
+
+        $comptes['b'.$banque->id] = [
+            'libelle' => $banque->nom,
+            'montant' => (int) $part['montant'],
+            'nombre' => (int) $part['nombre'],
+            'sorte' => 'banque',
+            // Une banque déclarée paraît même sans écriture : on la crée avant d'y encaisser.
+            'vide' => $part['nombre'] === 0,
+        ];
+    }
+
+    foreach ($this->portefeuilles as $moyen => $part) {
+        $comptes['m'.md5($moyen)] = [
+            'libelle' => $part['libelle'],
+            'montant' => $part['montant'],
+            'nombre' => $part['nombre'],
+            'sorte' => 'mobile',
+            'vide' => false,
+        ];
+    }
+
+    if ($this->nonPrecise['nombre'] > 0) {
+        $comptes['inconnu'] = [
+            'libelle' => 'Moyen non précisé',
+            'montant' => $this->nonPrecise['montant'],
+            'nombre' => $this->nonPrecise['nombre'],
+            'sorte' => 'inconnu',
+            'vide' => false,
+        ];
+    }
+
+    return $comptes;
+});
+
+$compteChoisi = computed(fn () => $this->comptes[$this->supportFiltre] ?? null);
+
+// ------------------------------------------------------------------ le tableau
+
+/**
+ * Les règlements du compte choisi, avec l'origine demandée.
+ *
+ * L'origine se lit sur `lot_import_id` : une ligne qui porte un lot vient d'un fichier, une
+ * ligne qui n'en porte pas a été tapée ici. C'est la seule chose qui les distingue en base,
+ * et c'est suffisant.
+ */
 $requete = computed(function () {
-    $requete = (clone $this->requeteDeBase)
-        ->when($this->banqueChoisie !== null, fn ($q) => $q->whereHas(
-            'facture', fn ($f) => $f->whereIn('banque', $this->libellesDeLaBanque),
-        ))
-        ->when(trim($this->recherche) !== '', function ($q) {
-            $terme = '%'.trim($this->recherche).'%';
+    $requete = clone $this->entreesQ;
+    $choisi = $this->supportFiltre;
 
-            $q->where(fn ($sous) => $sous
-                ->where('encaissements.client', 'like', $terme)
-                ->orWhere('encaissements.numero', 'like', $terme)
-                ->orWhere('encaissements.reference_origine', 'like', $terme)
-                ->orWhere('encaissements.motif', 'like', $terme));
-        });
+    if ($choisi !== '' && isset($this->comptes[$choisi])) {
+        $compte = $this->comptes[$choisi];
 
-    return FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
+        if ($compte['sorte'] === 'banque') {
+            $id = (int) substr($choisi, 1);
+            $libelles = $this->repartition['parBanque'][$id]['libelles'] ?? ['__aucun__'];
+
+            $requete->whereHas('facture', fn ($f) => $f->whereIn('banque', $libelles));
+        } elseif ($compte['sorte'] === 'mobile') {
+            $requete->where('encaissements.moyen', $compte['libelle']);
+        } else {
+            $requete = SupportDeReglement::appliquer($requete, 'encaissements', SupportDeReglement::INCONNU);
+        }
+    }
+
+    return FiltreLibre::appliquer(
+        $requete
+            ->when($this->origineFiltre === 'import', fn ($q) => $q->whereNotNull('encaissements.lot_import_id'))
+            ->when($this->origineFiltre === 'saisie', fn ($q) => $q->whereNull('encaissements.lot_import_id'))
+            ->when(trim($this->recherche) !== '', function ($q) {
+                $terme = '%'.trim($this->recherche).'%';
+
+                $q->where(fn ($sous) => $sous
+                    ->where('encaissements.client', 'like', $terme)
+                    ->orWhere('encaissements.numero', 'like', $terme)
+                    ->orWhere('encaissements.reference_origine', 'like', $terme)
+                    ->orWhere('encaissements.motif', 'like', $terme));
+            }),
+        $this->colonnesFiltrables,
+        (array) $this->filtresLibres,
+    );
 });
 
 /**
  * Les colonnes du tableau qu'aucun filtre du haut ne couvre.
  *
- * La banque n'y est pas : elle a ses boutons, et la proposer deux fois laisserait poser deux
- * conditions contradictoires sur la même donnée.
+ * Ni la banque ni l'origine n'y figurent : elles ont leurs propres commandes, et les proposer
+ * deux fois laisserait poser deux conditions contradictoires sur la même donnée.
  */
 $colonnesFiltrables = computed(fn () => [
     'encaissements.client' => FiltreLibre::colonne('Client'),
@@ -236,19 +338,10 @@ $colonnesFiltrables = computed(fn () => [
     'encaissements.reference_origine' => FiltreLibre::colonne('Référence (chèque, transaction)'),
     'encaissements.motif' => FiltreLibre::colonne('Motif'),
     'encaissements.type' => FiltreLibre::colonne('Type'),
-    'encaissements.moyen' => FiltreLibre::colonne('Moyen', 'liste', [
-        'Chèque' => 'Chèque', 'Virement' => 'Virement',
-    ]),
     'encaissements.montant' => FiltreLibre::colonne('Montant', 'nombre'),
     'encaissements.date' => FiltreLibre::colonne('Date du règlement', 'date'),
 ]);
 
-/**
- * Les indicateurs — ils suivent la banque choisie, comme demandé.
- *
- * Le nombre de clients est compté par la base et non sur la page affichée : « combien de
- * clients règlent par cette banque » ne se lit pas sur vingt-cinq lignes.
- */
 $kpis = computed(fn () => [
     'montant' => (int) (clone $this->requete)->sum('encaissements.montant'),
     'nombre' => (clone $this->requete)->count(),
@@ -270,14 +363,13 @@ $ouvrirLaDeclaration = function (?string $nomPropose = null) {
     $this->formulaireOuvert = true;
     $this->nom = $nomPropose ? Banque::formePresentable($nomPropose) : '';
     $this->code = '';
-    $this->villeDeLaBanque = '';
     $this->note = '';
     $this->resetErrorBag();
 };
 
 $fermerLaDeclaration = function () {
     $this->formulaireOuvert = false;
-    $this->fill(['nom' => '', 'code' => '', 'villeDeLaBanque' => '', 'note' => '']);
+    $this->fill(['nom' => '', 'code' => '', 'note' => '']);
     $this->resetErrorBag();
 };
 
@@ -287,8 +379,8 @@ $fermerLaDeclaration = function () {
  * **Le droit est revérifié ici**, et pas seulement sur la route : une route ne protège que
  * l'entrée, et une action Livewire s'appelle depuis le navigateur.
  *
- * **Le nom est unique par sa forme réduite**, pas par sa lettre : « BGFI » et « B.G.F.I »
- * sont le même établissement, et deux fiches couperaient ses totaux en deux.
+ * **Le nom est unique par sa forme réduite**, pas par sa lettre : « BGFI » et « B.G.F.I » sont
+ * le même établissement, et deux fiches couperaient ses totaux en deux.
  */
 $declarerLaBanque = function () {
     abort_unless($this->peutDeclarer, 403, 'La déclaration des banques est réservée au gérant.');
@@ -296,9 +388,8 @@ $declarerLaBanque = function () {
     $donnees = $this->validate([
         'nom' => ['required', 'string', 'max:120'],
         'code' => ['nullable', 'string', 'max:16'],
-        'villeDeLaBanque' => ['nullable', Rule::in(array_map('strval', array_keys($this->villes)))],
         'note' => ['nullable', 'string', 'max:500'],
-    ], attributes: ['nom' => 'nom de la banque', 'villeDeLaBanque' => 'ville']);
+    ], attributes: ['nom' => 'nom de la banque']);
 
     $cle = Banque::clePour($donnees['nom']);
 
@@ -319,27 +410,24 @@ $declarerLaBanque = function () {
         'nom' => Banque::formePresentable($donnees['nom']),
         'nom_normalise' => $cle,
         'code' => $donnees['code'] ? mb_strtoupper(trim($donnees['code'])) : null,
-        'ville_id' => $donnees['villeDeLaBanque'] ?: null,
         'note' => $donnees['note'] ?: null,
         'cree_par' => auth()->id(),
     ]);
 
-    unset($this->banques, $this->repartition, $this->libelles);
+    unset($this->banques, $this->repartition, $this->libelles, $this->comptes);
 
     $this->fermerLaDeclaration();
 
-    session()->flash('message', 'La banque est déclarée. Ses règlements se rangent sous elle dès maintenant.');
+    session()->flash('message', 'La banque est déclarée. Elle paraît aussitôt dans la ligne ci-dessous, '
+        .'et dans les listes de l’import et des saisies.');
 };
 
 ?>
 
 <div>
     <x-titre-ecran titre="Banques"
-        sous-titre="Ce qui est passé par chaque compte : les règlements reçus par chèque et par virement.">
+        sous-titre="Ce qui est passé par chaque compte : les règlements reçus autrement qu'en espèces.">
         <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            <a href="{{ route('caisse') }}" wire:navigate class="bouton bouton-secondaire"
-                style="padding:8px 14px; text-decoration:none;">Caisse</a>
-
             @if ($this->peutDeclarer)
                 <button type="button" wire:click="ouvrirLaDeclaration" class="bouton" style="padding:8px 14px;">
                     + Déclarer une banque
@@ -355,27 +443,6 @@ $declarerLaBanque = function () {
         <div class="encart encart-succes" style="margin-bottom:16px;">{{ session('message') }}</div>
     @endif
 
-    {{-- **Ce que cet écran lit, dit avant les chiffres.** Une page qui montre des totaux
-         sans dire d'où ils viennent se croit sur parole, et c'est le plus mauvais moment
-         pour cela : l'import bancaire n'existe pas encore. --}}
-    <div class="carte" style="margin-bottom:16px; border-left:3px solid #B87A00;">
-        <p style="margin:0; font-size:13px; line-height:1.6;">
-            <strong>D'où viennent ces chiffres, tant que les relevés ne sont pas importés.</strong>
-            De la colonne <b>Banque</b> des créances — celle du chèque reçu, notée au moment de
-            l'encaisser. Un règlement hérite donc de la banque de sa facture, et seuls les
-            règlements <b>par chèque ou par virement</b> sont comptés : des espèces ne passent par
-            aucune banque, même si la facture en porte une.
-        </p>
-        @if ($this->banques->isEmpty())
-            <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
-                <strong>Aucune banque n'est encore déclarée.</strong> Les libellés trouvés sont listés
-                plus bas : déclarez ceux qui sont de vraies banques, et les règlements se rangeront
-                sous elles. Rien n'est posé d'office — le champ est libre depuis le début, et l'on y
-                trouve aussi bien <code>BGFIU</code> que <code>234665</code>.
-            </p>
-        @endif
-    </div>
-
     @if ($formulaireOuvert)
         <div class="carte" style="margin-bottom:16px;">
             <h3 style="font-size:15px; font-weight:700; margin:0 0 12px;">Déclarer une banque</h3>
@@ -384,10 +451,6 @@ $declarerLaBanque = function () {
                 <x-champ label="Nom de la banque" model="nom" :requis="true" width="260"
                     placeholder="BGFI, BNI, BDA…" />
                 <x-champ label="Code court" model="code" width="130" placeholder="Facultatif" />
-                @if (count($this->villes) > 1)
-                    <x-champ label="Ville" model="villeDeLaBanque" type="select" :options="$this->villes"
-                        vide="Toutes les villes" width="190" />
-                @endif
                 <x-champ label="Note" model="note" width="280" placeholder="Facultatif" />
 
                 <button type="button" wire:click="declarerLaBanque" class="bouton">Déclarer</button>
@@ -397,63 +460,76 @@ $declarerLaBanque = function () {
             <p style="margin:10px 0 0; font-size:12.5px; color:#6B6E76; line-height:1.55;">
                 Le nom est enregistré en capitales, et deux écritures du même établissement se
                 rejoignent sur leur forme réduite : « BGFI » et « B.G.F.I » sont la même banque.
-                La <b>ville est facultative</b> — une banque sert ordinairement toutes les villes,
-                et elle ne sert qu'à proposer, jamais à écarter une écriture.
+                <b>Pas de ville</b> : le compte sert l'entreprise entière, et il doit se proposer
+                partout — à l'import comme aux saisies du recouvrement et des impayés.
             </p>
 
             <x-erreurs-du-bloc prefixe="nom" />
             <x-erreurs-du-bloc prefixe="code" />
-            <x-erreurs-du-bloc prefixe="villeDeLaBanque" />
         </div>
     @endif
 
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin"
-        :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
-        :ville-filtre="$villeFiltre"
+        :villes="$this->mesVilles" :ville-unique="$this->villeUnique" :ville-filtre="$villeFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
         masquer-activite />
 
-    {{-- ─────────────────────────────── les banques, sur une ligne
+    {{-- ─────────────────────────────── la ligne des comptes
 
-         Demandé le 30/09 : « on aura différents boutons en dessous qui seront les banques,
-         sur une même ligne, et les KPI vont devoir changer en fonction de la banque
-         sélectionnée ». Chaque bouton dit ce qu'il porte, pour qu'on sache avant de cliquer
-         si la banque a quelque chose à montrer sur la période. --}}
-    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-        @php $totalGeneral = collect($this->repartition['parBanque'])->sum('montant'); @endphp
+         Trois sortes de boutons : les banques déclarées — qui paraissent **même vides** —, les
+         portefeuilles mobiles trouvés dans les écritures, et le reliquat des moyens illisibles.
+         Chacun dit ce qu'il porte, pour qu'on sache avant de cliquer. --}}
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+        @php $totalGeneral = collect($this->comptes)->sum('montant'); @endphp
 
-        <button type="button" wire:click="$set('banqueFiltre', '')"
-            class="bouton {{ $banqueFiltre === '' ? '' : 'bouton-secondaire' }}"
-            @if ($banqueFiltre === '') aria-current="page" @endif
+        <button type="button" wire:click="$set('supportFiltre', '')"
+            class="bouton {{ $supportFiltre === '' ? '' : 'bouton-secondaire' }}"
+            @if ($supportFiltre === '') aria-current="true" @endif
             style="padding:9px 16px;">
             Toutes les banques
             <span style="opacity:.72; font-weight:600;">({{ ae($totalGeneral) }})</span>
         </button>
 
-        @foreach ($this->repartition['parBanque'] as $id => $part)
-            @php $actif = (string) $banqueFiltre === (string) $id; @endphp
-            <button type="button" wire:click="$set('banqueFiltre', '{{ $id }}')"
+        @foreach ($this->comptes as $cle => $compte)
+            @php $actif = (string) $supportFiltre === (string) $cle; @endphp
+            <button type="button" wire:click="$set('supportFiltre', '{{ $actif ? '' : $cle }}')"
                 class="bouton {{ $actif ? '' : 'bouton-secondaire' }}"
-                @if ($actif) aria-current="page" @endif
-                style="padding:9px 16px;">
-                {{ $part['banque']->nom }}
-                <span style="opacity:.72; font-weight:600;">({{ ae($part['montant']) }})</span>
+                @if ($actif) aria-current="true" @endif
+                @if ($compte['vide']) title="Déclarée, aucune écriture sur cette période" @endif
+                style="padding:9px 16px; {{ $compte['vide'] && ! $actif ? 'opacity:.62;' : '' }}">
+                {{ $compte['libelle'] }}
+                <span style="opacity:.72; font-weight:600;">
+                    {{ $compte['vide'] ? '(—)' : '('.ae($compte['montant']).')' }}
+                </span>
             </button>
         @endforeach
 
-        @if ($this->repartition['parBanque'] === [])
+        @if ($this->banques->isEmpty())
             <span style="font-size:13px; color:#6B6E76; align-self:center;">
-                Aucune banque déclarée ne porte de règlement sur cette période.
+                Aucune banque déclarée — les libellés trouvés sont listés plus bas.
             </span>
         @endif
     </div>
 
+    {{-- ─────────────────────────────── l'origine, en filtre et non en boutons
+
+         Demandé le 01/10. Les boutons du dessus disent **où** est l'argent ; ce filtre dit
+         **d'où vient la ligne**. Deux questions, deux formes — et les mêmes trois valeurs que
+         sur l'écran Caisse, pour qu'on ne les réapprenne pas. --}}
+    <div style="display:flex; gap:9px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+        <span style="font-size:12.5px; color:#6B6E76;">Origine</span>
+        <select wire:model.live="origineFiltre" class="champ" style="width:auto;">
+            <option value="" @selected($origineFiltre === '')>Importé et saisi</option>
+            <option value="import" @selected($origineFiltre === 'import')>Importé seulement</option>
+            <option value="saisie" @selected($origineFiltre === 'saisie')>Saisi dans l’application</option>
+        </select>
+    </div>
+
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
-        <x-kpi-card label="Encaissé — {{ $this->banqueChoisie?->nom ?? 'toutes banques' }}"
-            :value="ae($this->kpis['montant'])" couleur="#0E9F6E"
-            :sub="$this->libellePerimetre" />
+        <x-kpi-card label="Encaissé — {{ $this->compteChoisi['libelle'] ?? 'tous les comptes' }}"
+            :value="ae($this->kpis['montant'])" couleur="#0E9F6E" :sub="$this->libellePerimetre" />
         <x-kpi-card label="Règlements" :value="number_format($this->kpis['nombre'], 0, ',', ' ')"
-            sub="Chèques et virements" />
+            sub="Hors espèces" />
         <x-kpi-card label="Clients distincts" :value="number_format($this->kpis['clients'], 0, ',', ' ')" />
     </div>
 
@@ -535,7 +611,7 @@ $declarerLaBanque = function () {
                         <th>Client</th>
                         <th>Moyen</th>
                         <th>Banque notée</th>
-                        <th>Référence</th>
+                        <th>Origine</th>
                         <th class="colonne-collee" style="text-align:right;">Montant</th>
                     </tr>
                 </thead>
@@ -549,13 +625,15 @@ $declarerLaBanque = function () {
                             {{-- « Banque notée » et non « Banque » : c'est ce que quelqu'un a
                                  écrit sur la créance, pas ce qu'un relevé confirme. --}}
                             <td style="color:#6B6E76;">{{ $ligne->facture?->banque ?: '—' }}</td>
-                            <td style="color:#6B6E76;">{{ $ligne->reference_origine ?: '—' }}</td>
+                            <td style="font-size:11.5px; color:#6B6E76;">
+                                {{ $ligne->lot_import_id === null ? 'Saisi ici' : 'Importé' }}
+                            </td>
                             <td class="colonne-collee" style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">
                                 {{ ae((int) $ligne->montant) }}
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="7" texte="Aucun règlement bancaire sur cette période." />
+                        <x-table-vide :colspan="7" texte="Aucun règlement sur cette période pour ce compte." />
                     @endforelse
                 </tbody>
             </table>
