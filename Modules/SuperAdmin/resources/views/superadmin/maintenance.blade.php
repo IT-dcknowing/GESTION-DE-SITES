@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use Modules\Noyau\Entreprises\Actions\PurgeParModule;
 use Modules\Noyau\Entreprises\Actions\PurgerDonneesEntreprise;
 use Modules\Noyau\Entreprises\Actions\SupprimerEntreprise;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
@@ -44,6 +45,19 @@ state([
     'suppressionId' => '',
     'confirmationSuppression' => '',
     'resultatSuppression' => null,
+
+    /*
+     * **Vider ce qu'on désigne — demandé le 01/10.**
+     *
+     * « Fais des cases à cocher des pages ayant des données, et dès que les pages seront
+     * cochées et supprimées, les données seront supprimées. » Son propre identifiant
+     * d'entreprise et sa propre confirmation : aucun champ n'est partagé avec les deux
+     * autres gestes, parce qu'un champ partagé finit par faire déclencher l'un pour l'autre.
+     */
+    'choixId' => '',
+    'lotsChoisis' => [],
+    'confirmationChoix' => '',
+    'resultatChoix' => null,
 ]);
 
 $entreprises = computed(fn () => Entreprise::orderBy('nom')->get());
@@ -103,6 +117,120 @@ $portee = computed(function () {
         'Fichiers déposés' => LotImport::nombreDeFichiersDe((int) $id),
     ];
 });
+
+$cibleChoix = computed(fn () => $this->choixId ? Entreprise::find($this->choixId) : null);
+
+/** Ce que chaque ensemble porte, pour l'entreprise regardée — compté avant tout geste. */
+$volumesParLot = computed(fn () => $this->choixId
+    ? PurgeParModule::volumes((int) $this->choixId)
+    : []);
+
+/**
+ * Les ensembles réellement cochés, ramenés à ceux qui existent et qui portent quelque chose.
+ *
+ * **Un ensemble vide est écarté ici**, et pas seulement grisé à l'écran : une case cochée
+ * puis vidée par un autre geste ferait annoncer une suppression qui ne supprimerait rien, et
+ * le bilan dirait « 0 » là où l'on attendait un chiffre.
+ */
+$lotsRetenus = computed(function () {
+    $volumes = $this->volumesParLot;
+
+    return collect($this->lotsChoisis)
+        ->filter(fn ($coche, $cle) => $coche && ($volumes[$cle] ?? 0) > 0)
+        ->keys()
+        ->all();
+});
+
+/**
+ * Ce que la boîte de confirmation dira, mot pour mot.
+ *
+ * **Elle nomme les lignes et les entraînements.** Le propriétaire l'a demandé — « dire ce
+ * qui sera vraiment supprimé » —, et c'est la seule protection qui vaille : un écran qui
+ * demande « êtes-vous sûr ? » sans dire de quoi ne protège de rien.
+ */
+$recapitulatif = computed(function () {
+    $lots = PurgeParModule::lots();
+    $volumes = $this->volumesParLot;
+    $lignes = [];
+    $entraines = [];
+
+    foreach ($this->lotsRetenus as $cle) {
+        $lignes[] = $lots[$cle]['libelle'].' : '.number_format($volumes[$cle], 0, ',', ' ').' ligne(s)';
+
+        if (isset($lots[$cle]['entraine'])) {
+            $entraines[] = $lots[$cle]['entraine'];
+        }
+    }
+
+    return ['lignes' => $lignes, 'entraines' => $entraines, 'total' => array_sum(array_map(
+        fn ($cle) => $volumes[$cle] ?? 0, $this->lotsRetenus,
+    ))];
+});
+
+/** Cocher ou décocher un module entier — « un bouton tout cocher au niveau de chaque module ». */
+$basculerLeModule = function (string $module) {
+    $lots = PurgeParModule::MODULES[$module]['lots'] ?? [];
+    $volumes = $this->volumesParLot;
+
+    // Tout cocher si l'un au moins manque ; tout décocher si l'on est déjà complet. C'est
+    // ce qu'un seul bouton peut faire sans qu'on se demande dans quel sens il agit.
+    $aCompleter = collect($lots)->contains(
+        fn ($lot, $cle) => ($volumes[$cle] ?? 0) > 0 && empty($this->lotsChoisis[$cle]),
+    );
+
+    foreach ($lots as $cle => $lot) {
+        if (($volumes[$cle] ?? 0) > 0) {
+            $this->lotsChoisis[$cle] = $aCompleter;
+        }
+    }
+};
+
+$updatedChoixId = function () {
+    // Changer d'entreprise remet les cases à zéro : des cases cochées pour une entreprise
+    // n'ont aucun sens pour une autre, et les garder ferait supprimer ailleurs.
+    $this->lotsChoisis = [];
+    $this->confirmationChoix = '';
+    $this->resultatChoix = null;
+    unset($this->volumesParLot);
+};
+
+/**
+ * Vide les ensembles cochés.
+ *
+ * **Le nom de l'entreprise doit être retapé**, comme pour les deux autres gestes. Ce n'est
+ * pas une formalité : c'est le seul moment où la personne écrit elle-même ce qu'elle vise,
+ * et c'est ce qui distingue un clic d'une décision.
+ */
+$viderLesChoisis = function (PurgeParModule $action) {
+    $this->validate([
+        'choixId' => ['required', 'exists:entreprises,id'],
+    ], [], ['choixId' => 'entreprise']);
+
+    $cible = $this->cibleChoix;
+
+    if ($this->lotsRetenus === []) {
+        $this->addError('lotsChoisis', 'Cochez au moins un ensemble qui porte des données.');
+
+        return;
+    }
+
+    if (trim($this->confirmationChoix) !== $cible->nom) {
+        $this->addError('confirmationChoix', "Saisissez exactement « {$cible->nom} » pour confirmer.");
+
+        return;
+    }
+
+    $this->resultatChoix = $action->executer($cible, $this->lotsRetenus);
+
+    activity()
+        ->causedBy(auth()->user())
+        ->performedOn($cible)
+        ->withProperties($this->resultatChoix)
+        ->log('Purge sélective des données');
+
+    $this->reset(['lotsChoisis', 'confirmationChoix']);
+    unset($this->volumesParLot, $this->volumes);
+};
 
 $purger = function (PurgerDonneesEntreprise $action) {
     $this->validate([
@@ -171,6 +299,137 @@ $supprimer = function (SupprimerEntreprise $action) {
 <div>
     <x-titre-ecran titre="Maintenance"
         sous-titre="L'état technique de la plateforme et les gestes d'entretien." />
+
+    {{-- ═══════════════════════════════ vider ce qu'on désigne
+
+         **Demandé le 01/10** : « fais des cases à cocher des pages ayant des données, et dès
+         que les pages seront cochées et supprimées, les données seront supprimées […] classer
+         par module […] un bouton tout cocher au niveau de chaque module ».
+
+         **Il vient avant la purge totale**, et ce n'est pas un hasard d'ordre : c'est le
+         geste qu'on cherche neuf fois sur dix — rejouer un import, refaire un relevé. Mettre
+         le geste total en premier inviterait à s'en servir pour ce que celui-ci fait mieux.
+
+         **Les ensembles vides sont montrés et désactivés**, plutôt que cachés : une liste qui
+         change de longueur d'une entreprise à l'autre fait chercher ce qui a disparu. --}}
+    <x-carte-section titre="Vider seulement ce qu'on désigne">
+        <div class="encart encart-alerte">
+            <b>Action irréversible.</b> Chaque ensemble coché est définitivement supprimé pour
+            l'entreprise choisie. Ce qui n'est pas coché n'est pas touché.
+            <br><br>
+            <b>Ce qui n'est jamais touché :</b> la fiche entreprise, les villes, les lieux, les accès,
+            les exercices, et le journal d'activité — qui garde la trace de cette suppression.
+        </div>
+
+        <div class="bloc-saisie">
+            <x-champ label="Entreprise" model="choixId" type="select" live="true" width="280"
+                :options="collect(['' => '— Choisir une entreprise —'])->union($this->entreprises->pluck('nom', 'id'))" />
+        </div>
+
+        @if ($this->cibleChoix)
+            @php $volumes = $this->volumesParLot; @endphp
+
+            @foreach (\Modules\Noyau\Entreprises\Actions\PurgeParModule::MODULES as $cleModule => $module)
+                @php
+                    $porte = collect($module['lots'])->contains(fn ($lot, $cle) => ($volumes[$cle] ?? 0) > 0);
+                @endphp
+
+                <div style="margin-top:18px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:10px; padding:14px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                        <h3 style="font-size:14.5px; font-weight:700; margin:0;">{{ $module['libelle'] }}</h3>
+
+                        {{-- Un seul bouton, et il agit dans le sens qui reste à faire : tout
+                             cocher tant qu'il manque quelque chose, tout décocher ensuite. --}}
+                        @if ($porte)
+                            <button type="button" wire:click="basculerLeModule('{{ $cleModule }}')"
+                                class="bouton bouton-secondaire" style="padding:4px 11px; font-size:12px;">
+                                Tout cocher / décocher
+                            </button>
+                        @endif
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:8px;">
+                        @foreach ($module['lots'] as $cle => $lot)
+                            @php $nombre = $volumes[$cle] ?? 0; @endphp
+                            <label style="display:flex; align-items:flex-start; gap:9px; padding:9px 11px;
+                                          border:1px solid var(--th-ligne,#E2E0D8); border-radius:8px;
+                                          background:{{ $nombre > 0 ? '#fff' : '#F7F6F2' }};
+                                          cursor:{{ $nombre > 0 ? 'pointer' : 'not-allowed' }};
+                                          opacity:{{ $nombre > 0 ? '1' : '.6' }};">
+                                <input type="checkbox" wire:model.live="lotsChoisis.{{ $cle }}"
+                                    @disabled($nombre === 0) style="margin-top:3px;">
+                                <span style="min-width:0;">
+                                    <b style="font-size:13.5px;">{{ $lot['libelle'] }}</b>
+                                    <span style="display:block; font-size:11.5px; color:#6B6E76;">
+                                        Écran : {{ $lot['ecran'] }}
+                                    </span>
+                                    <span style="display:block; font-size:12.5px; font-weight:700; margin-top:3px;
+                                                 font-variant-numeric:tabular-nums;
+                                                 color:{{ $nombre > 0 ? '#C8102E' : '#6B6E76' }};">
+                                        {{ $nombre > 0 ? number_format($nombre, 0, ',', ' ').' ligne(s)' : 'rien à vider' }}
+                                    </span>
+                                    @if (isset($lot['entraine']) && $nombre > 0)
+                                        {{-- L'entraînement est dit à côté de la case, pas seulement
+                                             dans la boîte : c'est au moment de cocher qu'il compte. --}}
+                                        <span style="display:block; font-size:11.5px; color:#B45309; margin-top:4px; line-height:1.45;">
+                                            ⚠ {{ $lot['entraine'] }}
+                                        </span>
+                                    @endif
+                                </span>
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+            @endforeach
+
+            @php $recap = $this->recapitulatif; @endphp
+
+            @if ($recap['lignes'] !== [])
+                <div class="encart encart-alerte" style="margin-top:18px;">
+                    <b>{{ number_format($recap['total'], 0, ',', ' ') }} ligne(s)</b> seront supprimées pour
+                    <b>{{ $this->cibleChoix->nom }}</b> :
+                    <ul style="margin:8px 0 0; padding-left:18px; font-size:13px;">
+                        @foreach ($recap['lignes'] as $ligne)
+                            <li>{{ $ligne }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <div class="bloc-saisie" style="margin-top:14px;">
+                <x-champ label="Retapez le nom de l'entreprise pour confirmer" model="confirmationChoix"
+                    width="320" :placeholder="$this->cibleChoix->nom" />
+
+                {{-- **La boîte de confirmation est celle de l'application, au centre de
+                     l'écran** — demandé le 01/10, « dans une boîte bien au centre ». Elle dit
+                     ce qui part, ligne par ligne, avant de le faire. Sans JavaScript, le geste
+                     part directement : c'est une dégradation assumée, et le champ de
+                     confirmation au-dessus, lui, ne dépend d'aucun script. --}}
+                <button type="button" wire:click="viderLesChoisis" class="bouton bouton-sombre"
+                    data-confirmer="Supprimer définitivement {{ number_format($recap['total'], 0, ',', ' ') }} ligne(s) de « {{ $this->cibleChoix->nom }} » ?"
+                    data-confirmer-titre="Vider les données cochées"
+                    data-confirmer-ton="alerte"
+                    data-confirmer-detail="{{ implode(' · ', $recap['lignes']) }}{{ $recap['entraines'] !== [] ? ' — '.implode(' ', $recap['entraines']) : '' }}">
+                    Vider les ensembles cochés
+                </button>
+            </div>
+
+            <x-erreurs-du-bloc prefixe="lotsChoisis" />
+            <x-erreurs-du-bloc prefixe="confirmationChoix" />
+            <x-erreurs-du-bloc prefixe="choixId" />
+        @endif
+
+        @if ($resultatChoix)
+            <div class="encart encart-succes" style="margin-top:16px;">
+                <b>Fait.</b>
+                <ul style="margin:8px 0 0; padding-left:18px; font-size:13px;">
+                    @foreach ($resultatChoix as $libelle => $nombre)
+                        <li>{{ $libelle }} : {{ number_format($nombre, 0, ',', ' ') }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+    </x-carte-section>
 
     <x-carte-section titre="Purger les données d'une entreprise">
         <div class="encart encart-alerte">

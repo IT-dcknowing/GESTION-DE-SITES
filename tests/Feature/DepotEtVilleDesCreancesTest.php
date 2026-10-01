@@ -12,6 +12,7 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Entreprises\Services\VilleDeTravail;
+use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
@@ -292,7 +293,7 @@ class DepotEtVilleDesCreancesTest extends TestCase
             ->set('fCommentaires', 'Relancé par téléphone')
             ->set('fMontant', '320000')
             ->set('fRegle', '20000')
-            ->set('fModeReglement', 'ESPÈCE')
+            ->set('fSupport', 'caisse')
             ->set('fDateReglement', now()->toDateString())
             ->call('enregistrer')
             ->assertHasNoErrors();
@@ -400,7 +401,9 @@ class DepotEtVilleDesCreancesTest extends TestCase
             ->assertSet('pSiteId', (string) $this->site->id)
             ->set('pDateReception', now()->subDays(2)->toDateString())
             ->set('pRegle', '150000')
-            ->set('pModeReglement', 'VIREMENT — BGFI')
+            ->set('pSupport', 'banque')
+            ->set('pCompte', (string) $this->banqueDeTest()->id)
+            ->set('pMode', 'Virement')
             ->set('pDateReglement', now()->toDateString())
             ->call('porter')
             ->assertHasNoErrors()
@@ -441,7 +444,7 @@ class DepotEtVilleDesCreancesTest extends TestCase
         // Au-delà du reste, le règlement est refusé avant toute écriture.
         $composant->set('pDateReception', now()->subDay()->toDateString())
             ->set('pRegle', '300000')
-            ->set('pModeReglement', 'ESPÈCE')
+            ->set('pSupport', 'caisse')
             ->set('pDateReglement', now()->toDateString())
             ->call('porter')
             ->assertHasErrors('pRegle');
@@ -718,6 +721,24 @@ class DepotEtVilleDesCreancesTest extends TestCase
             'entreprise_id' => $this->entreprise->id, 'site_id' => $facture->site_id,
             'facture_id' => $facture->id, 'date' => now()->toDateString(),
             'type' => 'Client', 'moyen' => $moyen, 'montant' => $montant, 'client' => $facture->tiersPayant(),
+        ]);
+    }
+
+    /**
+     * Le compte bancaire de l'entreprise, posé une fois.
+     *
+     * Depuis le 01/10, un règlement par virement **désigne un compte déclaré** : le champ de
+     * texte libre a disparu, et le mode ne nomme plus la banque.
+     */
+    private ?Banque $banque = null;
+
+    private function banqueDeTest(): Banque
+    {
+        return $this->banque ??= Banque::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'nom' => 'BGFI',
+            'nom_normalise' => Banque::clePour('BGFI'),
+            'type' => Banque::BANQUE,
         ]);
     }
 

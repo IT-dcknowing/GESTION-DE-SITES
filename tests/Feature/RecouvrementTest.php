@@ -12,11 +12,13 @@ use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
+use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
 use Modules\Noyau\Exploitation\Modeles\Tiers;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 use Modules\Recouvrement\Support\AccesRecouvrement;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -377,7 +379,9 @@ class RecouvrementTest extends TestCase
             ->set('encTiers', 'NSIA ASSURANCES')
             ->set('encFactures.'.$facture->id, true)
             ->set('encMontant', '200000')
-            ->set('encMode', 'CHÈQUE')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Chèque')
             ->call('enregistrerEncaissement')
             ->assertHasNoErrors();
 
@@ -411,7 +415,9 @@ class RecouvrementTest extends TestCase
         Volt::actingAs($superviseur)->test('recouvrement.saisie')
             ->set('encTiers', '')
             ->set('encFactures', [])
-            ->set('encMode', '')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Virement')
             ->set('encMontant', '')
             ->call('enregistrerEncaissement')
             ->assertHasErrors()
@@ -633,7 +639,9 @@ class RecouvrementTest extends TestCase
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
             ->set('encFactures.'.$facture->id, true)
-            ->set('encMode', 'CHÈQUE')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Chèque')
             ->set('encMontant', 1_000_000)
             ->call('enregistrerEncaissement')
             ->assertHasNoErrors();
@@ -654,7 +662,7 @@ class RecouvrementTest extends TestCase
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
             ->set('encFactures.'.$facture->id, true)
-            ->set('encMode', 'ESPÈCE')
+            ->set('encSupport', 'caisse')
             ->set('encMontant', 900_000)
             ->call('enregistrerEncaissement')
             ->assertHasErrors('encMontant');
@@ -851,7 +859,9 @@ class RecouvrementTest extends TestCase
         $this->assertSame(['F-001'], $composant->instance()->facturesDuTiersEncaissement->pluck('n_facture')->all());
 
         $composant->set('encFactures.'.$facture->id, true)
-            ->set('encMode', 'VIREMENT — BGFI')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Virement')
             ->set('encMontant', 800_000)
             ->call('enregistrerEncaissement')
             ->assertHasNoErrors();
@@ -977,7 +987,7 @@ class RecouvrementTest extends TestCase
         $this->assertSame(['F-001'], $composant->instance()->facturesDuTiersEncaissement->pluck('n_facture')->all());
 
         $composant->set('encFactures.'.$facture->id, true)
-            ->set('encMode', 'ESPÈCE')
+            ->set('encSupport', 'caisse')
             ->set('encMontant', 300_000)
             ->call('enregistrerEncaissement')
             ->assertHasNoErrors();
@@ -1076,57 +1086,105 @@ class RecouvrementTest extends TestCase
         $this->assertContains('WILLIS', array_keys(Recouvrement::tiers($this->entreprise->id)));
     }
 
-    public function test_les_modes_d_encaissement_sont_une_vraie_liste(): void
+    /**
+     * Le moyen de paiement se dit en trois champs qui se commandent.
+     *
+     * **Ce test a changé de contrat le 01/10, et il faut dire pourquoi.** Il éprouvait un
+     * référentiel ouvert — six modes livrés, dont « VIREMENT — BGFI » et « MOBILE MONEY —
+     * WAVE », et la possibilité d'en ajouter depuis les Paramètres. La banque y était fondue
+     * dans le moyen, et c'est précisément ce que le propriétaire a demandé de défaire :
+     *
+     * > *« À la place de banque mets moyen de paiement. Si banque est sélectionné, fais
+     * > apparaître un champ qui listera les banques créées, et dès que la banque est
+     * > sélectionnée, un champ pour le mode précis — virement, chèque, carte. »*
+     *
+     * Le mode n'a plus à nommer la banque : elle est à côté, et elle est un **compte**
+     * déclaré, pas une chaîne de caractères. La liste des modes se referme donc à trois
+     * valeurs, et c'est un gain : six modes dont deux nommaient une banque et deux un
+     * opérateur mobile produisaient autant de synthèses par mode qu'il y avait de
+     * combinaisons.
+     */
+    public function test_le_moyen_de_paiement_se_dit_en_trois_champs(): void
     {
         $agent = $this->compte('agent_recouvrement');
         $facture = $this->facture('NSIA ASSURANCES', 'F-001', 400_000, now()->subDays(10));
 
-        // Les six modes livrés nomment la banque : un rapprochement bancaire se pointe
-        // relevé par relevé, et « Virement » sans la banque n'aide personne.
-        $modes = array_keys(Referentiel::options(
-            Referentiel::MODE_RECOUVREMENT,
-            $this->entreprise->id,
-        ));
-
-        $this->assertContains('VIREMENT — BGFI', $modes);
-        $this->assertContains('MOBILE MONEY — WAVE', $modes);
-        $this->assertCount(6, $modes);
-
-        // La liste est ouverte : un mode ajouté depuis les Paramètres devient utilisable
-        // le jour même, sans passer par une mise à jour du logiciel.
-        Referentiel::withoutGlobalScopes()->create([
-            'entreprise_id' => $this->entreprise->id,
-            'type' => Referentiel::MODE_RECOUVREMENT,
-            'valeur' => 'VIREMENT — ECOBANK',
-            'est_actif' => true,
-        ]);
+        // Trois manières de payer **depuis un compte**, et elles ne nomment aucune banque.
+        $this->assertSame(['Virement', 'Chèque', 'Carte'], SupportDeReglement::MODES_BANCAIRES);
 
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
             ->set('encFactures.'.$facture->id, true)
-            ->set('encMode', 'VIREMENT — ECOBANK')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Virement')
             ->set('encMontant', 400_000)
             ->call('enregistrerEncaissement')
             ->assertHasNoErrors();
 
-        $this->assertSame('VIREMENT — ECOBANK', Encaissement::withoutGlobalScopes()->first()->moyen);
+        $ecriture = Encaissement::withoutGlobalScopes()->first();
+
+        // Le `moyen` reste lisible par `SupportDeReglement::pour()` — 7 714 encaissements le
+        // portent déjà, et aucune reprise rétroactive n'a eu lieu.
+        $this->assertSame('Virement', $ecriture->moyen);
+        // Et le compte est à côté, désigné et non écrit.
+        $this->assertSame($this->banque()->id, $ecriture->banque_id);
     }
 
-    public function test_un_mode_d_encaissement_inconnu_est_refuse(): void
+    /**
+     * En espèces, aucun compte n'est demandé — et aucun n'est enregistré.
+     *
+     * La caisse n'est pas un compte : l'argent passe de la main à la main. C'est la moitié
+     * de « si caisse est cliqué, banque doit être fermé ».
+     */
+    public function test_un_encaissement_en_especes_ne_porte_aucun_compte(): void
     {
         $agent = $this->compte('agent_recouvrement');
         $facture = $this->facture('NSIA ASSURANCES', 'F-001', 400_000, now()->subDays(10));
 
-        // La liste déroulante n'est pas la sécurité : elle se réécrit dans le navigateur.
-        // Un mode inventé rendrait la synthèse par mode fausse et le rapprochement
-        // bancaire impointable.
         Volt::actingAs($agent)->test('recouvrement.saisie')
             ->set('encTiers', 'NSIA ASSURANCES')
             ->set('encFactures.'.$facture->id, true)
-            ->set('encMode', 'ENVELOPPE')
+            ->set('encSupport', 'caisse')
             ->set('encMontant', 400_000)
             ->call('enregistrerEncaissement')
-            ->assertHasErrors('encMode');
+            ->assertHasNoErrors();
+
+        $ecriture = Encaissement::withoutGlobalScopes()->first();
+
+        $this->assertSame('Espèces', $ecriture->moyen);
+        $this->assertNull($ecriture->banque_id);
+    }
+
+    /**
+     * Un compte inventé est refusé, et un support inventé aussi.
+     *
+     * La liste déroulante n'est pas la sécurité : elle se réécrit dans le navigateur. Un
+     * compte inventé rangerait une écriture sous une banque qui n'existe pas, et l'écran des
+     * banques la perdrait sans le dire.
+     */
+    public function test_un_compte_ou_un_support_invente_est_refuse(): void
+    {
+        $agent = $this->compte('agent_recouvrement');
+        $facture = $this->facture('NSIA ASSURANCES', 'F-001', 400_000, now()->subDays(10));
+
+        Volt::actingAs($agent)->test('recouvrement.saisie')
+            ->set('encTiers', 'NSIA ASSURANCES')
+            ->set('encFactures.'.$facture->id, true)
+            ->set('encSupport', 'banque')
+            ->set('encCompte', '999999')
+            ->set('encMode', 'Virement')
+            ->set('encMontant', 400_000)
+            ->call('enregistrerEncaissement')
+            ->assertHasErrors('encCompte');
+
+        Volt::actingAs($agent)->test('recouvrement.saisie')
+            ->set('encTiers', 'NSIA ASSURANCES')
+            ->set('encFactures.'.$facture->id, true)
+            ->set('encSupport', 'enveloppe')
+            ->set('encMontant', 400_000)
+            ->call('enregistrerEncaissement')
+            ->assertHasErrors('encSupport');
 
         $this->assertSame(0, Encaissement::withoutGlobalScopes()->count());
     }
@@ -1346,7 +1404,9 @@ class RecouvrementTest extends TestCase
         Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie')
             ->set('encTiers', 'PAYEUR SOLDE')
             ->set('encFactures.'.$solde->id, true)
-            ->set('encMode', 'CHÈQUE')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Chèque')
             ->set('encMontant', 200_000)
             ->call('enregistrerEncaissement')
             ->assertHasNoErrors();
@@ -1473,6 +1533,25 @@ class RecouvrementTest extends TestCase
             'type' => Referentiel::TIERS_RECOUVREMENT,
             'valeur' => $nom,
             'est_actif' => true,
+        ]);
+    }
+
+    /**
+     * Le compte bancaire de l'entreprise, posé une fois.
+     *
+     * Depuis le 01/10, un règlement par chèque ou virement **désigne un compte déclaré** :
+     * le champ de texte libre a disparu, et avec lui les quatorze orthographes que
+     * `factures.banque` portait pour quatre banques.
+     */
+    private ?Banque $banqueDeTest = null;
+
+    private function banque(): Banque
+    {
+        return $this->banqueDeTest ??= Banque::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'nom' => 'BGFI',
+            'nom_normalise' => Banque::clePour('BGFI'),
+            'type' => Banque::BANQUE,
         ]);
     }
 

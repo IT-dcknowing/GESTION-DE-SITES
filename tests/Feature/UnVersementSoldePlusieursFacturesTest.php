@@ -11,6 +11,7 @@ use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
+use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
@@ -133,7 +134,9 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
             ->set('encFactures.'.$vieille->id, true)
             ->set('encFactures.'.$moyenne->id, true)
             ->set('encFactures.'.$recente->id, true)
-            ->set('encMode', 'CHÈQUE')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Chèque')
             ->set('encMontant', 5_000_000)
             ->set('encReference', 'CHQ 1234567')
             ->set('encBanque', 'SGBCI')
@@ -175,7 +178,7 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
         Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie')
             ->set('encTiers', 'SIFCA')
             ->set('encFactures.'.$facture->id, true)
-            ->set('encMode', 'ESPÈCES')
+            ->set('encSupport', 'caisse')
             ->set('encMontant', 500_000)
             ->call('enregistrerEncaissement')
             ->assertHasNoErrors();
@@ -191,7 +194,9 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
         Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie')
             ->set('encTiers', 'SIFCA')
             ->set('encFactures.'.$facture->id, true)
-            ->set('encMode', 'CHÈQUE')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Chèque')
             ->set('encMontant', 700_000)
             ->call('enregistrerEncaissement')
             ->assertHasErrors('encMontant');
@@ -206,7 +211,9 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
 
         Volt::actingAs($this->compte('agent_recouvrement'))->test('recouvrement.saisie')
             ->set('encTiers', 'SIFCA')
-            ->set('encMode', 'CHÈQUE')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Chèque')
             ->set('encMontant', 100_000)
             ->call('enregistrerEncaissement')
             ->assertHasErrors('encFactures');
@@ -316,7 +323,9 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
             ->set('encTiers', 'SIFCA')
             ->set('encFactures.'.$vieille->id, true)
             ->set('encFactures.'.$recente->id, true)
-            ->set('encMode', 'CHÈQUE')
+            ->set('encSupport', 'banque')
+            ->set('encCompte', (string) $this->banque()->id)
+            ->set('encMode', 'Chèque')
             ->set('encMontant', 3_000_000)
             ->call('enregistrerEncaissement')
             ->assertHasNoErrors();
@@ -368,6 +377,26 @@ class UnVersementSoldePlusieursFacturesTest extends TestCase
     private array $comptes = [];
 
     /** Le même rôle rend le même compte : deux appels ne doivent pas buter sur le courriel. */
+
+    /**
+     * Le compte bancaire de l'entreprise, posé une fois.
+     *
+     * Depuis le 01/10, un règlement par chèque ou virement **désigne un compte déclaré** :
+     * le champ de texte libre a disparu, et avec lui les quatorze orthographes que
+     * `factures.banque` portait pour quatre banques.
+     */
+    private ?Banque $banqueDeTest = null;
+
+    private function banque(): Banque
+    {
+        return $this->banqueDeTest ??= Banque::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'nom' => 'BGFI',
+            'nom_normalise' => Banque::clePour('BGFI'),
+            'type' => Banque::BANQUE,
+        ]);
+    }
+
     private function compte(string $role): User
     {
         if (isset($this->comptes[$role])) {

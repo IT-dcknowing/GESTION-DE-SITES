@@ -59,6 +59,20 @@ state([
      */
     'encTiers' => '',
     'encFactures' => [],
+    /*
+     * **Le moyen de paiement, en trois champs qui se commandent — refondu le 01/10.**
+     *
+     * Il s'écrivait en deux champs sans rapport : un « mode » libre et une « banque » libre.
+     * Le résultat se mesure dans `factures.banque` — quatorze orthographes pour quatre
+     * banques, dont `BGFIU`, `234565`, et jusqu'à `CAISSE` et `wave`. Ces deux derniers
+     * disent tout : quelqu'un avait besoin d'une colonne « support » et l'a écrite dans
+     * celle de la banque, faute de mieux.
+     *
+     * Le support commande maintenant le reste, et le même composant sert ici et aux impayés :
+     * deux écrans qui posent la même question doivent la poser avec les mêmes mots.
+     */
+    'encSupport' => '',
+    'encCompte' => '',
     'encMode' => '',
     'encMontant' => '',
     'encReference' => '',
@@ -149,6 +163,11 @@ $modes = computed(fn () => Referentiel::options(Referentiel::MODE_RECOUVREMENT))
  */
 $banquesDeclarees = computed(fn () => Banque::query()->where('est_active', true)->orderBy('nom')->get());
 
+/** Le compte choisi, ramené à la liste connue : un identifiant tapé à la main ne vaut rien. */
+$compteChoisi = computed(fn () => $this->encCompte === ''
+    ? null
+    : $this->banquesDeclarees->firstWhere('id', (int) $this->encCompte));
+
 /**
  * Le support que le moyen choisi commande : caisse, banque, ou portefeuille mobile.
  *
@@ -158,21 +177,9 @@ $banquesDeclarees = computed(fn () => Banque::query()->where('est_active', true)
  * pas contourner vaut mieux qu'un script qui désactive un champ, et elle tient sans
  * JavaScript, ce qui est la règle de la maison sur le chemin critique.
  */
-$supportDuMode = computed(fn () => SupportDeReglement::pour($this->encMode));
+$supportDuMode = computed(fn () => $this->encSupport ?: SupportDeReglement::pour($this->encMode));
 
-/** Les règles du champ Banque, qui dépendent du moyen choisi et de ce qui est déclaré. */
-$reglesDeLaBanque = computed(function () {
-    if (! $this->passeParUneBanque) {
-        // Ni requise ni acceptée : un règlement en espèces ne passe par aucun compte.
-        return ['nullable', 'prohibited'];
-    }
 
-    if ($this->banquesDeclarees->isEmpty()) {
-        return ['nullable', 'string', 'max:120'];
-    }
-
-    return ['required', Rule::in($this->banquesDeclarees->pluck('nom')->all())];
-});
 
 /** Vrai quand le moyen choisi passe par un compte : c'est le seul cas où la banque a un sens. */
 $passeParUneBanque = computed(fn () => $this->supportDuMode === SupportDeReglement::BANQUE);
@@ -185,10 +192,27 @@ $passeParUneBanque = computed(fn () => $this->supportDuMode === SupportDeRegleme
  * même dans la créance. C'est exactement l'inverse de ce que « les deux doivent être en
  * relation » demande.
  */
-$updatedEncMode = function () {
-    if (! $this->passeParUneBanque) {
-        $this->encBanque = '';
+/*
+ * Changer de support efface ce qui appartenait au précédent.
+ *
+ * Sans cela, choisir « banque », désigner la BGFI, puis revenir à « caisse » laisserait la
+ * BGFI dans l'état : les champs auraient disparu de l'écran, et les valeurs partiraient quand
+ * même dans l'écriture. C'est l'inverse de ce que « les deux doivent être en relation »
+ * demande.
+ */
+$updatedEncSupport = function () {
+    $this->encCompte = '';
+    $this->encBanque = '';
+
+    if (! SupportDeReglement::demandeUnMode($this->encSupport)) {
+        $this->encMode = '';
+        $this->encReference = '';
     }
+};
+
+/* Le compte choisi donne son nom à la créance — c'est lui qu'on lit dans les tableaux. */
+$updatedEncCompte = function () {
+    $this->encBanque = (string) ($this->compteChoisi?->nom ?? '');
 };
 
 $activites = computed(fn () => Referentiel::options(Referentiel::ACTIVITE));
@@ -366,7 +390,25 @@ $enregistrerEncaissement = function () {
     $donnees = $this->validate([
         'dateTravail' => ['required', 'date'],
         'encTiers' => ['required', 'string'],
-        'encMode' => ['required', Rule::in(array_keys($this->modes))],
+        /*
+         * **Les trois champs se valident ensemble, comme ils s'affichent ensemble.**
+         *
+         * La règle est posée ici autant que dans la vue : un champ absent de l'écran part
+         * quand même dans la requête si quelqu'un le remet. `exclude_unless` fait les deux —
+         * hors du cas visé, la valeur ne traverse pas la validation et ne peut donc pas être
+         * écrite.
+         */
+        'encSupport' => ['required', Rule::in(array_keys(SupportDeReglement::supportsSaisissables()))],
+        'encCompte' => [
+            'exclude_unless:encSupport,'.SupportDeReglement::BANQUE.','.SupportDeReglement::MOBILE,
+            'required',
+            Rule::in($this->banquesDeclarees->pluck('id')->map(fn ($id) => (string) $id)->all()),
+        ],
+        'encMode' => [
+            'exclude_unless:encSupport,'.SupportDeReglement::BANQUE,
+            'required',
+            Rule::in(SupportDeReglement::MODES_BANCAIRES),
+        ],
         'encMontant' => ['required', 'numeric', 'min:1'],
         'encReference' => ['nullable', 'string', 'max:120'],
         /*
@@ -380,9 +422,10 @@ $enregistrerEncaissement = function () {
          * Le nom est contraint à la liste quand elle existe. Tant qu'elle est vide, la saisie
          * reste libre — bloquer l'encaissement serait pire que d'accepter une orthographe.
          */
-        'encBanque' => $this->reglesDeLaBanque,
+        'encBanque' => ['nullable', 'string', 'max:120'],
     ], [], [
-        'encTiers' => 'tiers', 'encMode' => 'mode d\'encaissement',
+        'encTiers' => 'tiers', 'encSupport' => 'moyen de paiement',
+        'encCompte' => 'compte', 'encMode' => 'mode précis',
         'encMontant' => 'montant', 'dateTravail' => 'date', 'encBanque' => 'banque',
     ]);
 
@@ -481,7 +524,11 @@ $enregistrerEncaissement = function () {
                 // L'encaissement hérite de l'activité de la facture qu'il solde : c'est ce
                 // qui rend la ligne ventilable en trésorerie.
                 'activite' => $facture->activite,
-                'moyen' => $donnees['encMode'],
+                // Le `moyen` reste la source du support — 7 714 encaissements le portent
+                // déjà — et le compte s'ajoute à côté. Les deux lectures se rejoignent, et
+                // aucune reprise rétroactive n'est nécessaire.
+                'moyen' => SupportDeReglement::moyenPour($donnees['encSupport'], $donnees['encMode'] ?? null),
+                'banque_id' => $this->compteChoisi?->id,
                 'montant' => $part['part'],
                 // Celui qui a réellement payé, donc le courtier s'il y en a un. Inscrire
                 // l'assuré ici couperait l'extrait de compte du courtier en deux : ses
@@ -513,7 +560,11 @@ $enregistrerEncaissement = function () {
         ->withProperties([
             'tiers' => $donnees['encTiers'],
             'montant' => $montant,
-            'mode' => $donnees['encMode'],
+            // Le support plutôt que le seul mode : c'est lui qui dit où l'argent est entré,
+            // et le mode précis n'existe que pour une banque.
+            'support' => $donnees['encSupport'],
+            'compte' => $this->compteChoisi?->nom,
+            'mode' => $donnees['encMode'] ?? null,
             'factures' => count($idsChoisies),
         ])
         ->log('Recouvrement — encaissement enregistré');
@@ -1148,85 +1199,24 @@ $annulerLeTiers = function () {
                             <input type="number" min="0" wire:model.live="encMontant" value="{{ $encMontant }}"
                                 x-on:input="$wire.encMontant = $event.target.value">
                         </div>
-                        <div class="rec-fld">
-                            {{-- `.live` : c'est ce choix qui commande la présence du champ
-                                 Banque juste en dessous. Sans lui, il faudrait quitter le
-                                 champ pour que l'écran suive. --}}
-                            <label>Mode d'encaissement</label>
-                            <select wire:model.live="encMode">
-                                <option value="" @selected($encMode === '')>— Banque / espèce / mobile money —</option>
-                                @foreach ($this->modes as $mode)
-                                    <option value="{{ $mode }}" @selected((string) $encMode === (string) $mode)>{{ $mode }}</option>
-                                @endforeach
-                            </select>
-                        </div>
+                        {{-- ─────────────────────────────── par où le règlement est passé
+
+                             Le même composant qu'aux impayés, et c'est la correction du
+                             01/10 : les deux écrans ne proposaient pas la même chose — l'un
+                             « VIREMENT — BGFI » dans une liste figée, l'autre un champ de
+                             texte libre. Deux écrans qui posent la même question doivent la
+                             poser avec les mêmes mots, sans quoi la même opération
+                             s'enregistre de deux façons et aucun total ne tombe juste. --}}
+                        <x-moyen-de-paiement prefixe="enc" cadre="rec"
+                            :support="$encSupport" :compte="$encCompte"
+                            :mode="$encMode" :reference="$encReference"
+                            :comptes="$this->banquesDeclarees" />
+
                         <div class="rec-fld">
                             {{-- La date que portera l'écriture. Elle est ici, à côté du montant, et
                                  non dans l'en-tête : c'est au moment de valider qu'on la vérifie. --}}
                             <label for="date-enc">Date de l'écriture</label>
                             <input type="date" id="date-enc" wire:model="dateTravail" value="{{ $dateTravail }}">
-                        </div>
-                        {{-- ─────────────────────────────── le support, commandé par le moyen
-
-                             **Demandé le 30/09** : « fais une liste déroulante des banques
-                             existantes, et ajoute une colonne caisse car si le recouvrement a
-                             été fait caisse (cash) on doit marquer cela ; les deux doivent
-                             être en relation — si caisse est cliqué, banque doit être fermé
-                             et vice versa ».
-
-                             **L'exclusion vient de la structure, pas d'un verrou.** Le moyen
-                             commande le support, et le champ de l'autre n'existe pas : il n'y
-                             a rien à désactiver, donc rien à contourner. Et cela tient sans
-                             JavaScript, ce qui est la règle sur le chemin critique. La même
-                             règle est revérifiée à la validation — un champ caché à l'écran
-                             part quand même dans la requête si quelqu'un le remet. --}}
-                        @if ($this->passeParUneBanque)
-                            <div class="rec-fld">
-                                <label>Banque</label>
-                                @if ($this->banquesDeclarees->isEmpty())
-                                    {{-- Aucune banque déclarée : la saisie reste libre plutôt
-                                         que de bloquer un encaissement. L'écran des banques
-                                         dira ensuite ce qu'il reste à déclarer. --}}
-                                    <input type="text" wire:model="encBanque" value="{{ $encBanque }}"
-                                        placeholder="Celle du compte où le règlement entre">
-                                @else
-                                    <select wire:model="encBanque">
-                                        <option value="" @selected($encBanque === '')>— Choisir la banque —</option>
-                                        @foreach ($this->banquesDeclarees as $banque)
-                                            <option value="{{ $banque->nom }}" @selected((string) $encBanque === (string) $banque->nom)>
-                                                {{ $banque->nom }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                @endif
-                            </div>
-                        @elseif ($this->supportDuMode === \Modules\Noyau\Exploitation\Services\SupportDeReglement::CAISSE)
-                            {{-- Le cas « cash », nommément demandé : il se marque, il ne se
-                                 laisse pas vide. Une écriture en espèces entre au tiroir, et
-                                 c'est ce que l'écran Caisse ira lire. --}}
-                            <div class="rec-fld">
-                                <label>Support</label>
-                                <div style="padding:9px 11px; border:1px solid var(--th-ligne,#E3E0D8);
-                                            border-radius:7px; background:#F4F3EF; font-size:13.5px; font-weight:700;">
-                                    Caisse — espèces
-                                </div>
-                            </div>
-                        @elseif ($this->supportDuMode === \Modules\Noyau\Exploitation\Services\SupportDeReglement::MOBILE)
-                            <div class="rec-fld">
-                                <label>Support</label>
-                                <div style="padding:9px 11px; border:1px solid var(--th-ligne,#E3E0D8);
-                                            border-radius:7px; background:#F4F3EF; font-size:13.5px; font-weight:700;">
-                                    Portefeuille mobile
-                                </div>
-                                <div class="rec-hint" style="margin:6px 0 0; font-size:12px;">
-                                    Ni caisse ni banque : un portefeuille Orange Money ou Wave ne paraît
-                                    sur aucun relevé bancaire.
-                                </div>
-                            </div>
-                        @endif
-                        <div class="rec-fld" style="grid-column:span 2;">
-                            <label>Référence (chèque, transaction…)</label>
-                            <input type="text" wire:model="encReference" value="{{ $encReference }}">
                         </div>
                     </div>
 

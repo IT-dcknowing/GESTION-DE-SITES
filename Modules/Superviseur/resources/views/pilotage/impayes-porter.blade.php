@@ -56,7 +56,18 @@ state([
     'pVehicule' => '',
     'pImmatriculation' => '',
     'pRegle' => '',
-    'pModeReglement' => '',
+    /*
+     * **Le moyen de paiement, en trois champs qui se commandent — refondu le 01/10.**
+     *
+     * Le même composant qu'au recouvrement, et c'est le fond de la demande : les deux
+     * saisies ne proposaient pas la même chose — l'une une liste figée où la banque était
+     * fondue dans le mode, l'autre un champ de texte libre. Deux écrans qui posent la même
+     * question doivent la poser avec les mêmes mots.
+     */
+    'pSupport' => '',
+    'pCompte' => '',
+    'pMode' => '',
+    'pReference' => '',
     'pDateReglement' => '',
     'pBanque' => '',
     'pCommentaires' => '',
@@ -219,34 +230,34 @@ $modes = computed(fn () => Referentiel::options(Referentiel::MODE_RECOUVREMENT))
  */
 $banquesDeclarees = computed(fn () => Banque::query()->where('est_active', true)->orderBy('nom')->get());
 
-$passeParUneBanque = computed(
-    fn () => SupportDeReglement::pour($this->pModeReglement) === SupportDeReglement::BANQUE,
-);
+$compteChoisi = computed(fn () => $this->pCompte === ''
+    ? null
+    : $this->banquesDeclarees->firstWhere('id', (int) $this->pCompte));
 
-/** Les règles du champ Banque : elles dépendent du moyen, et de ce qui est déclaré. */
-$reglesDeLaBanque = computed(function () {
-    // Sans règlement saisi, le bloc entier est hors sujet : la facture est simplement portée.
-    if (trim((string) $this->pRegle) === '' || (int) $this->pRegle === 0) {
-        return ['nullable', 'string', 'max:120'];
+$passeParUneBanque = computed(fn () => $this->pSupport === SupportDeReglement::BANQUE);
+
+
+
+/*
+ * Changer de support efface ce qui appartenait au précédent.
+ *
+ * Sans cela, choisir « banque », désigner la BGFI, puis revenir à « caisse » laisserait la
+ * BGFI dans l'état : les champs auraient disparu de l'écran, et les valeurs partiraient quand
+ * même dans la créance.
+ */
+$updatedPSupport = function () {
+    $this->pCompte = '';
+    $this->pBanque = '';
+
+    if (! SupportDeReglement::demandeUnMode($this->pSupport)) {
+        $this->pMode = '';
+        $this->pReference = '';
     }
+};
 
-    if (! $this->passeParUneBanque) {
-        return ['nullable', 'prohibited'];
-    }
-
-    if ($this->banquesDeclarees->isEmpty()) {
-        return ['nullable', 'string', 'max:120'];
-    }
-
-    return ['required', Rule::in($this->banquesDeclarees->pluck('nom')->all())];
-});
-
-/* Changer de moyen efface la banque retenue pour le précédent — sinon elle partirait quand
-   même dans la créance, le champ ayant disparu de l'écran. */
-$updatedPModeReglement = function () {
-    if (! $this->passeParUneBanque) {
-        $this->pBanque = '';
-    }
+/* Le compte choisi donne son nom à la créance — c'est lui qu'on lit dans les tableaux. */
+$updatedPCompte = function () {
+    $this->pBanque = (string) ($this->compteChoisi?->nom ?? '');
 };
 
 /**
@@ -257,8 +268,8 @@ $updatedPModeReglement = function () {
  */
 $prendreLaFacture = protect(function () {
     foreach (['pAssureur', 'pClient', 'pSiteId', 'pVilleId', 'pCourtier', 'pDeposeChez', 'pDateReception', 'pSinistre',
-        'pVehicule', 'pImmatriculation', 'pRegle', 'pModeReglement', 'pDateReglement', 'pBanque',
-        'pCommentaires'] as $champ) {
+        'pVehicule', 'pImmatriculation', 'pRegle', 'pSupport', 'pCompte', 'pMode', 'pReference',
+        'pDateReglement', 'pBanque', 'pCommentaires'] as $champ) {
         $this->{$champ} = '';
     }
 
@@ -351,7 +362,26 @@ $porter = function () {
         // Le règlement saisi vient s'ajouter à l'avance : les deux réunis ne peuvent pas
         // dépasser le montant facturé.
         'pRegle' => ['nullable', 'integer', 'min:0', 'max:'.$this->avance['reste']],
-        'pModeReglement' => ['exclude_if:pRegle,', 'required_unless:pRegle,0', Rule::in(array_keys($this->modes))],
+        /*
+         * **Les trois champs se valident ensemble, comme ils s'affichent ensemble**, et
+         * seulement quand un règlement est saisi : sans règlement, la facture est simplement
+         * portée, et la question du support ne se pose pas.
+         */
+        'pSupport' => [
+            'exclude_if:pRegle,', 'required_unless:pRegle,0',
+            Rule::in(array_keys(SupportDeReglement::supportsSaisissables())),
+        ],
+        'pCompte' => [
+            'exclude_unless:pSupport,'.SupportDeReglement::BANQUE.','.SupportDeReglement::MOBILE,
+            'required',
+            Rule::in($this->banquesDeclarees->pluck('id')->map(fn ($id) => (string) $id)->all()),
+        ],
+        'pMode' => [
+            'exclude_unless:pSupport,'.SupportDeReglement::BANQUE,
+            'required',
+            Rule::in(SupportDeReglement::MODES_BANCAIRES),
+        ],
+        'pReference' => ['nullable', 'string', 'max:120'],
         /*
          * **La banque suit le moyen, ici comme au recouvrement.** Demandé le 30/09 : « cette
          * partie doit être prise en compte même au niveau des impayées ».
@@ -360,7 +390,7 @@ $porter = function () {
          * l'action autant que dans la vue : un champ caché à l'écran part quand même dans la
          * requête si quelqu'un le remet.
          */
-        'pBanque' => $this->reglesDeLaBanque,
+        'pBanque' => ['nullable', 'string', 'max:120'],
         'pDateReglement' => ['exclude_if:pRegle,', 'required_unless:pRegle,0', 'date', 'before_or_equal:today'],
     ], [
         'pDateReception.required' => "La date de réception est obligatoire : c'est la date du dépôt chez le client.",
@@ -370,7 +400,8 @@ $porter = function () {
         'pDateReception' => 'date de réception', 'pSiteId' => 'site', 'pVilleId' => 'ville',
         'pClient' => 'client', 'pAssureur' => 'assureur', 'pCourtier' => 'courtier', 'pDeposeChez' => 'déposée chez',
         'pVehicule' => 'véhicule', 'pImmatriculation' => 'immatriculation',
-        'pRegle' => 'montant réglé', 'pModeReglement' => 'mode de règlement', 'pDateReglement' => 'date de règlement',
+        'pRegle' => 'montant réglé', 'pSupport' => 'moyen de paiement', 'pCompte' => 'compte',
+        'pMode' => 'mode précis', 'pDateReglement' => 'date de règlement',
     ]);
 
     if ($this->semblables->isNotEmpty() && ! $this->pPasLeMemeDossier) {
@@ -434,7 +465,11 @@ $porter = function () {
                 'date' => $donnees['pDateReglement'],
                 'montant' => $regle,
                 'type' => 'Client',
-                'moyen' => $donnees['pModeReglement'],
+                // Le `moyen` reste la source du support, et le compte s'ajoute à côté :
+                // aucune reprise rétroactive des écritures existantes n'est nécessaire.
+                'moyen' => SupportDeReglement::moyenPour($donnees['pSupport'], $donnees['pMode'] ?? null),
+                'banque_id' => $this->compteChoisi?->id,
+                'reference_origine' => $donnees['pReference'] ?: null,
                 'client' => $verrouillee->tiersPayant(),
                 'activite' => $verrouillee->activite,
                 'reference_origine' => $verrouillee->n_facture,
@@ -561,24 +596,16 @@ $porter = function () {
                     :aide="$compte['avance'] > 0 ? 'déjà en caisse' : 'aucun règlement'" />
                 <x-champ-fige label="Reste à payer" :valeur="ae($compte['reste'])" width="140" aide="montant TTC − avance" />
                 <x-champ label="Nouveau règlement" model="pRegle" type="number" width="140" />
-                <x-champ label="Modederèglement" model="pModeReglement" type="select" :options="$this->modes" vide="— aucun —" width="160" />
-                <x-champ label="Datederèglement" model="pDateReglement" type="date" width="140" />
+                {{-- ─────────────────────────────── par où le règlement est passé
 
-                {{-- **Le support suit le moyen**, comme au recouvrement : une liste de banques
-                     quand le règlement passe par un compte, la mention « Caisse » quand il
-                     entre en espèces, et rien à remplir dans les deux cas qui ne le
-                     demandent pas. Voir `SupportDeReglement`. --}}
-                @if ($this->passeParUneBanque)
-                    @if ($this->banquesDeclarees->isEmpty())
-                        <x-champ label="banque" model="pBanque" width="140" />
-                    @else
-                        <x-champ label="banque" model="pBanque" type="select" width="150"
-                            :options="$this->banquesDeclarees->pluck('nom', 'nom')->all()" vide="— choisir —" />
-                    @endif
-                @elseif (trim((string) $pRegle) !== '' && (int) $pRegle !== 0)
-                    <x-champ-fige label="Support"
-                        :valeur="SupportDeReglement::libelle(SupportDeReglement::pour($pModeReglement))"
-                        width="170" aide="déduit du mode de règlement" />
+                     Le même composant qu'au recouvrement — voir `x-moyen-de-paiement`. Il
+                     n'apparaît que lorsqu'un règlement est saisi : sans règlement, la facture
+                     est simplement portée, et la question ne se pose pas. --}}
+                @if (trim((string) $pRegle) !== '' && (int) $pRegle !== 0)
+                    <x-moyen-de-paiement prefixe="p"
+                        :support="$pSupport" :compte="$pCompte"
+                        :mode="$pMode" :reference="$pReference"
+                        :comptes="$this->banquesDeclarees" />
                 @endif
                 <x-champ label="Commentaires" model="pCommentaires" width="185" />
             </div>

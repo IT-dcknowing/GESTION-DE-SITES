@@ -11,6 +11,7 @@ use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
+use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
@@ -140,7 +141,9 @@ class EtatDesImpayesTest extends TestCase
             ->set('fImmatriculation', '1869 kk 1')
             ->set('fMontant', '300000')
             ->set('fRegle', '120000')
-            ->set('fModeReglement', 'CHÈQUE')
+            ->set('fSupport', 'banque')
+            ->set('fCompte', (string) $this->banqueDeTest()->id)
+            ->set('fMode', 'Chèque')
             ->set('fDateReglement', '2026-04-02')
             ->call('enregistrer')
             ->assertHasNoErrors();
@@ -184,6 +187,20 @@ class EtatDesImpayesTest extends TestCase
          *
          * Les quatre colonnes non saisissables du classeur n'y sont pas, et c'est voulu : le
          * reste à payer et les deux ancienneté se calculent, la colonne A ne porte rien.
+         *
+         * **Deux intitulés s'écartent du classeur depuis le 01/10, et c'est une demande.**
+         * « Modederèglement » et « banque » étaient deux champs libres sans rapport l'un avec
+         * l'autre ; le résultat se mesure dans `factures.banque` — quatorze orthographes pour
+         * quatre banques, dont `BGFIU`, `234665`, et jusqu'à `CAISSE` et `wave`. Le
+         * propriétaire a demandé de les remplacer par un **moyen de paiement** qui commande ce
+         * qui s'ouvre en dessous :
+         *
+         * > *« À la place de banque mets moyen de paiement. Si caisse est sélectionné, le mode
+         * > de règlement ne doit pas apparaître ; si banque est sélectionné, fais apparaître un
+         * > champ qui listera les banques créées, et dès que la banque est sélectionnée, un
+         * > champ pour le mode précis. »*
+         *
+         * Les quatorze autres intitulés restent mot pour mot ceux du classeur.
          */
         $this->actingAs($this->compte('gerant'));
 
@@ -193,10 +210,16 @@ class EtatDesImpayesTest extends TestCase
             'ASSUREUR', 'Client', 'SITE', 'Courtier',
             "Date d'édition", 'Date de réception', 'N° de la facture', 'Numéro Sinistre',
             'Vehicule', 'Immatriculation', 'montantTTC', 'Montantréglé',
-            'Modederèglement', 'Datederèglement', 'banque', 'Commentaires',
+            'Datederèglement', 'Commentaires',
         ] as $intitule) {
             $ecran->assertSee($intitule, false);
         }
+
+        // Le moyen de paiement ne paraît qu'avec un règlement : sans règlement, la créance est
+        // simplement posée, et la question de savoir par où l'argent est passé ne se pose pas.
+        $ecran->assertDontSee('Moyen de paiement', false);
+
+        $ecran->set('fRegle', '150000')->assertSee('Moyen de paiement', false);
 
         // Ce qui ne se saisit pas ne doit pas être proposé : un champ « Reste à payer » dans
         // un formulaire invite à le remplir, et l'on aurait deux vérités pour un même chiffre.
@@ -220,7 +243,7 @@ class EtatDesImpayesTest extends TestCase
             ->set('fSiteId', (string) $this->site->id)
             ->set('fMontant', '300000')
             ->set('fRegle', '475000')
-            ->set('fModeReglement', 'ESPÈCE')
+            ->set('fSupport', 'caisse')
             ->set('fDateReglement', '2026-03-12')
             ->call('enregistrer')
             ->assertHasErrors('fRegle');
@@ -622,6 +645,24 @@ class EtatDesImpayesTest extends TestCase
         }
 
         return $facture->fresh();
+    }
+
+    /**
+     * Le compte bancaire de l'entreprise, posé une fois.
+     *
+     * Depuis le 01/10, un règlement par chèque ou virement **désigne un compte déclaré** :
+     * le champ de texte libre a disparu, et le mode ne nomme plus la banque.
+     */
+    private ?Banque $banque = null;
+
+    private function banqueDeTest(): Banque
+    {
+        return $this->banque ??= Banque::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id,
+            'nom' => 'BGFI',
+            'nom_normalise' => Banque::clePour('BGFI'),
+            'type' => Banque::BANQUE,
+        ]);
     }
 
     private function compte(string $role): User

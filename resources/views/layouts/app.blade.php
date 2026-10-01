@@ -107,6 +107,15 @@
                         Déconnexion
                     </button>
                 </form>
+
+                {{-- **Le bouton du bandeau, à droite** — demandé le 01/10.
+
+                     Il ne replie **que la navigation** : la marque, l'exercice regardé et le
+                     compte connecté restent. Tout cacher ferait gagner cinquante pixels au
+                     prix de la seule chose qu'on ne doit jamais perdre de vue — sous quelle
+                     identité et sur quel exercice on travaille. Le bandeau d'assistance, lui,
+                     est au-dessus et ne se replie pas davantage : c'est déjà sa règle. --}}
+                <x-replier-barre cible="bandeau" quoi="la navigation du haut" />
             </div>
         </div>
     </header>

@@ -270,9 +270,14 @@
         @endif
 
         <div class="imp-top">
-            <div>
-                <h1>{{ AccesImport::PAGES[$page]['libelle'] ?? 'Import' }}</h1>
-                <div class="sub">{{ AccesImport::SOUS_TITRES[$page] ?? '' }}</div>
+            {{-- Du côté du contenu, comme au recouvrement : repliée, la barre emporterait un
+                 bouton qui s'y trouverait. --}}
+            <div style="display:flex; align-items:flex-start; gap:12px;">
+                <x-replier-barre cible="imp" quoi="le menu de l’import" style="margin-top:4px;" />
+                <div>
+                    <h1>{{ AccesImport::PAGES[$page]['libelle'] ?? 'Import' }}</h1>
+                    <div class="sub">{{ AccesImport::SOUS_TITRES[$page] ?? '' }}</div>
+                </div>
             </div>
             @if ($actions)
                 <div style="display:flex; gap:9px; align-items:center; flex-wrap:wrap;">{{ $actions }}</div>

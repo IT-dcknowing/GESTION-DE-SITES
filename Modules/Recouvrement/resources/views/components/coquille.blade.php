@@ -73,9 +73,15 @@
 
     <div class="rec-main">
         <div class="rec-top">
-            <div>
-                <h1>{{ AccesRecouvrement::PAGES[$page]['libelle'] }}</h1>
-                <div class="sub">{{ AccesRecouvrement::SOUS_TITRES[$page] }}</div>
+            {{-- Le bouton est **du côté du contenu** et non dans la barre, pour la raison qui
+                 décide de tout ici : une fois repliée, la barre n'est plus là, et un bouton
+                 qui s'y trouverait partirait avec elle. --}}
+            <div style="display:flex; align-items:flex-start; gap:12px;">
+                <x-replier-barre cible="rec" quoi="le menu du recouvrement" style="margin-top:4px;" />
+                <div>
+                    <h1>{{ AccesRecouvrement::PAGES[$page]['libelle'] }}</h1>
+                    <div class="sub">{{ AccesRecouvrement::SOUS_TITRES[$page] }}</div>
+                </div>
             </div>
             {{-- La ville regardée, à côté de la date d'arrêté : ce sont les deux réglages
                  qui déterminent ce que montre la page. Le module porte sur l'entreprise

@@ -96,24 +96,49 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
     }
 
     /**
-     * Les portefeuilles mobiles employés ont leur bouton, et le reliquat aussi.
+     * Le mobile money a **un** bouton, et son opérateur un sous-filtre.
      *
-     * Demandé le 01/10 : « si on a ORANGE MONEY mets-le, si on a MTN money mets-le ; et pour
-     * le dernier, ceux dont le mode n'a pas été déclaré, mets Moyen non précisé ». Ils sont
-     * lus dans les écritures et non écrits à la main : un quatrième opérateur paraîtra sans
-     * qu'on y touche, et celui qu'on cesse d'employer disparaîtra.
+     * **Le découpage a changé le 01/10, et c'est une demande.** Les portefeuilles étaient lus
+     * dans la colonne `moyen` — « MOBILE MONEY — WAVE » —, ce qui faisait un bouton par
+     * opérateur. Le propriétaire a tranché autrement : *« dans la page de mobile money, on
+     * doit avoir un filtre qui choisit le mobile précis si disponible, mais par défaut doit
+     * rester sur mobile money »*. Quatre opérateurs feraient quatre boutons de plus, et
+     * noieraient les banques.
+     *
+     * Les portefeuilles sont désormais des **comptes déclarés** (`Banque::MOBILE`), au même
+     * titre que les banques : ils reçoivent de l'argent, le gardent et le rendent.
      */
-    public function test_les_portefeuilles_mobiles_et_le_reliquat_ont_leur_bouton(): void
+    public function test_le_mobile_money_a_un_bouton_et_ses_operateurs_un_sous_filtre(): void
     {
-        $this->reglement('BGFI', 400_000, moyen: 'MOBILE MONEY — WAVE');
+        $wave = $this->portefeuille('WAVE');
+        $this->portefeuille('ORANGE');
+
+        $this->reglement('BGFI', 400_000, moyen: 'Mobile Money', compte: $wave);
         $this->reglement('BGFI', 60_000, moyen: 'Non précisé');
 
-        $comptes = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques')->instance()->comptes;
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.banques');
+        $comptes = $ecran->instance()->comptes;
 
         $libelles = collect($comptes)->pluck('libelle')->all();
 
-        $this->assertContains('MOBILE MONEY — WAVE', $libelles);
+        // Un seul bouton pour l'ensemble, et le reliquat à part.
+        $this->assertContains('Mobile money', $libelles);
+        $this->assertNotContains('WAVE', $libelles, 'Les opérateurs ne font pas des boutons.');
         $this->assertContains('Moyen non précisé', $libelles);
+
+        $this->assertSame(400_000, (int) $comptes['mobile']['montant']);
+
+        // Les deux opérateurs déclarés sont offerts au sous-filtre, Wave seule porte quelque
+        // chose, et le défaut reste « tous les portefeuilles ».
+        $this->assertSame(['WAVE', 'ORANGE'], array_values(
+            collect($ecran->instance()->portefeuilles)->sortBy(fn ($n) => $n === 'ORANGE')->all(),
+        ));
+
+        $ecran->set('supportFiltre', 'mobile');
+        $this->assertSame(400_000, $ecran->instance()->kpis['montant']);
+
+        $ecran->set('portefeuilleFiltre', (string) $wave->id);
+        $this->assertSame(400_000, $ecran->instance()->kpis['montant']);
     }
 
     /** Les indicateurs suivent le compte choisi — c'est le cœur de la demande. */
@@ -261,10 +286,22 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
 
     private function banque(string $nom): Banque
     {
+        return $this->compteDeclare($nom, Banque::BANQUE);
+    }
+
+    /** Un portefeuille mobile : c'est un compte, pas un moyen. Voir `Banque::MOBILE`. */
+    private function portefeuille(string $nom): Banque
+    {
+        return $this->compteDeclare($nom, Banque::MOBILE);
+    }
+
+    private function compteDeclare(string $nom, string $type): Banque
+    {
         return Banque::withoutGlobalScopes()->create([
             'entreprise_id' => $this->entreprise->id,
             'nom' => $nom,
             'nom_normalise' => Banque::clePour($nom),
+            'type' => $type,
         ]);
     }
 
@@ -274,6 +311,7 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
         string $moyen = 'Chèque',
         string $client = 'NSIA ASSURANCES',
         bool $importe = false,
+        ?Banque $compte = null,
     ): Encaissement {
         $facture = Facture::withoutGlobalScopes()->create([
             'entreprise_id' => $this->entreprise->id,
@@ -296,6 +334,9 @@ class LEcranDesBanquesRangeCeQuIlReconnaitTest extends TestCase
             'date' => now()->toDateString(),
             'type' => 'Client',
             'moyen' => $moyen,
+            // Depuis le 01/10, une écriture **désigne** son compte ; les anciennes ne
+            // portaient qu'un nom écrit sur la créance, et les deux chemins se lisent.
+            'banque_id' => $compte?->id,
             'montant' => $montant,
             'client' => $client,
         ]);

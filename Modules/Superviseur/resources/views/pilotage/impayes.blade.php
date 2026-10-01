@@ -11,8 +11,10 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
+use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
+use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Noyau\Exploitation\Services\SuppressionDUneCreance;
@@ -163,7 +165,15 @@ state([
     'fImmatriculation' => '',
     'fMontant' => '',
     'fRegle' => '',
-    'fModeReglement' => '',
+    /*
+     * **Le moyen de paiement, en trois champs qui se commandent — refondu le 01/10.**
+     * Le même composant qu'au recouvrement et qu'à « Porter à l'état » : trois écrans qui
+     * posent la même question la posent désormais avec les mêmes mots.
+     */
+    'fSupport' => '',
+    'fCompte' => '',
+    'fMode' => '',
+    'fReference' => '',
     'fDateReglement' => '',
     'fBanque' => '',
     'fCommentaires' => '',
@@ -289,6 +299,38 @@ $villesSaisissables = computed(fn () => Ville::query()
     ->orderBy('nom')->pluck('nom', 'id')->all());
 
 $modes = computed(fn () => Referentiel::options(Referentiel::MODE_RECOUVREMENT));
+
+/**
+ * Les comptes déclarés de l'entreprise — banques et portefeuilles mobiles.
+ *
+ * Ils remplacent le champ de texte libre « banque » : relevé le 01/10, `factures.banque`
+ * portait quatorze orthographes pour quatre banques, dont `BGFIU`, `234665`, et jusqu'à
+ * `CAISSE` et `wave`.
+ */
+$banquesDeclarees = computed(fn () => Banque::query()->where('est_active', true)->orderBy('nom')->get());
+
+$compteChoisi = computed(fn () => $this->fCompte === ''
+    ? null
+    : $this->banquesDeclarees->firstWhere('id', (int) $this->fCompte));
+
+/*
+ * Changer de support efface ce qui appartenait au précédent : sans cela, la banque d'un
+ * mode abandonné partirait quand même dans la créance, son champ ayant disparu de l'écran.
+ */
+$updatedFSupport = function () {
+    $this->fCompte = '';
+    $this->fBanque = '';
+
+    if (! SupportDeReglement::demandeUnMode($this->fSupport)) {
+        $this->fMode = '';
+        $this->fReference = '';
+    }
+};
+
+/* Le compte choisi donne son nom à la créance — c'est lui qu'on lit dans les tableaux. */
+$updatedFCompte = function () {
+    $this->fBanque = (string) ($this->compteChoisi?->nom ?? '');
+};
 
 /**
  * Les lignes de l'état de l'année regardée — la requête, pas les lignes.
@@ -452,7 +494,8 @@ $verrouilles = computed(fn () => $this->ligneModifiee ? EtatDesImpayes::champsVe
 $viderLeFormulaire = function () {
     foreach ([
         'fAssureur', 'fClient', 'fSiteId', 'fVilleId', 'fCourtier', 'fDeposeChez', 'fDateReception', 'fDate', 'fNumero',
-        'fSinistre', 'fVehicule', 'fImmatriculation', 'fMontant', 'fRegle', 'fModeReglement',
+        'fSinistre', 'fVehicule', 'fImmatriculation', 'fMontant', 'fRegle',
+        'fSupport', 'fCompte', 'fMode', 'fReference',
         'fDateReglement', 'fBanque', 'fCommentaires',
     ] as $champ) {
         $this->{$champ} = '';
@@ -631,7 +674,26 @@ $enregistrer = function () {
          */
         'fDateReception' => ['required', 'date', 'after_or_equal:fDate', 'before_or_equal:today'],
         // Un règlement sans moyen ni date n'est pas un règlement, c'est un chiffre.
-        'fModeReglement' => ['exclude_if:fRegle,', 'required_unless:fRegle,0', Rule::in(array_keys($this->modes))],
+        /*
+         * **Les trois champs se valident ensemble, comme ils s'affichent ensemble**, et
+         * seulement quand un règlement est saisi : sans règlement, la créance est simplement
+         * posée, et la question du support ne se pose pas.
+         */
+        'fSupport' => [
+            'exclude_if:fRegle,', 'required_unless:fRegle,0',
+            Rule::in(array_keys(SupportDeReglement::supportsSaisissables())),
+        ],
+        'fCompte' => [
+            'exclude_unless:fSupport,'.SupportDeReglement::BANQUE.','.SupportDeReglement::MOBILE,
+            'required',
+            Rule::in($this->banquesDeclarees->pluck('id')->map(fn ($id) => (string) $id)->all()),
+        ],
+        'fMode' => [
+            'exclude_unless:fSupport,'.SupportDeReglement::BANQUE,
+            'required',
+            Rule::in(SupportDeReglement::MODES_BANCAIRES),
+        ],
+        'fReference' => ['nullable', 'string', 'max:120'],
         'fDateReglement' => ['exclude_if:fRegle,', 'required_unless:fRegle,0', 'date', 'after_or_equal:fDate', 'before_or_equal:today'],
         'fAssureur' => ['nullable', 'string', 'max:160'],
         'fCourtier' => ['nullable', 'string', 'max:160'],
@@ -646,7 +708,8 @@ $enregistrer = function () {
     ], [
         'fDate' => "date d'édition", 'fNumero' => 'numéro de la facture', 'fClient' => 'client',
         'fSiteId' => 'site', 'fVilleId' => 'ville', 'fMontant' => 'montant TTC', 'fRegle' => 'montant réglé',
-        'fDateReception' => 'date de réception', 'fModeReglement' => 'mode de règlement',
+        'fDateReception' => 'date de réception', 'fSupport' => 'moyen de paiement',
+        'fCompte' => 'compte', 'fMode' => 'mode précis',
         'fDateReglement' => 'date de règlement', 'fAssureur' => 'assureur', 'fCourtier' => 'courtier',
         'fDeposeChez' => 'déposée chez',
         'fSinistre' => 'numéro de sinistre', 'fVehicule' => 'véhicule',
@@ -756,7 +819,10 @@ $enregistrer = function () {
                 'date' => $donnees['fDateReglement'],
                 'montant' => $regle,
                 'type' => 'Client',
-                'moyen' => $donnees['fModeReglement'],
+                // Le `moyen` reste la source du support, et le compte s'ajoute à côté.
+                'moyen' => SupportDeReglement::moyenPour($donnees['fSupport'], $donnees['fMode'] ?? null),
+                'banque_id' => $this->compteChoisi?->id,
+                'reference_origine' => $donnees['fReference'] ?: null,
                 'client' => $facture->tiersPayant(),
                 'activite' => $facture->activite,
                 'reference_origine' => $facture->n_facture,
@@ -960,9 +1026,17 @@ $basculerPortage = function () {
                     <x-champ label="Immatriculation" model="fImmatriculation" width="140" :disabled="in_array('immatriculation', $verrou, true)" />
                     <x-champ label="montantTTC" model="fMontant" type="number" :requis="true" width="130" :disabled="in_array('montant', $verrou, true)" />
                     <x-champ :label="$modif ? 'Nouveau règlement' : 'Montantréglé'" model="fRegle" type="number" width="130" />
-                    <x-champ label="Modederèglement" model="fModeReglement" type="select" :options="$this->modes" vide="— aucun —" width="160" />
+                    {{-- Par où le règlement est passé — le même composant que partout
+                         ailleurs. Il ne paraît qu'avec un règlement saisi : sans règlement,
+                         la créance est simplement posée. --}}
+                    @if (trim((string) $fRegle) !== '' && (int) $fRegle !== 0)
+                        <x-moyen-de-paiement prefixe="f"
+                            :support="$fSupport" :compte="$fCompte"
+                            :mode="$fMode" :reference="$fReference"
+                            :comptes="$this->banquesDeclarees" />
+                    @endif
                     <x-champ label="Datederèglement" model="fDateReglement" type="date" width="140" />
-                    <x-champ label="banque" model="fBanque" width="140" />
+
                     <x-champ label="Commentaires" model="fCommentaires" width="185" />
                 </div>
 

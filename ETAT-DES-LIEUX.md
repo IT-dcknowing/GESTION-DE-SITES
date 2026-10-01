@@ -162,6 +162,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
 | 29/09 | voir `git log` | **identite-et-filtres** | **« Portées à l'état (0) » cachait une erreur de chiffre d'affaires** : 8 848 des 8 852 factures portées n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` — **2 021 factures de 2026 sur 4 412** étaient écartées du total de l'écran ; « Autre filtre » sur les **neuf écrans restants**, dont cinq dont le tableau est calculé en mémoire et non lu en base (`FiltreLibre::filtrerCollection()`) ; la **commission n'est plus proposée en filtre** à qui n'a pas le droit de la voir ; la **liste Ville de la caisse** rendait du JSON ; un bouton **Caisse** en tête de la Trésorerie ; les filtres de `/fournisseurs` et de `/caisse` tenaient une ligne chacun à cause de `.champ { width:100% }` ; **écran de connexion** refait sur la maquette avec le rendu 3D (2 252 Ko → 82 Ko) et les outils ancrés au bloc du logo |
+| 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **le moyen de paiement se dit en trois champs qui se commandent** — support, compte, mode précis —, le **même composant sur les trois saisies** qui n'en proposaient pas deux pareilles ; les **portefeuilles mobiles deviennent des comptes** et non un moyen ; le **code d'un compte est posé par le système** ; **trois barres se replient** (recouvrement, import, bandeau) ; et la **maintenance vide ce qu'on désigne**, module par module, ce qui n'est pas coché restant intact |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **reprise des corrections du propriétaire** : la Trésorerie **regroupe tout**, journal de caisse compris, et son encart « cette page ne regroupe pas tout » disparaît ; Caisse et Banques **quittent le menu** et ne s'ouvrent plus que depuis elle ; les **tableaux superposés deviennent deux boutons** ; « Ventiler » **ne recharge plus la page** ; l'**import du relevé bancaire est écrit** — table `pieces_bancaires`, compte déclaré au dépôt, huit colonnes ; la **ville quitte le formulaire de banque** et les comptes déclarés se proposent partout |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | la **Trésorerie devient un tableau de bord** : quatre cases disent où est l'argent — caisse, banque, mobile money, moyen non précisé — et chacune pose son filtre ; **écran Banques** avec un bouton par banque et des indicateurs qui suivent, qui **range ce qu'il reconnaît et montre le reste** (quatorze orthographes pour quatre banques) ; le **moyen commande le support** à la saisie — caisse ou banque, jamais les deux, par la structure et non par un verrou ; le **relevé bancaire** est déclaré au registre avec ses huit colonnes, avant d'être écrit |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **la Trésorerie affichait 35 265 270 F d'encaissements au lieu de 5 518 858 674 F** — 7 627 des 7 714 règlements n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` : la page en montrait **87 sur 7 714**, soit 0,6 % de la réalité ; un encaissement se place désormais par **la ville de sa facture** (`PerimetreDeTresorerie`) ; la **Caisse se lit en trois vues** — consolidée, saisie ici, importée — dont les indicateurs changent avec la vue, parce que le solde d'avant, celui de fin et l'écart se lisent sur la chaîne des soldes du journal, que la saisie n'a pas ; **« Ventiler »** descend enfin au tableau qu'il filtre |
@@ -2501,6 +2502,93 @@ chèque BGFI, quel que soit le compte crédité.
 | `sens` **nul** quand le type ne se lit pas | les libellés réels ne seront connus qu'au premier fichier ; poser « entrée » par défaut ferait des sorties des entrées, et le total serait faux du **double** de leur montant |
 | le champ du compte **rendu par le serveur**, masqué par le script | le dépôt est le chemin critique du module : il doit tenir sans JavaScript |
 
+### La séance du 01/10, troisième reprise — le moyen de paiement, et la purge choisie
+
+#### Trois saisies qui ne posaient pas la même question
+
+Relevé sur deux captures mises côte à côte : le recouvrement offrait une liste figée —
+« VIREMENT — BGFI », « MOBILE MONEY — WAVE » — où la banque était **fondue dans le mode** ;
+les impayés offraient un champ de texte libre. **Deux écrans qui posent la même question
+doivent la poser avec les mêmes mots**, sans quoi la même opération s'enregistre de deux
+façons et aucun total ne tombe juste.
+
+Le résultat de ces deux façons se mesure dans `factures.banque` : quatorze orthographes pour
+quatre banques, dont `BGFIU`, `BGFI+BNI`, `234665`, et jusqu'à **`CAISSE`** et **`wave`**. Ces
+deux derniers disent tout : quelqu'un avait besoin d'une colonne « support » et l'a écrite
+dans celle de la banque, faute de mieux.
+
+**Un composant, trois écrans** — `x-moyen-de-paiement` —, et une cascade qui vient de la
+structure :
+
+| Support | Compte | Mode précis | Référence |
+|---|---|---|---|
+| Caisse | — | — | — |
+| Banque | les banques déclarées | virement · chèque · carte | facultative |
+| Mobile money | les portefeuilles déclarés | — | — |
+
+**Ce qui ne s'ouvre pas n'existe pas dans la page** : il n'y a rien à désactiver, donc rien à
+contourner, et cela tient sans JavaScript. La même règle est revérifiée à la validation —
+un champ absent de l'écran part quand même dans la requête si quelqu'un le remet.
+
+#### Les portefeuilles mobiles sont des comptes, pas un moyen
+
+*« Les deux sont des banques, mais on veut préciser. »* Un portefeuille Orange Money reçoit de
+l'argent, le garde et le rend : c'est un compte. Le ranger dans le moyen obligeait à écrire
+« MOBILE MONEY — ORANGE » dans une case prévue pour « chèque » — ce que l'ancien référentiel
+faisait, et pourquoi deux encaissements portent encore « VIREMENT — BGFI ».
+
+D'où `banques.type`, et **un seul bouton « Mobile money »** sur l'écran, avec un sous-filtre
+pour l'opérateur : quatre opérateurs feraient quatre boutons de plus et noieraient les
+banques. Le défaut reste « tous les portefeuilles », comme demandé.
+
+**Les cinq portefeuilles sont proposés, jamais créés d'office.** Les poser en base à
+l'installation écrirait cinq comptes que personne n'a demandés dans une base qui porte des
+données réelles.
+
+#### Ce que les colonnes existantes deviennent
+
+**Aucune reprise rétroactive**, et c'est la décision à défendre. Les 7 714 encaissements
+portent déjà un `moyen` qui désigne leur support ; les réinterpréter écrirait dans une base
+réelle une donnée que personne n'a saisie. Les nouvelles écritures remplissent donc `moyen`
+d'une valeur que `SupportDeReglement::pour()` sait relire — « Espèces », « Chèque »,
+« Mobile Money » — et **ajoutent le compte à côté**, dans `banque_id`. Les deux lectures se
+rejoignent, et l'écran des banques lit les deux chemins.
+
+#### Trois barres se replient
+
+Demandé le 01/10. Un **écouteur global** et non Alpine : c'est l'idiome déjà en place pour les
+menus du bandeau, et il survit aux navigations — un `x-data` posé sur une barre serait
+reconstruit à chaque page et perdrait l'état. Les barres sont **ouvertes par défaut dans le
+HTML** : sans JavaScript, tout fonctionne.
+
+Le bandeau du haut ne replie **que sa navigation** : la marque, l'exercice regardé et le compte
+connecté restent. Tout cacher ferait gagner cinquante pixels au prix de la seule chose qu'on
+ne doit jamais perdre de vue.
+
+#### La maintenance vide ce qu'on désigne
+
+*« Fais des cases à cocher des pages ayant des données […] classer par module […] un bouton
+tout cocher au niveau de chaque module […] dire ce qui sera vraiment supprimé. »*
+
+La purge qui existait vide **tout** : c'est le geste de la fin d'essai. On ne pouvait pas vider
+les seules prospections pour rejouer un import. Les deux gestes restent et ne se confondent
+pas : celui-là choisit, l'autre ne choisit pas.
+
+**Trois garde-fous, et aucun n'est décoratif** — la base en ligne porte des données réelles :
+
+| Garde-fou | Pourquoi |
+|---|---|
+| rien n'est supprimé qui n'ait été **compté d'abord** | on lit ce qu'on va perdre avant de le perdre, pas après |
+| les **entraînements sont déclarés** | vider les devis met à `null` le `devis_id` des factures : ce n'est pas une perte de lignes, c'est une perte de **lien**, et elle s'annonce |
+| une transaction, et les **fichiers du disque en dernier** | supprimer un fichier ne s'annule pas ; un `ROLLBACK` entre les deux laisserait des lots sans leur fichier |
+
+Plus le nom de l'entreprise à retaper, comme pour les deux autres gestes : c'est le seul
+moment où la personne écrit elle-même ce qu'elle vise, et c'est ce qui distingue un clic d'une
+décision.
+
+**Ce qui n'est jamais touché** : l'organisation — villes, lieux, accès, rôles, exercices — et
+le journal d'activité, qui garde la trace de la purge elle-même.
+
 ### Pièges d'outillage déjà rencontrés
 
 | Piège | Parade |
@@ -2532,6 +2620,8 @@ chèque BGFI, quel que soit le compte crédité.
 | Filtrer en SQL sur un libellé **sans accents** : MySQL compare en `…_ci` et trouve, SQLite non — la condition marche en production et pas en test, donc **passe les tests** | relever les libellés réellement présents, les classer en PHP, filtrer en `whereIn` |
 | `wire:navigate` **remonte toujours en haut de page** et reprend la main sur une ancre `#...` | ne pas naviguer : un `wire:click` qui change l'état, et `scrollIntoView` côté Alpine |
 | Un écran qui **décrit un défaut** au lieu de le corriger (« cette page ne regroupe pas tout ») | le corriger ; un avertissement permanent use la confiance qu'on porte au reste de l'écran |
+| Un `@props` déclaré en `kebab-case` (`'reference-offerte'`) ne crée **aucune variable** dans le composant | déclarer les props en `camelCase` : Blade ne convertit que dans ce sens |
+| Deux écrans qui posent la même question avec deux formulaires distincts finissent par ne plus la poser pareil | un composant partagé, et un test qui éprouve les deux écrans |
 | `x-filtre-periode` attend des **modèles** Ville, `x-champ` un tableau `valeur => libellé` | les deux composants ne lisent pas la même forme ; c'est à l'écran de donner la bonne à chacun |
 | La classe `.champ` porte `width:100%` : dans une rangée en flex, chaque champ réclame la largeur entière et rejette les boutons à la ligne suivante | `style="width:auto"` sur tout filtre posé dans une rangée, comme le fait `x-filtre-periode` |
 | Un droit qui ne cache que les **colonnes** laisse le **panneau de filtres** les proposer — et le filtre, lui, fonctionne | filtrer la déclaration elle-même (`array_filter` sur `colonnesFiltrables`) |
@@ -2552,6 +2642,8 @@ chèque BGFI, quel que soit le compte crédité.
 | Caisse, banque ou mobile : par où l'argent passe | `Modules/Noyau/app/Exploitation/Services/SupportDeReglement.php` |
 | Reconnaître une banque dans un libellé libre | `Modules/Noyau/app/Exploitation/Services/ReconnaissanceDeBanque.php` |
 | Import d'un relevé bancaire | `Modules/Noyau/app/Imports/Formats/FormatDesPiecesBancaires.php` |
+| Moyen de paiement à la saisie (les trois écrans) | `resources/views/components/moyen-de-paiement.blade.php` |
+| Vider des données, module par module | `Modules/Noyau/app/Entreprises/Actions/PurgeParModule.php` |
 | Numérotation des pièces | `Modules/Noyau/app/Exploitation/Services/GenerateurNumero.php` |
 | Code de saisie `A-C-KY-0007` | `Modules/Noyau/app/Commun/Services/CodeAuteur.php` |
 | Formats d'import | `Modules/Noyau/app/Imports/Formats/` |
