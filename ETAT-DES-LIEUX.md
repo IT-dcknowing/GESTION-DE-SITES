@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **29 septembre 2026** (19e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **1er octobre 2026** (20e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -162,6 +162,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
 | 29/09 | voir `git log` | **identite-et-filtres** | **« Portées à l'état (0) » cachait une erreur de chiffre d'affaires** : 8 848 des 8 852 factures portées n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` — **2 021 factures de 2026 sur 4 412** étaient écartées du total de l'écran ; « Autre filtre » sur les **neuf écrans restants**, dont cinq dont le tableau est calculé en mémoire et non lu en base (`FiltreLibre::filtrerCollection()`) ; la **commission n'est plus proposée en filtre** à qui n'a pas le droit de la voir ; la **liste Ville de la caisse** rendait du JSON ; un bouton **Caisse** en tête de la Trésorerie ; les filtres de `/fournisseurs` et de `/caisse` tenaient une ligne chacun à cause de `.champ { width:100% }` ; **écran de connexion** refait sur la maquette avec le rendu 3D (2 252 Ko → 82 Ko) et les outils ancrés au bloc du logo |
+| 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **la Trésorerie affichait 35 265 270 F d'encaissements au lieu de 5 518 858 674 F** — 7 627 des 7 714 règlements n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` : la page en montrait **87 sur 7 714**, soit 0,6 % de la réalité ; un encaissement se place désormais par **la ville de sa facture** (`PerimetreDeTresorerie`) ; la **Caisse se lit en trois vues** — consolidée, saisie ici, importée — dont les indicateurs changent avec la vue, parce que le solde d'avant, celui de fin et l'écart se lisent sur la chaîne des soldes du journal, que la saisie n'a pas ; **« Ventiler »** descend enfin au tableau qu'il filtre |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -2056,6 +2057,20 @@ deviné serait pire que d'afficher un code nu.
 
 ### Hors chantier, toujours en attente
 
+- **Les avoirs : deux questions au propriétaire, posées le 01/10, sans réponse à ce jour.** Rien
+  n'a été changé en attendant, parce que se tromper ici écrirait de fausses créances dans une
+  base réelle. Les mesures sont au § de la séance du 01/10.
+
+  1. Quand le logiciel sort un avoir, **sort-il aussi la facture d'origine corrigée** ? Si oui,
+     prendre les deux compterait la correction deux fois. *Indice mesuré : sur les 43 lignes
+     négatives refusées, 4 seulement ont une facture positive de même numéro en base — ce qui
+     suggère que non, mais 4 sur 43 n'est pas rien.*
+  2. Les **39 lignes qui ne disent pas « avoir »** — régularisations, saisies erronées,
+     remboursements ? Elles n'appellent pas forcément le même traitement que les 4 vrais avoirs.
+
+  Orientation sous réserve : les accepter, les marquer comme avoirs, les laisser **diminuer** le
+  solde du client, et les afficher distinctement plutôt que fondues dans les factures.
+
 - **Rotation des secrets** (le `.env` de production a circulé en clair) : mot de passe du
   courriel `infos@dc-knowing.com`, secret Google OAuth, mot de passe MySQL, puis `APP_KEY` et
   clés VAPID. **Priorité la plus haute, côté propriétaire.**
@@ -2224,6 +2239,103 @@ pas, parce que les retirer fermerait la porte à qui s'est inscrit par Google.
 monde traverse, et la seule qu'on ne peut pas contourner. Il vérifie les trois portes (Fortify,
 Google, création de compte), le jeton CSRF et l'existence des images.
 
+### La séance du 01/10 — le même `whereIn`, pour la troisième fois, et le plus cher
+
+**Mesuré avant de toucher au code, et c'est le chiffre de la séance :**
+
+| | |
+|---|---|
+| Encaissements en base | 7 714 — **5 518 858 674 F** |
+| Sans atelier | **7 627** |
+| Ce que `/tresorerie` affichait | **87 — 35 265 270 F** |
+
+La page annonçait lire « les règlements clients » et en montrait **0,6 %**. Ce n'était pas un
+filtre trop serré : c'était un total faux de **5,48 milliards** sur l'écran qui sert à savoir
+ce qu'on a encaissé.
+
+**Troisième écran mordu par le même `whereIn('site_id', …)`** — après les encaissements du
+recouvrement et le chiffre d'affaires. La parade n'est plus seulement notée dans les pièges :
+elle est écrite une fois par table, et seulement là.
+
+#### Pourquoi un service de plus, et non `EtatDesImpayes::dansLePerimetre()`
+
+Celui-là nomme ses colonnes en dur et ne vaut que pour les factures. Surtout, **les trois
+tables ne savent pas la même chose d'elles-mêmes** :
+
+| Table | Ce qu'elle porte | Comment on la place |
+|---|---|---|
+| `factures` | `site_id` **et** `ville_id` | atelier, sinon ville |
+| `encaissements` | `site_id` seul | atelier, sinon **la ville de sa facture** |
+| `charges` | `site_id` **non nul** | atelier, et c'est tout |
+
+**Un encaissement se place par sa facture, et c'est la seule place juste.** Les 7 627
+encaissements sans atelier sont **tous** rattachés à une facture ; aucune de ces factures n'a
+d'atelier, mais **4 088 ont une ville**. L'argent est entré là où la facture a été émise — le
+lire autrement rangerait un règlement d'Abidjan dans le total de San-Pédro. Les 3 539 restants
+paraissent partout : on ne sait pas où ils sont, et les cacher reviendrait à les perdre.
+
+**Pour les charges, le test a refusé ma symétrie, et il avait raison.** J'avais écrit un repli
+`orWhereNull` par ressemblance avec les deux autres ; `charges.site_id` est déclaré `NOT NULL`
+avec clé étrangère depuis `2025_01_02_000009`. Une charge sans atelier ne peut pas exister, et
+la condition ne se serait jamais vérifiée : du code mort racontant une histoire fausse à qui le
+lit ensuite. Le test vérifie désormais la contrainte plutôt que de la supposer.
+
+#### La Caisse se lit en trois vues
+
+Demandé le 30/09 : « tu feras trois sous-boutons — caisse consolidée, caisse saisie ici, caisse
+importée — avec chacun ses KPI, ses filtres et son tableau ».
+
+**Ce ne sont pas trois tableaux.** La décision du 29/09 tient — « les deux tableaux doivent
+rester en un » — et la raison aussi : une entrée en espèces est une entrée en espèces, qu'un
+fichier l'apporte ou qu'on la tape. Ce qui change d'une vue à l'autre, c'est **ce qu'on peut
+dire** de ces lignes :
+
+| Vue | Ce qu'elle sait dire en plus |
+|---|---|
+| Caisse consolidée | la part qui vient des saisies |
+| Saisie dans l'application | ce que le prochain état de caisse devra porter |
+| Caisse importée | le solde d'avant, celui de fin, et l'écart avec le fichier |
+
+**Les trois derniers ne s'affichent pas dans la vue de la saisie**, et c'est la moitié qui
+compte : ils se lisent sur la **chaîne des soldes annoncés** du journal, que le logiciel imprime
+ligne à ligne. Une écriture saisie ici n'en a pas et ne peut pas en avoir. Les y afficher
+rendrait des nombres qui ne parlent pas de ce qu'on regarde — le pire défaut d'un indicateur :
+on ne le croit pas faux, on le croit vrai.
+
+Le filtre existait déjà ; ce qui manquait, c'est qu'il se voie. Il était une liste déroulante
+en troisième position d'une barre d'outils, derrière une recherche. On ne change pas de point de
+vue dans un coin de barre d'outils.
+
+#### « Ventiler » marchait, mais six écrans plus bas
+
+Relevé le 30/09 : « le clic ne fait rien ». Il faisait quelque chose — il filtre le tableau ②
+*État par assurance représentée* — mais la page se rechargeait à la même hauteur. **Une action
+dont l'effet est hors de l'écran est indistinguable d'une action morte.** Le lien porte
+maintenant l'ancre `#ventilation`, le tableau dit quel courtier il ventile et offre d'ôter le
+filtre, et la colonne a enfin un intitulé : *Pour le compte de qui*.
+
+#### Ce qui a été mesuré et attend une décision
+
+**Les avoirs.** Le propriétaire a demandé si le chiffre d'affaires porte des factures d'avoir.
+Mesuré :
+
+| Constat | Mesure |
+|---|---|
+| Factures en base | 11 332 |
+| À montant **négatif** | **0** — les 43 lignes refusées à l'import ne sont jamais entrées |
+| Dont les observations disent « FACTURE D'AVOIR À ÉTABLIR » | **63**, pour **56 581 552 F** |
+| … portées à l'état des impayés | **63 sur 63** |
+
+Et sur les 43 lignes négatives refusées (**−46 808 080 F**), **4 seulement** ont une facture
+positive de même numéro en base : les 39 autres sont des lignes isolées, pas des corrections
+appariées. SOLIBRA pèse à elle seule −24,3 M.
+
+La règle de refus (`FormatDesImpayes::refuser()`) dit « cette ligne ressemble à un avoir » :
+**neuf sur dix ne se présentent pas comme des avoirs**. Conséquence, et elle va dans le mauvais
+sens : l'état des impayés **surestime la dette**, et l'on relance des gens pour de l'argent
+qu'on leur doit en partie. Rien n'a été changé — deux questions attendent une réponse, au § des
+décisions en attente.
+
 ### Pièges d'outillage déjà rencontrés
 
 | Piège | Parade |
@@ -2249,7 +2361,9 @@ Google, création de compte), le jeton CSRF et l'existence des images.
 | Un lot déposé avant que la lecture immédiate n'existe n'a plus aucun moyen de démarrer | `SuiviDuTraitement::reveiller()` depuis l'écran qui l'affiche ; la prise du lot reste atomique |
 | `Handler::render()` passe les callbacks avant `AuthenticationException` | toute page de panne doit exclure explicitement authentification et validation |
 | `mix-blend-mode: multiply` sur une image à **fond noir** : le fond reste noir sur un papier clair — recopier la règle d'une maquette ne dit pas qu'elle y rendait bien | détourer l'image, et vérifier le rendu avant de reprendre une règle |
-| `whereIn('site_id', …)` **écarte silencieusement les lignes sans atelier** — trois écrans mordus (encaissements, trésorerie, chiffre d'affaires) | passer par `EtatDesImpayes::dansLePerimetre()` : l'atelier s'il est connu, sinon la ville, sinon la ligne paraît partout |
+| `whereIn('site_id', …)` **écarte silencieusement les lignes sans atelier** — trois écrans mordus (encaissements, trésorerie, chiffre d'affaires), le dernier pour **5,48 milliards** | `EtatDesImpayes::dansLePerimetre()` pour les factures, `PerimetreDeTresorerie` pour les encaissements et les charges. Ne jamais réécrire la règle dans un écran |
+| Écrire un repli `orWhereNull` « par symétrie » sur une colonne `NOT NULL` | lire la migration avant : une condition qui ne se vérifie jamais raconte une histoire fausse à qui la lit ensuite |
+| Un bouton dont l'effet est **hors de l'écran** (filtre d'un tableau situé plus bas) | une ancre `#...` dans le lien, et le tableau filtré dit quel filtre il porte |
 | La classe `.champ` porte `width:100%` : dans une rangée en flex, chaque champ réclame la largeur entière et rejette les boutons à la ligne suivante | `style="width:auto"` sur tout filtre posé dans une rangée, comme le fait `x-filtre-periode` |
 | Un droit qui ne cache que les **colonnes** laisse le **panneau de filtres** les proposer — et le filtre, lui, fonctionne | filtrer la déclaration elle-même (`array_filter` sur `colonnesFiltrables`) |
 | `whereNull($col)->orWhere($col, '')` sur une colonne **booléenne ou numérique** : MySQL compare `''` à `0` et ramène les lignes à faux | `FiltreLibre::colonne(..., videEstNull: true)` |
@@ -2265,6 +2379,7 @@ Google, création de compte), le jeton CSRF et l'existence des images.
 | Règles du recouvrement | `Modules/Noyau/app/Exploitation/Services/Recouvrement.php` |
 | Règles de l'état des impayés | `Modules/Noyau/app/Exploitation/Services/EtatDesImpayes.php` |
 | Filtre libre « Autre filtre » (SQL **et** mémoire) | `Modules/Noyau/app/Commun/Services/FiltreLibre.php` |
+| Périmètre des écritures de trésorerie | `Modules/Noyau/app/Exploitation/Services/PerimetreDeTresorerie.php` |
 | Numérotation des pièces | `Modules/Noyau/app/Exploitation/Services/GenerateurNumero.php` |
 | Code de saisie `A-C-KY-0007` | `Modules/Noyau/app/Commun/Services/CodeAuteur.php` |
 | Formats d'import | `Modules/Noyau/app/Imports/Formats/` |

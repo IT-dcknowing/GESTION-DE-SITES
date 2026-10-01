@@ -259,6 +259,23 @@ $soldeAvant = computed(function () {
  * juste. Le filtre d'origine les suit : demander « le journal seulement » donne les totaux
  * du journal seul.
  */
+/**
+ * Ce que la saisie apporte, en argent et non seulement en nombre de lignes.
+ *
+ * C'est le chiffre du rapprochement de la vue « Saisie dans l'application » : ces espèces
+ * sont entrées ou sorties du tiroir, et **le prochain état de caisse du logiciel devra les
+ * porter**. Tant qu'il ne les porte pas, l'écart entre notre total et le sien, c'est elles.
+ */
+$kpisDeLaSaisie = computed(function () {
+    $lignes = $this->saisiesEnEspeces;
+
+    return [
+        'nombre' => $lignes->count(),
+        'entrees' => (int) $lignes->where('sens', MouvementCaisse::ENTREE)->sum('montant'),
+        'sorties' => (int) $lignes->where('sens', MouvementCaisse::SORTIE)->sum('montant'),
+    ];
+});
+
 $kpis = computed(function () {
     $lignes = $this->mouvements;
 
@@ -662,6 +679,29 @@ $mouvementsDuJournal = computed(fn () => (clone $this->requete)
  * dans des tables différentes, et choisir « journal seulement » revient à ne pas lire la
  * seconde, pas à poser une condition.
  */
+/**
+ * Les trois vues de la caisse, demandées le 30/09.
+ *
+ * « Tu feras trois sous-boutons — caisse consolidée, caisse saisie ici, caisse importée —
+ * avec chacun ses KPI, ses filtres et son tableau. »
+ *
+ * **Le filtre existait déjà ; ce qui manquait, c'est qu'il se voie.** Il était une liste
+ * déroulante au-dessus du tableau, en troisième position après la recherche et le sens : on
+ * ne change pas de point de vue dans un coin de barre d'outils. Les trois vues sont
+ * maintenant trois boutons en tête d'écran, chacun disant combien de lignes il porte.
+ *
+ * **Et ce ne sont pas trois tableaux** : c'est un tableau et trois lectures. Le propriétaire
+ * l'avait tranché le 29/09 — « les deux tableaux doivent rester en un » — et la raison tient :
+ * une entrée en espèces est une entrée en espèces, qu'un fichier l'apporte ou qu'on la tape.
+ * Ce qui change d'une vue à l'autre, c'est **ce qu'on peut dire** de ces lignes, et c'est
+ * pourquoi les indicateurs changent avec elles.
+ */
+$vue = computed(fn () => match ($this->origineFiltre) {
+    'journal' => 'importee',
+    'saisie' => 'saisie',
+    default => 'consolidee',
+});
+
 $mouvements = computed(function () {
     $lignes = match ($this->origineFiltre) {
         'journal' => $this->mouvementsDuJournal,
@@ -697,6 +737,12 @@ $mouvements = computed(function () {
                     style="padding:8px 14px; color:#C8102E; border-color:#C8102E;"
                     wire:click="ouvrirLaSaisie('sortie')">− Décaissement</button>
             @endif
+
+            {{-- **Le retour, demandé le 30/09 : « ajoute un bouton retour dans toutes ces
+                 pages ».** Poussé à droite plutôt que collé aux autres : ce n'est pas une
+                 action de la caisse, c'est la sortie. --}}
+            <a href="{{ route('tresorerie') }}" wire:navigate class="bouton bouton-secondaire"
+                style="padding:8px 14px; text-decoration:none; margin-left:auto;">← Retour à la trésorerie</a>
         </div>
     </x-titre-ecran>
 
@@ -776,21 +822,77 @@ $mouvements = computed(function () {
             <b>ne voit pas</b> le journal de caisse.
         </p>
         <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
-            <strong>Ce que le tableau du bas rassemble, en revanche.</strong> Les mouvements du
-            journal et ceux que vous saisissez ici — boutons <b>+ Encaissement</b> et
-            <b>− Décaissement</b> en haut — sont dans un <b>seul tableau</b>, avec une colonne
-            <b>Origine</b> et un filtre pour n'en voir qu'une sorte.
-            Une écriture saisie ici part dans les <b>encaissements</b> ou les <b>charges</b> :
-            elle paraît donc aussi en trésorerie. C'est par elle que les deux écrans communiquent.
+            <strong>Ce que les trois boutons du haut font.</strong> Le journal du logiciel et ce
+            que vous saisissez ici — boutons <b>+ Encaissement</b> et <b>− Décaissement</b> —
+            vivent dans un <b>seul tableau</b>, avec une colonne <b>Origine</b>. Les trois vues
+            n'en découpent pas trois : elles en donnent trois lectures, et <b>les indicateurs
+            changent avec elles</b>, parce qu'on ne peut pas dire la même chose des deux sources.
+        </p>
+        <table class="tableau" style="font-size:12.5px; margin:9px 0 0; max-width:640px;">
+            <thead>
+                <tr><th>Vue</th><th>Ce qu'elle montre</th><th>Ce qu'elle sait dire en plus</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><b>Caisse consolidée</b></td>
+                    <td>tout ce qui est passé par le tiroir</td>
+                    <td>la part qui vient de vos saisies</td>
+                </tr>
+                <tr>
+                    <td><b>Saisie dans l'application</b></td>
+                    <td>vos écritures en espèces</td>
+                    <td>ce que le prochain état de caisse devra porter</td>
+                </tr>
+                <tr>
+                    <td><b>Caisse importée</b></td>
+                    <td>le journal du logiciel</td>
+                    <td>le solde d'avant, celui de fin, et l'écart avec le fichier</td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
+            Une écriture saisie ici part dans les <b>encaissements</b> ou les <b>charges</b> : elle
+            paraît donc aussi en trésorerie. C'est par elle que les deux écrans communiquent.
         </p>
         <p style="margin:9px 0 0; font-size:13px; line-height:1.6;">
             <strong>Une seule chose n'est pas mélangée : le solde annoncé.</strong> Le journal le
             porte ligne à ligne, et cette chaîne prouve qu'aucune ligne n'a été perdue à l'import.
             Une écriture saisie ici n'en a pas — le logiciel ne la connaît pas encore — et sa case
             reste vide plutôt que de porter un nombre calculé qu'on prendrait pour une annonce.
+            C'est aussi pourquoi la vue « Saisie dans l'application » n'affiche ni solde d'avant,
+            ni solde de fin, ni écart : ces trois-là se lisent sur cette chaîne, et elle n'existe
+            que pour le journal.
         </p>
     </div>
 
+
+    {{-- ─────────────────────────────── les trois vues de la caisse
+
+         Des boutons et non une liste déroulante : on ne change pas de point de vue dans un
+         coin de barre d'outils. Chacun dit ce qu'il porte, pour qu'on sache avant de cliquer
+         si la vue a quelque chose à montrer.
+
+         Ce sont des liens `wire:click` et non des liens d'adresse : la vue n'a pas à se
+         retenir d'une visite à l'autre — on vient sur cet écran pour la consolidée. --}}
+    @php
+        $vues = [
+            '' => ['Caisse consolidée', $this->mouvementsDuJournal->count() + $this->saisiesEnEspeces->count()],
+            'saisie' => ['Saisie dans l’application', $this->saisiesEnEspeces->count()],
+            'journal' => ['Caisse importée', $this->mouvementsDuJournal->count()],
+        ];
+    @endphp
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+        @foreach ($vues as $cle => [$libelle, $nombre])
+            @php $active = (string) $origineFiltre === (string) $cle; @endphp
+            <button type="button" wire:click="$set('origineFiltre', '{{ $cle }}')"
+                class="bouton {{ $active ? '' : 'bouton-secondaire' }}"
+                @if ($active) aria-current="page" @endif
+                style="padding:9px 16px;">
+                {{ $libelle }}
+                <span style="opacity:.72; font-weight:600;">({{ number_format($nombre, 0, ',', ' ') }})</span>
+            </button>
+        @endforeach
+    </div>
 
     {{-- Le choix de la caisse ne s'affiche que là où il y en a plusieurs : ailleurs, une
          liste à un seul élément fait croire qu'il existe un second choix caché. --}}
@@ -806,15 +908,26 @@ $mouvements = computed(function () {
         </div>
     @endif
 
-    {{-- Trois indicateurs, et un quatrième seulement quand le rapprochement a quelque
-         chose à dire. La grille s'adapte d'elle-même au nombre de cartes. --}}
+    {{-- ─────────────────────────────── les indicateurs, qui suivent la vue
+
+         **Trois jeux, et non un jeu dont on masquerait des cartes.** Le solde d'avant la
+         période, le solde de fin et l'écart avec le fichier se lisent tous sur la **chaîne
+         des soldes annoncés** du journal — c'est le logiciel qui les imprime ligne à ligne.
+         Une écriture saisie ici n'en a pas, et ne peut pas en avoir : le logiciel ne la
+         connaît pas encore. Les afficher dans la vue « Saisie dans l'application » rendrait
+         des nombres qui ne parlent pas de ce qu'on regarde — le pire défaut d'un indicateur.
+
+         La grille s'adapte d'elle-même au nombre de cartes. --}}
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
-        {{-- Ce que la caisse contenait avant le premier jour regardé. La phrase dit d'où
-             vient le nombre : une annonce du fichier, ou notre seul cumul — les deux n'ont
-             pas la même valeur, et les confondre serait présenter une reconstitution
-             partielle comme un relevé. --}}
-        <x-kpi-card label="Solde avant la période" :value="ae($this->soldeAvant['montant'])"
-            :sub="$this->soldeAvant['phrase']" />
+
+        @if ($this->vue !== 'saisie')
+            {{-- Ce que la caisse contenait avant le premier jour regardé. La phrase dit d'où
+                 vient le nombre : une annonce du fichier, ou notre seul cumul — les deux
+                 n'ont pas la même valeur, et les confondre serait présenter une
+                 reconstitution partielle comme un relevé. --}}
+            <x-kpi-card label="Solde avant la période" :value="ae($this->soldeAvant['montant'])"
+                :sub="$this->soldeAvant['phrase']" />
+        @endif
 
         <x-kpi-card label="Entrées — {{ $this->libellePerimetre }}" :value="ae($this->kpis['entrees'])"
             :sub="$this->kpis['lignes'].' mouvement(s) sur la période'" />
@@ -826,11 +939,36 @@ $mouvements = computed(function () {
         <x-kpi-card label="Mouvement net de la période" :value="ae($this->kpis['solde'])"
             :couleur="$this->kpis['solde'] >= 0 ? '#0E9F6E' : '#C8102E'" sub="Entrées − sorties" />
 
-        <x-kpi-card label="Solde à la fin de la période"
-            :value="ae($this->soldeAvant['montant'] + $this->kpis['solde'])"
-            sub="Solde d'avant, plus le mouvement net" />
+        @if ($this->vue !== 'saisie')
+            <x-kpi-card label="Solde à la fin de la période"
+                :value="ae($this->soldeAvant['montant'] + $this->kpis['solde'])"
+                sub="Solde d'avant, plus le mouvement net" />
+        @endif
 
-        @if ($this->rapprochement)
+        @if ($this->vue === 'consolidee' && $this->kpisDeLaSaisie['nombre'] > 0)
+            {{-- Dans la vue d'ensemble, dire quelle part vient de nous : c'est la seule qui
+                 ne soit pas encore dans un état de caisse du logiciel. --}}
+            <x-kpi-card label="Dont saisi dans l’application"
+                :value="ae($this->kpisDeLaSaisie['entrees'] - $this->kpisDeLaSaisie['sorties'])"
+                couleur="#B87A00"
+                :lignes="[
+                    'Entrées' => ae($this->kpisDeLaSaisie['entrees']),
+                    'Sorties' => ae($this->kpisDeLaSaisie['sorties']),
+                ]"
+                :sub="$this->kpisDeLaSaisie['nombre'].' écriture(s) que le journal ne porte pas encore'" />
+        @endif
+
+        @if ($this->vue === 'saisie')
+            {{-- La vue de la saisie n'a qu'un chiffre propre, et c'est celui-là : ce que le
+                 prochain état de caisse devra porter. Tant qu'il ne le porte pas, l'écart
+                 entre notre total et le sien, c'est exactement ce nombre. --}}
+            <x-kpi-card label="À retrouver au prochain état de caisse"
+                :value="ae($this->kpisDeLaSaisie['entrees'] - $this->kpisDeLaSaisie['sorties'])"
+                couleur="#B87A00"
+                sub="Ces espèces sont dans le tiroir ; le logiciel ne les connaît pas encore" />
+        @endif
+
+        @if ($this->vue !== 'saisie' && $this->rapprochement)
             <x-kpi-card label="Écart avec le fichier"
                 :value="ae(abs($this->rapprochement['ecart']))" :accent="true"
                 :lignes="[
@@ -841,7 +979,7 @@ $mouvements = computed(function () {
         @endif
     </div>
 
-    @if ($this->grossesSorties->isNotEmpty())
+    @if ($this->vue !== 'saisie' && $this->grossesSorties->isNotEmpty())
         <div class="carte" style="margin-bottom:16px;">
             <h3 style="font-size:15px; font-weight:700; margin:0 0 12px;">Où part l'argent — huit premiers postes</h3>
             <div class="tableau-conteneur">
@@ -887,22 +1025,10 @@ $mouvements = computed(function () {
                     <option value="sortie" @selected($sensFiltre === 'sortie')>Sorties seulement</option>
                 </select>
 
-                {{-- **Un seul tableau, et ce filtre pour n'en voir qu'une sorte.** Demandé
-                     le 29/09 : « les deux tableaux doivent rester en un, mais à travers le
-                     filtre on pourra retirer ». C'est un filtre de l'écran et non un
-                     « autre filtre » : les deux sources vivent dans des tables différentes,
-                     et choisir revient à ne pas lire l'une, pas à poser une condition. --}}
-                <select wire:model.live="origineFiltre" class="champ">
-                    <option value="" @selected($origineFiltre === '')>
-                        Journal et saisies ({{ $this->mouvementsDuJournal->count() + $this->saisiesEnEspeces->count() }})
-                    </option>
-                    <option value="journal" @selected($origineFiltre === 'journal')>
-                        Journal du logiciel ({{ $this->mouvementsDuJournal->count() }})
-                    </option>
-                    <option value="saisie" @selected($origineFiltre === 'saisie')>
-                        Saisi ici ({{ $this->saisiesEnEspeces->count() }})
-                    </option>
-                </select>
+                {{-- La liste déroulante d'origine a quitté cette barre le 30/09 : elle est
+                     devenue les trois boutons de vue, en tête d'écran. Elle choisissait le
+                     point de vue, et un point de vue ne se choisit pas en troisième position
+                     d'une barre d'outils, derrière une recherche. --}}
 
                 {{-- Les colonnes du journal qu'aucun filtre ne couvre : la caisse, le type de
                      pièce, le rôle du tiers, le montant, la date. Demandé le 28/09. --}}

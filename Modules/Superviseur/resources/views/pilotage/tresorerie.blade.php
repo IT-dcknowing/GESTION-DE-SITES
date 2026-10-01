@@ -1,6 +1,8 @@
 <?php
 
 use Modules\Noyau\Exploitation\Modeles\Charge;
+use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
+use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
@@ -55,12 +57,37 @@ $mesVilles = computed(fn () => PerimetreSites::optionsVilles(auth()->user()));
 $mesSitesFiltre = computed(fn () => PerimetreSites::optionsSites(auth()->user(), $this->villeFiltre));
 $villeUnique = computed(fn () => PerimetreSites::villeUnique(auth()->user()));
 $idsSites = computed(fn () => PerimetreSites::idsRetenus(auth()->user(), $this->villeFiltre, $this->siteFiltre));
+
+/*
+ * Les villes des ateliers retenus — pour placer les lignes qui n'ont pas d'atelier.
+ *
+ * Elles sont la seconde branche de la règle de la maison : l'atelier s'il est connu, sinon
+ * la ville, sinon la ligne paraît partout. Voir `PerimetreDeTresorerie`.
+ */
+$idsVilles = computed(fn () => EtatDesImpayes::villesDesSites($this->idsSites));
 $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->user(), $this->villeFiltre, $this->siteFiltre, $this->activiteFiltre));
 
+/*
+ * **Les trois sources passent par `PerimetreDeTresorerie`, et c'est une correction.**
+ *
+ * Elles s'écrivaient ici `whereIn('site_id', $this->idsSites)`, et un `site_id` nul n'entre
+ * dans aucun `whereIn`. Mesuré le 30/09 : **7 627 des 7 714 encaissements n'ont pas
+ * d'atelier**, si bien que cet écran en montrait **87**. La page annonçait lire « les
+ * règlements clients » et en affichait un pour cent — ce n'était pas un filtre trop serré,
+ * c'était un total faux d'un facteur cent sur l'écran qui dit ce qu'on a en caisse.
+ *
+ * Les 7 627 sont tous rattachés à une facture, et **4 088 de ces factures ont une ville** :
+ * l'argent est entré là où la facture a été émise, et c'est par là qu'on les place.
+ *
+ * Troisième écran mordu par ce même `whereIn`, après les encaissements du recouvrement et
+ * le chiffre d'affaires. La règle est désormais écrite une fois par table, et seulement là.
+ */
 $encaissementsQ = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return Encaissement::whereIn('site_id', $this->idsSites)
+    return PerimetreDeTresorerie::encaissements(
+        Encaissement::query(), $this->idsSites, $this->idsVilles,
+    )
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 });
@@ -68,7 +95,7 @@ $encaissementsQ = computed(function () {
 $chargesQ = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return Charge::whereIn('site_id', $this->idsSites)
+    return PerimetreDeTresorerie::charges(Charge::query(), $this->idsSites)
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 });
@@ -76,7 +103,7 @@ $chargesQ = computed(function () {
 $facturesQ = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return Facture::whereIn('site_id', $this->idsSites)
+    return EtatDesImpayes::dansLePerimetre(Facture::query(), $this->idsSites, $this->idsVilles)
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 });

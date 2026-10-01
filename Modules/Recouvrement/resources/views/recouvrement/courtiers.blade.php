@@ -152,13 +152,19 @@ $horsCourtage = computed(fn () => $this->toutes
                             <th class="num">Fact. ouvertes</th>
                             <th class="num">Assurances</th>
                             <th>Niveau max</th>
-                            <th class="no-print"></th>
+                            {{-- La colonne n'avait pas d'intitulé : « Ventiler » ne se devine
+                                 pas, et ce qu'il montre encore moins. --}}
+                            <th class="no-print">Pour le compte de qui</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($this->consolide as $ligne)
                             <tr>
-                                <td><b>{{ $ligne['courtier'] }}</b></td>
+                                <td><b>{{ $ligne['courtier'] }}</b>@if ($this->filtre === $ligne['courtier'])
+                                        {{-- La ligne d'où l'on vient de partir, pour la retrouver
+                                             en remontant. --}}
+                                        <span class="chip" style="margin-left:6px;">ventilé ci-dessous</span>
+                                    @endif</td>
                                 <td class="num">{{ number_format($ligne['facture'], 0, ',', ' ') }}</td>
                                 <td class="num">{{ number_format($ligne['regle'], 0, ',', ' ') }}</td>
                                 <td class="num"><b>{{ number_format($ligne['reste'], 0, ',', ' ') }}</b></td>
@@ -166,10 +172,19 @@ $horsCourtage = computed(fn () => $this->toutes
                                 <td class="num">{{ $ligne['assurances'] }}</td>
                                 <td><span class="pill {{ $ligne['niveau']['classe'] }}">{{ $ligne['niveau']['libelle'] }}</span></td>
                                 <td class="no-print" style="white-space:nowrap;">
-                                    {{-- Un lien, pas un bouton : « Ventiler » ne répondait pas, et
-                                         la cause n'était pas ici — rien n'atteignait le serveur. Une
-                                         adresse, elle, part toujours. --}}
-                                    <a href="{{ route('recouvrement.courtiers', array_merge($this->periode->parametres(), ['courtier' => $ligne['courtier']])) }}"
+                                    {{-- **Un lien, pas un bouton**, et il porte une ancre.
+
+                                         Deux défauts successifs sur ce même geste. Le premier :
+                                         « Ventiler » ne répondait pas du tout — rien n'atteignait le
+                                         serveur ; une adresse, elle, part toujours.
+
+                                         Le second, relevé le 30/09 : « le clic ne fait rien ». Il
+                                         faisait quelque chose, mais **six écrans plus bas** — le
+                                         filtre agit sur le tableau ②, et la page se rechargeait à la
+                                         même hauteur. Une action dont l'effet est hors de l'écran est
+                                         indistinguable d'une action morte. L'ancre `#ventilation`
+                                         amène le lecteur là où son clic a agi. --}}
+                                    <a href="{{ route('recouvrement.courtiers', array_merge($this->periode->parametres(), ['courtier' => $ligne['courtier']])) }}#ventilation"
                                         wire:navigate class="rec-btn o"
                                         style="padding:3px 9px; font-size:11px; text-decoration:none; display:inline-block;">
                                         Ventiler
@@ -197,11 +212,28 @@ $horsCourtage = computed(fn () => $this->toutes
         </div>
 
         {{-- ─────────────── ② Le détail par compagnie ─────────────── --}}
-        <div class="rec-carte" style="margin-top:16px;">
+        {{-- `scroll-margin-top` : sans elle, l'ancre colle le titre au bord haut de la
+             fenêtre, sous le bandeau fixe, et l'on arrive sur un tableau dont on ne voit plus
+             l'intitulé — donc sans savoir ce qu'on regarde. --}}
+        <div class="rec-carte" id="ventilation" style="margin-top:16px; scroll-margin-top:90px;">
             <h2>
                 ② État par assurance représentée
+                @if ($this->filtre !== '')
+                    <span class="chip">Ventilation de {{ $this->filtre }}</span>
+                @endif
                 <span class="chip">{{ $this->detailAffiche->count() }} couple(s)</span>
             </h2>
+
+            @if ($this->filtre !== '')
+                {{-- Dire quel filtre est posé, et offrir de l'ôter au même endroit. Un tableau
+                     réduit sans que rien ne l'annonce se lit comme un tableau incomplet. --}}
+                <div class="rec-hint" style="margin-top:0; margin-bottom:12px;">
+                    Ce tableau ne montre que <b>{{ $this->filtre }}</b> : pour le compte de quelles
+                    compagnies il porte son encours, et ce que chacune pèse dans son reste à payer.
+                    <a href="{{ route('recouvrement.courtiers', $this->periode->parametres()) }}#ventilation"
+                        wire:navigate style="font-weight:700;">Voir tous les courtiers</a>.
+                </div>
+            @endif
 
             <div class="rec-frm no-print" style="grid-template-columns:2fr 1fr; margin-bottom:13px;">
                 <div class="rec-fld">

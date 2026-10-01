@@ -212,6 +212,93 @@ class LaCaisseSeSaisitEtSeLitEnUnSeulTableauTest extends TestCase
 
     // ------------------------------------------------------------------ le décor
 
+    // ------------------------------------------------------------------ les trois vues
+
+    /**
+     * Les trois vues de la caisse, demandées le 30/09.
+     *
+     * « Tu feras trois sous-boutons — caisse consolidée, caisse saisie ici, caisse importée —
+     * avec chacun ses KPI, ses filtres et son tableau. »
+     *
+     * **Ce ne sont pas trois tableaux, et ce test le dit** : c'est un tableau et trois
+     * lectures. La décision du 29/09 tient — « les deux tableaux doivent rester en un » — et
+     * la raison aussi : une entrée en espèces est une entrée en espèces, qu'un fichier
+     * l'apporte ou qu'on la tape. Ce qui change d'une vue à l'autre, c'est **ce qu'on peut
+     * dire** de ces lignes.
+     */
+    public function test_les_trois_vues_decoupent_le_meme_tableau(): void
+    {
+        $this->mouvementDuJournal('Vente comptant', 300_000);
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.caisse')
+            ->call('ouvrirLaSaisie', 'entree')
+            ->set('saisieDate', now()->toDateString())
+            ->set('saisieMontant', '120000')
+            ->set('saisieLibelle', 'Acompte client')
+            ->call('enregistrerLaSaisie')
+            ->assertHasNoErrors();
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.caisse');
+
+        // Consolidée : les deux sources.
+        $this->assertSame('consolidee', $ecran->instance()->vue);
+        $this->assertSame(2, $ecran->instance()->mouvements->count());
+        $this->assertSame(420_000, $ecran->instance()->kpis['entrees']);
+
+        // Saisie dans l'application : la nôtre seule.
+        $ecran->set('origineFiltre', 'saisie');
+        $this->assertSame('saisie', $ecran->instance()->vue);
+        $this->assertSame(1, $ecran->instance()->mouvements->count());
+        $this->assertSame(120_000, $ecran->instance()->kpis['entrees']);
+
+        // Caisse importée : le journal seul.
+        $ecran->set('origineFiltre', 'journal');
+        $this->assertSame('importee', $ecran->instance()->vue);
+        $this->assertSame(1, $ecran->instance()->mouvements->count());
+        $this->assertSame(300_000, $ecran->instance()->kpis['entrees']);
+    }
+
+    /**
+     * La vue « Saisie dans l'application » n'affiche aucun solde de chaîne.
+     *
+     * **Et c'est la moitié qui compte de cette demande.** Le solde d'avant la période, celui
+     * de fin et l'écart avec le fichier se lisent tous sur la **chaîne des soldes annoncés**
+     * du journal — c'est le logiciel qui les imprime ligne à ligne. Une écriture saisie ici
+     * n'en a pas, et ne peut pas en avoir. Les afficher là rendrait des nombres qui ne
+     * parlent pas de ce qu'on regarde, ce qui est le pire défaut d'un indicateur : on ne le
+     * croit pas faux, on le croit vrai.
+     */
+    public function test_la_vue_de_la_saisie_ne_montre_pas_les_soldes_du_journal(): void
+    {
+        $this->mouvementDuJournal('Vente comptant', 300_000, solde: 800_000);
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.caisse');
+
+        $ecran->assertSee('Solde avant la période', false)
+            ->assertSee('Solde à la fin de la période', false);
+
+        $ecran->set('origineFiltre', 'saisie')
+            ->assertDontSee('Solde avant la période', false)
+            ->assertDontSee('Solde à la fin de la période', false)
+            // À la place, le seul chiffre qui lui appartienne.
+            ->assertSee('À retrouver au prochain état de caisse', false);
+    }
+
+    /** Les trois boutons annoncent chacun ce qu'ils portent, avant qu'on clique. */
+    public function test_les_boutons_de_vue_disent_combien_de_lignes_ils_portent(): void
+    {
+        $this->mouvementDuJournal('Vente comptant', 300_000);
+        $this->mouvementDuJournal('Vente comptant', 100_000);
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.caisse')
+            ->assertSee('Caisse consolidée', false)
+            ->assertSee('Saisie dans l’application', false)
+            ->assertSee('Caisse importée', false)
+            // Deux au journal, zéro saisie, deux au total.
+            ->assertSeeHtml('(2)')
+            ->assertSeeHtml('(0)');
+    }
+
     // ------------------------------------------------------------------ le pont entre les deux
 
     /**
