@@ -253,17 +253,12 @@ $abandonner = function () {
         <div class="imp-carte">
             <h2>Déposer un fichier <span class="chip">.xls · .xlsx · .xlsm · .pdf — 40 Mo au plus</span></h2>
 
-            {{-- **Le tableur d'abord, quand on a le choix.** Un classeur se lit par ses
-                 cellules ; un imprimé se lit par la position de ses caractères sur la page,
-                 et cette lecture-là peut se tromper de colonne quand un texte déborde — elle
-                 l'a fait une fois, sur sept numéros de pièce. Le type d'import, lui, est le
-                 même dans les deux cas : c'est le document qui change, pas la nature de ce
-                 qu'il contient. Demandé le 24/09. --}}
-            <p class="imp-hint" style="margin:0 0 14px;">
-                Le <b>PDF n'est accepté que faute de mieux</b> : le logiciel ne sort aujourd'hui
-                que le journal de caisse sous cette forme. Dès qu'un export en tableur existe,
-                apportez-le — <b>sous le même type d'import</b>, il n'y en a pas un second à créer.
-            </p>
+            {{-- **Le paragraphe sur le PDF a été retiré le 01/10.** Il disait une chose vraie
+                 — un imprimé se lit par la position de ses caractères, et cette lecture peut
+                 se tromper de colonne — mais il la disait à chaque visite, à qui ne dépose pas
+                 de PDF neuf fois sur dix. Un avertissement permanent cesse d'être lu, et prend
+                 la place de ce qu'on vient faire. La préférence pour le tableur reste écrite
+                 là où elle se décide : dans `FormatDuJournalDeCaisse`. --}}
 
             <form method="POST" action="{{ route('import.deposer') }}" enctype="multipart/form-data"
                   id="frm-depot">

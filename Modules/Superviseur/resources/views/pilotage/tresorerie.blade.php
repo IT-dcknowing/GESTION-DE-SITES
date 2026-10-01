@@ -204,17 +204,30 @@ $journalCompte = computed(fn () => in_array(
     $this->supportFiltre, ['', SupportDeReglement::CAISSE], true,
 ));
 
+/**
+ * Les trois nombres du journal, en **une** requête.
+ *
+ * Trois clones donnaient trois lectures de la même table pour trois sommes qui se calculent
+ * en une passe. Un `CASE` par sens suffit, et la base ne lit qu'une fois.
+ */
 $journalTotaux = computed(function () {
     if (! $this->journalCompte) {
         return ['entrees' => 0, 'sorties' => 0, 'nombre' => 0];
     }
 
-    $base = $this->journalQ;
+    $ligne = (clone $this->journalQ)
+        ->selectRaw(
+            'count(*) as nombre, '
+            .'coalesce(sum(case when sens = ? then montant else 0 end), 0) as entrees, '
+            .'coalesce(sum(case when sens = ? then montant else 0 end), 0) as sorties',
+            [MouvementCaisse::ENTREE, MouvementCaisse::SORTIE],
+        )
+        ->first();
 
     return [
-        'entrees' => (int) (clone $base)->where('sens', MouvementCaisse::ENTREE)->sum('montant'),
-        'sorties' => (int) (clone $base)->where('sens', MouvementCaisse::SORTIE)->sum('montant'),
-        'nombre' => (clone $base)->count(),
+        'entrees' => (int) ($ligne->entrees ?? 0),
+        'sorties' => (int) ($ligne->sorties ?? 0),
+        'nombre' => (int) ($ligne->nombre ?? 0),
     ];
 });
 
@@ -256,10 +269,21 @@ $parSupport = computed(function () {
      * « consolidée » — les deux doivent tomber sur le même nombre, sans quoi l'un des deux
      * ment.
      */
+    // La même passe que `journalTotaux`, mais sans le filtre de support : ce bloc est la
+    // carte des lieux, il compte le journal quel que soit le support choisi.
+    $brut = (clone $this->journalQ)
+        ->selectRaw(
+            'count(*) as nombre, '
+            .'coalesce(sum(case when sens = ? then montant else 0 end), 0) as entrees, '
+            .'coalesce(sum(case when sens = ? then montant else 0 end), 0) as sorties',
+            [MouvementCaisse::ENTREE, MouvementCaisse::SORTIE],
+        )
+        ->first();
+
     $journal = [
-        'entrees' => (int) (clone $this->journalQ)->where('sens', MouvementCaisse::ENTREE)->sum('montant'),
-        'sorties' => (int) (clone $this->journalQ)->where('sens', MouvementCaisse::SORTIE)->sum('montant'),
-        'nombre' => (clone $this->journalQ)->count(),
+        'entrees' => (int) ($brut->entrees ?? 0),
+        'sorties' => (int) ($brut->sorties ?? 0),
+        'nombre' => (int) ($brut->nombre ?? 0),
     ];
 
     $entrees[SupportDeReglement::CAISSE]['montant'] += $journal['entrees'];
@@ -336,16 +360,38 @@ $colonnesFiltrables = computed(fn () => [
     'encaissements.montant' => FiltreLibre::colonne('Montant', 'nombre'),
 ]);
 
-$detailEncaissements = computed(fn () => FiltreLibre::appliquer(
-    (clone $this->encaissementsQ)
-        ->with(['site', 'facture:id,numero,n_facture,client,immatriculation', 'lot:id,nom_fichier,format,created_at']),
+/**
+ * **La page ne charge plus que la page — corrigé le 01/10.**
+ *
+ * Les deux tableaux faisaient `->get()` sur la période entière, puis `forPage(…, 10)` en
+ * mémoire : sur l'exercice 2026, cela hydratait **plusieurs milliers** d'objets Encaissement
+ * avec leurs relations pour en afficher dix. C'était le premier poste de lenteur de l'écran
+ * — mesuré le 01/10 : 1 651 ms, dont 914 ms de SQL.
+ *
+ * La requête est désormais rendue telle quelle, et les deux lectures qu'on en fait — compter,
+ * et prendre dix lignes — se font chacune en base.
+ */
+$requeteEncaissements = computed(fn () => FiltreLibre::appliquer(
+    clone $this->encaissementsQ,
     $this->colonnesFiltrables,
     (array) $this->filtresLibres,
-)->latest('date')->latest('id')->get());
+));
+
+$nombreEncaissements = computed(fn () => (clone $this->requeteEncaissements)->count());
+
+$detailEncaissements = computed(fn () => (clone $this->requeteEncaissements)
+    ->with(['site', 'facture:id,numero,n_facture,client,immatriculation', 'lot:id,nom_fichier,format,created_at'])
+    ->latest('date')->latest('id')
+    ->forPage($this->pageEncaissements, 10)
+    ->get());
+
+$nombreDecaissements = computed(fn () => (clone $this->chargesQ)->count());
 
 $detailDecaissements = computed(fn () => (clone $this->chargesQ)
     ->with(['site', 'lot:id,nom_fichier,format,created_at'])
-    ->latest('date')->latest('id')->get());
+    ->latest('date')->latest('id')
+    ->forPage($this->pageDecaissements, 10)
+    ->get());
 
 /*
  * Le détail d'un encaissement a sa page depuis le 28/09 — voir `pilotage.encaissement-detail`.
@@ -392,15 +438,22 @@ $autres = computed(function () {
         return $postes;
     };
 
-    // Côté recettes, « Autres » est un type d'encaissement ; le poste réel est le tiers
-    // qui a versé, à défaut le moyen employé.
-    $encaissements = $this->detailEncaissements->where('type', 'Autres');
+    /*
+     * **Chacun sa requête, et non la collection du tableau.**
+     *
+     * Ce bloc lisait `$detailEncaissements`, qui chargeait alors la période entière. Depuis
+     * que ce tableau ne rend plus que ses dix lignes, il lui faut sa propre lecture — et
+     * elle est bien plus étroite : « Autres » est une poignée de lignes sur des milliers.
+     */
+    $encaissements = (clone $this->requeteEncaissements)
+        ->where('encaissements.type', 'Autres')
+        ->get(['encaissements.autres_tiers', 'encaissements.client', 'encaissements.moyen', 'encaissements.montant']);
 
     // Côté dépenses, le libellé est déjà le poste : on ne retient que celui qui ne dit
     // rien — « Autres décaissements » — et l'on regarde alors le tiers payé.
-    $decaissements = $this->detailDecaissements->filter(
-        fn ($c) => str_contains(mb_strtolower((string) $c->libelle), 'autre')
-    );
+    $decaissements = (clone $this->chargesQ)
+        ->where('charges.libelle', 'like', '%utre%')
+        ->get(['charges.tiers', 'charges.observations', 'charges.moyen', 'charges.montant', 'charges.libelle']);
 
     return [
         'encaissements' => $ranger($encaissements, fn ($e) => $e->autres_tiers ?: ($e->client ?: $e->moyen)),
@@ -609,7 +662,7 @@ $origineDe = protect(function ($ligne) {
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(430px, 1fr)); gap:20px;">
         <div class="carte">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:0 0 14px;">
-                <h3 style="font-size:15px; font-weight:700; margin:0;">Encaissements ({{ $this->detailEncaissements->count() }})</h3>
+                <h3 style="font-size:15px; font-weight:700; margin:0;">Encaissements ({{ number_format($this->nombreEncaissements, 0, ',', ' ') }})</h3>
                 {{-- Les colonnes qu'aucun filtre ne couvre : le client, le type, le moyen,
                      la référence, le règlement global, le montant. Demandé le 28/09. --}}
                 <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
@@ -634,7 +687,7 @@ $origineDe = protect(function ($ligne) {
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse ($this->detailEncaissements->forPage($pageEncaissements, 10) as $ligne)
+                        @forelse ($this->detailEncaissements as $ligne)
                             <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                                 <td style="white-space:nowrap;">{{ $ligne->date->format('d/m/Y') }}</td>
                                 <td style="font-size:12px; color:#6B6E76;">{{ $ligne->numero ?: '—' }}</td>
@@ -673,11 +726,11 @@ $origineDe = protect(function ($ligne) {
                     </tbody>
                 </table>
             </div>
-            <x-pagination :page="$pageEncaissements" :total="$this->detailEncaissements->count()" prop="pageEncaissements" />
+            <x-pagination :page="$pageEncaissements" :total="$this->nombreEncaissements" prop="pageEncaissements" />
         </div>
 
         <div class="carte">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Décaissements ({{ $this->detailDecaissements->count() }})</h3>
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Décaissements ({{ number_format($this->nombreDecaissements, 0, ',', ' ') }})</h3>
             <div class="tableau-conteneur">
                 <table class="tableau">
                     <thead>
@@ -693,7 +746,7 @@ $origineDe = protect(function ($ligne) {
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse ($this->detailDecaissements->forPage($pageDecaissements, 10) as $ligne)
+                        @forelse ($this->detailDecaissements as $ligne)
                             <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                                 <td>{{ $ligne->date->format('d/m/Y') }}</td>
                                 <td>{{ $ligne->type_operation }}</td>
@@ -742,7 +795,7 @@ $origineDe = protect(function ($ligne) {
                     </tbody>
                 </table>
             </div>
-            <x-pagination :page="$pageDecaissements" :total="$this->detailDecaissements->count()" prop="pageDecaissements" />
+            <x-pagination :page="$pageDecaissements" :total="$this->nombreDecaissements" prop="pageDecaissements" />
         </div>
     </div>
 </div>

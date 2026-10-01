@@ -48,7 +48,7 @@ class FormatDesPiecesBancaires extends Format
 
     public static function libelle(): string
     {
-        return 'Relevé bancaire — pièces d’un compte';
+        return 'Banque';
     }
 
     public static function colonnes(): array

@@ -162,6 +162,7 @@ Voir `LecteurPdf`.
 | 24/09 | voir `git log` | **bareme-et-filtres** | **« Première activation » du barème** : une grille posée au 1er janvier couvre l'année entière, imports compris, tandis qu'« Enregistrer » reste le geste de la correction, daté du jour ; les **filtres du tableau de bord du recouvrement agissent sur tous les chiffres**, et plus seulement sur le tableau ; l'écran de dépôt n'annonce la ventilation par les codes qu'aux cinq types qui en portent ; les séparateurs de la colonne libre se réduisent à la virgule, au point-virgule et au point |
 | 24/09 | voir `git log` | **import** | **la fiche de réception nomme son commercial** : la colonne libre « informations sur la situation » se lit en première position (nom, code de deux lettres ou code de l'application), les noms qui prêtent à confusion deviennent une question posée sur l'écran des traitements, et le devis importé rejoint la prospection par ce chemin ; le **code de saisie suit la personne** qu'on déplace depuis l'écran des accès ; le contrôle du dépôt nomme la ville des codes en cause et non la dominante ; le dépôt atterrit sur la page « Traitement », dont le message dit enfin ce qui vient de se passer |
 | 29/09 | voir `git log` | **identite-et-filtres** | **« Portées à l'état (0) » cachait une erreur de chiffre d'affaires** : 8 848 des 8 852 factures portées n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` — **2 021 factures de 2026 sur 4 412** étaient écartées du total de l'écran ; « Autre filtre » sur les **neuf écrans restants**, dont cinq dont le tableau est calculé en mémoire et non lu en base (`FiltreLibre::filtrerCollection()`) ; la **commission n'est plus proposée en filtre** à qui n'a pas le droit de la voir ; la **liste Ville de la caisse** rendait du JSON ; un bouton **Caisse** en tête de la Trésorerie ; les filtres de `/fournisseurs` et de `/caisse` tenaient une ligne chacun à cause de `.champ { width:100% }` ; **écran de connexion** refait sur la maquette avec le rendu 3D (2 252 Ko → 82 Ko) et les outils ancrés au bloc du logo |
+| 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **l'application était trente fois trop lente, et la cause n'était pas le code** : Telescope, installé le 29/09, enregistrait chaque requête et chaque requête SQL en base — 24 323 lignes — avec `APP_ENV=local` ; désactivé, les pages passent de ~30 s à moins d'une seconde. Puis trois corrections mesurées : un **index `(entreprise_id, date)`** sur les encaissements et les charges, la **trésorerie qui ne charge plus que sa page** au lieu de l'exercice entier, et les **agrégats réunis en une requête**. `/banques` passe de 1 914 à 337 ms |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **le moyen de paiement se dit en trois champs qui se commandent** — support, compte, mode précis —, le **même composant sur les trois saisies** qui n'en proposaient pas deux pareilles ; les **portefeuilles mobiles deviennent des comptes** et non un moyen ; le **code d'un compte est posé par le système** ; **trois barres se replient** (recouvrement, import, bandeau) ; et la **maintenance vide ce qu'on désigne**, module par module, ce qui n'est pas coché restant intact |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **reprise des corrections du propriétaire** : la Trésorerie **regroupe tout**, journal de caisse compris, et son encart « cette page ne regroupe pas tout » disparaît ; Caisse et Banques **quittent le menu** et ne s'ouvrent plus que depuis elle ; les **tableaux superposés deviennent deux boutons** ; « Ventiler » **ne recharge plus la page** ; l'**import du relevé bancaire est écrit** — table `pieces_bancaires`, compte déclaré au dépôt, huit colonnes ; la **ville quitte le formulaire de banque** et les comptes déclarés se proposent partout |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | la **Trésorerie devient un tableau de bord** : quatre cases disent où est l'argent — caisse, banque, mobile money, moyen non précisé — et chacune pose son filtre ; **écran Banques** avec un bouton par banque et des indicateurs qui suivent, qui **range ce qu'il reconnaît et montre le reste** (quatorze orthographes pour quatre banques) ; le **moyen commande le support** à la saisie — caisse ou banque, jamais les deux, par la structure et non par un verrou ; le **relevé bancaire** est déclaré au registre avec ses huit colonnes, avant d'être écrit |
@@ -2589,6 +2590,60 @@ décision.
 **Ce qui n'est jamais touché** : l'organisation — villes, lieux, accès, rôles, exercices — et
 le journal d'activité, qui garde la trace de la purge elle-même.
 
+### La séance du 01/10, quatrième reprise — la lenteur
+
+*« L'application est très lente, les pages s'affichent hyper lentement […] environ 30 secondes,
+et ça c'est quand il n'y a rien. »*
+
+#### La cause n'était pas dans le code
+
+**Laravel Telescope, installé le 29/09 hors séance.** Il était en dépendance de **production**,
+`TELESCOPE_ENABLED` par défaut à `true`, et le serveur tourne en `APP_ENV=local` — ce qui lui
+fait enregistrer **tout** : chaque requête HTTP, chaque requête SQL, chaque vue rendue, dans
+des tables MySQL. **24 323 lignes** s'y trouvaient déjà, et sa porte d'accès était vide : il
+écrivait pour personne.
+
+`TELESCOPE_ENABLED=false` dans le `.env`, et les pages passent d'une trentaine de secondes à
+moins d'une seconde. **C'est de loin le plus gros gain de la séance, et il ne touche pas une
+ligne du code applicatif.**
+
+#### Puis trois corrections, chacune mesurée avant et après
+
+| Écran | Avant | Après |
+|---|---|---|
+| `/banques` | 1 914 ms · 1 235 ms de SQL | **337 ms** |
+| `/import` | 630 ms | **132 ms** |
+| `/impayes` | 845 ms | **520 ms** |
+| `/tresorerie` | 1 651 ms · 914 ms de SQL | **788 ms** |
+
+**1. L'index qui manquait.** `encaissements` portait `(entreprise_id, site_id, date)`. Or le
+périmètre s'écrit `site_id IN (…) OR (site_id IS NULL AND …)` — et un `OR` sur la deuxième
+colonne d'un index composite empêche de s'en servir. MySQL parcourait la table entière, puis
+évaluait la sous-requête corrélée **ligne par ligne** : 7 714 fois, dix fois par page. Un
+index `(entreprise_id, date)` rend la période utilisable, et c'est la condition la plus
+sélective — toutes ces pages bornent leur période.
+
+**2. La trésorerie chargeait l'exercice entier pour en montrer dix lignes.** Ses deux tableaux
+faisaient `->get()` puis `forPage(…, 10)` **en mémoire** : plusieurs milliers d'objets hydratés
+avec leurs relations, pour dix lignes à l'écran. La pagination se fait désormais en base.
+
+**3. Les agrégats se lisent en une passe.** Trois clones d'une même requête pour trois nombres
+— compter, sommer, compter les clients distincts — payaient trois fois le prix du périmètre.
+Un `count(*)`, un `sum()` et un `count(distinct …)` tiennent dans la même requête.
+
+#### Ce qui a été mesuré et laissé tel quel
+
+Le socle commun à toutes les pages fait **51 requêtes pour 91 ms** : trente-sept formes
+distinctes, aucune au-dessus de 17 ms. Il n'y a rien à y gagner, et le découper rendrait le
+code moins lisible pour un gain invisible.
+
+#### Un défaut de mise en page, et sa cause exacte
+
+L'écran d'import s'affichait sur cent soixante pixels, **un mot par ligne**. La barre repliée
+passait son `aside` en `display:none` : il quitte alors le flux de la grille, et le contenu se
+replace tout seul dans la **première** cellule — celle qu'on venait de ramener à zéro. Une
+seule colonne quand la barre est repliée, et le contenu la remplit.
+
 ### Pièges d'outillage déjà rencontrés
 
 | Piège | Parade |
@@ -2622,6 +2677,10 @@ le journal d'activité, qui garde la trace de la purge elle-même.
 | Un écran qui **décrit un défaut** au lieu de le corriger (« cette page ne regroupe pas tout ») | le corriger ; un avertissement permanent use la confiance qu'on porte au reste de l'écran |
 | Un `@props` déclaré en `kebab-case` (`'reference-offerte'`) ne crée **aucune variable** dans le composant | déclarer les props en `camelCase` : Blade ne convertit que dans ce sens |
 | Deux écrans qui posent la même question avec deux formulaires distincts finissent par ne plus la poser pareil | un composant partagé, et un test qui éprouve les deux écrans |
+| Un outil de débogage (**Telescope**) laissé actif en `APP_ENV=local` sur un serveur : il écrit chaque requête et chaque requête SQL en base, et multiplie par trente le temps de page | `TELESCOPE_ENABLED=false` dans le `.env` du serveur, et le paquet en `require-dev` |
+| Un `OR` sur la deuxième colonne d'un index composite rend l'index inutilisable | indexer la colonne la plus sélective en tête — ici la date, que toutes les pages bornent |
+| `->get()` puis `forPage()` **en mémoire** : on charge l'exercice pour montrer dix lignes | paginer dans la requête, et compter séparément |
+| Un `aside` en `display:none` dans une grille : il quitte le flux, et le contenu se replace dans la **première** cellule | passer la grille à une seule colonne quand on replie |
 | `x-filtre-periode` attend des **modèles** Ville, `x-champ` un tableau `valeur => libellé` | les deux composants ne lisent pas la même forme ; c'est à l'écran de donner la bonne à chacun |
 | La classe `.champ` porte `width:100%` : dans une rangée en flex, chaque champ réclame la largeur entière et rejette les boutons à la ligne suivante | `style="width:auto"` sur tout filtre posé dans une rangée, comme le fait `x-filtre-periode` |
 | Un droit qui ne cache que les **colonnes** laisse le **panneau de filtres** les proposer — et le filtre, lui, fonctionne | filtrer la déclaration elle-même (`array_filter` sur `colonnesFiltrables`) |

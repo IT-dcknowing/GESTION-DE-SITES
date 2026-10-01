@@ -84,7 +84,10 @@ class LeReleveBancaireSeDeposeParCompteTest extends TestCase
         $this->actingAs($this->compte('gerant'))
             ->get(route('import.depot'))
             ->assertOk()
-            ->assertSee('Relevé bancaire', false)
+            // Le type s'appelle « Banque » dans la liste du dépôt — raccourci le 01/10 :
+            // la liste est lue d'un coup d'œil, et « Relevé bancaire — pièces d'un compte »
+            // y tenait trois fois la place des autres.
+            ->assertSee('Banque', false)
             ->assertSeeHtml('id="champ-banque"')
             ->assertSee('BGFI', false);
     }

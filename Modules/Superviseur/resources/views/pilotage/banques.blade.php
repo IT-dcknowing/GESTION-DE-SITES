@@ -258,16 +258,15 @@ $parCompteDesigne = computed(function () {
 
 /** Ce que les écritures sans moyen lisible pèsent — le dernier bouton, s'il a lieu d'être. */
 $nonPrecise = computed(function () {
-    $entrees = SupportDeReglement::appliquer(
+    $ligne = SupportDeReglement::appliquer(
         (clone $this->entreesQ)->whereNull('encaissements.banque_id'),
         'encaissements',
         SupportDeReglement::INCONNU,
-    );
+    )
+        ->selectRaw('count(*) as nombre, coalesce(sum(encaissements.montant), 0) as montant')
+        ->first();
 
-    return [
-        'nombre' => (clone $entrees)->count(),
-        'montant' => (int) (clone $entrees)->sum('encaissements.montant'),
-    ];
+    return ['nombre' => (int) ($ligne->nombre ?? 0), 'montant' => (int) ($ligne->montant ?? 0)];
 });
 
 /**
@@ -425,11 +424,29 @@ $colonnesFiltrables = computed(fn () => [
     'encaissements.date' => FiltreLibre::colonne('Date du règlement', 'date'),
 ]);
 
-$kpis = computed(fn () => [
-    'montant' => (int) (clone $this->requete)->sum('encaissements.montant'),
-    'nombre' => (clone $this->requete)->count(),
-    'clients' => (clone $this->requete)->distinct()->count('encaissements.client'),
-]);
+/**
+ * Les trois indicateurs, en **une** requête.
+ *
+ * **Mesuré le 01/10** : chaque lecture d'`encaissements` sous le périmètre coûte 120 à
+ * 180 ms — le périmètre s'écrit en `OR` sur `site_id`, ce qu'aucun index ne sait suivre, et
+ * la sous-requête corrélée s'évalue ligne par ligne. Trois clones pour trois nombres, c'était
+ * trois fois ce prix-là.
+ *
+ * `count(distinct …)` et `sum()` tiennent dans la même passe : la base lit une fois, et rend
+ * les trois.
+ */
+$kpis = computed(function () {
+    $ligne = (clone $this->requete)
+        ->selectRaw('count(*) as nombre, coalesce(sum(encaissements.montant), 0) as montant, '
+            .'count(distinct encaissements.client) as clients')
+        ->first();
+
+    return [
+        'montant' => (int) ($ligne->montant ?? 0),
+        'nombre' => (int) ($ligne->nombre ?? 0),
+        'clients' => (int) ($ligne->clients ?? 0),
+    ];
+});
 
 $lignes = computed(fn () => (clone $this->requete)
     ->with(['facture', 'banque', 'site.ville'])
@@ -438,7 +455,8 @@ $lignes = computed(fn () => (clone $this->requete)
     ->forPage($this->page, 25)
     ->get());
 
-$total = computed(fn () => (clone $this->requete)->count());
+/* Le même nombre que `kpis['nombre']` : le relire coûterait une seconde lecture entière. */
+$total = computed(fn () => $this->kpis['nombre']);
 
 // ------------------------------------------------------------------ déclarer une banque
 
@@ -576,8 +594,7 @@ $declarerLaBanque = function () {
                 @endif
 
                 {{-- Le code est posé par le système : il se montre, il ne se touche pas. --}}
-                <x-champ-fige label="Code" :valeur="$this->codeAVenir" width="120"
-                    aide="attribué à l’enregistrement" />
+                <x-champ-fige label="Code" :valeur="$this->codeAVenir" width="120" />
 
                 <x-champ label="Note" model="note" width="240" placeholder="Facultatif" />
 

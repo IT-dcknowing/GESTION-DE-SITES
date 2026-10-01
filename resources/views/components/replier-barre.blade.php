@@ -32,11 +32,13 @@
 
 @once
     <style>
-        /* Les deux coquilles sont des grilles `236px 1fr` : repliée, la colonne tombe à zéro
-           et le `overflow:hidden` du conteneur fait le reste. Une transition sur la seule
-           largeur de colonne : animer l'`aside` lui-même ferait sauter son contenu. */
+        /* **Une seule colonne quand la barre est repliée, et non une colonne à zéro.**
+           C'est une correction du 01/10 : l'`aside` passé en `display:none` quitte le flux
+           de la grille, et le contenu se replace alors tout seul dans la **première**
+           cellule — celle qui vient d'être ramenée à zéro. L'écran d'import s'affichait
+           ainsi sur cent soixante pixels, un mot par ligne. */
         .rec, .imp { transition: grid-template-columns .18s ease; }
-        .rec.est-repliee, .imp.est-repliee { grid-template-columns: 0 1fr; }
+        .rec.est-repliee, .imp.est-repliee { grid-template-columns: 1fr; }
         .rec.est-repliee > .rec-side, .imp.est-repliee > .imp-side { display: none; }
 
         /* Le bandeau du haut ne replie que sa navigation : la marque, l'exercice et le compte
