@@ -13,6 +13,7 @@ use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Imports\Modeles\MouvementCaisse;
+use Modules\Noyau\Imports\Services\ChaineDeSolde;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -378,6 +379,45 @@ class LaCaisseSeSaisitEtSeLitEnUnSeulTableauTest extends TestCase
 
         $this->assertSame([], $ecran->instance()->villesDeSaisie);
         $ecran->assertOk();
+    }
+
+    /**
+     * L'écran porte notre solde et son sens sur chaque ligne du journal.
+     *
+     * **Demandé le 02/10** : « mets le sens du solde, D si débit, C si crédit, sur chaque
+     * ligne jusqu'à la dernière ». L'écran ne montrait que le solde recopié du classeur, qui
+     * manque sur toutes les lignes qu'il n'annonce pas.
+     */
+    public function test_chaque_ligne_du_journal_porte_notre_solde_et_son_sens(): void
+    {
+        $this->mouvementDuJournal('Approvisionnement', 500_000, 500_000);
+        $this->mouvementDuJournal('Règlement client', 120_000, 620_000);
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.caisse');
+
+        $soldes = collect($ecran->instance()->mouvements)->pluck('solde_calcule')->all();
+
+        // Rangés du plus récent au plus ancien, comme le tableau les affiche.
+        $this->assertSame([620_000, 500_000], $soldes);
+
+        $ecran->assertSee('D/C')->assertSee('Notre solde');
+    }
+
+    /**
+     * Un solde négatif se dit « C », et ne se corrige pas.
+     *
+     * Il vient de l'ordre de saisie : une sortie écrite avant les entrées du même jour. Le
+     * classeur du propriétaire en porte, et les signaler comme des erreurs serait faux.
+     */
+    public function test_un_solde_negatif_se_dit_au_credit(): void
+    {
+        $sortie = $this->mouvementDuJournal('Décaissement', 80_000, -80_000);
+        $sortie->update(['sens' => MouvementCaisse::SORTIE]);
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.caisse');
+
+        $this->assertSame([-80_000], collect($ecran->instance()->mouvements)->pluck('solde_calcule')->all());
+        $this->assertSame('C', ChaineDeSolde::sens(-80_000));
     }
 
     private function mouvementDuJournal(string $libelle, int $montant, ?int $solde = null): MouvementCaisse

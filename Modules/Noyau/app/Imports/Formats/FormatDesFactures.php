@@ -101,11 +101,17 @@ class FormatDesFactures extends Format
             return "Le montant n'est pas un nombre exploitable.";
         }
 
-        // Un montant négatif est un avoir, pas une facture. On le signale plutôt que de le
-        // compter dans un chiffre d'affaires qu'il ferait baisser sans qu'on sache pourquoi.
-        if ($montant < 0) {
-            return 'Montant négatif : cette ligne ressemble à un avoir, à traiter à part.';
-        }
+        /*
+         * **Un avoir entre, et il fait bien baisser le chiffre d'affaires.**
+         *
+         * On le refusait « pour ne pas le compter dans un chiffre d'affaires qu'il ferait
+         * baisser sans qu'on sache pourquoi ». La prudence était de bonne foi et le résultat
+         * était faux : un chiffre d'affaires dont on a retiré les avoirs est surestimé
+         * d'autant, et personne ne sait non plus pourquoi.
+         *
+         * Décidé le 02/10 par le propriétaire : l'avoir se garde en négatif. On sait désormais
+         * pourquoi le total baisse — la ligne est là, nommée, et `est_avoir` la distingue.
+         */
 
         return null;
     }
@@ -156,6 +162,8 @@ class FormatDesFactures extends Format
             ), 120),
             'immatriculation' => self::texte($ligne['immatriculation'] ?? null, 30),
             'montant' => (int) round((float) self::montant($ligne['montant'] ?? null)),
+            // La pièce dit ce qu'elle est, et pas seulement ce que son signe vaut aujourd'hui.
+            'est_avoir' => (float) self::montant($ligne['montant'] ?? null) < 0,
             'activite' => $this->activite($ligne),
             'type' => 'FNE',
             /*

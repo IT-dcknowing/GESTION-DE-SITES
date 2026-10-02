@@ -148,9 +148,23 @@ class FormatDesImpayes extends Format
             return "Le montant TTC n'est pas un nombre exploitable.";
         }
 
-        if ($montant < 0) {
-            return 'Montant négatif : cette ligne ressemble à un avoir, à traiter à part.';
-        }
+        /*
+         * **Un montant négatif n'est plus refusé — décidé le 02/10 par le propriétaire.**
+         *
+         * Quarante-trois lignes l'étaient depuis le premier dépôt, pour − 46 808 080 F. On a
+         * longtemps cru que c'était un choix prudent ; c'en était un, mais il n'était pas
+         * tenable, et il n'était pas non plus le seul obstacle : `factures.montant` était
+         * `bigint unsigned`, et la base ne pouvait pas écrire un négatif. Rien n'aurait pu
+         * être accepté tant que la colonne refusait.
+         *
+         * Après dépouillement du classeur : *« montantTTC < 0 : c'est un avoir. Il faut le
+         * garder en négatif et appliquer le même calcul que pour la caisse. »* La ligne entre
+         * donc telle quelle, signe compris, et se marque `est_avoir`.
+         *
+         * **Le signe décide, jamais le texte.** Quarante-sept lignes du classeur portent
+         * « facture d'avoir à établir » : ce sont des avoirs annoncés, et les ramasser avec les
+         * vrais doublerait la correction. Voir `NatureDeLaCreance`.
+         */
 
         return null;
     }
@@ -238,6 +252,9 @@ class FormatDesImpayes extends Format
             'vehicule' => self::texte($ligne['vehicule'] ?? null, 120),
             'immatriculation' => self::texte($ligne['immatriculation'] ?? null, 30),
             'montant' => $montant,
+            // La pièce dit ce qu'elle est, et pas seulement ce que son signe vaut aujourd'hui :
+            // un avoir ramené à zéro par une correction resterait un avoir.
+            'est_avoir' => $montant < 0,
             'observations' => $this->observations($ligne),
             /*
              * L'année de la créance, et la marque de la reprise.

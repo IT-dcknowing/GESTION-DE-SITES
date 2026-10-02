@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **2 octobre 2026** (22e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **2 octobre 2026** (23e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -168,6 +168,8 @@ Voir `LecteurPdf`.
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | la **Trésorerie devient un tableau de bord** : quatre cases disent où est l'argent — caisse, banque, mobile money, moyen non précisé — et chacune pose son filtre ; **écran Banques** avec un bouton par banque et des indicateurs qui suivent, qui **range ce qu'il reconnaît et montre le reste** (quatorze orthographes pour quatre banques) ; le **moyen commande le support** à la saisie — caisse ou banque, jamais les deux, par la structure et non par un verrou ; le **relevé bancaire** est déclaré au registre avec ses huit colonnes, avant d'être écrit |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **la Trésorerie affichait 35 265 270 F d'encaissements au lieu de 5 518 858 674 F** — 7 627 des 7 714 règlements n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` : la page en montrait **87 sur 7 714**, soit 0,6 % de la réalité ; un encaissement se place désormais par **la ville de sa facture** (`PerimetreDeTresorerie`) ; la **Caisse se lit en trois vues** — consolidée, saisie ici, importée — dont les indicateurs changent avec la vue, parce que le solde d'avant, celui de fin et l'écart se lisent sur la chaîne des soldes du journal, que la saisie n'a pas ; **« Ventiler »** descend enfin au tableau qu'il filtre |
 | 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **trois boutons répondaient enfin, et le quatrième défaut n'était pas celui qu'on croyait.** Le bouton du bandeau n'avait jamais rien replié : le `<nav>` porte `style="display:flex"` **en ligne**, et un style en ligne l'emporte sur toute règle de feuille de style — la correction de la veille était juste et sans effet. **Confirmer ne faisait rien** sur quatre boutons : la boîte annule le clic en capture, et `relancer()` ne savait reposer qu'un lien ou un bouton de formulaire — pas un `wire:click` hors formulaire. Touchait **Maintenance** (« Vider les ensembles cochés ») et surtout le **Barème de commission**, dont le fichier ne contient aucun `<form>` : « Première activation », « Récrire la grille » et « Poser une nouvelle grille » demandaient confirmation puis ne partaient pas. Puis la vitesse, mesurée : les cases de la maintenance coûtaient **113 requêtes par clic** (un `computed` de vingt et un `count(*)` relu six fois par rendu) → **2** ; `Exercice::actuel()` était résolu **trois à six fois par clic** → une fois par requête ; et les courbes demandaient **une somme par point** sur six écrans → une requête chacune (`SerieParPoint`). `/tresorerie` passe de **53 à 22 requêtes** par changement de filtre |
+| 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **« Le système annonce une anomalie qui n'en est pas une », et c'était exact.** L'écran de caisse donnait 652 917 F d'écart sur un classeur dont le solde de 696 075 F est juste. L'addition n'était pas en cause : **l'ordre des lignes et le périmètre du cumul** l'étaient. La chaîne était suivie par **date** — elle partait donc d'une ligne datée du **31/12/1899** (le zéro d'Excel, sur un feuillet « DEC 25 ») et finissait sur une ligne datée du **15/10/2026** appartenant au feuillet « JANV 26 » : deux lignes du milieu, prises pour les bornes. Et elle **traversait les feuillets**, alors que chacun repart de son propre fonds de caisse. Reprise feuillet par feuillet dans l'ordre du fichier, la même base donne `MARS 26` **sans aucun écart**, et trois questions bornées ailleurs (1 000 F, 271 425 F, 2 000 000 F). Chaque ligne porte désormais **notre solde, son sens D/C et le solde annoncé**, avec le désaccord marqué là où il commence. La règle est écrite pour qui relit un classeur : [LE-SOLDE-DE-CAISSE.md](LE-SOLDE-DE-CAISSE.md), cinq pièges, chacun tenu par un test |
+| 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **Les avoirs entrent — et le vrai blocage n'était pas l'import.** 43 lignes négatives étaient refusées depuis le premier dépôt, pour −46 808 080 F ; on croyait à un choix prudent. C'en était un, mais **`factures.montant` et `encaissements.montant` étaient `bigint unsigned`** : la base ne pouvait pas écrire un négatif, et aucun code n'aurait pu l'accepter. Migration d'élargissement (aucune ligne lue ni réécrite), colonne `est_avoir`, et le refus levé aux deux imports. Le propriétaire a tranché après dépouillement du classeur, et sa règle vit dans `NatureDeLaCreance` : **44 avoirs** (montant TTC négatif, −47 489 460 F), **29 trop-perçus** (TTC positif, plus encaissé que facturé, à signaler et non à annuler), **12 arrondis**. Et **le texte ne décide de rien** : 47 lignes portent « facture d'avoir à établir », ce sont des avoirs *annoncés*, et les ramasser avec les vrais doublerait la correction. Trouvé en écrivant le test : en francs entiers, la bande des arrondis se réduit à **−1** exactement |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -2062,19 +2064,33 @@ deviné serait pire que d'afficher un code nu.
 
 ### Hors chantier, toujours en attente
 
-- **Les avoirs : deux questions au propriétaire, posées le 01/10, sans réponse à ce jour.** Rien
-  n'a été changé en attendant, parce que se tromper ici écrirait de fausses créances dans une
-  base réelle. Les mesures sont au § de la séance du 01/10.
+- **Les avoirs : tranché le 02/10 par le propriétaire, l'environnement est prêt, le dépôt
+  reste à refaire.** Les deux questions du 01/10 sont répondues par son dépouillement du
+  classeur : on accepte les montants négatifs, on les garde en négatif, et le **signe décide,
+  jamais le texte**. La règle vit dans `NatureDeLaCreance` et dans
+  `tests/Unit/TroisNaturesDeNegatifNeSeConfondentPasTest.php`.
+
+  **Ce qui reste à faire, et qui n'est pas de mon ressort : redéposer le fichier des impayés.**
+  Les 43 lignes refusées sont toujours dans `lignes_rejetees_import`, avec toutes leurs valeurs
+  — rien n'est perdu, mais rien n'entre tout seul. La structure les accepte désormais ; il faut
+  un nouveau dépôt pour qu'elles deviennent des factures. C'est un geste du propriétaire, sur
+  une base qui porte des écritures réelles.
+
+  **Deux points restent ouverts, et aucun ne bloque le dépôt :**
 
   1. Quand le logiciel sort un avoir, **sort-il aussi la facture d'origine corrigée** ? Si oui,
-     prendre les deux compterait la correction deux fois. *Indice mesuré : sur les 43 lignes
-     négatives refusées, 4 seulement ont une facture positive de même numéro en base — ce qui
-     suggère que non, mais 4 sur 43 n'est pas rien.*
-  2. Les **39 lignes qui ne disent pas « avoir »** — régularisations, saisies erronées,
-     remboursements ? Elles n'appellent pas forcément le même traitement que les 4 vrais avoirs.
+     prendre les deux compterait la correction deux fois. *Mesuré : sur les 43 lignes négatives
+     refusées, 4 seulement ont une facture positive de même numéro en base.* À vérifier sur le
+     prochain dépôt plutôt qu'en théorie — les doublons se verront.
+  2. Les **47 lignes « facture d'avoir à établir »** sont des avoirs *annoncés*, pas écrits.
+     Leur reste est déjà à zéro. Si le logiciel les sort un jour en négatif, elles entreront
+     comme les autres ; d'ici là, elles restent des créances ordinaires et c'est voulu.
 
-  Orientation sous réserve : les accepter, les marquer comme avoirs, les laisser **diminuer** le
-  solde du client, et les afficher distinctement plutôt que fondues dans les factures.
+- **Les dates mal lues à l'import du classeur de caisse.** Mesuré le 02/10 : une ligne du
+  feuillet « DEC 25 » porte le **31/12/1899** (le zéro d'Excel), une du feuillet « JANV 26 » le
+  **15/10/2026**. Le solde n'en dépend plus — il suit l'ordre du fichier —, mais ces lignes
+  restent mal datées en base, donc mal classées dans un filtre de période. Défaut distinct, non
+  corrigé.
 
 - **Le tableau de bord du gérant interroge atelier par atelier, et c'est le dernier gros poste
   mesuré en local.** Après les corrections du 02/10, un changement de filtre coûte 22 requêtes

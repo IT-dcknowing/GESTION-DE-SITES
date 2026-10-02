@@ -401,6 +401,47 @@ Date de réception, banque, tranche annoncée et **ville** des lignes reprises s
 6. Relances (journal) : elles restent comptées pour l'entreprise entière quand on regarde une
    ville — une relance vise un tiers, et un tiers travaille dans plusieurs villes.
 
+### Les avoirs — tranché le 2 octobre 2026
+
+Le classeur est tenu à la main, et il porte **129 cellules négatives de trois natures
+différentes**. Les confondre coûterait cher dans les deux sens : prendre un trop-perçu pour un
+avoir annulerait une facture bien due ; prendre un avoir pour un trop-perçu laisserait au
+client une dette qui a été annulée.
+
+| Nature | Lignes | Montant | Comment on la reconnaît | Ce qu'on en fait |
+|---|---|---|---|---|
+| **Avoir** | 44 | −47 489 460 F | `montantTTC < 0` | il entre en négatif, et diminue ce que le client doit |
+| **Trop-perçu** | 29 | −4 446 771 F | TTC ≥ 0 et `ResteàPayer ≤ −2` | on le signale ; ce n'est pas un avoir |
+| **Arrondi** | 12 | −1,49 F en tout | `ResteàPayer = −1` | on l'ignore |
+
+**Le signe décide, jamais le texte.** Quarante-sept lignes portent « facture d'avoir à établir »
+ou « à faire » : ce sont des avoirs **annoncés**, pas écrits, et leur reste est déjà à zéro. Les
+ramasser avec les vrais doublerait la correction.
+
+Deux détails du classeur, relevés par le propriétaire :
+
+- **40 des 44 avoirs sont soldés** — TTC et montant réglé égaux et négatifs, reste à zéro. Un
+  classement qui regarderait le reste les prendrait pour des créances ordinaires.
+- **4 ne le sont pas**, tous SOLIBRA / IDIS (factures 2625, 2626, 2629 et 2594), −2 151 640 F.
+- Les plus gros : SOLIBRA 2439 (−19 819 280), SAAR / NOVAGO 44 (−4 907 430), GNA / BACIBAM 1371
+  (−4 360 120). La ligne AMSA 1033 (−681 380) n'a pas de date d'édition.
+
+**En francs entiers, la bande des arrondis se réduit à −1.** La règle énoncée dit
+« −1 < ResteàPayer < 0 », ce qui vise les centimes du classeur ; aucun entier ne tient là
+dedans. Le trop-perçu commence donc à −2. Trouvé en écrivant le test.
+
+**Ce qui a vraiment bloqué pendant trois semaines**, et qu'on n'avait pas vu : `factures.montant`
+et `encaissements.montant` étaient déclarés `bigint unsigned`. **La base ne pouvait pas écrire un
+nombre négatif.** Le refus à l'import n'en était que la conséquence visible. Migration
+d'élargissement le 02/10 — aucune ligne lue, modifiée ni supprimée.
+
+**Il reste un geste, et il est au propriétaire : redéposer le fichier.** Les 43 lignes refusées
+sont toujours dans `lignes_rejetees_import` avec toutes leurs valeurs. La structure les accepte
+désormais ; rien n'entre tout seul.
+
+Où cela vit : `NatureDeLaCreance`, `tests/Unit/TroisNaturesDeNegatifNeSeConfondentPasTest.php`,
+`tests/Feature/UnAvoirEntreEtFaitBaisserLaDetteTest.php`.
+
 ### Hors de ce module, et toujours en attente
 
 La **rotation des secrets** : mot de passe du courriel, secret Google OAuth, mot de passe

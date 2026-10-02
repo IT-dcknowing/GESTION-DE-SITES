@@ -9,6 +9,7 @@ use Illuminate\Validation\Rule;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 use Modules\Noyau\Imports\Modeles\MouvementCaisse;
+use Modules\Noyau\Imports\Services\ChaineDeSolde;
 use Modules\Noyau\Imports\Modeles\OuvertureCaisse;
 
 use function Livewire\Volt\{computed, mount, protect, state};
@@ -313,55 +314,66 @@ $kpis = computed(function () {
  * diverger — ils n'ont jamais été d'accord.
  *
  * **Ce qu'on fait maintenant.** On part du solde que le fichier lui-même annonce sur sa
- * première ligne de la période, on lui applique un à un tous les mouvements qui suivent,
- * et on compare le résultat au solde de la dernière ligne. Là, les deux nombres mesurent
- * exactement la même chose, et l'écart devient un vrai renseignement : quelque part entre
- * les deux, le solde du classeur a sauté sans qu'un mouvement l'explique — une ligne
- * retouchée à la main, un apport d'espèces non saisi, ou un report entre deux feuillets.
+ * première ligne, on lui applique un à un tous les mouvements qui suivent, et on compare le
+ * résultat au solde de la dernière ligne. Les deux nombres mesurent alors exactement la même
+ * chose, et l'écart devient un vrai renseignement : quelque part entre les deux, le solde du
+ * classeur a sauté sans qu'un mouvement l'explique.
  *
- * Rendu seulement quand il y a quelque chose à dire : quand les deux coïncident, il n'y a
- * pas d'écart à montrer, et un indicateur qui répète « tout va bien » cesse d'être lu.
+ * ─────────────────────────────────────────────────────────────────────────────────────────
  *
- * @return array{depart: MouvementCaisse, arrivee: MouvementCaisse, attendu: int, annonce: int, ecart: int}|null
+ * **Et ce n'était toujours pas assez — relevé le 02/10 : « le système annonce une anomalie
+ * qui n'en est pas une ».** Il avait raison, et deux fois.
+ *
+ * **La chaîne était suivie dans l'ordre des dates.** Un cumul dépend de l'ordre d'écriture,
+ * et des dizaines de lignes partagent une date ; surtout, une date mal lue déplace sa ligne
+ * d'un bout à l'autre du classeur. Mesuré sur les mouvements en base : triée par date, la
+ * chaîne partait d'une ligne datée du **31/12/1899** — le zéro d'Excel, sur un feuillet
+ * « DEC 25 » — et finissait sur une ligne datée du **15/10/2026** appartenant au feuillet
+ * « JANV 26 ». Les deux bornes du rapprochement étaient des lignes du milieu.
+ *
+ * **Et elle traversait les feuillets.** Chaque feuillet repart de son propre fonds de
+ * caisse : mis bout à bout, deux cumuls indépendants ne s'additionnent pas. Reprise feuillet
+ * par feuillet, la même base donne `MARS 26` **sans aucun écart**, et trois questions
+ * précises ailleurs — 1 000 F, 271 425 F, 2 000 000 F — chacune bornée à deux cents lignes.
+ * Le chiffre global, lui, ne désignait rien.
+ *
+ * Rendu seulement quand il y a quelque chose à dire : quand tout coïncide, il n'y a pas
+ * d'écart à montrer, et un indicateur qui répète « tout va bien » cesse d'être lu.
+ *
+ * @return array{feuillet: string, depart: MouvementCaisse, arrivee: MouvementCaisse, attendu: int, annonce: int, ecart: int, phrase: string, tous: array}|null
  */
 $rapprochement = computed(function () {
-    $annonces = fn () => (clone $this->perimetre)->whereNotNull('solde_annonce');
+    $anomalies = [];
 
-    $depart = $annonces()->orderBy('date')->orderBy('id')->first();
-    $arrivee = $annonces()->orderByDesc('date')->orderByDesc('id')->first();
+    foreach (ChaineDeSolde::chaines((clone $this->perimetre)->orderBy('id')->get()) as $feuillet => $chaine) {
+        $constat = ChaineDeSolde::rapprochement($chaine);
 
-    // Une seule ligne annoncée ne fait pas une chaîne : il n'y a rien à vérifier.
-    if ($depart === null || $arrivee === null || $depart->id === $arrivee->id) {
+        if ($constat !== null) {
+            $anomalies[] = $constat + ['feuillet' => $feuillet];
+        }
+    }
+
+    if ($anomalies === []) {
         return null;
     }
 
-    // Tout ce qui vient après la ligne de départ. Elle-même est exclue : le solde qu'elle
-    // annonce la comprend déjà, et la recompter la ferait compter deux fois.
-    $jourDepart = $depart->date->toDateString();
+    // Le plus gros écart d'abord : c'est celui qu'on va regarder, et les autres suivent.
+    usort($anomalies, fn ($a, $b) => abs($b['ecart']) <=> abs($a['ecart']));
 
-    $suite = (clone $this->perimetre)->where(fn ($q) => $q
-        ->whereDate('date', '>', $jourDepart)
-        ->orWhere(fn ($memeJour) => $memeJour->whereDate('date', $jourDepart)->where('id', '>', $depart->id)));
+    $premier = $anomalies[0];
 
-    $attendu = (int) $depart->solde_annonce
-        + (int) (clone $suite)->where('sens', MouvementCaisse::ENTREE)->sum('montant')
-        - (int) (clone $suite)->where('sens', MouvementCaisse::SORTIE)->sum('montant');
-
-    $annonce = (int) $arrivee->solde_annonce;
-
-    if ($annonce === $attendu) {
-        return null;
-    }
-
-    // La phrase est montée ici plutôt que dans le gabarit : elle porte des apostrophes,
-    // et une apostrophe dans une expression d'attribut Blade casse la compilation.
     $phrase = sprintf(
-        "Solde du %s suivi mouvement par mouvement jusqu'au %s. Le solde du classeur a sauté sans qu'un mouvement l'explique.",
-        $depart->date->format('d/m/Y'),
-        $arrivee->date->format('d/m/Y'),
+        "Feuillet « %s », du %s au %s, suivi ligne à ligne dans l'ordre du fichier. Le solde du classeur a sauté sans qu'un mouvement l'explique.",
+        $premier['feuillet'],
+        $premier['depart']->date->format('d/m/Y'),
+        $premier['arrivee']->date->format('d/m/Y'),
     );
 
-    return compact('depart', 'arrivee', 'attendu', 'annonce', 'phrase') + ['ecart' => $annonce - $attendu];
+    if (count($anomalies) > 1) {
+        $phrase .= sprintf(' %d autre(s) feuillet(s) sautent aussi.', count($anomalies) - 1);
+    }
+
+    return $premier + ['phrase' => $phrase, 'tous' => $anomalies];
 });
 
 /**
@@ -631,6 +643,10 @@ $saisiesEnEspeces = computed(function () {
             'ville' => $e->site?->ville,
             'montant' => (int) $e->montant,
             'solde_annonce' => null,
+            // Une ecriture saisie ici n'appartient a aucune chaine de classeur : lui
+            // donner un solde cumule la melangerait a celle du journal, et c'est
+            // precisement ce qui fabrique un faux ecart.
+            'solde_calcule' => null,
             'origine' => 'saisie',
             'lien' => route('tresorerie.encaissement', $e->id),
         ]);
@@ -657,6 +673,10 @@ $saisiesEnEspeces = computed(function () {
             'ville' => $c->site?->ville,
             'montant' => (int) $c->montant,
             'solde_annonce' => null,
+            // Une ecriture saisie ici n'appartient a aucune chaine de classeur : lui
+            // donner un solde cumule la melangerait a celle du journal, et c'est
+            // precisement ce qui fabrique un faux ecart.
+            'solde_calcule' => null,
             'origine' => 'saisie',
             'lien' => null,
         ]);
@@ -667,10 +687,36 @@ $saisiesEnEspeces = computed(function () {
 /**
  * Les mouvements du journal, mis à la même forme — pour qu'un seul tableau les rende tous.
  */
+/**
+ * Notre propre solde, ligne à ligne — celui qu'on oppose à celui du classeur.
+ *
+ * **Demandé le 02/10, et c'est la bonne demande.** « Donne-moi la logique du solde […] mets
+ * le sens du solde, D si débit, C si crédit, sur chaque ligne jusqu'à la dernière. » Jusqu'ici
+ * l'écran recopiait le solde du fichier et ne disait rien des lignes qui n'en portent pas.
+ *
+ * **Calculé sur le périmètre nu**, et non sur la liste affichée : un cumul suit une chaîne
+ * entière, et le recalculer sur « sorties seulement » ou sur une page de vingt-cinq lignes
+ * donnerait un solde qui ne voudrait rien dire.
+ *
+ * La règle est dans `ChaineDeSolde`, avec ce qu'elle a coûté à trouver.
+ *
+ * @return array<int, int> le solde calculé, par identifiant de mouvement
+ */
+$soldesCalcules = computed(function () {
+    $soldes = [];
+
+    foreach (ChaineDeSolde::chaines((clone $this->perimetre)->orderBy('id')->get()) as $chaine) {
+        $soldes += ChaineDeSolde::soldes($chaine);
+    }
+
+    return $soldes;
+});
+
 $mouvementsDuJournal = computed(fn () => (clone $this->requete)
     ->with('ville')
     ->get()
     ->map(fn (MouvementCaisse $m) => (object) [
+        'solde_calcule' => $this->soldesCalcules[$m->id] ?? null,
         'cle' => 'jrn-'.$m->id,
         'date' => $m->date,
         'sens' => $m->sens,
@@ -1067,6 +1113,16 @@ $mouvements = computed(function () {
                              écriture saisie ici n'en a pas — le logiciel ne la connaît pas
                              encore — et sa case reste vide plutôt que de porter un nombre
                              calculé qu'on prendrait pour une annonce. --}}
+                        {{-- **« Mets le sens du solde, D si débit, C si crédit, sur chaque
+                             ligne jusqu'à la dernière » — demandé le 02/10.**
+
+                             Notre solde vient en premier parce que c'est celui qui existe sur
+                             toutes les lignes : le classeur n'annonce le sien que sur les
+                             siennes, et jamais sur une écriture saisie ici. Les deux restent
+                             côte à côte, pour qu'un désaccord se voie à l'endroit où il
+                             commence plutôt que dans un total. --}}
+                        <th style="text-align:right;">Notre solde</th>
+                        <th style="text-align:center;" title="Débit quand la caisse tient de l'argent, crédit quand le cumul passe sous zéro.">D/C</th>
                         <th class="colonne-collee" style="text-align:right;">Solde annoncé</th>
                     </tr>
                 </thead>
@@ -1122,13 +1178,25 @@ $mouvements = computed(function () {
                                        color:{{ $ligne->sens === 'entree' ? '#1E7B34' : '#C8102E' }};">
                                 {{ ae($ligne->montant) }}
                             </td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:600;
+                                       color:{{ $ligne->solde_calcule !== null && $ligne->solde_calcule < 0 ? '#C8102E' : '#191B20' }};">
+                                {{ $ligne->solde_calcule === null ? '—' : ae($ligne->solde_calcule) }}
+                            </td>
+                            <td style="text-align:center; font-weight:700; font-size:12px;
+                                       color:{{ $ligne->solde_calcule !== null && $ligne->solde_calcule < 0 ? '#C8102E' : '#1E7B34' }};">
+                                {{-- Un solde négatif n'est pas une erreur : il vient de l'ordre
+                                     de saisie, une sortie écrite avant les entrées du jour. On
+                                     le montre en « C », on ne le corrige pas. --}}
+                                {{ $ligne->solde_calcule === null ? '—' : \Modules\Noyau\Imports\Services\ChaineDeSolde::sens($ligne->solde_calcule) }}
+                            </td>
                             <td class="colonne-collee"
-                                style="text-align:right; font-variant-numeric:tabular-nums; color:#4B4E55;">
+                                style="text-align:right; font-variant-numeric:tabular-nums;
+                                       color:{{ $ligne->solde_annonce !== null && $ligne->solde_calcule !== null && (int) $ligne->solde_annonce !== $ligne->solde_calcule ? '#C8102E' : '#6B6E76' }};">
                                 {{ $ligne->solde_annonce === null ? '—' : ae($ligne->solde_annonce) }}
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="9 + count(array_filter($this->colonnesDuFichier))"
+                        <x-table-vide :colspan="11 + count(array_filter($this->colonnesDuFichier))"
                             texte="Aucun mouvement de caisse sur cette période. Les états de caisse se déposent depuis le module Import, et les mouvements du jour se saisissent avec les boutons du haut." />
                     @endforelse
                 </tbody>
