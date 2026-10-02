@@ -329,12 +329,6 @@ $abandonner = function () {
                                 l'écran <b>Banques</b> — il s'ouvre depuis la trésorerie. Un relevé
                                 déposé sans compte ne se rattacherait à aucune banque.
                             </div>
-                        @else
-                            <div class="imp-hint">
-                                Le fichier ne porte pas le nom de votre banque : sur l'écran du
-                                logiciel, le compte se choisit au-dessus de la grille. Sa colonne
-                                « banque émettrice » est celle du <b>chèque reçu</b>, pas la vôtre.
-                            </div>
                         @endif
                     </div>
 

@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **1er octobre 2026** (20e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **2 octobre 2026** (21e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -2644,6 +2644,52 @@ passait son `aside` en `display:none` : il quitte alors le flux de la grille, et
 replace tout seul dans la **première** cellule — celle qu'on venait de ramener à zéro. Une
 seule colonne quand la barre est repliée, et le contenu la remplit.
 
+### La séance du 02/10 — les boutons qui ne répondaient pas, et une erreur à corriger
+
+#### Telescope n'était pas la cause **en ligne**, et je l'avais écrit à tort
+
+Le propriétaire a lancé `php artisan telescope:clear` sur le serveur :
+
+    ERROR  There are no commands defined in the "telescope" namespace.
+
+**Le paquet n'y est pas installé.** Il ne l'est qu'en local, où il avait bien accumulé 24 323
+lignes et où sa désactivation a fait passer les pages de trente secondes à une. En ligne, la
+lenteur a une autre cause, et l'attribuer à Telescope était une erreur.
+
+Ce qui reste valable pour le serveur : l'index manquant et la pagination en base, qui jouent
+là-bas comme ici. Ce qui reste à vérifier tient à l'hébergement — **OPcache** sur le PHP qui
+sert les pages, `CACHE_STORE=file` et `SESSION_DRIVER=file` (le `.env` local est à `database`
+pour les deux : chaque requête y paie un `SELECT` et un `UPDATE`). `php artisan app:diagnostic`
+le dit sur place, rubrique *Vitesse*.
+
+#### Les trois boutons de repli : ce n'était pas de l'instabilité
+
+« Celui du bandeau ne passe pas, celui du recouvrement ne passe pas, celui de l'import passe
+mais parfois ne s'exécute pas. » Mesuré sur le HTML rendu, et la règle est nette :
+
+| Page | Boutons | Scripts émis | Résultat |
+|---|---|---|---|
+| `/recouvrement` | 2 | **2** | rien ne bouge |
+| `/import` | 2 | **2** | rien ne bouge |
+| `/tresorerie` | 1 | 1 | marche |
+
+**`@once` n'a pas dédupliqué.** Deux copies du script, donc **deux écouteurs sur `document`** :
+chaque clic basculait puis rebasculait. « Parfois ça passe » n'était pas du hasard — c'était
+le nombre de boutons de la page.
+
+**Deux corrections, et la seconde n'était pas encore visible.** Le script se garde désormais
+par un drapeau sur `window` : injecté dix fois, il ne s'installe qu'une. Et la classe est posée
+sur `<html>` et non sur la barre — les deux coquilles sont des **racines de composants
+Livewire**, et Livewire retire d'une racine les classes que le serveur n'a pas rendues : la
+barre se serait redépliée toute seule à la première mise à jour.
+
+#### Un piège de Blade, trouvé en le commettant
+
+Écrire `@once` dans un commentaire **JavaScript** ne le protège pas : Blade compile la
+directive quand même, ouvre un bloc qui ne se referme jamais, et les trois pages tombent en
+maintenance sur « unexpected end of file ». Seul le commentaire Blade `{{-- --}}` met un `@`
+à l'abri.
+
 ### Pièges d'outillage déjà rencontrés
 
 | Piège | Parade |
@@ -2681,6 +2727,9 @@ seule colonne quand la barre est repliée, et le contenu la remplit.
 | Un `OR` sur la deuxième colonne d'un index composite rend l'index inutilisable | indexer la colonne la plus sélective en tête — ici la date, que toutes les pages bornent |
 | `->get()` puis `forPage()` **en mémoire** : on charge l'exercice pour montrer dix lignes | paginer dans la requête, et compter séparément |
 | Un `aside` en `display:none` dans une grille : il quitte le flux, et le contenu se replace dans la **première** cellule | passer la grille à une seule colonne quand on replie |
+| `@once` autour d'un `<script>` dans un composant anonyme **ne déduplique pas** : deux usages sur une page posent deux écouteurs, qui s'annulent | garder le script par un drapeau sur `window` : injecté dix fois, il ne s'installe qu'une |
+| Une classe posée par JavaScript sur une **racine de composant Livewire** est retirée à la première mise à jour | la poser sur `document.documentElement`, que rien ne compare |
+| Un `@directive` écrit dans un commentaire **JavaScript** est compilé par Blade quand même | seul `{{-- --}}` met un `@` à l'abri |
 | `x-filtre-periode` attend des **modèles** Ville, `x-champ` un tableau `valeur => libellé` | les deux composants ne lisent pas la même forme ; c'est à l'écran de donner la bonne à chacun |
 | La classe `.champ` porte `width:100%` : dans une rangée en flex, chaque champ réclame la largeur entière et rejette les boutons à la ligne suivante | `style="width:auto"` sur tout filtre posé dans une rangée, comme le fait `x-filtre-periode` |
 | Un droit qui ne cache que les **colonnes** laisse le **panneau de filtres** les proposer — et le filtre, lui, fonctionne | filtrer la déclaration elle-même (`array_filter` sur `colonnesFiltrables`) |
