@@ -73,8 +73,10 @@ Chaque feuillet d'un classeur repart de **son propre fonds de caisse**. Mis bout
 cumuls indépendants ne s'additionnent pas : le second prétend démarrer d'un montant que le
 premier n'a pas laissé.
 
-Sur le même classeur, suivi d'un bout à l'autre, le résultat ne désignait rien. Repris feuillet
-par feuillet :
+Mesuré sur `CAISSE DU 01012026 AU 16032026.xlsx`, le classeur **tenu à la main** — c'est le seul
+présent dans la base de travail, et non `ETAT_Caisse-ABIDJAN DU 170326 AU 250926.xlsx`, celui que
+le logiciel produit. La règle vaut pour les deux ; les chiffres ci-dessous ne valent que pour
+celui-là. Suivi d'un bout à l'autre, le résultat ne désignait rien. Repris feuillet par feuillet :
 
 | Feuillet | Lignes | Écart |
 |---|---|---|
@@ -170,7 +172,19 @@ contrôle_2 = toutes les lignes ont solde_calculé == solde_annoncé   # ligne �
 
 ---
 
-## 5. Une question qui reste ouverte
+## 5. Deux questions qui restent ouvertes
+
+**Le compte des lignes ne tombe pas juste en ligne.** L'écran de caisse du serveur annonce
+**2 603 mouvements** là où `ETAT_Caisse-ABIDJAN DU 170326 AU 250926.xlsx` en porte **2 070** :
+533 de trop. Deux explications possibles, et aucune ne se vérifie sans regarder le serveur :
+
+- deux classeurs ont été déposés et se superposent sur la période ;
+- un même dépôt a été lu deux fois.
+
+Le bloc **« Les classeurs de cette période »**, sur `/caisse`, répond à la première : il nomme
+chaque chaîne avec son fichier déposé, son nombre de lignes et son écart.
+
+
 
 Les dates mal lues (31/12/1899, 15/10/2026) viennent de la **lecture du classeur à l'import**,
 pas du calcul. Le solde n'en dépend plus, mais ces lignes restent mal datées dans la base, donc

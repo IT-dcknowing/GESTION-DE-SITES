@@ -7,6 +7,8 @@ use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 use Modules\Noyau\Imports\Modeles\MouvementCaisse;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Entreprises\Modeles\Site;
+use Modules\Noyau\Exploitation\Services\MouvementsDeTresorerie;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Commun\Services\SerieParPoint;
 use Modules\Noyau\Commun\Services\VentilationActivite;
@@ -389,21 +391,67 @@ $requeteEncaissements = computed(fn () => FiltreLibre::appliquer(
     (array) $this->filtresLibres,
 ));
 
-$nombreEncaissements = computed(fn () => (clone $this->requeteEncaissements)->count());
+/*
+ * **Les deux listes portent aussi le journal de caisse — 02/10.**
+ *
+ * *« Les encaissements et décaissements doivent enregistrer ceux importés, c'est juste qu'il
+ * les liste, c'est tout. La tréso prend tout, pas seulement ceux d'ici. »*
+ *
+ * Le journal était entré dans les **totaux** le 01/10 et dans aucune des deux **listes**.
+ * Sur le serveur, cela donnait « Décaissements (0) » sous un total de sorties de
+ * 436 783 059 F : l'écran se contredisait à dix centimètres d'intervalle.
+ *
+ * L'union se trie et se pagine en base. Charger les deux sources pour en afficher dix
+ * remettrait sur cet écran ce qu'on en a retiré la veille.
+ */
+$unionEncaissements = computed(fn () => MouvementsDeTresorerie::entrees(
+    (clone $this->requeteEncaissements)->toBase(),
+    $this->journalCompte ? (clone $this->journalQ)->toBase() : null,
+    $this->colonnesFiltrables,
+    (array) $this->filtresLibres,
+));
 
-$detailEncaissements = computed(fn () => (clone $this->requeteEncaissements)
-    ->with(['site', 'facture:id,numero,n_facture,client,immatriculation', 'lot:id,nom_fichier,format,created_at'])
-    ->latest('date')->latest('id')
-    ->forPage($this->pageEncaissements, 10)
-    ->get());
+$nombreEncaissements = computed(fn () => MouvementsDeTresorerie::compter($this->unionEncaissements));
 
-$nombreDecaissements = computed(fn () => (clone $this->chargesQ)->count());
+$detailEncaissements = computed(fn () => $this->garnir(
+    MouvementsDeTresorerie::page($this->unionEncaissements, (int) $this->pageEncaissements),
+));
 
-$detailDecaissements = computed(fn () => (clone $this->chargesQ)
-    ->with(['site', 'lot:id,nom_fichier,format,created_at'])
-    ->latest('date')->latest('id')
-    ->forPage($this->pageDecaissements, 10)
-    ->get());
+$unionDecaissements = computed(fn () => MouvementsDeTresorerie::sorties(
+    (clone $this->chargesQ)->toBase(),
+    $this->journalCompte ? (clone $this->journalQ)->toBase() : null,
+));
+
+$nombreDecaissements = computed(fn () => MouvementsDeTresorerie::compter($this->unionDecaissements));
+
+$detailDecaissements = computed(fn () => $this->garnir(
+    MouvementsDeTresorerie::page($this->unionDecaissements, (int) $this->pageDecaissements),
+));
+
+/**
+ * Les noms que l'union ne peut pas ramener : l'atelier, et la facture réglée.
+ *
+ * Une union de deux tables ne porte pas de relations Eloquent. Plutôt qu'une requête par
+ * ligne, on relit les deux en un coup sur les seuls identifiants de la page — dix lignes,
+ * donc deux requêtes au plus, et souvent zéro.
+ *
+ * @param  \Illuminate\Support\Collection<int, \stdClass>  $lignes
+ */
+$garnir = protect(function ($lignes) {
+    $sites = Site::whereIn('id', $lignes->pluck('site_id')->filter()->unique())->pluck('nom', 'id');
+
+    $factures = Facture::whereIn('id', $lignes->pluck('facture_id')->filter()->unique())
+        ->get(['id', 'numero', 'n_facture'])->keyBy('id');
+
+    return $lignes->map(function ($ligne) use ($sites, $factures) {
+        $ligne->date = \Illuminate\Support\Carbon::parse($ligne->date);
+        $ligne->site_nom = $sites[$ligne->site_id] ?? null;
+        $ligne->facture = isset($ligne->facture_id) ? ($factures[$ligne->facture_id] ?? null) : null;
+        $ligne->vientDuJournal = $ligne->source === 'caisse';
+
+        return $ligne;
+    });
+});
 
 /*
  * Le détail d'un encaissement a sa page depuis le 28/09 — voir `pilotage.encaissement-detail`.
@@ -716,7 +764,12 @@ $origineDe = protect(function ($ligne) {
                                     @endif
                                 </td>
                                 <td style="white-space:nowrap; font-size:12px;">
-                                    @if ($ligne->lot_import_id === null)
+                                    {{-- Trois origines depuis le 02/10, et non deux : le journal de
+                                         caisse se dit lui-même, sans quoi on le prendrait pour un
+                                         encaissement importé et l'on chercherait sa facture. --}}
+                                    @if ($ligne->vientDuJournal)
+                                        <span style="color:#B87A00; font-weight:600;">Journal de caisse</span>
+                                    @elseif ($ligne->lot_import_id === null)
                                         <span style="color:#2563EB; font-weight:600;">Saisi ici</span>
                                     @else
                                         <span style="color:#6B6E76;">Importé</span>
@@ -725,9 +778,12 @@ $origineDe = protect(function ($ligne) {
                                 <td class="colonne-collee" style="white-space:nowrap;">
                                     {{-- Une page, et non un panneau déplié : il poussait le tableau
                                          vers le bas, se perdait au changement de page et ne se
-                                         transmettait pas. Demandé le 28/09. --}}
-                                    <a href="{{ route('tresorerie.encaissement', $ligne->id) }}" wire:navigate
-                                        class="bouton bouton-secondaire"
+                                         transmettait pas. Demandé le 28/09.
+
+                                         Une ligne du journal n'a pas de page à elle : elle renvoie
+                                         à la caisse, qui est l'endroit où elle se lit en entier. --}}
+                                    <a href="{{ $ligne->vientDuJournal ? route('caisse') : route('tresorerie.encaissement', $ligne->id) }}"
+                                        wire:navigate class="bouton bouton-secondaire"
                                         style="padding:3px 9px; font-size:11.5px; text-decoration:none;">Détail</a>
                                 </td>
                             </tr>
@@ -766,38 +822,43 @@ $origineDe = protect(function ($ligne) {
                                 <td>{{ $ligne->moyen }}</td>
                                 <td style="font-variant-numeric:tabular-nums; font-weight:700; color:#C8102E;">{{ ae($ligne->montant) }}</td>
                                 <td style="color:#6B6E76;">{{ $ligne->tiers ?? '—' }}</td>
-                                {{-- Toutes les charges sont saisies ici aujourd'hui — mesuré :
-                                     198 sur 198. La colonne le dit plutôt que de le laisser
-                                     supposer, et elle dira autre chose le jour où un fichier
-                                     de charges sera déposé. --}}
+                                {{-- Trois origines depuis le 02/10. Les charges sont toutes saisies
+                                     ici — mesuré : 198 sur 198 —, et le journal de caisse apporte
+                                     les sorties d'espèces qui n'étaient listées nulle part alors
+                                     qu'elles comptaient déjà dans le total au-dessus. --}}
                                 <td style="white-space:nowrap; font-size:12px;">
-                                    @if ($ligne->lot_import_id === null)
+                                    @if ($ligne->vientDuJournal)
+                                        <span style="color:#B87A00; font-weight:600;">Journal de caisse</span>
+                                    @elseif ($ligne->lot_import_id === null)
                                         <span style="color:#2563EB; font-weight:600;">Saisi ici</span>
                                     @else
                                         <span style="color:#6B6E76;">Importé</span>
                                     @endif
                                 </td>
                                 <td class="colonne-collee" style="white-space:nowrap;">
-                                    <button type="button" wire:click="voirDecaissement({{ $ligne->id }})"
-                                        class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;">
-                                        {{ (int) $detailDecaissement === (int) $ligne->id ? 'Fermer' : 'Détail' }}
-                                    </button>
+                                    @if ($ligne->vientDuJournal)
+                                        <a href="{{ route('caisse') }}" wire:navigate class="bouton bouton-secondaire"
+                                            style="padding:3px 9px; font-size:11.5px; text-decoration:none;">Détail</a>
+                                    @else
+                                        <button type="button" wire:click="voirDecaissement({{ $ligne->id }})"
+                                            class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;">
+                                            {{ (int) $detailDecaissement === (int) $ligne->id ? 'Fermer' : 'Détail' }}
+                                        </button>
+                                    @endif
                                 </td>
                             </tr>
 
-                            @if ((int) $detailDecaissement === (int) $ligne->id)
+                            {{-- L'union de deux tables ne porte pas de relations : l'atelier est
+                                 relu à part pour les seules lignes de la page. Observations et
+                                 référence d'origine quittent ce panneau — elles ne valaient que
+                                 pour une charge, et le détail complet est sur la page de la
+                                 charge elle-même. --}}
+                            @if (! $ligne->vientDuJournal && (int) $detailDecaissement === (int) $ligne->id)
                                 <tr style="background:#F7F5EF;">
                                     <td colspan="8" style="font-size:12.5px; padding:10px 12px;">
                                         <div><b>Référence</b> : {{ $ligne->numero ?: '—' }}</div>
-                                        <div><b>Origine</b> : {{ $this->origineDe($ligne) }}</div>
-                                        <div><b>Atelier</b> : {{ $ligne->site?->nom ?: '—' }}</div>
+                                        <div><b>Atelier</b> : {{ $ligne->site_nom ?: '—' }}</div>
                                         <div><b>Activité</b> : {{ $ligne->activite ?: 'non ventilée' }}</div>
-                                        @if ($ligne->observations)
-                                            <div><b>Observations</b> : {{ $ligne->observations }}</div>
-                                        @endif
-                                        @if ($ligne->reference_origine)
-                                            <div><b>Référence d'origine</b> : {{ $ligne->reference_origine }}</div>
-                                        @endif
                                     </td>
                                 </tr>
                             @endif

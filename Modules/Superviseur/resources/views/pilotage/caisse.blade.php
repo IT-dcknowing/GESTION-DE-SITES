@@ -342,6 +342,38 @@ $kpis = computed(function () {
  *
  * @return array{feuillet: string, depart: MouvementCaisse, arrivee: MouvementCaisse, attendu: int, annonce: int, ecart: int, phrase: string, tous: array}|null
  */
+/**
+ * Ce que chaque chaîne porte, et d'où elle vient — pour qu'on sache de quel fichier on parle.
+ *
+ * **Demandé de fait le 02/10.** *« J'espère que ce n'est pas la caisse tenue à la main […],
+ * car ce qu'on va importer, c'est le fichier du logiciel. »* La question est juste, et l'écran
+ * ne permettait pas d'y répondre : il annonçait un écart sans dire sur quel feuillet, ni issu
+ * de quel dépôt. Deux classeurs déposés l'un après l'autre se mélangeaient à l'œil.
+ *
+ * Chaque chaîne se nomme ici avec son fichier, son nombre de lignes et son écart. C'est court,
+ * et cela répond à la seule question qu'on se pose devant un écart : *où je vais regarder ?*
+ *
+ * @return array<int, array{feuillet: string, fichier: string, lignes: int, ecart: int|null}>
+ */
+$chainesDuClasseur = computed(function () {
+    $lignes = (clone $this->perimetre)->with('lot:id,nom_fichier')->orderBy('id')->get();
+
+    return ChaineDeSolde::chaines($lignes)
+        ->map(function ($chaine, $feuillet) {
+            $constat = ChaineDeSolde::rapprochement($chaine);
+
+            return [
+                'feuillet' => $feuillet,
+                // Un même feuillet ne vient que d'un dépôt ; la première ligne suffit à le dire.
+                'fichier' => $chaine->first()?->lot?->nom_fichier ?? 'saisie',
+                'lignes' => $chaine->count(),
+                'ecart' => $constat['ecart'] ?? null,
+            ];
+        })
+        ->values()
+        ->all();
+});
+
 $rapprochement = computed(function () {
     $anomalies = [];
 
@@ -999,6 +1031,47 @@ $mouvements = computed(function () {
                 :sub="$this->rapprochement['phrase']" />
         @endif
     </div>
+
+    {{-- ─────────────────────────────── de quel classeur parle-t-on ?
+
+         Rendu dès qu'il y a plus d'une chaîne, et seulement là : avec un seul feuillet, le
+         bloc répéterait ce que la carte dit déjà. Avec deux, il répond à la question qu'on se
+         pose aussitôt — « est-ce mon fichier du logiciel ou celui tenu à la main ? » — et que
+         rien ne permettait de trancher à l'écran. --}}
+    @if ($this->vue !== 'saisie' && count($this->chainesDuClasseur) > 1)
+        <div class="carte" style="margin-bottom:16px;">
+            <h3 style="font-size:14px; font-weight:700; margin:0 0 4px;">Les classeurs de cette période</h3>
+            <p style="font-size:12.5px; color:#6B6E76; margin:0 0 12px;">
+                Chaque feuillet porte sa propre chaîne de soldes et repart de son propre fonds de
+                caisse. Un écart se cherche dans son feuillet, jamais dans le total de tous.
+            </p>
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Feuillet</th>
+                            <th>Fichier déposé</th>
+                            <th style="text-align:right;">Lignes</th>
+                            <th style="text-align:right;">Écart</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($this->chainesDuClasseur as $chaine)
+                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                <td style="font-weight:600;">{{ $chaine['feuillet'] }}</td>
+                                <td style="color:#6B6E76; font-size:12.5px;">{{ $chaine['fichier'] }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ number_format($chaine['lignes'], 0, ',', ' ') }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
+                                           color:{{ $chaine['ecart'] === null ? '#1E7B34' : '#C8102E' }};">
+                                    {{ $chaine['ecart'] === null ? 'aucun' : ae($chaine['ecart']) }}
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
 
     <div class="carte">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
