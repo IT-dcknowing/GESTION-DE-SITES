@@ -188,6 +188,30 @@ class LaPurgeSelectiveNeVideQueCeQuOnDesigneTest extends TestCase
     }
 
     /**
+     * Un volume annoncé par le navigateur ne commande rien.
+     *
+     * **Pourquoi ce test existe depuis le 02/10.** Les volumes étaient recomptés à chaque
+     * clic, ce qui rendait les cases à cocher lentes — vingt et un `count(*)` pour une case.
+     * Ils sont désormais retenus dans une propriété, et une propriété Livewire fait
+     * l'aller-retour par le navigateur : on peut lui faire dire ce qu'on veut.
+     *
+     * La rapidité n'a donc pas le droit d'être payée en confiance. Le geste qui supprime
+     * recompte en base avant de décider ce qu'il retient, et c'est ce que ce test tient :
+     * un ensemble vide qu'on annonce plein reste refusé.
+     */
+    public function test_un_volume_annonce_par_le_navigateur_ne_commande_rien(): void
+    {
+        Volt::actingAs($this->superAdmin())->test('superadmin.maintenance')
+            ->set('choixId', (string) $this->entreprise->id)
+            // Aucune prospection en base, et pourtant le navigateur en annonce mille.
+            ->set('volumesLots.prospections', 1000)
+            ->set('lotsChoisis.prospections', true)
+            ->set('confirmationChoix', 'Alpha')
+            ->call('viderLesChoisis')
+            ->assertHasErrors('lotsChoisis');
+    }
+
+    /**
      * Le récapitulatif dit exactement ce qui part — c'est ce que la boîte affiche.
      *
      * « Envoyer un message de confirmation et dire ce qui sera vraiment supprimé. » Un écran

@@ -56,6 +56,18 @@ state([
      */
     'choixId' => '',
     'lotsChoisis' => [],
+    /*
+     * **Les volumes sont retenus, et non recomptés à chaque clic.**
+     *
+     * Relevé le 02/10 : « les boutons tout cocher sont lents ». Ils l'étaient, et chaque case
+     * aussi. Les volumes étaient un `computed`, donc refaits à chaque aller-retour Livewire —
+     * **vingt et un `count(*)`** sur des tables qui portent onze mille factures et sept mille
+     * encaissements, pour une case qu'on vient de cocher.
+     *
+     * Ils ne changent qu'avec l'entreprise regardée, et c'est là qu'on les relève. Le geste
+     * qui supprime, lui, recompte en base : voir `$viderLesChoisis`.
+     */
+    'volumesLots' => [],
     'confirmationChoix' => '',
     'resultatChoix' => null,
 ]);
@@ -120,10 +132,8 @@ $portee = computed(function () {
 
 $cibleChoix = computed(fn () => $this->choixId ? Entreprise::find($this->choixId) : null);
 
-/** Ce que chaque ensemble porte, pour l'entreprise regardée — compté avant tout geste. */
-$volumesParLot = computed(fn () => $this->choixId
-    ? PurgeParModule::volumes((int) $this->choixId)
-    : []);
+/** Ce que chaque ensemble porte — relevé au choix de l'entreprise, puis simplement relu. */
+$volumesParLot = computed(fn () => $this->volumesLots);
 
 /**
  * Les ensembles réellement cochés, ramenés à ceux qui existent et qui portent quelque chose.
@@ -191,6 +201,11 @@ $updatedChoixId = function () {
     $this->lotsChoisis = [];
     $this->confirmationChoix = '';
     $this->resultatChoix = null;
+
+    // Les vingt et un comptages se font ici, et seulement ici : changer d'entreprise est le
+    // seul geste de cet écran qui change ce qu'il y a à compter.
+    $this->volumesLots = $this->choixId ? PurgeParModule::volumes((int) $this->choixId) : [];
+
     unset($this->volumesParLot);
 };
 
@@ -207,6 +222,17 @@ $viderLesChoisis = function (PurgeParModule $action) {
     ], [], ['choixId' => 'entreprise']);
 
     $cible = $this->cibleChoix;
+
+    /*
+     * **Les volumes se relèvent ici, en base, et non tels qu'ils nous reviennent.**
+     *
+     * Depuis le 02/10 ils sont retenus dans une propriété plutôt que recomptés à chaque clic
+     * — c'est ce qui a rendu les cases instantanées. Mais une propriété Livewire fait
+     * l'aller-retour par le navigateur : un chiffre reçu ne commande rien, et le geste qui
+     * supprime recompte avant de décider ce qu'il retient.
+     */
+    $this->volumesLots = PurgeParModule::volumes((int) $this->choixId);
+    unset($this->volumesParLot, $this->lotsRetenus);
 
     if ($this->lotsRetenus === []) {
         $this->addError('lotsChoisis', 'Cochez au moins un ensemble qui porte des données.');
@@ -229,6 +255,10 @@ $viderLesChoisis = function (PurgeParModule $action) {
         ->log('Purge sélective des données');
 
     $this->reset(['lotsChoisis', 'confirmationChoix']);
+
+    // Ce qui vient de partir n'est plus à compter : on relève de nouveau, une fois.
+    $this->volumesLots = PurgeParModule::volumes((int) $this->choixId);
+
     unset($this->volumesParLot, $this->volumes);
 };
 

@@ -54,8 +54,18 @@
         html.barre-imp-repliee .imp > .imp-side { display: none; }
 
         /* Le bandeau du haut ne replie que sa navigation : la marque, l'exercice et le compte
-           restent, sinon on ne saurait plus où l'on est ni sous quelle identité. */
-        html.barre-bandeau-repliee header nav { display: none; }
+           restent, sinon on ne saurait plus où l'on est ni sous quelle identité.
+
+           **`!important`, et c'est la seule place où il se justifie.** Le `<nav>` de la mise
+           en page porte `style="display:flex"` **en ligne**, et un style en ligne l'emporte
+           sur toute règle de feuille de style, quelle qu'en soit la spécificité. Sans ce
+           mot-là, la règle était écrite, lue, et sans effet — le bouton du bandeau n'a
+           jamais rien replié, même sur une page où le script ne sortait qu'une fois.
+
+           L'autre voie serait de retirer le `display:flex` en ligne du gabarit ; elle
+           toucherait la mise en page de toutes les pages pour un confort, et c'est le
+           mauvais échange. */
+        html.barre-bandeau-repliee header nav { display: none !important; }
 
         .replier-barre {
             display: inline-flex; align-items: center; justify-content: center; gap: 6px;

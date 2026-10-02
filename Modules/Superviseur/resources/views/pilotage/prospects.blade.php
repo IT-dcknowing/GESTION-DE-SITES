@@ -143,9 +143,25 @@ $graphique = computed(function () {
     $passages = [];
     $devisApres = [];
 
+    // Lues une fois, puis réparties — et non relues une fois par point. Bornes prises sur
+    // les points et non sur la plage : un point hebdomadaire commence au lundi, donc
+    // parfois avant le début de la plage.
+    $bornes = collect($points)->flatMap(fn ($point) => [$point['debut'], $point['fin']]);
+
+    $toutes = (clone $this->requeteBase)
+        ->whereBetween('date', [$bornes->min(), $bornes->max()])
+        ->get();
+
     foreach ($points as $point) {
-        $q = (clone $this->requeteBase)->whereBetween('date', [$point['debut'], $point['fin']]);
-        $lignes = $q->get();
+        $debutDuPoint = $point['debut']->toDateString();
+        $finDuPoint = $point['fin']->toDateString();
+
+        $lignes = $toutes->filter(function ($prospection) use ($debutDuPoint, $finDuPoint) {
+            $jour = substr((string) $prospection->date, 0, 10);
+
+            return $jour >= $debutDuPoint && $jour <= $finDuPoint;
+        });
+
         $labels[] = $point['label'];
         $visites[] = $lignes->count();
         $passages[] = $lignes->where('passage', true)->count();

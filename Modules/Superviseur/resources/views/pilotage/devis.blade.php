@@ -167,8 +167,25 @@ $graphique = computed(function () {
     $valides = [];
     $taux = [];
 
+    // Les devis sont lus une fois, puis répartis — et non relus une fois par point. Bornes
+    // prises sur les points et non sur la plage : un point hebdomadaire commence au lundi,
+    // donc parfois avant le début de la plage.
+    $bornes = collect($points)->flatMap(fn ($point) => [$point['debut'], $point['fin']]);
+
+    $toutes = (clone $this->requeteBase)
+        ->whereBetween('date_emission', [$bornes->min(), $bornes->max()])
+        ->get();
+
     foreach ($points as $point) {
-        $lignes = (clone $this->requeteBase)->whereBetween('date_emission', [$point['debut'], $point['fin']])->get();
+        $debutDuPoint = $point['debut']->toDateString();
+        $finDuPoint = $point['fin']->toDateString();
+
+        $lignes = $toutes->filter(function ($devis) use ($debutDuPoint, $finDuPoint) {
+            $jour = substr((string) $devis->date_emission, 0, 10);
+
+            return $jour >= $debutDuPoint && $jour <= $finDuPoint;
+        });
+
         $nbEmis = $lignes->count();
         $nbValides = $lignes->where('statut', 'Validé')->count();
 

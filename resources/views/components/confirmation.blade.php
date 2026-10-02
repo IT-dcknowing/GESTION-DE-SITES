@@ -89,6 +89,16 @@
     // plutôt que de le simuler : un formulaire se soumet, un lien se suit.
     var enAttente = null;
 
+    /*
+     * Le geste qu'on vient de reposer, le temps qu'il reparte.
+     *
+     * Sans lui, reposer un clic sur un bouton qui porte `data-confirmer` rouvrirait la boîte
+     * aussitôt : l'écouteur ne distingue pas un clic de la personne d'un clic qu'on rejoue.
+     * `enAttente` ne suffit pas pour cela — il est remis à zéro par `fermer()`, qui passe
+     * avant.
+     */
+    var relance = null;
+
     var fermer = function () {
         var dialogue = boite();
 
@@ -120,13 +130,30 @@
         // geste il déclenche : requestSubmit les conserve, submit() les perdrait.
         var formulaire = cible.form || cible.closest('form');
 
-        if (! formulaire) { return; }
+        if (formulaire) {
+            if (typeof formulaire.requestSubmit === 'function') {
+                formulaire.requestSubmit(cible.tagName === 'BUTTON' ? cible : undefined);
+            } else {
+                formulaire.submit();
+            }
 
-        if (typeof formulaire.requestSubmit === 'function') {
-            formulaire.requestSubmit(cible.tagName === 'BUTTON' ? cible : undefined);
-        } else {
-            formulaire.submit();
+            return;
         }
+
+        /*
+         * **Un bouton d'action hors formulaire — `wire:click`, `x-on:click`.**
+         *
+         * Il n'y en avait pas quand cette boîte a été écrite, et le code s'arrêtait sur un
+         * `return` muet : on confirmait, et rien ne partait. Relevé le 02/10 sur « Vider les
+         * ensembles cochés », qui est précisément le geste où l'on veut être sûr que la
+         * confirmation sert à quelque chose.
+         *
+         * On repose le clic tel quel plutôt que d'appeler Livewire : le bouton garde ses
+         * propres écouteurs, quels qu'ils soient, et cette boîte n'a pas à savoir lesquels.
+         */
+        relance = cible;
+        cible.click();
+        relance = null;
     };
 
     /*
@@ -155,7 +182,9 @@
 
         var cible = evenement.target.closest('[data-confirmer]');
 
-        if (! cible || cible === enAttente) { return; }
+        // `relance` : le clic qu'on vient de reposer soi-même après confirmation. Le laisser
+        // passer, sinon la boîte se rouvrirait sur son propre geste.
+        if (! cible || cible === enAttente || cible === relance) { return; }
 
         var dialogue = boite();
 

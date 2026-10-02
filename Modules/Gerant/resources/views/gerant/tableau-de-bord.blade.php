@@ -8,6 +8,7 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
 use Modules\Noyau\Exploitation\Modeles\SaisieJournaliere;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
+use Modules\Noyau\Commun\Services\SerieParPoint;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
@@ -116,13 +117,36 @@ $kpis = computed(function () {
     $devisEmis = Devis::whereIn('site_id', $idsSites)->whereBetween('date_emission', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre));
-    $nbEmis = (clone $devisEmis)->count();
-    $nbValides = (clone $devisEmis)->where('statut', 'Validé')->count();
-    $tauxTransfoActivite = function ($activite) use ($devisEmis) {
-        $emis = (clone $devisEmis)->where('activite', $activite);
-        $nb = $emis->count();
+    /*
+     * **Six comptages de devis en une requête.**
+     *
+     * Mesuré le 02/10 sur cet écran : le taux de transformation en demandait six — émis,
+     * validés, puis émis et validés pour chacune des deux activités —, tous sur le même
+     * ensemble de devis, et tous relancés à chaque changement de filtre.
+     *
+     * Un seul `group by (activité, statut)` les porte tous : le compte global est la somme
+     * des groupes, et chaque taux se lit dedans. L'arithmétique est la même, faite en PHP
+     * au lieu d'être redemandée en base.
+     */
+    $devisParGroupe = (clone $devisEmis)
+        ->selectRaw('activite, statut, count(*) as nombre')
+        ->groupBy('activite', 'statut')
+        ->get();
 
-        return $nb > 0 ? (clone $emis)->where('statut', 'Validé')->count() / $nb : null;
+    $compter = fn (?string $activite, ?string $statut) => (int) $devisParGroupe
+        ->when($activite !== null, fn ($g) => $g->where('activite', $activite))
+        ->when($statut !== null, fn ($g) => $g->where('statut', $statut))
+        ->sum('nombre');
+
+    $nbEmis = $compter(null, null);
+    $nbValides = $compter(null, 'Validé');
+
+    $tauxTransfoActivite = function ($activite) use ($compter) {
+        $nb = $compter($activite, null);
+
+        // `null` et non zéro : aucun devis émis, ce n'est pas un taux de 0 %, c'est
+        // l'absence de taux. L'écran affiche alors un tiret.
+        return $nb > 0 ? $compter($activite, 'Validé') / $nb : null;
     };
 
     $facturesQ = Facture::whereIn('site_id', $idsSites)->whereBetween('date', [$debut, $fin])
@@ -193,13 +217,22 @@ $graphiqueFlux = computed(function () {
     $cumul = [];
     $total = 0;
 
-    foreach ($points as $point) {
-        $e = (int) Encaissement::whereIn('site_id', $idsSites)
-            ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
-            ->whereBetween('date', [$point['debut'], $point['fin']])->sum('montant');
-        $s = (int) Charge::whereIn('site_id', $idsSites)
-            ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
-            ->whereBetween('date', [$point['debut'], $point['fin']])->sum('montant');
+    // Deux requêtes pour la courbe, et non deux par point — c'est l'écran d'accueil du
+    // gérant, celui qu'on paie à chaque connexion. Voir `SerieParPoint`.
+    // Aucune borne de date ici, et c'est voulu : les points hebdomadaires commencent au
+    // lundi, donc parfois **avant** le début de la plage. Borner au début rognerait le
+    // premier point. `SerieParPoint` borne à l'union exacte des points, ce qui ne retire
+    // rien et laisse l'index servir.
+    $sousPerimetre = fn ($requete) => $requete
+        ->whereIn('site_id', $idsSites)
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre));
+
+    $sommesEntrees = SerieParPoint::sommes($sousPerimetre(Encaissement::query()), $points, 'date', 'montant');
+    $sommesSorties = SerieParPoint::sommes($sousPerimetre(Charge::query()), $points, 'date', 'montant');
+
+    foreach ($points as $rang => $point) {
+        $e = $sommesEntrees[$rang];
+        $s = $sommesSorties[$rang];
         $total += $e - $s;
 
         $labels[] = $point['label'];

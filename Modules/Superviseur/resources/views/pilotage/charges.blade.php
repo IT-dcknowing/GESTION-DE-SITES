@@ -101,9 +101,37 @@ $graphique = computed(function () {
     $labels = [];
     $series = array_fill_keys(array_keys($natures), []);
 
+    /*
+     * **Les lignes sont lues une fois, et non une fois par point.**
+     *
+     * Mesuré le 02/10 : un changement de filtre relançait cette requête autant de fois qu'il
+     * y a de points — jusqu'à trente et une pour un mois affiché jour par jour, alors qu'il
+     * s'agit des mêmes lignes, triées autrement.
+     *
+     * **Bornes prises sur les points, pas sur la plage.** Un point hebdomadaire commence au
+     * lundi, donc parfois avant le début de la plage ; borner à la plage rognerait le premier
+     * point. C'est le même piège que dans `SerieParPoint`, et la même réponse.
+     */
+    $bornes = collect($points)->flatMap(fn ($point) => [$point['debut'], $point['fin']]);
+
+    $toutes = (clone $this->requeteBase)
+        ->where('type_operation', 'Charges')
+        ->whereBetween('date', [$bornes->min(), $bornes->max()])
+        ->get();
+
     foreach ($points as $point) {
-        $lignes = (clone $this->requeteBase)->where('type_operation', 'Charges')->whereBetween('date', [$point['debut'], $point['fin']])->get();
+        // Les dates sont comparées au jour, comme `whereBetween` le faisait.
+        $debutDuPoint = $point['debut']->toDateString();
+        $finDuPoint = $point['fin']->toDateString();
+
+        $lignes = $toutes->filter(function ($ligne) use ($debutDuPoint, $finDuPoint) {
+            $jour = substr((string) $ligne->date, 0, 10);
+
+            return $jour >= $debutDuPoint && $jour <= $finDuPoint;
+        });
+
         $labels[] = $point['label'];
+
         foreach ($natures as $nature => $couleur) {
             $series[$nature][] = (int) $lignes->where('libelle', $nature)->sum('montant');
         }

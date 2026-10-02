@@ -20,6 +20,25 @@ class Exercice extends Model
 {
     use AppartientAUneEntreprise;
 
+    /**
+     * Toute écriture sur un exercice efface ce que la requête en cours avait retenu.
+     *
+     * `actuel()` est mémorisé pour la durée d'une requête depuis le 02/10, parce qu'il était
+     * relancé trois à six fois par clic. La mémoire doit donc tomber dès que la réponse
+     * change — création d'une année, bascule du 1er janvier, choix d'un autre défaut.
+     *
+     * **Ici et pas chez les appelants.** Trois chemins modifient `est_defaut`, dont un qui
+     * passe par `forceFill` sans toucher `definirParDefaut()` : un oubli, et un écran
+     * afficherait l'année d'avant jusqu'au rechargement suivant.
+     */
+    protected static function booted(): void
+    {
+        $oublier = fn (self $exercice) => static::oublierLActuel((int) $exercice->entreprise_id);
+
+        static::saved($oublier);
+        static::deleted($oublier);
+    }
+
     protected function casts(): array
     {
         return ['cloture_le' => 'datetime', 'est_defaut' => 'boolean'];
@@ -79,6 +98,27 @@ class Exercice extends Model
      */
     public static function actuel(int $entrepriseId): ?self
     {
+        /*
+         * **Résolu une fois par requête, et non une fois par appel.**
+         *
+         * Mesuré le 02/10 : un simple changement de filtre relançait ces trois requêtes
+         * **trois fois sur `/tresorerie` et six fois sur `/banques`**. La méthode est le
+         * passage obligé de l'en-tête, du sélecteur d'exercice et de chaque état — chacun
+         * la rappelle, et rien ne change entre deux appels d'une même requête.
+         *
+         * **La mémoire est dans le conteneur, pas dans une variable statique.** Une statique
+         * survivrait d'un test au suivant alors que la base est recréée entre les deux ;
+         * le conteneur, lui, est reconstruit avec l'application.
+         */
+        $cle = 'exercice.actuel.'.$entrepriseId;
+
+        // Rangé dans un tableau, et non seul : `bound()` repose sur `isset()`, qui dit
+        // « non » d'une valeur nulle. Une entreprise sans exercice aurait donc été
+        // recherchée à chaque appel, c'est-à-dire précisément le cas qu'on vient de corriger.
+        if (app()->bound($cle)) {
+            return app($cle)[0];
+        }
+
         $exercice = static::where('entreprise_id', $entrepriseId)->where('est_defaut', true)->first()
             ?? static::where('entreprise_id', $entrepriseId)->where('annee', now()->year)->first()
             ?? static::where('entreprise_id', $entrepriseId)->orderByDesc('annee')->first();
@@ -97,7 +137,15 @@ class Exercice extends Model
                 ->assurer($entrepriseId)['exercice'];
         }
 
+        app()->instance($cle, [$exercice]);
+
         return $exercice;
+    }
+
+    /** Oublie l'exercice retenu pour la requête en cours. Tout geste qui le change passe ici. */
+    public static function oublierLActuel(int $entrepriseId): void
+    {
+        app()->forgetInstance('exercice.actuel.'.$entrepriseId);
     }
 
     /** Marque cet exercice comme celui par défaut de l'entreprise, et retire ce statut à tout autre. */
@@ -105,6 +153,9 @@ class Exercice extends Model
     {
         static::where('entreprise_id', $this->entreprise_id)->where('id', '!=', $this->id)->update(['est_defaut' => false]);
         $this->update(['est_defaut' => true]);
+
+        // Ce que la requête avait retenu n'est plus vrai.
+        static::oublierLActuel((int) $this->entreprise_id);
     }
 
     /**

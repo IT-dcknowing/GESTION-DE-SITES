@@ -8,6 +8,7 @@ use Modules\Noyau\Imports\Modeles\MouvementCaisse;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
+use Modules\Noyau\Commun\Services\SerieParPoint;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
@@ -315,9 +316,20 @@ $graphique = computed(function () {
     $cumul = [];
     $total = 0;
 
-    foreach ($points as $point) {
-        $e = (int) (clone $this->encaissementsQ)->whereBetween('date', [$point['debut'], $point['fin']])->sum('montant');
-        $so = (int) (clone $this->chargesQ)->whereBetween('date', [$point['debut'], $point['fin']])->sum('montant');
+    /*
+     * **Deux requêtes pour la courbe, et non deux par point.**
+     *
+     * Mesuré le 02/10 : un changement de filtre sur cet écran coûtait cinquante-trois
+     * requêtes, dont **vingt-six ici** — une somme par point, pour les entrées et pour les
+     * sorties. Le calcul est le même, et `SerieParPoint` le tient par un test qui le compare
+     * chiffre par chiffre à la boucle qu'il remplace.
+     */
+    $sommesEntrees = SerieParPoint::sommes($this->encaissementsQ, $points, 'date', 'montant');
+    $sommesSorties = SerieParPoint::sommes($this->chargesQ, $points, 'date', 'montant');
+
+    foreach ($points as $rang => $point) {
+        $e = $sommesEntrees[$rang];
+        $so = $sommesSorties[$rang];
         $total += $e - $so;
 
         $labels[] = $point['label'];

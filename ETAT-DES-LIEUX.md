@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **2 octobre 2026** (21e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **2 octobre 2026** (22e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -167,6 +167,7 @@ Voir `LecteurPdf`.
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **reprise des corrections du propriétaire** : la Trésorerie **regroupe tout**, journal de caisse compris, et son encart « cette page ne regroupe pas tout » disparaît ; Caisse et Banques **quittent le menu** et ne s'ouvrent plus que depuis elle ; les **tableaux superposés deviennent deux boutons** ; « Ventiler » **ne recharge plus la page** ; l'**import du relevé bancaire est écrit** — table `pieces_bancaires`, compte déclaré au dépôt, huit colonnes ; la **ville quitte le formulaire de banque** et les comptes déclarés se proposent partout |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | la **Trésorerie devient un tableau de bord** : quatre cases disent où est l'argent — caisse, banque, mobile money, moyen non précisé — et chacune pose son filtre ; **écran Banques** avec un bouton par banque et des indicateurs qui suivent, qui **range ce qu'il reconnaît et montre le reste** (quatorze orthographes pour quatre banques) ; le **moyen commande le support** à la saisie — caisse ou banque, jamais les deux, par la structure et non par un verrou ; le **relevé bancaire** est déclaré au registre avec ses huit colonnes, avant d'être écrit |
 | 01/10 | voir `git log` | **tresorerie-caisse-et-banques** | **la Trésorerie affichait 35 265 270 F d'encaissements au lieu de 5 518 858 674 F** — 7 627 des 7 714 règlements n'ont pas d'atelier, et un `site_id` nul n'entre dans aucun `whereIn` : la page en montrait **87 sur 7 714**, soit 0,6 % de la réalité ; un encaissement se place désormais par **la ville de sa facture** (`PerimetreDeTresorerie`) ; la **Caisse se lit en trois vues** — consolidée, saisie ici, importée — dont les indicateurs changent avec la vue, parce que le solde d'avant, celui de fin et l'écart se lisent sur la chaîne des soldes du journal, que la saisie n'a pas ; **« Ventiler »** descend enfin au tableau qu'il filtre |
+| 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **trois boutons répondaient enfin, et le quatrième défaut n'était pas celui qu'on croyait.** Le bouton du bandeau n'avait jamais rien replié : le `<nav>` porte `style="display:flex"` **en ligne**, et un style en ligne l'emporte sur toute règle de feuille de style — la correction de la veille était juste et sans effet. **Confirmer ne faisait rien** sur quatre boutons : la boîte annule le clic en capture, et `relancer()` ne savait reposer qu'un lien ou un bouton de formulaire — pas un `wire:click` hors formulaire. Touchait **Maintenance** (« Vider les ensembles cochés ») et surtout le **Barème de commission**, dont le fichier ne contient aucun `<form>` : « Première activation », « Récrire la grille » et « Poser une nouvelle grille » demandaient confirmation puis ne partaient pas. Puis la vitesse, mesurée : les cases de la maintenance coûtaient **113 requêtes par clic** (un `computed` de vingt et un `count(*)` relu six fois par rendu) → **2** ; `Exercice::actuel()` était résolu **trois à six fois par clic** → une fois par requête ; et les courbes demandaient **une somme par point** sur six écrans → une requête chacune (`SerieParPoint`). `/tresorerie` passe de **53 à 22 requêtes** par changement de filtre |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -2074,6 +2075,39 @@ deviné serait pire que d'afficher un code nu.
 
   Orientation sous réserve : les accepter, les marquer comme avoirs, les laisser **diminuer** le
   solde du client, et les afficher distinctement plutôt que fondues dans les factures.
+
+- **Le tableau de bord du gérant interroge atelier par atelier, et c'est le dernier gros poste
+  mesuré en local.** Après les corrections du 02/10, un changement de filtre coûte 22 requêtes
+  sur `/tresorerie`, 16 sur `/caisse`, 12 sur `/banques`, 10 sur `/impayes` — et **30 sur
+  l'accueil du gérant**, qui est pourtant l'écran le plus vu. La cause est nommée : son tableau
+  par atelier fait six agrégats (`select … where site_id = ?`) **par atelier**, donc trente pour
+  cinq ateliers, et le compte grandit avec l'entreprise.
+
+  **Rien n'a été changé là**, et volontairement : ce sont des montants, un `group by site_id`
+  les réécrirait tous d'un coup, et la journée a déjà réécrit six courbes. Le chemin est celui
+  qui a marché aujourd'hui — un test qui compare chiffre par chiffre à la boucle d'avant, puis
+  la réécriture. À prendre en tête de la prochaine séance.
+
+- **La lenteur en ligne n'est pas expliquée, et il manque une mesure que seul le serveur peut
+  donner.** Le 01/10 j'ai attribué la lenteur du serveur à Telescope ; c'était faux —
+  `php artisan telescope:clear` y répond « there are no commands defined in the telescope
+  namespace », donc le paquet n'y est pas installé. Telescope n'expliquait que le local, où sa
+  désactivation a fait passer les pages de trente secondes à une.
+
+  Depuis, le code a été allégé là où la mesure le désignait (voir la séance du 02/10), et le
+  local est rapide. **Le serveur, non.** Les trois suspects restants ne se lisent pas d'ici :
+  OPcache éteint sur le PHP qui sert les pages, `CACHE_STORE=database` et
+  `SESSION_DRIVER=database` — chaque page paie alors une lecture et une écriture en base avant
+  d'afficher quoi que ce soit. **À faire sur place : `php artisan app:diagnostic`, rubrique
+  *Vitesse*.** Tant que cette sortie n'est pas lue, toute correction supplémentaire serait une
+  supposition.
+
+- **Telescope : question du 01/10, réponse donnée, geste non fait.** « Quel est la meilleure
+  méthode » — le garder en `require-dev` et ne l'enregistrer qu'en local, plutôt que le retirer :
+  l'outil est utile le jour où il faut regarder, et ce qui a nui n'était pas sa présence mais son
+  enregistrement inconditionnel. Cela demande un `composer update` et touche `composer.json`,
+  `composer.lock` et `bootstrap/providers.php`, qui portent déjà des modifications non commitées
+  du propriétaire : **attend son accord avant d'y toucher.**
 
 - **Rotation des secrets** (le `.env` de production a circulé en clair) : mot de passe du
   courriel `infos@dc-knowing.com`, secret Google OAuth, mot de passe MySQL, puis `APP_KEY` et
