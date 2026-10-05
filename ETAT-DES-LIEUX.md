@@ -7,11 +7,17 @@ reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans ri
 où en est chaque module, ce qui est en cours, ce qui a été décidé, ce qui attend une décision,
 et les règles qu'on ne transgresse pas.
 
-**À lire en premier, dans cet ordre :** ce fichier → le document du chantier en cours
-(aujourd'hui [ETAT-DES-IMPAYES.md](ETAT-DES-IMPAYES.md)) → [ARCHITECTURE.md](ARCHITECTURE.md)
-si l'on touche à la structure.
+**À lire en premier, dans cet ordre :** [REPRENDRE-ICI.md](REPRENDRE-ICI.md) — deux cents
+lignes, où l'on en est et ce qui reste → ce fichier, pour le détail d'un point précis → le
+document du chantier en cours (aujourd'hui [ETAT-DES-IMPAYES.md](ETAT-DES-IMPAYES.md)) →
+[ARCHITECTURE.md](ARCHITECTURE.md) si l'on touche à la structure.
 
-**À faire en dernier, à chaque séance :** mettre à jour les §§ 4, 5 et 6 ci-dessous, et la date.
+Ce fichier est la **mémoire longue** : il garde l'histoire de chaque décision et des mesures qui
+l'ont motivée. Il ne se lit pas en entier pour commencer une séance — c'est à cela que sert
+`REPRENDRE-ICI.md`.
+
+**À faire en dernier, à chaque séance :** mettre à jour les §§ 4, 5 et 6 ci-dessous et la date,
+**puis les §§ 3, 4 et 5 de `REPRENDRE-ICI.md`**.
 
 ---
 
