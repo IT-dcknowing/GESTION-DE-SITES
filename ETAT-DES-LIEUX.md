@@ -187,8 +187,8 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
 
 ## 5. Le chantier en cours : l'état des impayés
 
-> **Au 05/10, la branche ouverte est `correspondances-factures`** (partie de `main`, non
-> fusionnée dans `main`, poussée le 05/10) : l'écran où chaque commercial coche ses factures — § 6,
+> **Au 05/10, la dernière branche est `correspondances-factures`** (fusionnée dans `main` et
+> poussée le 05/10) : l'écran où chaque commercial coche ses factures — § 6,
 > « Les correspondances ». La migration `2026_10_05_000001` est à passer en ligne avec elle.
 > Le chantier des impayés ci-dessous est clos ; il reste lu pour ses règles.
 
