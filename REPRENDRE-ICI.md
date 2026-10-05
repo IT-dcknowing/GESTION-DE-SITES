@@ -39,7 +39,7 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
    l'identité du lecteur, **jamais sur un paramètre reçu** ; une valeur qui revient du navigateur
    ne commande rien d'irréversible sans être recontrôlée en base.
 4. **Une branche git par module**, commits dessus, fusion sur `main` quand c'est demandé.
-   **Le push est bloqué côté assistant : c'est le propriétaire qui pousse.**
+   **Depuis le 05/10, le propriétaire demande : en fin de travail, commiter puis pousser la branche du module.** Fusionner sur `main` reste à sa demande.
 5. **Jamais de déploiement par zip.** `git pull` + `php artisan app:deployer`, sur le dev d'abord.
 6. **Pas de dialogue navigateur** (`confirm`, `alert`) ; filtres instantanés ; le chemin critique
    marche **sans JavaScript** (le dépôt d'import est un vrai POST).
@@ -50,8 +50,8 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ## 3. Où l'on en est — 5 octobre 2026
 
-**Branche courante :** `correspondances-factures`, partie de `main` le 05/10, **commitée, non
-fusionnée, non poussée**. `tresorerie-caisse-et-banques` est déjà fusionnée dans `main`.
+**Branche courante :** `correspondances-factures`, partie de `main` le 05/10, **commitée et poussée**
+(`origin/correspondances-factures`), **non fusionnée dans `main`**. `tresorerie-caisse-et-banques` est déjà fusionnée dans `main`.
 
 ### Fait le 05/10 — les correspondances
 
@@ -94,8 +94,8 @@ retours d'usage du propriétaire.
 
 ### Au propriétaire, et qui bloque la suite
 
-0. **Les correspondances** : relire la branche `correspondances-factures`, la fusionner dans
-   `main`, pousser, puis `php artisan migrate` en ligne
+0. **Les correspondances** : relire la branche `correspondances-factures` (déjà poussée), la fusionner dans
+   `main` (ou me le demander), puis `php artisan migrate` en ligne
    (`2026_10_05_000001_un_commercial_reconnait_ses_factures` — une table neuve, rien d'autre).
    **Nommer les codes de deux lettres** sur l'écran des codes : sans nom, la colonne
    « Saisi par » n'affiche que le code (0 des 39 codes nommés en local).

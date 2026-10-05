@@ -14,6 +14,6 @@ Règles qui priment sur tout le reste (détail au § 2 d'ETAT-DES-LIEUX.md) :
 
 - La base en ligne porte des données réelles : migrations additives seulement, aucune écriture
   de données sans constat préalable, rien qui écrive des données dans `app:deployer`.
-- Une branche git par module ; commits sur cette branche ; le propriétaire pousse lui-même.
+- Une branche git par module ; commits sur cette branche ; en fin de travail, pousser la branche (consigne du 05/10) ; `main` seulement sur demande.
 - Jamais de déploiement par zip.
 - Écrire comme le code existant : français, commentaires qui disent pourquoi.
