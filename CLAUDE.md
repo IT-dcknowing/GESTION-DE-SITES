@@ -1,7 +1,7 @@
 # GESTION-DE-SITES — consignes de séance
 
 **Avant tout travail, lire [REPRENDRE-ICI.md](REPRENDRE-ICI.md) en entier.** Deux cents lignes :
-où l'on en est, ce qui reste et par qui, les règles métier de l'argent, et les quinze pièges qui
+où l'on en est, ce qui reste et par qui, les règles métier de l'argent, et les seize pièges qui
 ont déjà coûté une séance chacun.
 
 [ETAT-DES-LIEUX.md](ETAT-DES-LIEUX.md) est la mémoire longue — 2 800 lignes, l'histoire de

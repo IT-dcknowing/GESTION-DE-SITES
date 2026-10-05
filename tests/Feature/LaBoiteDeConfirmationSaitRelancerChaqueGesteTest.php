@@ -102,6 +102,9 @@ class LaBoiteDeConfirmationSaitRelancerChaqueGesteTest extends TestCase
             'Modules/Import/resources/views/import/lot.blade.php' => 1,
             'Modules/SuperAdmin/resources/views/superadmin/maintenance.blade.php' => 1,
             'Modules/Superviseur/resources/views/pilotage/acces-creer.blade.php' => 3,
+            // Annuler une correspondance retire une facture au chiffre d'un commercial.
+            'Modules/Superviseur/resources/views/pilotage/correspondances-suivi.blade.php' => 1,
+            'Modules/Superviseur/resources/views/pilotage/correspondances.blade.php' => 1,
         ], $parFichier, implode("\n", [
             'La liste des gestes à confirmer a changé.',
             'Si c’est voulu, mettez ce tableau à jour — il est là pour que le changement se voie.',

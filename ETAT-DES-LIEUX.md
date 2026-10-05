@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **2 octobre 2026** (24e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **5 octobre 2026** (25e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -177,6 +177,7 @@ Voir `LecteurPdf`.
 | 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **« Le système annonce une anomalie qui n'en est pas une », et c'était exact.** L'écran de caisse donnait 652 917 F d'écart sur un classeur dont le solde de 696 075 F est juste. L'addition n'était pas en cause : **l'ordre des lignes et le périmètre du cumul** l'étaient. La chaîne était suivie par **date** — elle partait donc d'une ligne datée du **31/12/1899** (le zéro d'Excel, sur un feuillet « DEC 25 ») et finissait sur une ligne datée du **15/10/2026** appartenant au feuillet « JANV 26 » : deux lignes du milieu, prises pour les bornes. Et elle **traversait les feuillets**, alors que chacun repart de son propre fonds de caisse. Reprise feuillet par feuillet dans l'ordre du fichier, la même base donne `MARS 26` **sans aucun écart**, et trois questions bornées ailleurs (1 000 F, 271 425 F, 2 000 000 F). Chaque ligne porte désormais **notre solde, son sens D/C et le solde annoncé**, avec le désaccord marqué là où il commence. La règle est écrite pour qui relit un classeur : [LE-SOLDE-DE-CAISSE.md](LE-SOLDE-DE-CAISSE.md), cinq pièges, chacun tenu par un test |
 | 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **Les avoirs entrent — et le vrai blocage n'était pas l'import.** 43 lignes négatives étaient refusées depuis le premier dépôt, pour −46 808 080 F ; on croyait à un choix prudent. C'en était un, mais **`factures.montant` et `encaissements.montant` étaient `bigint unsigned`** : la base ne pouvait pas écrire un négatif, et aucun code n'aurait pu l'accepter. Migration d'élargissement (aucune ligne lue ni réécrite), colonne `est_avoir`, et le refus levé aux deux imports. Le propriétaire a tranché après dépouillement du classeur, et sa règle vit dans `NatureDeLaCreance` : **44 avoirs** (montant TTC négatif, −47 489 460 F), **29 trop-perçus** (TTC positif, plus encaissé que facturé, à signaler et non à annuler), **12 arrondis**. Et **le texte ne décide de rien** : 47 lignes portent « facture d'avoir à établir », ce sont des avoirs *annoncés*, et les ramasser avec les vrais doublerait la correction. Trouvé en écrivant le test : en francs entiers, la bande des arrondis se réduit à **−1** exactement |
 | 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **La trésorerie listait moins que ce qu'elle comptait, et je me suis trompé de classeur.** Le journal de caisse était entré dans les **totaux** le 01/10 et dans **aucune des deux listes** : le serveur affichait « Décaissements (0) » sous un total de sorties de 436 783 059 F. Les deux tableaux fusionnent désormais les trois sources par une requête `UNION` triée et paginée **en base** — charger dix mille lignes pour en afficher dix remettrait ce qu'on venait d'en retirer —, avec une colonne d'origine à trois valeurs. **Et une correction qui me revient** : les trois écarts par feuillet annoncés plus haut (1 000 F, 271 425 F, 2 000 000 F) décrivent `CAISSE DU 01012026 AU 16032026.xlsx`, le classeur **tenu à la main**, seul présent en base locale — et non `ETAT_Caisse-ABIDJAN DU 170326 AU 250926.xlsx`, celui du logiciel que le propriétaire importe. Les deux corrections de logique valent pour les deux fichiers ; les chiffres, non. L'écran nomme maintenant chaque chaîne avec **son fichier déposé**, pour qu'on ne puisse plus les confondre à l'œil |
+| 05/10 | voir `git log` | **correspondances-factures** | **Chaque commercial coche les factures nées de ses prospections.** 11 229 factures sur 11 332 ne sont comptées à personne en local : avant le 22/09, rien ne reliait une prospection à son devis. Écran `/correspondances` (toutes les factures non affectées, case + « Coché par » qui paraît à la coche, « Saisi par » et « Lieu du saisisseur » lus dans le code de deux lettres de la fiche) ; la ligne validée disparaît chez les commerciaux et reste chez les responsables, **seuls à pouvoir annuler**. Boutons **« Mes correspondances »** (ce que j'ai coché, annulations comprises) et **« Les correspondances »** (responsables : filtres du tableau de bord, récapitulatif par commercial). Table additive `correspondances_factures`. Piège : `Site::visiblesPour()` ne rend rien au simple commercial — périmètre vide sans la ville de sa fiche. Voir § 6, « Les correspondances » |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -185,6 +186,11 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
 ---
 
 ## 5. Le chantier en cours : l'état des impayés
+
+> **Au 05/10, la branche ouverte est `correspondances-factures`** (partie de `main`, non
+> fusionnée, non poussée) : l'écran où chaque commercial coche ses factures — § 6,
+> « Les correspondances ». La migration `2026_10_05_000001` est à passer en ligne avec elle.
+> Le chantier des impayés ci-dessous est clos ; il reste lu pour ses règles.
 
 **Branche `impayes`**, poussée le 16/09, **toujours pas fusionnée dans `main`** : c'est pourquoi,
 après la fusion de `import` seul, le menu *Indicateurs* du serveur n'a ni *État des impayés* ni
@@ -2068,6 +2074,71 @@ côté, et ne se vérifie jamais quand il est seul. C'est déjà le parti pris d
 retient ». La même règle vaudra pour les codes venus de l'API, avec une différence : le nom
 ne doit s'afficher que si la correspondance existe **réellement en base**. Afficher un nom
 deviné serait pire que d'afficher un code nu.
+
+### Les correspondances : chaque commercial coche ses factures
+
+✅ **Fait le 05/10**, branche `correspondances-factures`. La demande : « faire cocher les
+factures par les commerciaux, pour permettre à chacun de choisir celles qui le concernent —
+les prospections qu'il a faites, passées en devis puis en facture ». Avant le 22/09, une
+prospection passée en devis ne disait pas quel devis elle avait produit : **on pensait saisir
+les factures ici, elles arrivent par l'import**, et rien ne relie ces affaires-là à leur
+commercial. **Mesuré en local le 05/10 : 11 229 factures sur 11 332 ne sont comptées à
+personne**, de juillet 2021 à septembre 2026 ; 2 336 portent un code de saisie lisible dans
+leur n° de fiche, et **aucun des 39 codes n'a encore de nom**.
+
+**Trois écrans.**
+
+- **`/correspondances`** — toutes les factures non affectées, **sans filtre posé d'avance**.
+  Une case par ligne ; à la coche, le nom et le code de plateforme (`A-C-KY-0007`) de celui
+  qui coche paraissent dans la colonne « Coché par », avant même la validation. On valide :
+  la ligne **disparaît chez tous les commerciaux** et **reste chez les responsables**, avec
+  le nom, le code et la date, et un bouton **Annuler** (boîte de l'application, pas celle du
+  navigateur). Colonnes « Saisi par » (le code de deux lettres lu dans le n° de fiche, et le
+  nom quand l'écran des codes l'a donné) et « Lieu du saisisseur » (l'atelier ou la ville du
+  code). Filtres instantanés : recherche, du/au, ville (gérant), saisi par, lieu du
+  saisisseur, et pour les responsables état (à affecter / cochées) et coché par ; « Autre
+  filtre » pour le reste. Paginé en base, 25 lignes.
+- **`/correspondances/miennes`** — bouton **« Mes correspondances »**, pour qui porte une
+  fiche commerciale : uniquement ce qu'il a coché. Les affectations annulées restent
+  lisibles, marquées « Annulée par X, le … » — sans quoi une facture disparaîtrait de son
+  écran sans qu'il sache pourquoi, et il la cocherait de nouveau.
+- **`/correspondances/suivi`** — bouton **« Les correspondances »**, pour les responsables :
+  les filtres du tableau de bord (période, ville, atelier, commercial), un récapitulatif
+  par commercial, l'état et l'annulation. **La période porte sur la date de la facture**,
+  pas sur celle de la coche : c'est elle qui range un chiffre dans un mois, donc dans une
+  commission.
+
+**Ce que cocher écrit.** `factures.commercial_id` — la facture entre aussitôt dans le
+chiffre du commercial et dans l'assiette de sa commission — et une ligne dans
+`correspondances_factures` (migration additive `2026_10_05_000001`, table neuve) : qui a
+coché, quand ; puis qui a annulé, quand, pourquoi. **L'annulation ne l'efface pas**, elle se
+pose dessus. Le journal d'activité reçoit `correspondance_cochee` et
+`correspondance_annulee`.
+
+**Une règle qui change, et c'est le propriétaire qui l'a changée.** Le rapprochement
+prospection/devis est fermé au commercial « pour qu'il ne gonfle pas sa performance ». Ici,
+il coche lui-même ; la garde est **après** le geste — tout reste sous les yeux des
+responsables, qui seuls annulent. Les responsables sont `CorrespondancesDeFactures::
+ROLES_RESPONSABLES` : gérant, responsable de ville, de site et commercial.
+
+**Les gardes, relues en base à chaque geste** (`CorrespondancesDeFactures`, rien dans
+l'écran) : la facture doit être dans le périmètre du compte, encore sans commercial, d'un
+montant positif ; un verrou sur la ligne tranche le cas de deux commerciaux qui valident la
+même seconde, et le second reçoit un refus qui nomme le premier. Les **avoirs** ne sont pas
+proposés : réclamer une correction seule ne voudrait rien dire. Le périmètre passe par
+`EtatDesImpayes::dansLePerimetre()` — les factures sans atelier restent visibles dans leur
+ville.
+
+**Piège trouvé en chemin : `Site::visiblesPour()` ne rend aucun atelier au simple
+commercial**, et `PerimetreSites` lui donnait donc un périmètre **vide** — il n'aurait vu que
+les factures sans ville. Le périmètre de cet écran ajoute la ville de son compte et celle de
+sa fiche. Les autres écrans du commercial lisent sa fiche directement et n'étaient pas
+touchés.
+
+**Mesuré sur la base locale** : gérant 15 requêtes, 0,65 s, 11 227 lignes ; commercial
+19 requêtes, 0,34 s, 10 469 lignes. Le code de plateforme, recalculé à chaque ligne, coûtait
+24 requêtes de plus — lu une fois désormais. Neuf tests :
+`tests/Feature/LesCommerciauxCochentLeursFacturesTest.php`.
 
 ### Hors chantier, toujours en attente
 

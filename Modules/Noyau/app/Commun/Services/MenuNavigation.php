@@ -50,6 +50,9 @@ class MenuNavigation
             return self::construire([
                 ['label' => 'Ma performance individuelle', 'route' => 'ma-performance'],
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
+                // En tête et non sous « Paramètres » : c'est là qu'il réclame ses factures,
+                // donc son chiffre et sa commission.
+                ['label' => 'Correspondances', 'route' => 'correspondances'],
                 ['label' => 'Paramètres', 'groupe' => [
                     ['label' => 'Mes notes', 'route' => 'mes-notes'],
                     ['label' => 'Messages', 'route' => 'messages'],
@@ -72,6 +75,7 @@ class MenuNavigation
             return self::construire([
                 ['label' => 'Saisie du jour', 'route' => 'saisie-du-jour'],
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
+                ['label' => 'Correspondances', 'route' => 'correspondances'],
                 ['label' => 'Mon équipe', 'groupe' => [
                     ['label' => 'Commerciaux', 'route' => 'commerciaux'],
                     ['label' => 'Prospects', 'route' => 'prospects'],
@@ -222,6 +226,9 @@ class MenuNavigation
                 // Entre les deux, l'écran qui les relie : une prospection sans devis et un
                 // devis sans commercial sont le même trou, vu de ses deux bords.
                 ['label' => 'Rapprochement prospections / devis', 'route' => 'rapprochement.prospections-devis'],
+                // L'autre moitié du même trou : ce que le rapprochement ne retrouve pas, le
+                // commercial le reconnaît lui-même.
+                ['label' => 'Correspondances', 'route' => 'correspondances'],
                 ['label' => 'Parc véhicules', 'route' => 'parc-vehicules'],
                 ['label' => 'Entrées / sorties', 'route' => 'mouvements-vehicules'],
                 ['label' => 'Clients', 'route' => 'clients'],

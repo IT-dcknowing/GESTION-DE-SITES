@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 2 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 5 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -48,12 +48,28 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 2 octobre 2026
+## 3. Où l'on en est — 5 octobre 2026
 
-**Branche courante :** `main`, à jour avec `origin/main`. Branche de module en cours :
-`tresorerie-caisse-et-banques`, fusionnée dans `main`.
+**Branche courante :** `correspondances-factures`, partie de `main` le 05/10, **commitée, non
+fusionnée, non poussée**. `tresorerie-caisse-et-banques` est déjà fusionnée dans `main`.
 
-**Tests :** 1 077, **1 070 au vert, 0 échec**. Les 7 erreurs restantes sont `WebPushTest` —
+### Fait le 05/10 — les correspondances
+
+Chaque commercial coche les factures nées de ses prospections. **11 229 factures sur 11 332
+ne sont comptées à personne** en local : avant le 22/09, rien ne reliait une prospection à
+son devis. Trois écrans :
+
+| Écran | Pour qui | Ce qu'il fait |
+|---|---|---|
+| `/correspondances` | ceux qui vendent, et le gérant | factures non affectées ; cocher → nom et code paraissent → **Valider** ; la ligne disparaît chez les commerciaux, reste chez les responsables, qui seuls **annulent** |
+| `/correspondances/miennes` | qui porte une fiche commerciale | bouton « **Mes correspondances** » : ce qu'il a coché, annulations comprises |
+| `/correspondances/suivi` | gérant et responsables | bouton « **Les correspondances** » : filtres période / ville / atelier / commercial du tableau de bord, récapitulatif par commercial |
+
+Cocher écrit `factures.commercial_id` (donc le chiffre et la commission) et une ligne dans
+`correspondances_factures`. Règles dans `CorrespondancesDeFactures` ; 9 tests dans
+`LesCommerciauxCochentLeursFacturesTest`. Détail : § 6 d'`ETAT-DES-LIEUX.md`.
+
+**Tests :** 1 086, **1 079 au vert, 0 échec** (05/10). Les 7 erreurs restantes sont `WebPushTest` —
 l'OpenSSL local ne sait pas générer une clé P-256. **Environnemental, pas un défaut du code.**
 
 **Les onze chantiers du plan (§ 6) sont tous terminés.** Depuis, le travail porte sur les
@@ -78,6 +94,11 @@ retours d'usage du propriétaire.
 
 ### Au propriétaire, et qui bloque la suite
 
+0. **Les correspondances** : relire la branche `correspondances-factures`, la fusionner dans
+   `main`, pousser, puis `php artisan migrate` en ligne
+   (`2026_10_05_000001_un_commercial_reconnait_ses_factures` — une table neuve, rien d'autre).
+   **Nommer les codes de deux lettres** sur l'écran des codes : sans nom, la colonne
+   « Saisi par » n'affiche que le code (0 des 39 codes nommés en local).
 1. **Passer la migration des avoirs en ligne** : `php artisan migrate`
    (`2026_10_02_000001_une_facture_peut_porter_un_avoir`). Élargit `factures.montant` et
    `encaissements.montant` de `unsigned` à signé, ajoute `est_avoir`. Aucune ligne lue ni
@@ -97,6 +118,14 @@ retours d'usage du propriétaire.
    `SESSION_DRIVER=file`. Voir `MISE-A-JOUR-SERVEUR.md`.
 
 ### En attente d'un accord, pas d'un travail
+
+- **Correspondances — trois choix faits sans confirmation**, chacun réversible en une ligne :
+  1. **cocher compte aussitôt** la facture au commercial, commission comprise ; la garde est
+     l'annulation par un responsable, non une validation préalable ;
+  2. **« Les correspondances » est ouvert à tous les responsables** (ville, site,
+     commercial), et pas au seul gérant — ce sont eux qui annulent ;
+  3. **les avoirs ne sont pas proposés** à la coche : un avoir suit la facture qu'il corrige,
+     mais rien ne le porte encore au commercial de celle-ci.
 
 - **Telescope** : le garder en `require-dev` et ne l'enregistrer qu'en local (réponse donnée le
   02/10). Touche `composer.json`, `composer.lock` et `bootstrap/providers.php`, qui portent déjà
@@ -213,6 +242,7 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | **`@props(['reference-offerte'])` ne crée aucune variable** | Les props sont en camelCase |
 | **`.champ { width: 100% }`** casse une rangée de filtres en flex | Mettre `style="width:auto"` |
 | **`wire:navigate` remonte toujours en haut** | Il écrase une ancre `#…` ; passer par `scrollIntoView` |
+| **`Site::visiblesPour()` ne rend rien au simple commercial** | `PerimetreSites` lui donne un périmètre vide : il ne verrait que les lignes sans ville. Ajouter la ville de son compte et de sa fiche (`CorrespondancesDeFactures::perimetre()`) |
 | **Deux suites de tests lancées en même temps** | Elles se marchent dessus sur les fichiers temporaires et donnent de faux échecs |
 
 ---

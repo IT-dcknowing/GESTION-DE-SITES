@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Commun\Controleurs\TelechargerAnnuaire;
 use Modules\Noyau\Commun\Services\Exportateur;
+use Modules\Noyau\Exploitation\Services\CorrespondancesDeFactures;
 use Modules\Superviseur\Http\Controllers\AccesController;
 use Modules\Superviseur\Http\Controllers\OuvrirLaFicheParSonNumero;
 use Modules\Superviseur\Http\Controllers\TelechargerLesFournisseurs;
@@ -35,6 +36,25 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
     Volt::route('/devis/{id}', 'pilotage.devis-detail')->name('devis.detail')->whereNumber('id');
     Volt::route('/chiffre-affaires', 'pilotage.chiffre-affaires')->name('chiffre-affaires');
     Volt::route('/commerciaux', 'pilotage.commerciaux')->name('commerciaux');
+});
+
+/*
+ * Les correspondances — chaque commercial coche les factures nées de ses prospections.
+ *
+ * Ouvertes à tous ceux qui vendent, et au gérant. Elles sont ici, avec le rapprochement,
+ * parce qu'elles portent une facture au compte d'un commercial. Ce que chacun peut y faire
+ * — cocher, voir les lignes cochées, annuler — n'est pas décidé par la route mais par
+ * `CorrespondancesDeFactures`, qui le relit dans chaque action : une route ne protège que
+ * l'entrée.
+ */
+Route::middleware(['auth', 'role:'.CorrespondancesDeFactures::rolesPourMiddleware()])->group(function () {
+    Volt::route('/correspondances', 'pilotage.correspondances')->name('correspondances');
+    Volt::route('/correspondances/miennes', 'pilotage.mes-correspondances')->name('correspondances.miennes');
+});
+
+// Le suivi d'ensemble, et l'annulation : les responsables seuls.
+Route::middleware(['auth', 'role:'.implode('|', CorrespondancesDeFactures::ROLES_RESPONSABLES)])->group(function () {
+    Volt::route('/correspondances/suivi', 'pilotage.correspondances-suivi')->name('correspondances.suivi');
 });
 
 /*
