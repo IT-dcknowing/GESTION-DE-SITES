@@ -61,15 +61,15 @@ son devis. Trois écrans :
 
 | Écran | Pour qui | Ce qu'il fait |
 |---|---|---|
-| `/correspondances` | ceux qui vendent, et le gérant | factures non affectées ; cocher → nom et code paraissent → **Valider** ; la ligne disparaît chez les commerciaux, reste chez les responsables, qui seuls **annulent** |
+| `/correspondances` | ceux qui vendent, et le gérant | factures non affectées, **toutes les colonnes de la facture** ; cocher (la case ou la ligne) → nom et code paraissent → **Valider** ; un responsable coche **pour le compte d'un commercial** choisi dans « Affecter à » ; la ligne disparaît chez les commerciaux, reste chez les responsables, qui seuls **annulent** |
 | `/correspondances/miennes` | qui porte une fiche commerciale | bouton « **Mes correspondances** » : ce qu'il a coché, annulations comprises |
 | `/correspondances/suivi` | gérant et responsables | bouton « **Les correspondances** » : filtres période / ville / atelier / commercial du tableau de bord, récapitulatif par commercial |
 
 Cocher écrit `factures.commercial_id` (donc le chiffre et la commission) et une ligne dans
-`correspondances_factures`. Règles dans `CorrespondancesDeFactures` ; 9 tests dans
+`correspondances_factures`. Règles dans `CorrespondancesDeFactures` ; 13 tests dans
 `LesCommerciauxCochentLeursFacturesTest`. Détail : § 6 d'`ETAT-DES-LIEUX.md`.
 
-**Tests :** 1 086, **1 079 au vert, 0 échec** (05/10). Les 7 erreurs restantes sont `WebPushTest` —
+**Tests :** 1 088, **1 081 au vert, 0 échec** (05/10). Les 7 erreurs restantes sont `WebPushTest` —
 l'OpenSSL local ne sait pas générer une clé P-256. **Environnemental, pas un défaut du code.**
 
 **Les onze chantiers du plan (§ 6) sont tous terminés.** Depuis, le travail porte sur les
@@ -119,7 +119,9 @@ retours d'usage du propriétaire.
 
 ### En attente d'un accord, pas d'un travail
 
-- **Correspondances — trois choix faits sans confirmation**, chacun réversible en une ligne :
+- **Correspondances — quatre choix faits sans confirmation**, chacun réversible en une ligne :
+  0. **le gérant et les responsables cochent pour le compte d'un commercial** choisi dans
+     « Affecter à » — sans quoi leur case ne compterait la facture à personne ;
   1. **cocher compte aussitôt** la facture au commercial, commission comprise ; la garde est
      l'annulation par un responsable, non une validation préalable ;
   2. **« Les correspondances » est ouvert à tous les responsables** (ville, site,

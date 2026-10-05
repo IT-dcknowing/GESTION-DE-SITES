@@ -2135,9 +2135,22 @@ les factures sans ville. Le périmètre de cet écran ajoute la ville de son com
 sa fiche. Les autres écrans du commercial lisent sa fiche directement et n'étaient pas
 touchés.
 
-**Mesuré sur la base locale** : gérant 15 requêtes, 0,65 s, 11 227 lignes ; commercial
-19 requêtes, 0,34 s, 10 469 lignes. Le code de plateforme, recalculé à chaque ligne, coûtait
-24 requêtes de plus — lu une fois désormais. Neuf tests :
+**Repris le même jour sur la capture du propriétaire — trois manques.** (1) **Le gérant
+n'avait aucune case** : je l'avais réservée à qui porte une fiche commerciale, et le gérant
+n'en a pas. Tout responsable coche désormais, **pour le compte d'un commercial** choisi dans
+« Affecter à » (sa propre fiche par défaut s'il en a une) ; c'est le nom et le code de ce
+commercial qui paraissent à la coche, et sans choix la validation est refusée en le disant.
+Un commercial, lui, ne peut compter une facture qu'à lui-même : l'identifiant envoyé est
+ignoré. (2) **La ligne n'était pas cliquable** : un clic n'importe où sur la ligne coche,
+sauf sur un lien ou un bouton, et la ligne cochée se colore. (3) **Cinq colonnes sur
+douze** : la facture porte maintenant toutes celles du CATTC (date, n° facture, sticker,
+fiche — lien vers le parc —, sinistre, immatriculation, marque, modèle, code client,
+client, montant, site), plus assureur, courtier, activité et origine (CATTC, état des
+impayés, saisie ici). « Autre filtre » et la recherche couvrent les nouvelles colonnes.
+
+**Mesuré sur la base locale** : gérant 19 requêtes, 0,44 s, 25 cases sur 25 lignes ;
+commercial 20 requêtes, 0,24 s. Le code de plateforme, recalculé à chaque ligne, coûtait
+24 requêtes de plus — lu une fois. Treize tests :
 `tests/Feature/LesCommerciauxCochentLeursFacturesTest.php`.
 
 ### Hors chantier, toujours en attente

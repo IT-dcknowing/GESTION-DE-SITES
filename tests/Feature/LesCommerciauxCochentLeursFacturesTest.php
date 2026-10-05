@@ -114,6 +114,53 @@ class LesCommerciauxCochentLeursFacturesTest extends TestCase
         Volt::test('pilotage.correspondances')->assertSee('F-100')->assertSee('Koffi Yao');
     }
 
+    /**
+     * Corrigé le 05/10 sur la capture du propriétaire : le gérant ouvrait l'écran sans
+     * aucune case, faute de fiche commerciale. Il coche désormais pour le compte d'un
+     * commercial qu'il désigne.
+     */
+    public function test_le_gerant_coche_pour_le_compte_d_un_commercial(): void
+    {
+        $koffi = $this->vendeur('Koffi Yao', $this->abidjan);
+        $gerant = $this->compte('gerant', $this->abidjan);
+        $facture = $this->facture('F-150', $this->atelierAbidjan, ['n_sticker' => 'ST-77', 'assureur' => 'SAHAM']);
+
+        $this->actingAs($gerant);
+        $ecran = Volt::test('pilotage.correspondances')
+            ->assertSeeHtml('wire:model="selection" value="'.$facture->id.'"')
+            // Toutes les colonnes de la facture, pas seulement cinq.
+            ->assertSee('N° sticker')->assertSee('ST-77')->assertSee('Assureur')->assertSee('SAHAM')
+            ->set('selection', [(string) $facture->id])
+            ->call('valider');
+
+        // Sans commercial désigné, rien n'est écrit : la facture ne serait comptée à personne.
+        $ecran->assertSet('erreur', 'Choisissez dans « Affecter à » le commercial à qui compter ces factures.');
+        $this->assertNull($facture->fresh()->commercial_id);
+
+        $ecran->set('pourCommercial', (string) $this->ficheDe($koffi)->id)
+            ->set('selection', [(string) $facture->id])
+            ->call('valider')
+            ->assertSet('erreur', '');
+
+        $this->assertSame($this->ficheDe($koffi)->id, $facture->fresh()->commercial_id);
+        $correspondance = CorrespondanceFacture::withoutGlobalScopes()->sole();
+        $this->assertSame($gerant->id, $correspondance->coche_par);
+        $this->assertSame($this->ficheDe($koffi)->id, $correspondance->commercial_id);
+    }
+
+    public function test_un_commercial_ne_compte_pas_une_facture_a_un_autre(): void
+    {
+        $koffi = $this->vendeur('Koffi Yao', $this->abidjan);
+        $awa = $this->vendeur('Awa Traoré', $this->abidjan);
+        $facture = $this->facture('F-160', $this->atelierAbidjan);
+
+        // Un identifiant de commercial envoyé à la main est ignoré : il coche pour lui.
+        $this->actingAs($koffi);
+        CorrespondancesDeFactures::cocher($koffi, [$facture->id], $this->ficheDe($awa)->id);
+
+        $this->assertSame($this->ficheDe($koffi)->id, $facture->fresh()->commercial_id);
+    }
+
     public function test_deux_commerciaux_ne_peuvent_pas_compter_la_meme_facture(): void
     {
         $koffi = $this->vendeur('Koffi Yao', $this->abidjan);

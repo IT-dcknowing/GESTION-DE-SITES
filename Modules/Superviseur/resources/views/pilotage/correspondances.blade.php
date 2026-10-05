@@ -7,6 +7,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Services\CorrespondancesDeFactures;
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 
 use function Livewire\Volt\{computed, protect, state};
 
@@ -40,13 +41,17 @@ state(['page' => 1]);
 state(['selection' => []]);
 state(['message' => '']);
 state(['erreur' => '']);
+// Le commercial à qui un responsable compte ce qu'il coche. Vide pour un commercial : il
+// coche toujours pour lui-même, et le serveur l'ignorerait de toute façon.
+state(['pourCommercial' => '']);
 
 /*
  * Un filtre qui change ramène à la première page et vide la sélection : des cases cochées
  * sur des lignes que le tableau ne montre plus seraient validées sans avoir été revues.
+ * Changer le commercial désigné, lui, ne touche ni à la page ni aux cases.
  */
 $updated = function (string $propriete) {
-    if (in_array($propriete, ['page', 'selection', 'message', 'erreur'], true) || str_starts_with($propriete, 'selection')) {
+    if (in_array($propriete, ['page', 'selection', 'message', 'erreur', 'pourCommercial'], true) || str_starts_with($propriete, 'selection')) {
         return;
     }
 
@@ -56,8 +61,29 @@ $updated = function (string $propriete) {
 
 $estResponsable = computed(fn () => CorrespondancesDeFactures::estResponsable(auth()->user()));
 $fiche = computed(fn () => CorrespondancesDeFactures::ficheDe(auth()->user()));
+$peutCocher = computed(fn () => CorrespondancesDeFactures::peutCocher(auth()->user()));
+
+/** Les commerciaux qu'un responsable peut désigner — liste « Affecter à ». */
+$affectables = computed(fn () => $this->estResponsable
+    ? CorrespondancesDeFactures::commerciauxAffectables(auth()->user())
+    : collect());
+
+/**
+ * Celui dont le nom paraît à la coche : le commercial désigné, sinon soi-même.
+ *
+ * Relu dans la liste du périmètre et non pris tel quel du navigateur — c'est un affichage,
+ * mais il annonce à qui la facture sera comptée, et il doit dire vrai.
+ */
+$beneficiaire = computed(function () {
+    if ($this->estResponsable && $this->pourCommercial !== '') {
+        return $this->affectables->firstWhere('id', (int) $this->pourCommercial);
+    }
+
+    return $this->fiche;
+});
+
 // Lu une fois : chaque ligne l'affiche à la coche, et il coûtait une requête par ligne.
-$monCode = computed(fn () => $this->fiche?->codeDeSaisie() ?? '');
+$codeBeneficiaire = computed(fn () => $this->beneficiaire?->codeDeSaisie() ?? '');
 
 $mesVilles = computed(fn () => PerimetreSites::optionsVilles(auth()->user())?->pluck('nom', 'id')->all() ?? []);
 $lesVilles = computed(fn () => Ville::orderBy('nom')->pluck('nom', 'id')->all());
@@ -74,10 +100,16 @@ $cocheurs = computed(fn () => Commercial::query()
 /** Les colonnes sans filtre propre — voir `FiltreLibre` et `x-autre-filtre`. */
 $colonnesFiltrables = computed(fn () => [
     'factures.n_facture' => FiltreLibre::colonne('N° de facture'),
+    'factures.n_sticker' => FiltreLibre::colonne('N° sticker'),
     'factures.reference_devis' => FiltreLibre::colonne('Fiche de réception'),
+    'factures.n_sinistre' => FiltreLibre::colonne('N° sinistre'),
     'factures.client' => FiltreLibre::colonne('Client'),
+    'factures.code_client' => FiltreLibre::colonne('Code client'),
+    'factures.assureur' => FiltreLibre::colonne('Assureur'),
+    'factures.courtier' => FiltreLibre::colonne('Courtier'),
     'factures.immatriculation' => FiltreLibre::colonne('Immatriculation'),
     'factures.marque' => FiltreLibre::colonne('Marque'),
+    'factures.modele' => FiltreLibre::colonne('Modèle'),
     'factures.montant' => FiltreLibre::colonne('Montant', 'nombre'),
     'factures.activite' => FiltreLibre::colonne('Activité', 'liste', ['Mécanique' => 'Mécanique', 'Sinistre' => 'Sinistre']),
 ]);
@@ -123,7 +155,10 @@ $filtrer = protect(function () {
             ->where('factures.n_facture', 'like', '%'.$mot.'%')
             ->orWhere('factures.reference_devis', 'like', '%'.$mot.'%')
             ->orWhere('factures.client', 'like', '%'.$mot.'%')
-            ->orWhere('factures.immatriculation', 'like', '%'.$mot.'%'));
+            ->orWhere('factures.immatriculation', 'like', '%'.$mot.'%')
+            ->orWhere('factures.n_sticker', 'like', '%'.$mot.'%')
+            ->orWhere('factures.n_sinistre', 'like', '%'.$mot.'%')
+            ->orWhere('factures.code_client', 'like', '%'.$mot.'%'));
     }
 
     // Les deux filtres des responsables : un commercial ne voit de toute façon que le reste
@@ -193,7 +228,11 @@ $valider = function () {
         return;
     }
 
-    $bilan = CorrespondancesDeFactures::cocher(auth()->user(), (array) $this->selection);
+    $bilan = CorrespondancesDeFactures::cocher(
+        auth()->user(),
+        (array) $this->selection,
+        $this->pourCommercial !== '' ? (int) $this->pourCommercial : null,
+    );
 
     $this->selection = [];
     $this->oublier();
@@ -201,8 +240,9 @@ $valider = function () {
     $this->erreur = implode(' ', $bilan['refus']);
 
     if ($bilan['faits'] > 0) {
-        $this->message = $bilan['faits'].' facture(s) affectée(s) à votre nom. Elles ne paraissent plus chez les autres commerciaux.';
-        $this->dispatch('annonce', texte: $bilan['faits'].' facture(s) affectée(s) à votre nom.', ton: 'succes');
+        $nom = $this->beneficiaire?->nom ?? 'votre nom';
+        $this->message = $bilan['faits'].' facture(s) affectée(s) à '.$nom.'. Elles ne paraissent plus chez les commerciaux.';
+        $this->dispatch('annonce', texte: $bilan['faits'].' facture(s) affectée(s) à '.$nom.'.', ton: 'succes');
     }
 };
 
@@ -282,21 +322,34 @@ $annuler = function (int $correspondance) {
     </div>
 
     <div class="carte">
-        {{-- Les gestes d'ensemble, au-dessus du tableau : cocher la page, décocher, valider. --}}
-        @if ($this->fiche)
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+        {{-- Les gestes d'ensemble, au-dessus du tableau : à qui compter, cocher la page,
+             décocher, valider. --}}
+        @if ($this->peutCocher)
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:10px;">
+                @if ($this->estResponsable)
+                    {{-- Le responsable coche pour le compte d'un commercial : sans ce choix, sa
+                         case ne compterait la facture à personne. --}}
+                    <x-champ label="Affecter à" model="pourCommercial" type="select" :live="true" width="250"
+                        :options="$this->affectables->pluck('nom', 'id')->all()"
+                        :vide="$this->fiche ? 'Moi-même — '.$this->fiche->nom : '— choisir le commercial —'" />
+                @endif
                 <button type="button" wire:click="cocherLaPage" class="bouton bouton-secondaire"
-                    style="padding:8px 14px; white-space:nowrap;">Cocher la page</button>
+                    style="padding:9px 14px; white-space:nowrap;">Cocher la page</button>
                 @if ($selection !== [])
                     <button type="button" wire:click="viderLaSelection" class="bouton bouton-secondaire"
-                        style="padding:8px 14px; white-space:nowrap;">Décocher</button>
+                        style="padding:9px 14px; white-space:nowrap;">Décocher</button>
                 @endif
                 <button type="button" wire:click="valider" class="bouton bouton-sombre"
-                    style="padding:8px 16px; white-space:nowrap;">
+                    style="padding:9px 16px; white-space:nowrap;">
                     Valider <span x-text="$wire.selection.length">{{ count($selection) }}</span> facture(s) cochée(s)
                 </button>
             </div>
-        @elseif (! $this->estResponsable)
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
+                Cliquez sur une ligne ou sur sa case pour la cocher. Le nom et le code de celui à qui
+                elle sera comptée paraissent aussitôt dans « Coché par » ; rien n'est enregistré avant
+                « Valider ».
+            </p>
+        @else
             <p style="margin:0 0 12px; font-size:12.5px; color:#B45309;">
                 Votre compte ne porte aucune fiche commerciale : vous pouvez lire cette liste, pas y cocher.
             </p>
@@ -308,13 +361,22 @@ $annuler = function (int $correspondance) {
                     <tr>
                         <th style="width:34px;"></th>
                         <th>Coché par</th>
-                        <th>Date</th>
+                        <th>Date de la facture</th>
                         <th>N° facture</th>
+                        <th>N° sticker</th>
                         <th>Fiche de réception</th>
+                        <th>N° sinistre</th>
+                        <th>Immat. véhicule</th>
+                        <th>Marque</th>
+                        <th>Modèle</th>
+                        <th>Code client</th>
                         <th>Client</th>
-                        <th>Véhicule</th>
-                        <th>Montant</th>
+                        <th>Assureur</th>
+                        <th>Courtier</th>
+                        <th style="text-align:right;">Montant facture</th>
                         <th>Atelier</th>
+                        <th>Activité</th>
+                        <th>Origine</th>
                         <th>Saisi par</th>
                         <th>Lieu du saisisseur</th>
                         @if ($this->estResponsable)
@@ -327,11 +389,19 @@ $annuler = function (int $correspondance) {
                         @php
                             $correspondance = $this->enCours->get($facture->id);
                             $saisi = $this->saisisseurs[$facture->id] ?? ['code' => null, 'nom' => '', 'lieu' => ''];
+                            $cochable = $facture->commercial_id === null && $this->peutCocher;
                             $cochee = in_array((string) $facture->id, array_map('strval', (array) $selection), true);
                         @endphp
-                        <tr wire:key="facture-{{ $facture->id }}" style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                        {{-- Toute la ligne coche : la case est petite, et on lit la ligne avant de
+                             la cocher. Un clic sur un lien ou un bouton garde son propre sens. --}}
+                        <tr wire:key="facture-{{ $facture->id }}"
+                            @if ($cochable)
+                                x-on:click="if (! $event.target.closest('input, a, button, select')) $el.querySelector('input[type=checkbox]')?.click()"
+                                x-bind:style="$wire.selection.map(String).includes('{{ $facture->id }}') ? 'background:#E5F2E8; cursor:pointer;' : 'cursor:pointer;'"
+                                style="cursor:pointer; {{ $cochee ? 'background:#E5F2E8;' : '' }}"
+                            @endif>
                             <td>
-                                @if ($facture->commercial_id === null && $this->fiche)
+                                @if ($cochable)
                                     <input type="checkbox" wire:model="selection" value="{{ $facture->id }}"
                                         aria-label="Cocher la facture {{ $facture->n_facture ?: $facture->numero }}">
                                 @endif
@@ -339,39 +409,66 @@ $annuler = function (int $correspondance) {
                             <td style="white-space:nowrap;">
                                 @if ($correspondance)
                                     {{-- Déjà affectée : visible des seuls responsables, avec le nom
-                                         et le code de celui qui l'a cochée. --}}
+                                         et le code de celui à qui elle est comptée. --}}
                                     <div style="font-weight:600;">{{ $correspondance->commercial?->nom ?? $correspondance->auteur }}</div>
                                     <div style="font-size:11.5px; color:#6B6E76;">
                                         {{ $correspondance->commercial?->codeDeSaisie() }} · le {{ $correspondance->created_at?->format('d/m/Y') }}
                                     </div>
-                                @elseif ($this->fiche)
-                                    {{-- Paraît à la coche, avant même la validation : on voit à
-                                         qui la ligne sera comptée avant de valider. Rendu par le
-                                         serveur aussi, pour qu'il ne dépende pas du script. --}}
+                                @elseif ($cochable)
+                                    {{-- Paraît à la coche, avant la validation : on voit à qui la
+                                         ligne sera comptée avant de valider. Rendu par le serveur
+                                         aussi, pour ne pas dépendre du script. --}}
                                     <div x-show="$wire.selection.map(String).includes('{{ $facture->id }}')"
                                         @if (! $cochee) style="display:none;" @endif>
-                                        <div style="font-weight:600; color:#1E7B34;">{{ $this->fiche->nom }}</div>
-                                        <div style="font-size:11.5px; color:#6B6E76;">{{ $this->monCode }}</div>
+                                        @if ($this->beneficiaire)
+                                            <div style="font-weight:600; color:#1E7B34;">{{ $this->beneficiaire->nom }}</div>
+                                            <div style="font-size:11.5px; color:#6B6E76;">{{ $this->codeBeneficiaire }}</div>
+                                        @else
+                                            <div style="font-size:11.5px; color:#B45309;">choisissez « Affecter à »</div>
+                                        @endif
                                     </div>
                                 @endif
                             </td>
                             <td>{{ $facture->date?->format('d/m/Y') ?? '—' }}</td>
                             <td style="font-weight:700;">{{ $facture->n_facture ?: $facture->numero }}</td>
-                            <td style="color:#6B6E76;">{{ $facture->reference_devis ?: '—' }}</td>
-                            <td>{{ $facture->client }}</td>
+                            <td>{{ $facture->n_sticker ?: '—' }}</td>
                             <td>
-                                {{ $facture->vehicule ?: '—' }}
-                                @if ($facture->immatriculation)
-                                    <span style="color:#6B6E76; font-size:11.5px;">· {{ $facture->immatriculation }}</span>
+                                @if ($facture->reference_devis && PisteDeLaFiche::peutOuvrir(auth()->user()))
+                                    <a href="{{ route('parc-fiche.numero', ['numero' => $facture->reference_devis]) }}"
+                                        wire:navigate style="color:inherit;">{{ $facture->reference_devis }}</a>
+                                @else
+                                    {{ $facture->reference_devis ?: '—' }}
                                 @endif
                             </td>
-                            <td style="font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap;">{{ ae($facture->montant) }}</td>
+                            <td>{{ $facture->n_sinistre ?: '—' }}</td>
+                            <td>{{ $facture->immatriculation ?: '—' }}</td>
+                            {{-- Les lignes reprises avant le 25/09 portent le véhicule entier dans
+                                 une seule colonne : il s'affiche plutôt que d'être coupé. --}}
+                            <td>{{ $facture->marque ?: ($facture->vehicule ?: '—') }}</td>
+                            <td>{{ $facture->modele ?: '—' }}</td>
+                            <td>{{ $facture->code_client ?: '—' }}</td>
+                            <td>{{ $facture->client }}</td>
+                            <td>{{ $facture->assureur ?: '—' }}</td>
+                            <td>{{ $facture->courtier ?: '—' }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap;">{{ ae($facture->montant) }}</td>
                             <td>{{ $facture->site?->nom ?? $facture->ville?->nom ?? '—' }}</td>
+                            <td>{{ $facture->activite ?: '—' }}</td>
+                            <td style="white-space:nowrap; font-size:11.5px; font-weight:600;">
+                                @if ($facture->est_etat_initial || $facture->exercice_impayes !== null)
+                                    <span style="color:#B9791C;">État des impayés</span>
+                                @elseif ($facture->lot_import_id !== null)
+                                    <span style="color:#B9791C;">Reprise CATTC</span>
+                                @else
+                                    <span style="color:#0E9F6E;">Saisie ici</span>
+                                @endif
+                            </td>
                             <td style="white-space:nowrap;">
                                 @if ($saisi['code'])
                                     <span style="font-weight:700;">{{ $saisi['code'] }}</span>
                                     @if ($saisi['nom'] !== '')
                                         <span style="color:#6B6E76;">· {{ $saisi['nom'] }}</span>
+                                    @else
+                                        <span style="color:#6B6E76; font-size:11.5px;">· non nommé</span>
                                     @endif
                                 @else
                                     <span style="color:#6B6E76;">—</span>
@@ -391,7 +488,7 @@ $annuler = function (int $correspondance) {
                             @endif
                         </tr>
                     @empty
-                        <x-table-vide :colspan="$this->estResponsable ? 12 : 11"
+                        <x-table-vide :colspan="$this->estResponsable ? 21 : 20"
                             texte="Aucune facture à affecter avec ces filtres. Élargissez la recherche, ou toutes les factures de votre périmètre ont déjà trouvé leur commercial." />
                     @endforelse
                 </tbody>
