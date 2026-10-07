@@ -2155,6 +2155,25 @@ commercial 20 requêtes, 0,24 s. Le code de plateforme, recalculé à chaque lig
 24 requêtes de plus — lu une fois. Treize tests :
 `tests/Feature/LesCommerciauxCochentLeursFacturesTest.php`.
 
+### Le plan du 07/10 — retours d'usage, et le constat fait avec la caissière
+
+Demandé par le propriétaire le 07/10, à la suite des correspondances (✅ faites le 05/10,
+voir la section précédente). **Chaque ligne se coche ici quand elle est poussée**, et chaque
+section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
+
+| # | Demande | État |
+|---|---|---|
+| 0 | Le tableau par atelier du gérant en `group by` (repris du 02/10) | ✅ 07/10 |
+| 1 | **Habilitations.** Le gérant voit tout, inchangé. Le module **recouvrement** s'ouvre au **superviseur de ville**. Le module **impayés** s'ouvre à la **comptabilité** et au **recouvrement** (superviseur et agent) | à faire |
+| 2 | **Tableau de bord du gérant à zéro** après l'import de données de trésorerie (capture du 05/10 : CA, charges, encaissé, trésorerie à 0 F, « Toutes villes », exercice 2026). Est-ce normal ? | à faire |
+| 3 | **Maintenance** (`/super-admin/maintenance`), carte « Dépôts de fichiers » : proposer les dépôts à supprimer, un par un ou tous, au lieu d'une case qui coche tout | à faire |
+| 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | à faire |
+| 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | à faire |
+| 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | à faire |
+| 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | à faire |
+| 8 | **Les banques.** Créer **AFG** et **BGFI** pour qu'elles soient disponibles. **Constat avec la caissière** : elle n'est à jour que sur la caisse, pas sur les banques du logiciel. Elle exporte les transactions de la banque dans un classeur où elle ajoute ses colonnes de suivi : **ce classeur est le modèle à importer**. On garde l'import des banques du logiciel au cas où. BGFI : 2023 à 2026, **la colonne en plus n'existe qu'à partir de 2025**. AFG : CSV exporté du logiciel de la banque (mai à aujourd'hui), qu'elle retraitera au même modèle — l'import AFG se bâtit sur celui de BGFI | à faire |
+| 9 | **Trésorerie.** Le CA et/ou les impayés nourrissent la trésorerie, mais `/caisse` ne montre rien, et des montants paraissent en banque sans banque créée — sans avoir importé caisse ni banque de certaines villes. Que se passera-t-il à l'import de la banque ? **Proposition retenue** : (a) une section de KPI qui montre la situation caisse / banque **selon ce qui la nourrit aujourd'hui** (CA, impayés) ; (b) les données de caisse et de banque **réellement importées gardées à part, sans y toucher** ; (c) un KPI de **comparaison** entre le solde de la banque et ce que montrent le CA / les impayés ; (d) un bouton « **Lignes rapprochement CA-Banque** », comme « Où part l'argent », filtre *identique / pas identique*, qui liste les lignes retrouvées ou non à la banque ; (e) **pareil pour la caisse**. La trésorerie montre le solde correct de chaque côté — caisse, banque, encaissements, décaissements — **sans rien mélanger, ni gonfler ni diminuer** | à faire |
+
 ### Hors chantier, toujours en attente
 
 - **Les avoirs : tranché le 02/10 par le propriétaire, l'environnement est prêt, le dépôt

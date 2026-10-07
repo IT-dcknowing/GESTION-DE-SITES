@@ -108,6 +108,26 @@ retours d'usage du propriétaire.
 
 ## 4. Ce qui reste — par qui le fait
 
+### Le plan du 07/10 — en cours
+
+Les demandes du propriétaire du 07/10, **dans l'ordre où elles se traitent**. Le détail de
+chacune, avec ses mots : § 6 d'`ETAT-DES-LIEUX.md`, « Le plan du 07/10 ». Chaque section
+terminée est fusionnée dans `main` et poussée sur **les deux dépôts** (`origin` porte les deux
+URL de push).
+
+| # | Sujet | État |
+|---|---|---|
+| 0 | Tableau par atelier du gérant en `group by` | ✅ |
+| 1 | Habilitations : recouvrement → superviseur de ville ; impayés → comptabilité et recouvrement | à faire |
+| 2 | Tableau de bord du gérant à zéro après import | à faire |
+| 3 | Maintenance : choisir les dépôts à supprimer | à faire |
+| 4 | Extrait de compte : filtre par état de règlement, export compris | à faire |
+| 5 | Pas de doublon entre l'état des impayés et l'import du CA | à faire |
+| 6 | Caisse centralisée à Abidjan (sites 1 et 2) : vérifier | à faire |
+| 7 | Erreur 503 sur `/super-admin` | à faire |
+| 8 | Banques AFG et BGFI ; import du classeur de suivi de la caissière | à faire |
+| 9 | Trésorerie : KPI par source, comparaison, rapprochements CA-Banque et CA-Caisse | à faire |
+
 ### Au propriétaire, et qui bloque la suite
 
 0. **Les correspondances** : déjà dans `main` et poussées. Sur le serveur, `git pull` puis
