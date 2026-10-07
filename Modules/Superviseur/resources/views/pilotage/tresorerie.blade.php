@@ -3,6 +3,7 @@
 use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
+use Modules\Noyau\Exploitation\Services\RapprochementDeTresorerie;
 use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 use Modules\Noyau\Imports\Modeles\MouvementCaisse;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
@@ -43,6 +44,14 @@ state([
      * la ligne est relue dans la liste déjà filtrée par le périmètre du compte.
      */
     'detailDecaissement' => null,
+
+    /*
+     * Les lignes de rapprochement — 07/10. Le tableau ouvert (« banque » ou « caisse »), et le
+     * filtre « identique / pas identique ».
+     */
+    'rapprochement' => '',
+    'rapprochementEtat' => '',
+    'pageRapprochement' => 1,
 ]);
 
 mount(function () {
@@ -142,14 +151,15 @@ $facturesQ = computed(function () {
  */
 $kpis = computed(function () {
     /*
-     * **Les trois sources, et non plus deux.** Le journal de caisse était hors de ce total,
-     * et l'écran l'annonçait au lieu de le corriger. Une trésorerie qui ignore la caisse
-     * n'est pas une trésorerie.
+     * **Les règlements seuls — depuis le 07/10.** Le journal de caisse y était ajouté le 01/10,
+     * et c'était une erreur de méthode : un règlement en espèces est écrit à l'état des
+     * impayés **et** au journal, un chèque à l'état **et** au relevé. Les additionner comptait
+     * cet argent deux fois. « Sans rien mélanger — ni gonfler, ni diminuer » : la caisse et la
+     * banque ont désormais leur bloc, `$reels`, et la comparaison le sien. Rien n'a quitté
+     * l'écran ; seule l'addition entre familles a disparu.
      */
-    $journal = $this->journalTotaux;
-
-    $encaisse = (int) (clone $this->encaissementsQ)->sum('montant') + $journal['entrees'];
-    $decaisse = (int) (clone $this->chargesQ)->sum('montant') + $journal['sorties'];
+    $encaisse = (int) (clone $this->encaissementsQ)->sum('montant');
+    $decaisse = (int) (clone $this->chargesQ)->sum('montant');
     $facture = (int) (clone $this->facturesQ)->sum('montant');
 
     // Un encaissement ou un décaissement ne porte son activité que si celui qui l'a
@@ -289,9 +299,8 @@ $parSupport = computed(function () {
         'nombre' => (int) ($brut->nombre ?? 0),
     ];
 
-    $entrees[SupportDeReglement::CAISSE]['montant'] += $journal['entrees'];
-    $entrees[SupportDeReglement::CAISSE]['nombre'] += $journal['nombre'];
-    $sorties[SupportDeReglement::CAISSE]['montant'] += $journal['sorties'];
+    // Le journal n'est plus ajouté à la case « Caisse » depuis le 07/10 : il a son bloc,
+    // `$reels`, à côté des règlements et non dedans. Voir `$kpis`.
 
     $lignes = [];
 
@@ -307,6 +316,175 @@ $parSupport = computed(function () {
 
     return $lignes;
 });
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ * Selon la caisse et la banque — demandé le 07/10.
+ *
+ * Les données réellement importées — le journal de caisse, les relevés bancaires — lues
+ * telles quelles, à côté des règlements et jamais additionnées à eux. Voir
+ * `RapprochementDeTresorerie` pour le pourquoi.
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ */
+$reels = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    $brut = (clone $this->journalQ)
+        ->selectRaw(
+            'count(*) as nombre, '
+            .'coalesce(sum(case when sens = ? then montant else 0 end), 0) as entrees, '
+            .'coalesce(sum(case when sens = ? then montant else 0 end), 0) as sorties',
+            [MouvementCaisse::ENTREE, MouvementCaisse::SORTIE],
+        )
+        ->first();
+
+    $releves = RapprochementDeTresorerie::releves($debut, $fin);
+
+    return [
+        'caisse' => [
+            'entrees' => (int) ($brut->entrees ?? 0),
+            'sorties' => (int) ($brut->sorties ?? 0),
+            'nombre' => (int) ($brut->nombre ?? 0),
+        ],
+        'banques' => $releves,
+        'banque' => [
+            'credits' => (int) $releves->sum('credits'),
+            'debits' => (int) $releves->sum('debits'),
+            // La somme des soldes annoncés, compte par compte : un solde ne se recalcule pas.
+            'solde' => $releves->every(fn ($r) => $r['solde_fin'] === null) ? null : (int) $releves->sum('solde_fin'),
+        ],
+    ];
+});
+
+/**
+ * Les règlements par côté — en sommes, en base. C'est ce que la comparaison affiche toujours.
+ *
+ * Le pointage ligne à ligne (`$rapprochements`) ne se fait qu'à l'ouverture d'un tableau :
+ * mesuré le 07/10 sur 7 000 règlements et 6 800 opérations, le faire à chaque clic portait
+ * l'écran de 0,04 s à 0,67 s.
+ */
+$reglementsParCote = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    $base = fn () => PerimetreDeTresorerie::encaissements(Encaissement::query(), $this->idsSites, $this->idsVilles)
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->whereBetween('date', [$debut, $fin]);
+
+    return [
+        'banque' => (int) SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::BANQUE)->sum('montant')
+            + (int) SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::INCONNU)->sum('montant'),
+        'caisse' => (int) SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::CAISSE)->sum('montant'),
+    ];
+});
+
+/** Les règlements d'un support, sur le périmètre et la période, sans le filtre de support de l'écran. */
+$reglementsDuSupport = protect(function (array $supports) {
+    [$debut, $fin] = $this->plage;
+
+    $base = fn () => PerimetreDeTresorerie::encaissements(Encaissement::query(), $this->idsSites, $this->idsVilles)
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->whereBetween('date', [$debut, $fin]);
+
+    return collect($supports)->flatMap(fn ($support) => SupportDeReglement::appliquer($base(), 'encaissements', $support)
+        ->with('facture:id,n_facture')
+        ->get(['id', 'date', 'montant', 'client', 'moyen', 'facture_id', 'banque_id'])
+        ->map(fn ($e) => (object) [
+            'id' => (int) $e->id, 'date' => $e->date, 'montant' => (int) $e->montant, 'client' => $e->client,
+            'moyen' => $e->moyen, 'support' => $support, 'facture_id' => $e->facture_id,
+            'facture' => $e->facture?->n_facture,
+        ]));
+});
+
+/**
+ * Les deux rapprochements, ligne à ligne : chaque règlement, et l'opération retenue.
+ *
+ * **CA-Banque** : les règlements par banque, **et ceux dont le moyen n'est pas dit** — un
+ * règlement repris d'un fichier muet sur le moyen peut fort bien être passé par la banque ;
+ * c'est justement le pointage qui le dira. **CA-Caisse** : les règlements en espèces, face aux
+ * entrées du journal de caisse.
+ */
+$rapprochements = computed(function () {
+    [$debut, $fin] = $this->plage;
+    $de = Illuminate\Support\Carbon::parse($debut);
+    $a = Illuminate\Support\Carbon::parse($fin);
+
+    $credits = fn () => Modules\Noyau\Imports\Modeles\MouvementBancaire::query()
+        ->where('sens', Modules\Noyau\Imports\Modeles\MouvementBancaire::ENTREE)
+        ->whereBetween('date_operation', [
+            $de->copy()->subDays(RapprochementDeTresorerie::FENETRE_BANQUE[0])->toDateString(),
+            $a->copy()->addDays(RapprochementDeTresorerie::FENETRE_BANQUE[1])->toDateString(),
+        ])
+        ->with('banque:id,nom')
+        ->get(['id', 'banque_id', 'date_operation', 'credit', 'libelle', 'contrepartie'])
+        ->map(fn ($m) => (object) [
+            'id' => (int) $m->id, 'date' => $m->date_operation, 'montant' => (int) $m->credit,
+            'libelle' => $m->libelle, 'contrepartie' => $m->contrepartie, 'ou' => $m->banque?->nom,
+        ]);
+
+    $entreesCaisse = fn () => PerimetreDeTresorerie::mouvementsDeCaisse(MouvementCaisse::query(), $this->idsSites, $this->idsVilles)
+        ->where('sens', MouvementCaisse::ENTREE)
+        ->whereBetween('mouvements_caisse.date', [
+            $de->copy()->subDays(RapprochementDeTresorerie::FENETRE_CAISSE[0])->toDateString(),
+            $a->copy()->addDays(RapprochementDeTresorerie::FENETRE_CAISSE[1])->toDateString(),
+        ])
+        ->get(['mouvements_caisse.id', 'mouvements_caisse.date', 'mouvements_caisse.montant', 'mouvements_caisse.libelle'])
+        ->map(fn ($m) => (object) [
+            'id' => (int) $m->id, 'date' => $m->date, 'montant' => (int) $m->montant,
+            'libelle' => $m->libelle, 'contrepartie' => null, 'ou' => 'Journal de caisse',
+        ]);
+
+    // Les dates en texte « AAAA-MM-JJ » : elles se comparent et se trient telles quelles, sans
+    // fabriquer un objet date par ligne — mesuré, c'était l'essentiel du clic.
+    $jour = fn ($date) => $date instanceof \DateTimeInterface ? $date->format('Y-m-d') : substr((string) $date, 0, 10);
+    [$premier, $dernier] = [$de->format('Y-m-d'), $a->format('Y-m-d')];
+
+    $faire = function ($reglements, $operations, $fenetre) use ($jour, $premier, $dernier) {
+        $paires = RapprochementDeTresorerie::rapprocher($reglements, $operations, $fenetre);
+        $lignes = $reglements->map(fn ($r) => (object) ((array) $r + [
+            'operation' => $paires[$r->id] ?? null,
+        ]))->sortByDesc(fn ($r) => $jour($r->date).sprintf('%012d', $r->id))->values();
+
+        $prises = array_flip(collect($paires)->filter()->pluck('id')->all());
+        $orphelines = $operations->filter(fn ($o) => ! isset($prises[$o->id])
+            && $jour($o->date) >= $premier && $jour($o->date) <= $dernier);
+
+        return [
+            'lignes' => $lignes,
+            'identiques' => ['nombre' => $lignes->whereNotNull('operation')->count(), 'montant' => (int) $lignes->whereNotNull('operation')->sum('montant')],
+            'differents' => ['nombre' => $lignes->whereNull('operation')->count(), 'montant' => (int) $lignes->whereNull('operation')->sum('montant')],
+            'orphelines' => ['nombre' => $orphelines->count(), 'montant' => (int) $orphelines->sum('montant')],
+        ];
+    };
+
+    // Seul le côté ouvert est pointé : l'autre ne coûte rien tant qu'on ne le demande pas.
+    return [
+        'banque' => $this->rapprochement === 'banque'
+            ? $faire($this->reglementsDuSupport([SupportDeReglement::BANQUE, SupportDeReglement::INCONNU]), $credits(), RapprochementDeTresorerie::FENETRE_BANQUE)
+            : null,
+        'caisse' => $this->rapprochement === 'caisse'
+            ? $faire($this->reglementsDuSupport([SupportDeReglement::CAISSE]), $entreesCaisse(), RapprochementDeTresorerie::FENETRE_CAISSE)
+            : null,
+    ];
+});
+
+/** La page de lignes demandée, filtrée par « identique / pas identique ». */
+$lignesRapprochement = computed(function () {
+    if (! in_array($this->rapprochement, ['banque', 'caisse'], true)) {
+        return collect();
+    }
+
+    return ($this->rapprochements[$this->rapprochement]['lignes'] ?? collect())
+        ->when($this->rapprochementEtat === 'identique', fn ($l) => $l->whereNotNull('operation'))
+        ->when($this->rapprochementEtat === 'different', fn ($l) => $l->whereNull('operation'))
+        ->values();
+});
+
+$updatedRapprochementEtat = function () { $this->pageRapprochement = 1; };
+
+$ouvrirLeRapprochement = function (string $quoi) {
+    $this->rapprochement = $this->rapprochement === $quoi ? '' : (in_array($quoi, ['banque', 'caisse'], true) ? $quoi : '');
+    $this->pageRapprochement = 1;
+};
 
 $graphique = computed(function () {
     [$debut, $fin] = $this->plage;
@@ -587,7 +765,7 @@ $origineDe = protect(function ($ligne) {
          filtre : on lit d'abord la carte, puis on entre. --}}
     <div class="carte" style="margin-bottom:16px;">
         <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
-            <h3 style="font-size:15px; font-weight:700; margin:0;">Ce que la trésorerie regroupe</h3>
+            <h3 style="font-size:15px; font-weight:700; margin:0;">Selon les règlements — par où l'argent est passé</h3>
             @if ($supportFiltre !== '')
                 <button type="button" wire:click="$set('supportFiltre', '')" class="bouton bouton-secondaire"
                     style="padding:4px 11px; font-size:12px;">Voir tous les supports</button>
@@ -643,7 +821,11 @@ $origineDe = protect(function ($ligne) {
         </p>
     @endif
 
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
+    {{-- Les quatre cartes lisent les **règlements** : ce que le CA, l'état des impayés et les
+         saisies disent avoir encaissé et payé. La caisse et la banque réelles ont leur bloc,
+         juste en dessous, et ne s'y additionnent pas — 07/10. --}}
+    <h3 style="font-size:14px; font-weight:700; margin:0 0 8px;">Selon les règlements — CA, impayés, saisies</h3>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp
         <x-kpi-card label="Encaissements — {{ $this->libellePerimetre }}" :value="ae($this->kpis['encaisse'])" couleur="#0E9F6E"
             :mecanique="$ventile ? ae($this->kpis['encaisseVentile']['mecanique']) : null"
@@ -661,6 +843,151 @@ $origineDe = protect(function ($ligne) {
             :mecanique="$ventile ? ae($this->kpis['nonEncaisseVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['nonEncaisseVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['nonEncaisseVentile']['nonVentile'] ? ae($this->kpis['nonEncaisseVentile']['nonVentile']) : null" />
+    </div>
+
+    {{-- ─────────────────────────────── selon la caisse et la banque — 07/10
+
+         « Une section de KPI qui montre la situation de la caisse ou de la banque selon ce qui
+         la nourrit — le CA ou les impayés —, et tu gardes les données de caisse et de banque
+         réellement importées, sans toucher à quelque chose ; ensuite un KPI de comparaison. »
+         Les soldes de banque sont ceux que la banque annonce, jamais recalculés. --}}
+    @php $reels = $this->reels; $rap = $this->rapprochements; @endphp
+    <div class="carte" style="margin-bottom:16px;">
+        <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Selon la caisse et la banque — relevés importés, tels quels</h3>
+        <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
+            Le journal de caisse et les relevés bancaires, lus sans rien y changer. Ils ne s'ajoutent
+            pas aux règlements ci-dessus : un chèque est écrit à l'état des impayés <b>et</b> au
+            relevé — les additionner le compterait deux fois. Les comptes bancaires sont ceux de
+            l'entreprise : le filtre de ville ne s'y applique pas.
+        </p>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px;">
+            <div style="padding:13px 15px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:10px;">
+                <div style="font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#6B6E76; font-weight:700;">Caisse — journal importé</div>
+                <div style="font-family:'Barlow Condensed',sans-serif; font-size:25px; font-weight:700; font-variant-numeric:tabular-nums;
+                            color:{{ $reels['caisse']['entrees'] - $reels['caisse']['sorties'] >= 0 ? '#0E9F6E' : '#C8102E' }};">
+                    {{ ae($reels['caisse']['entrees'] - $reels['caisse']['sorties']) }}
+                </div>
+                <div style="font-size:11.5px; color:#4B4E55;">Entrées <b>{{ ae($reels['caisse']['entrees']) }}</b> · Sorties <b>{{ ae($reels['caisse']['sorties']) }}</b></div>
+                <div style="font-size:11px; color:#6B6E76; margin-top:4px;">
+                    {{ $reels['caisse']['nombre'] > 0 ? number_format($reels['caisse']['nombre'], 0, ',', ' ').' mouvement(s) sur la période' : 'Aucun journal de caisse déposé pour cette période.' }}
+                </div>
+            </div>
+
+            @forelse ($reels['banques'] as $releve)
+                <div style="padding:13px 15px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:10px;">
+                    <div style="font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#6B6E76; font-weight:700;">Banque — {{ $releve['banque']->nom }}</div>
+                    <div style="font-family:'Barlow Condensed',sans-serif; font-size:25px; font-weight:700; font-variant-numeric:tabular-nums;
+                                color:{{ ($releve['solde_fin'] ?? 0) >= 0 ? '#0E9F6E' : '#C8102E' }};">
+                        {{ $releve['solde_fin'] === null ? '—' : ae($releve['solde_fin']) }}
+                    </div>
+                    <div style="font-size:11.5px; color:#4B4E55;">Crédits <b>{{ ae($releve['credits']) }}</b> · Débits <b>{{ ae($releve['debits']) }}</b></div>
+                    <div style="font-size:11px; color:#6B6E76; margin-top:4px;">
+                        Solde annoncé par la banque{{ $releve['date_solde'] ? ' au '.\Illuminate\Support\Carbon::parse($releve['date_solde'])->format('d/m/Y') : '' }}
+                    </div>
+                </div>
+            @empty
+                <div style="padding:13px 15px; border:1px dashed var(--th-ligne,#E2E0D8); border-radius:10px; font-size:12.5px; color:#6B6E76;">
+                    Aucun relevé bancaire déposé. Les relevés se déposent à l'import, type
+                    « Relevé bancaire — suivi de la caissière », en choisissant le compte.
+                </div>
+            @endforelse
+        </div>
+
+        {{-- La comparaison : ce que les règlements disent, face à ce que la banque et la caisse ont vu. --}}
+        <h4 style="font-size:13.5px; font-weight:700; margin:16px 0 8px;">Comparaison — règlements face aux relevés</h4>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:10px;">
+            @foreach (['banque' => 'Banque', 'caisse' => 'Caisse'] as $cote => $nom)
+                @php
+                    $r = $rap[$cote];
+                    $releve = $cote === 'banque' ? $reels['banque']['credits'] : $reels['caisse']['entrees'];
+                    $declare = $this->reglementsParCote[$cote];
+                @endphp
+                <div style="padding:12px 14px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:10px; font-size:12.5px;">
+                    <div style="display:flex; justify-content:space-between;"><span>{{ $cote === 'banque' ? 'Crédits des relevés' : 'Entrées du journal de caisse' }}</span><b>{{ ae($releve) }}</b></div>
+                    <div style="display:flex; justify-content:space-between;"><span>Règlements {{ $cote === 'banque' ? 'par banque ou sans moyen dit' : 'en espèces' }}</span><b>{{ ae($declare) }}</b></div>
+                    <div style="display:flex; justify-content:space-between; border-top:1px solid var(--th-ligne,#E2E0D8); margin-top:4px; padding-top:4px;">
+                        <span>Écart ({{ $nom }} − règlements)</span>
+                        <b style="color:{{ $releve - $declare === 0 ? '#0E9F6E' : '#C8102E' }};">{{ ae($releve - $declare) }}</b></div>
+                    @if ($r === null)
+                        <div style="color:#6B6E76; font-size:11.5px; margin-top:6px;">Le pointage ligne à ligne s'affiche en ouvrant « Lignes rapprochement CA-{{ $nom }} ».</div>
+                    @else
+                    <div style="display:flex; justify-content:space-between;"><span>Identiques — retrouvés {{ $cote === 'banque' ? 'à la banque' : 'au journal' }}</span>
+                        <b style="color:#0E9F6E;">{{ $r['identiques']['nombre'] }} · {{ ae($r['identiques']['montant']) }}</b></div>
+                    <div style="display:flex; justify-content:space-between;"><span>Pas identiques — non retrouvés</span>
+                        <b style="color:#C8102E;">{{ $r['differents']['nombre'] }} · {{ ae($r['differents']['montant']) }}</b></div>
+                    <div style="display:flex; justify-content:space-between;"><span>{{ $cote === 'banque' ? 'Crédits de banque' : 'Entrées de caisse' }} sans règlement</span>
+                        <b>{{ $r['orphelines']['nombre'] }} · {{ ae($r['orphelines']['montant']) }}</b></div>
+                    @endif
+                </div>
+            @endforeach
+        </div>
+
+        {{-- Les lignes, comme « Où part l'argent » : un bouton, un tableau, une question à la fois. --}}
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+            <button type="button" wire:click="ouvrirLeRapprochement('banque')"
+                class="bouton {{ $rapprochement === 'banque' ? '' : 'bouton-secondaire' }}" style="padding:7px 13px;">
+                Lignes rapprochement CA-Banque
+            </button>
+            <button type="button" wire:click="ouvrirLeRapprochement('caisse')"
+                class="bouton {{ $rapprochement === 'caisse' ? '' : 'bouton-secondaire' }}" style="padding:7px 13px;">
+                Lignes rapprochement CA-Caisse
+            </button>
+        </div>
+
+        @if ($rapprochement !== '')
+            <div style="margin-top:12px;">
+                <div style="display:flex; align-items:end; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                    <x-champ label="État" model="rapprochementEtat" type="select" live="true" width="200"
+                        :options="['' => 'Tous', 'identique' => 'Identique', 'different' => 'Pas identique']" />
+                    <span style="font-size:12.5px; color:#6B6E76;">
+                        {{ $rapprochement === 'banque'
+                            ? 'Règlements par banque, et ceux dont le moyen n\'est pas dit, face aux crédits des relevés : même montant, de 3 jours avant à 10 jours après.'
+                            : 'Règlements en espèces face aux entrées du journal de caisse : même montant, à 3 jours près.' }}
+                        Chaque opération ne sert qu'une fois.
+                    </span>
+                </div>
+                <div class="tableau-conteneur">
+                    <table class="tableau">
+                        <thead>
+                            <tr>
+                                <th>Date</th><th>Client</th><th>Facture</th><th>Moyen</th><th>Montant</th><th>État</th>
+                                <th>{{ $rapprochement === 'banque' ? 'Opération de banque retenue' : 'Entrée de caisse retenue' }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($this->lignesRapprochement->forPage($pageRapprochement, 25) as $ligne)
+                                <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                    <td style="white-space:nowrap;">{{ \Illuminate\Support\Carbon::parse($ligne->date)->format('d/m/Y') }}</td>
+                                    <td>{{ $ligne->client ?? '—' }}</td>
+                                    <td>{{ $ligne->facture ?? '—' }}</td>
+                                    <td>{{ $ligne->moyen ?: 'non précisé' }}</td>
+                                    <td style="font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($ligne->montant) }}</td>
+                                    <td>
+                                        @if ($ligne->operation)
+                                            <span style="color:#0E9F6E; font-weight:700;">Identique</span>
+                                        @else
+                                            <span style="color:#C8102E; font-weight:700;">Pas identique</span>
+                                        @endif
+                                    </td>
+                                    <td style="font-size:12px;">
+                                        @if ($ligne->operation)
+                                            {{ \Illuminate\Support\Carbon::parse($ligne->operation->date)->format('d/m/Y') }}
+                                            · {{ $ligne->operation->ou }} · {{ $ligne->operation->contrepartie ?: $ligne->operation->libelle }}
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <x-table-vide :colspan="7" texte="Aucune ligne pour ce filtre sur la période." />
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                <x-pagination :page="$pageRapprochement" :total="$this->lignesRapprochement->count()" prop="pageRapprochement" :par-page="25" />
+            </div>
+        @endif
     </div>
 
     <div style="margin-bottom:20px;">

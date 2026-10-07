@@ -104,6 +104,11 @@ class LaTresorerieListeCeQuElleCompteTest extends TestCase
      *
      * C'est la règle, et c'est elle qu'on tient plutôt qu'un chiffre : les deux nombres
      * viennent de deux chemins différents, et c'est leur accord qui vaut.
+     *
+     * **Depuis le 07/10, chacun dans son bloc** : les règlements en haut, le journal de caisse
+     * dans « Selon la caisse et la banque ». Ils ne s'additionnent plus en un seul total — un
+     * même argent y serait compté deux fois —, mais la liste porte toujours les deux, et la
+     * somme de ce qu'elle liste est celle des deux blocs.
      */
     public function test_le_total_des_sorties_est_celui_des_lignes_listees(): void
     {
@@ -119,7 +124,8 @@ class LaTresorerieListeCeQuElleCompteTest extends TestCase
             (int) collect($ecran->instance()->detailDecaissements)->sum('montant'),
             'La somme des lignes listées doit être celle que les indicateurs annoncent.',
         );
-        $this->assertSame(125_000, $ecran->instance()->kpis['decaisse']);
+        $this->assertSame(30_000, $ecran->instance()->kpis['decaisse'], 'Les règlements seuls.');
+        $this->assertSame(95_000, $ecran->instance()->reels['caisse']['sorties'], 'Le journal, dans son bloc.');
     }
 
     /**

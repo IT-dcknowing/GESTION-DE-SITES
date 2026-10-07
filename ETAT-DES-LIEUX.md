@@ -2172,7 +2172,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | ✅ 07/10 — oui, sauf une faille, fermée ; voir dessous |
 | 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | 🟡 07/10 — cause probable nommée, preuve à lire en ligne ; voir dessous |
 | 8 | **Les banques.** Créer **AFG** et **BGFI** pour qu'elles soient disponibles. **Constat avec la caissière** : elle n'est à jour que sur la caisse, pas sur les banques du logiciel. Elle exporte les transactions de la banque dans un classeur où elle ajoute ses colonnes de suivi : **ce classeur est le modèle à importer**. On garde l'import des banques du logiciel au cas où. BGFI : 2023 à 2026, **la colonne en plus n'existe qu'à partir de 2025**. AFG : CSV exporté du logiciel de la banque (mai à aujourd'hui), qu'elle retraitera au même modèle — l'import AFG se bâtit sur celui de BGFI | ✅ 07/10 — voir dessous ; **migrations et commande à passer** |
-| 9 | **Trésorerie.** Le CA et/ou les impayés nourrissent la trésorerie, mais `/caisse` ne montre rien, et des montants paraissent en banque sans banque créée — sans avoir importé caisse ni banque de certaines villes. Que se passera-t-il à l'import de la banque ? **Proposition retenue** : (a) une section de KPI qui montre la situation caisse / banque **selon ce qui la nourrit aujourd'hui** (CA, impayés) ; (b) les données de caisse et de banque **réellement importées gardées à part, sans y toucher** ; (c) un KPI de **comparaison** entre le solde de la banque et ce que montrent le CA / les impayés ; (d) un bouton « **Lignes rapprochement CA-Banque** », comme « Où part l'argent », filtre *identique / pas identique*, qui liste les lignes retrouvées ou non à la banque ; (e) **pareil pour la caisse**. La trésorerie montre le solde correct de chaque côté — caisse, banque, encaissements, décaissements — **sans rien mélanger, ni gonfler ni diminuer** | à faire |
+| 9 | **Trésorerie.** Le CA et/ou les impayés nourrissent la trésorerie, mais `/caisse` ne montre rien, et des montants paraissent en banque sans banque créée — sans avoir importé caisse ni banque de certaines villes. Que se passera-t-il à l'import de la banque ? **Proposition retenue** : (a) une section de KPI qui montre la situation caisse / banque **selon ce qui la nourrit aujourd'hui** (CA, impayés) ; (b) les données de caisse et de banque **réellement importées gardées à part, sans y toucher** ; (c) un KPI de **comparaison** entre le solde de la banque et ce que montrent le CA / les impayés ; (d) un bouton « **Lignes rapprochement CA-Banque** », comme « Où part l'argent », filtre *identique / pas identique*, qui liste les lignes retrouvées ou non à la banque ; (e) **pareil pour la caisse**. La trésorerie montre le solde correct de chaque côté — caisse, banque, encaissements, décaissements — **sans rien mélanger, ni gonfler ni diminuer** | ✅ 07/10 — voir dessous |
 
 #### 1. Les habilitations — fait le 07/10
 
@@ -2379,6 +2379,38 @@ du dépôt reconnaît le fichier, et avertit si l'on choisit l'autre type « ban
   maintenance propose « Relevés bancaires (suivi de la caissière) ».
 - **Pas encore à l'écran** : ces opérations alimentent la section 9 (trésorerie, comparaison,
   rapprochements). Tests : `LeReleveDeLaCaissiereSImporteTest`.
+
+#### 9. La trésorerie ne mélange plus les règlements et les relevés — fait le 07/10
+
+**Ce que le propriétaire a remarqué était juste, et c'était un défaut.** Importer le CA ou
+les impayés nourrit la trésorerie — ce sont des **règlements**, rangés par leur moyen ; d'où
+des montants « en banque » sans banque déclarée, et rien sur `/caisse`, qui ne lit que le
+journal importé. Et depuis le 01/10 l'écran **additionnait** le journal de caisse aux
+règlements : un règlement en espèces écrit à l'état **et** au journal comptait deux fois.
+
+- **Les quatre cartes du haut** lisent les **règlements seuls** (CA, impayés, saisies), sous
+  ce titre. Les quatre cases par support aussi : « Selon les règlements ».
+- **Nouveau bloc « Selon la caisse et la banque — relevés importés, tels quels »** : le journal
+  de caisse (entrées, sorties) et chaque compte bancaire (crédits, débits, **solde annoncé par
+  la banque** à la dernière opération de la période — jamais recalculé). Les comptes sont ceux
+  de l'entreprise : le filtre de ville ne s'y applique pas, et l'écran le dit.
+- **Comparaison** : crédits des relevés face aux règlements par banque (ou sans moyen dit), et
+  entrées du journal face aux règlements en espèces, avec l'écart.
+- **« Lignes rapprochement CA-Banque » et « CA-Caisse »**, comme « Où part l'argent » : filtre
+  *Tous / Identique / Pas identique*, l'opération retenue sous chaque ligne, et le compte des
+  opérations de banque ou de caisse **sans règlement**. Identique = même montant, de 3 jours
+  avant à 10 jours après à la banque, 3 jours de part et d'autre en caisse ; chaque opération
+  ne sert qu'une fois ; à montants égaux, la date la plus proche. C'est un pointage, pas une
+  preuve — l'écran dit « identique », pas « réglé par ». `RapprochementDeTresorerie`.
+- **La liste des lignes ne change pas** : elle porte toujours les trois sources, avec leur
+  origine. Ce qui a disparu, c'est l'addition entre familles, pas une ligne.
+- **Mesuré** sur 7 000 règlements et 6 800 opérations : pointer à chaque clic portait l'écran de
+  0,04 s à 0,67 s. Le pointage ne se fait donc **qu'à l'ouverture** d'un tableau (0,6 s, une
+  fois) ; la comparaison toujours affichée se fait en sommes, et le clic revient à **0,06 s**.
+- Tests : `LaTresorerieNeMelangePasLesReglementsEtLesRelevesTest` ; `LaTresorerieListeCeQuElle
+  CompteTest` mis à la nouvelle règle (ce qui est listé est compté, chacun dans son bloc).
+
+**Le plan du 07/10 est terminé**, sauf la section 7 (503) qui attend sa preuve en ligne.
 
 ### Hors chantier, toujours en attente
 

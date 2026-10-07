@@ -126,7 +126,7 @@ URL de push).
 | 6 | Caisse centralisée à Abidjan (sites 1 et 2) : vérifier | ✅ |
 | 7 | Erreur 503 sur `/super-admin` | 🟡 cause probable nommée — **`app:diagnostic` en ligne** pour la confirmer |
 | 8 | Banques AFG et BGFI ; import du classeur de suivi de la caissière | ✅ — `migrate` puis `banques:declarer --appliquer` |
-| 9 | Trésorerie : KPI par source, comparaison, rapprochements CA-Banque et CA-Caisse | à faire |
+| 9 | Trésorerie : KPI par source, comparaison, rapprochements CA-Banque et CA-Caisse | ✅ |
 
 ### Au propriétaire, et qui bloque la suite
 
