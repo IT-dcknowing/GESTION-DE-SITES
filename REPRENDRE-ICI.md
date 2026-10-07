@@ -186,6 +186,13 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 9. **`php artisan factures:situer`** (constat), rapporter la sortie, puis `--appliquer` : situe
    les factures « Lieu non précisé » et prend leur activité au devis.
 
+10. **Banques et charges (sections 14 et 16)** : `php artisan migrate` passe aussi
+    `2026_10_07_000003_un_libelle_s_affecte_a_sa_banque` (table neuve) et
+    `2026_10_07_000004_une_charge_se_reprend_de_la_caisse` (une colonne nullable). Aucune ligne
+    lue ni écrite. Ensuite, sur `/banques`, **affecter** les libellés non rangés aux banques
+    déclarées (« Affecter à ») ; sur `/charges`, **reprendre** les sorties de caisse qui sont
+    des charges — ligne à ligne, rien ne se reprend tout seul.
+
 ### En attente d'un accord, pas d'un travail
 
 - **Correspondances — quatre choix faits sans confirmation**, chacun réversible en une ligne :
