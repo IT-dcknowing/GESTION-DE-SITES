@@ -128,6 +128,22 @@ URL de push).
 | 8 | Banques AFG et BGFI ; import du classeur de suivi de la caissière | ✅ — `migrate` puis `banques:declarer --appliquer` |
 | 9 | Trésorerie : KPI par source, comparaison, rapprochements CA-Banque et CA-Caisse | ✅ |
 
+### Le plan du 07/10, seconde partie — en cours
+
+Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
+
+| # | Sujet | État |
+|---|---|---|
+| 10 | Extrait de compte : colonne CLIENT (assuré) à l'export | ✅ |
+| 11 | Bouton Retour sur `/recouvrement` | à faire |
+| 12 | La comptabilité ouvre le recouvrement ; et la trésorerie | à faire |
+| 13 | Banques : règlements face au relevé, plus de montant sur les boutons | à faire |
+| 14 | Banques : « Affecter à » et « Modifier » sur les libellés non rangés | à faire |
+| 15 | Expliquer le rapprochement et le lettrage | à faire |
+| 16 | Charges récupérées de la caisse, colonne Origine | à faire |
+| 17 | Synthèse par site : « Lieu non précisé », activité par le devis | à faire |
+| 18 | Factures fournisseurs FNE (stripping), porter et régler — **module à venir** | plan |
+
 ### Au propriétaire, et qui bloque la suite
 
 0. **Les correspondances** : déjà dans `main` et poussées. Sur le serveur, `git pull` puis

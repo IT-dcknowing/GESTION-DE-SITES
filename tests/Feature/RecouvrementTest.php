@@ -978,6 +978,12 @@ class RecouvrementTest extends TestCase
             }
         }
 
+        // L'export porte la colonne de l'assuré — demandé le 07/10.
+        $classeur = $this->actingAs($gerant)->get(route('recouvrement.telecharger', [
+            'document' => 'extrait', 'format' => 'word', 'tiers' => 'ALLIANZ',
+        ]))->getContent();
+        $this->assertStringContainsString('Client (assuré)', $classeur);
+
         // Les totaux de l'écran sont ceux de ce qu'il montre.
         $impayes = Volt::actingAs($gerant)->test('recouvrement.extrait')->set('tiers', 'ALLIANZ')->set('reglement', 'impaye');
         $this->assertSame(300_000 + 700_000, $impayes->get('totaux')['reste']);

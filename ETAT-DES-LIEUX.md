@@ -2412,6 +2412,23 @@ règlements : un règlement en espèces écrit à l'état **et** au journal comp
 
 **Le plan du 07/10 est terminé**, sauf la section 7 (503) qui attend sa preuve en ligne.
 
+### Le plan du 07/10, seconde partie — retours sur la version mise en ligne
+
+Demandé le 07/10 après les captures de `/banques` et de la synthèse par site. Même règle :
+chaque section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
+
+| # | Demande | État |
+|---|---|---|
+| 10 | **Priorité** — extrait de compte, export Excel : une colonne **CLIENT** (le nom de l'assuré) | ✅ 07/10 |
+| 11 | `/recouvrement` (la saisie) : un bouton **Retour** vers le tableau de bord du recouvrement | à faire |
+| 12 | **La comptabilité ne peut pas ouvrir le module recouvrement** (« Ouvrir le module » la refuse) : lever ce blocage ; lui donner aussi la **trésorerie** | à faire |
+| 13 | **Banques** : au clic sur BGFI (ou une autre), des KPI qui disent **ce que disent les règlements** (CA, impayés importés) et **ce que dit réellement la banque** (le relevé), et les factures pas encore réglées — comme sur la trésorerie. **Ne plus afficher de montant sur les boutons des banques**, pour ne pas prêter à confusion | à faire |
+| 14 | **Banques**, libellés non rangés : à côté de « Déclarer », un bouton **Affecter à** (choisir une banque déclarée : « c'est la même ») et un bouton **Modifier** (ouvrir le formulaire de création prérempli, compléter, valider) | à faire |
+| 15 | **Expliquer** le rapprochement « identique » et **le lettrage facture ↔ règlement** : sur quoi il se fait (numéro, date…), et avec quoi se rapproche le CA (impayés ? caisse ?) | à faire |
+| 16 | **Charges** : pouvoir récupérer certaines sorties de la **caisse** dans les charges, avec une colonne **Origine** qui dit « Caisse » | à faire |
+| 17 | **Synthèse par site** (accueil du gérant) : pourquoi « Lieu non précisé », alors que chaque facture a un code ? Vérifier que ce tableau est à jour, et les autres tableaux susceptibles d'être en retard. **L'activité (Sinistre / Mécanique)** : remonter au devis par le **n° de fiche de réception** de la facture, puisque le devis la dit | à faire |
+| 18 | **Module à venir — les factures fournisseurs FNE.** Récupérer les factures **FNE** par extraction automatique (« stripping »), avec **Origine = FNE**. Au suivi fournisseur, comme aux impayés : **porter** une facture (choisir le fournisseur, puis la facture) ; un champ **« Régler une facture fournisseur »** (choisir le fournisseur, la facture, champs préremplis) ; pour les factures que la FNE ne donne pas, le bouton du formulaire existant | **plan seulement** — module à venir |
+
 ### Hors chantier, toujours en attente
 
 - **Les avoirs : tranché le 02/10 par le propriétaire, l'environnement est prêt, le dépôt

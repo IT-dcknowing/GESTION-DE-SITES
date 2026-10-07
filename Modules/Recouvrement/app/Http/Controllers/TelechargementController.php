@@ -342,6 +342,9 @@ class TelechargementController
                 $f->date_reception?->format('d/m/Y') ?? '—',
                 (string) $f->n_facture,
                 (string) ($f->n_sinistre ?: '—'),
+                // L'assuré — demandé le 07/10 : sur l'extrait d'un assureur, c'est le nom que
+                // l'on cherche pour retrouver le dossier, et « Pour le compte de » ne le dit pas.
+                (string) ($f->client ?: '—'),
                 $pourLeCompte,
                 (string) ($f->vehicule ?: '—'),
                 (string) ($f->immatriculation ?: '—'),
@@ -353,10 +356,10 @@ class TelechargementController
         })->values()->all();
 
         $donnees = [
-            ['Date de facturation', 'Date de dépôt', 'N° facture', 'N° sinistre', 'Pour le compte de',
+            ['Date de facturation', 'Date de dépôt', 'N° facture', 'N° sinistre', 'Client (assuré)', 'Pour le compte de',
                 'Véhicule', 'Immatriculation', 'Montant TTC', 'Réglé', 'Reste à payer', 'Ancienneté'],
             $corps,
-            ['TOTAL', '', '', '', '', '', '', (int) $factures->sum('montant'), $regle, $reste, ''],
+            ['TOTAL', '', '', '', '', '', '', '', (int) $factures->sum('montant'), $regle, $reste, ''],
             [],
         ];
 
