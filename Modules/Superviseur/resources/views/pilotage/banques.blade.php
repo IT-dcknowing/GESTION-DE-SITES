@@ -8,8 +8,11 @@ use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
+use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Exploitation\Modeles\LibelleDeBanque;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
+use Modules\Noyau\Exploitation\Services\RapprochementDeTresorerie;
 use Modules\Noyau\Exploitation\Services\ReconnaissanceDeBanque;
 use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 
@@ -100,7 +103,20 @@ state([
     'type' => Banque::BANQUE,
     'nom' => '',
     'note' => '',
+    /*
+     * Le libellé d'où part la déclaration, quand on l'ouvre par « Modifier » — demandé le
+     * 07/10. On corrige le nom (« BGIF » devient « BGFI ») avant de déclarer ; le libellé
+     * d'origine est alors affecté à la banque créée, sans quoi ses règlements resteraient
+     * dans la liste des non rangés, sous la nouvelle banque qui porte pourtant leur nom.
+     */
+    'libelleOrigine' => '',
 ]);
+
+/*
+ * « Affecter à » — demandé le 07/10 : le libellé désigne une banque déjà déclarée, il n'en
+ * faut pas une de plus. Le formulaire est replié tant qu'on ne le demande pas.
+ */
+state(['libelleAAffecter' => '', 'banqueAffectee' => '']);
 
 mount(function () {
     $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
@@ -135,7 +151,9 @@ $libellePerimetre = computed(fn () => PerimetreSites::libellePerimetre(auth()->u
 /** Le gérant déclare les banques ; les autres les lisent. Vérifié ici **et** dans l'action. */
 $peutDeclarer = computed(fn () => auth()->user()->hasRole('gerant'));
 
-$banques = computed(fn () => Banque::query()->where('est_active', true)->orderBy('nom')->get());
+// Chargées avec leurs libellés affectés : la reconnaissance les lit sur chaque fiche, et les
+// charger ici évite une requête par banque.
+$banques = computed(fn () => Banque::query()->with('libellesAffectes')->where('est_active', true)->orderBy('nom')->get());
 
 /**
  * Le code que le prochain compte recevra — montré, jamais saisi.
@@ -220,6 +238,8 @@ $repartition = computed(function () {
             'nombre' => (int) $ligne->nombre,
             'montant' => (int) $ligne->montant,
             'raison' => $verdict['raison'],
+            // La banque qui ressemble, s'il y en a une : « Affecter à » la présélectionne.
+            'proposee' => $verdict['banque']?->id,
         ];
     }
 
@@ -448,6 +468,124 @@ $kpis = computed(function () {
     ];
 });
 
+/*
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ * Ce que disent les règlements, ce que dit la banque — demandé le 07/10.
+ *
+ * « Lorsque BGFI sera cliquée, on doit avoir des KPI qui donnent ce que disent les règlements
+ * des factures importées, et ce que dit réellement la banque, avec les factures pas encore
+ * réglées, comme sur la page trésorerie. » Les trois se lisent côte à côte et ne
+ * s'additionnent jamais : un chèque est écrit à l'état des impayés **et** au relevé.
+ *
+ * Les montants ont quitté les boutons pour la même raison : un total sur « BGFI » sans dire
+ * de quelle source il vient se lisait comme le solde du compte, et ne l'était pas.
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ */
+
+/** Les banques (au sens strict) que le bouton choisi désigne : une, toutes, ou aucune. */
+$banquesRegardees = computed(function () {
+    $choisi = (string) $this->supportFiltre;
+
+    if ($choisi === '') {
+        return $this->banques->where('type', Banque::BANQUE)->pluck('id')->all();
+    }
+
+    return ($this->comptes[$choisi]['sorte'] ?? null) === 'banque' ? [(int) substr($choisi, 1)] : [];
+});
+
+/**
+ * Le relevé des banques regardées : crédits, débits, solde annoncé — tels que la banque les
+ * dit, jamais recalculés. Mêmes chiffres que le bloc « Selon la caisse et la banque » de la
+ * trésorerie : c'est la même lecture, `RapprochementDeTresorerie::releves()`.
+ *
+ * @return array{credits: int, debits: int, nombre: int, solde: ?int, date: ?string}
+ */
+$releveRegarde = computed(function () {
+    [$debut, $fin] = $this->plage;
+    $ids = $this->banquesRegardees;
+
+    $releves = RapprochementDeTresorerie::releves($debut, $fin)
+        ->filter(fn ($r) => in_array($r['banque']->id, $ids, true));
+
+    return [
+        'credits' => (int) $releves->sum('credits'),
+        'debits' => (int) $releves->sum('debits'),
+        'nombre' => (int) $releves->sum('nombre'),
+        // Le solde n'existe que si au moins un relevé le dit ; zéro serait une affirmation.
+        'solde' => $releves->every(fn ($r) => $r['solde_fin'] === null) ? null : (int) $releves->sum('solde_fin'),
+        'date' => $releves->pluck('date_solde')->filter()->max(),
+    ];
+});
+
+/** Ce que les règlements disent des banques regardées — la somme des boutons, sans filtre d'origine. */
+$reglementsRegardes = computed(function () {
+    $ids = $this->banquesRegardees;
+
+    return collect($this->comptes)
+        ->filter(fn ($c, $cle) => $c['sorte'] === 'banque' && in_array((int) substr((string) $cle, 1), $ids, true))
+        ->reduce(fn ($t, $c) => ['montant' => $t['montant'] + $c['montant'], 'nombre' => $t['nombre'] + $c['nombre']],
+            ['montant' => 0, 'nombre' => 0]);
+});
+
+/**
+ * Les factures pas encore réglées, rangées sous la banque **notée sur la créance**.
+ *
+ * C'est le seul lien qu'une facture non payée ait avec une banque : elle n'a pas encore de
+ * règlement, donc pas de compte désigné. La banque notée (« BGFI » sur la créance d'un
+ * assureur qui règle par chèque BGFI) dit où l'argent est attendu. Rangée par la même
+ * reconnaissance que les règlements, affectations comprises : un libellé non reconnu ne se
+ * range nulle part, comme plus haut.
+ *
+ * Mêmes bornes que la trésorerie : les factures de la période, au même seuil de solde que
+ * partout (`Facture::scopeAvecResteAEncaisser`). Une requête groupée sur le libellé : quelques
+ * lignes reviennent, pas des milliers.
+ *
+ * @return array<int, array{nombre: int, reste: int}>
+ */
+$facturesOuvertesParBanque = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    $groupes = EtatDesImpayes::dansLePerimetre(Facture::query(), $this->idsSites, $this->idsVilles)
+        ->whereBetween('factures.date', [$debut, $fin])
+        ->whereNotNull('factures.banque')
+        ->avecResteAEncaisser()
+        ->groupBy('factures.banque')
+        ->selectRaw('factures.banque as libelle, count(*) as nombre, '
+            .'coalesce(sum(factures.montant - '.Facture::ENCAISSE_SQL.'), 0) as reste')
+        ->toBase()->get();
+
+    $parBanque = [];
+
+    foreach ($groupes as $groupe) {
+        $verdict = ReconnaissanceDeBanque::pour($groupe->libelle, $this->banques);
+
+        if ($verdict['verdict'] !== ReconnaissanceDeBanque::CERTAINE) {
+            continue;
+        }
+
+        $id = $verdict['banque']->id;
+        $parBanque[$id] ??= ['nombre' => 0, 'reste' => 0];
+        $parBanque[$id]['nombre'] += (int) $groupe->nombre;
+        $parBanque[$id]['reste'] += (int) $groupe->reste;
+    }
+
+    return $parBanque;
+});
+
+$facturesOuvertesRegardees = computed(fn () => collect($this->facturesOuvertesParBanque)
+    ->only($this->banquesRegardees)
+    ->reduce(fn ($t, $f) => ['nombre' => $t['nombre'] + $f['nombre'], 'reste' => $t['reste'] + $f['reste']],
+        ['nombre' => 0, 'reste' => 0]));
+
+/** Les libellés affectés à la banque choisie, pour pouvoir retirer une affectation. */
+$libellesAffectesDuCompte = computed(function () {
+    $ids = $this->banquesRegardees;
+
+    return (string) $this->supportFiltre === '' || count($ids) !== 1
+        ? collect()
+        : ($this->banques->firstWhere('id', $ids[0])?->libellesAffectes ?? collect());
+});
+
 $lignes = computed(fn () => (clone $this->requete)
     ->with(['facture', 'banque', 'site.ville'])
     ->orderByDesc('encaissements.date')
@@ -465,13 +603,97 @@ $ouvrirLaDeclaration = function (?string $nomPropose = null, ?string $type = nul
     $this->type = $type ?: Banque::BANQUE;
     $this->nom = $nomPropose ? Banque::formePresentable($nomPropose) : '';
     $this->note = '';
+    $this->libelleOrigine = '';
+    $this->libelleAAffecter = '';
     $this->resetErrorBag();
+};
+
+/*
+ * « Modifier » — demandé le 07/10 : le libellé est presque le bon nom ; on le corrige dans
+ * le formulaire de création, prérempli, puis on déclare. Le libellé d'origine suit la
+ * banque créée — voir `libelleOrigine`.
+ */
+$ouvrirLaModification = function (string $libelle) {
+    $this->ouvrirLaDeclaration($libelle);
+    $this->libelleOrigine = $libelle;
+    $this->note = 'Déclarée depuis le libellé « '.$libelle.' » trouvé sur les créances.';
 };
 
 $fermerLaDeclaration = function () {
     $this->formulaireOuvert = false;
-    $this->fill(['type' => Banque::BANQUE, 'nom' => '', 'note' => '']);
+    $this->fill(['type' => Banque::BANQUE, 'nom' => '', 'note' => '', 'libelleOrigine' => '']);
     $this->resetErrorBag();
+};
+
+$ouvrirLAffectation = function (string $libelle, ?int $proposee = null) {
+    $this->fermerLaDeclaration();
+    $this->libelleAAffecter = $libelle;
+    $this->banqueAffectee = $proposee ? (string) $proposee : '';
+};
+
+$fermerLAffectation = function () {
+    $this->fill(['libelleAAffecter' => '', 'banqueAffectee' => '']);
+    $this->resetErrorBag();
+};
+
+/**
+ * Affecte un libellé à une banque déclarée.
+ *
+ * Une ligne écrite, et une seule : la créance garde ce qui y a été noté. Le libellé se range
+ * aussitôt sous la banque — dans ses totaux, son tableau et ses factures pas encore réglées.
+ */
+$affecterLeLibelle = function () {
+    abort_unless($this->peutDeclarer, 403, 'L’affectation des libellés est réservée au gérant.');
+
+    $this->validate([
+        'libelleAAffecter' => ['required', 'string', 'max:160'],
+        'banqueAffectee' => ['required', Rule::in($this->banques->pluck('id')->map(fn ($id) => (string) $id)->all())],
+    ], attributes: ['banqueAffectee' => 'banque', 'libelleAAffecter' => 'libellé']);
+
+    $cle = Banque::clePour($this->libelleAAffecter);
+
+    if ($cle === '') {
+        $this->addError('banqueAffectee', 'Ce libellé est vide : il n’y a rien à affecter.');
+
+        return;
+    }
+
+    $deja = LibelleDeBanque::query()->where('cle', $cle)->with('banque')->first();
+
+    if ($deja !== null) {
+        $this->addError('banqueAffectee', 'Ce libellé est déjà affecté à '.($deja->banque?->nom ?? 'une banque')
+            .'. Retirez cette affectation sous cette banque avant d’en poser une autre.');
+
+        return;
+    }
+
+    LibelleDeBanque::create([
+        'entreprise_id' => auth()->user()->entreprise_id,
+        'banque_id' => (int) $this->banqueAffectee,
+        'libelle' => mb_substr($this->libelleAAffecter, 0, 160),
+        'cle' => $cle,
+        'cree_par' => auth()->id(),
+    ]);
+
+    $nom = $this->banques->firstWhere('id', (int) $this->banqueAffectee)?->nom;
+    $this->fermerLAffectation();
+    $this->oublierLesBanques();
+
+    session()->flash('message', 'Le libellé est affecté à '.$nom.' : ses règlements sont désormais rangés sous cette banque.');
+};
+
+/** Retire une affectation : le libellé revient dans la liste des non rangés. */
+$retirerLAffectation = function (int $id) {
+    abort_unless($this->peutDeclarer, 403, 'L’affectation des libellés est réservée au gérant.');
+
+    LibelleDeBanque::query()->whereKey($id)->delete();
+    $this->oublierLesBanques();
+};
+
+/** Tout ce qui dépend des fiches et de leurs libellés se relit. */
+$oublierLesBanques = function () {
+    unset($this->banques, $this->repartition, $this->libelles, $this->comptes, $this->banquesRegardees,
+        $this->facturesOuvertesParBanque, $this->libellesAffectesDuCompte);
 };
 
 /*
@@ -517,7 +739,7 @@ $declarerLaBanque = function () {
         return;
     }
 
-    Banque::create([
+    $banque = Banque::create([
         'entreprise_id' => auth()->user()->entreprise_id,
         'nom' => Banque::formePresentable($donnees['nom']),
         'nom_normalise' => $cle,
@@ -532,7 +754,21 @@ $declarerLaBanque = function () {
 
     unset($this->codeAVenir);
 
-    unset($this->banques, $this->repartition, $this->libelles, $this->comptes);
+    // Ouverte par « Modifier » : le libellé d'origine suit la banque, sauf s'il porte déjà
+    // son nom — la reconnaissance le range alors sans aide.
+    $origine = Banque::clePour($this->libelleOrigine);
+
+    if ($origine !== '' && $origine !== $cle && ! LibelleDeBanque::query()->where('cle', $origine)->exists()) {
+        LibelleDeBanque::create([
+            'entreprise_id' => $banque->entreprise_id,
+            'banque_id' => $banque->id,
+            'libelle' => mb_substr($this->libelleOrigine, 0, 160),
+            'cle' => $origine,
+            'cree_par' => auth()->id(),
+        ]);
+    }
+
+    $this->oublierLesBanques();
 
     $this->fermerLaDeclaration();
 
@@ -623,16 +859,17 @@ $declarerLaBanque = function () {
 
          Trois sortes de boutons : les banques déclarées — qui paraissent **même vides** —, les
          portefeuilles mobiles trouvés dans les écritures, et le reliquat des moyens illisibles.
-         Chacun dit ce qu'il porte, pour qu'on sache avant de cliquer. --}}
-    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
-        @php $totalGeneral = collect($this->comptes)->sum('montant'); @endphp
 
+         **Sans montant depuis le 07/10** : « ne mets pas le solde des montants sur les banques,
+         de sorte à ne pas prêter à confusion ». Un total sur « BGFI » se lisait comme le solde
+         du compte ; il n'était que la somme des règlements notés. Les chiffres sont dans les
+         KPI ci-dessous, chacun avec sa source. --}}
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
         <button type="button" wire:click="$set('supportFiltre', '')"
             class="bouton {{ $supportFiltre === '' ? '' : 'bouton-secondaire' }}"
             @if ($supportFiltre === '') aria-current="true" @endif
             style="padding:9px 16px;">
             Toutes les banques
-            <span style="opacity:.72; font-weight:600;">({{ ae($totalGeneral) }})</span>
         </button>
 
         @foreach ($this->comptes as $cle => $compte)
@@ -643,9 +880,6 @@ $declarerLaBanque = function () {
                 @if ($compte['vide']) title="Déclarée, aucune écriture sur cette période" @endif
                 style="padding:9px 16px; {{ $compte['vide'] && ! $actif ? 'opacity:.62;' : '' }}">
                 {{ $compte['libelle'] }}
-                <span style="opacity:.72; font-weight:600;">
-                    {{ $compte['vide'] ? '(—)' : '('.ae($compte['montant']).')' }}
-                </span>
             </button>
         @endforeach
 
@@ -694,6 +928,57 @@ $declarerLaBanque = function () {
         <x-kpi-card label="Clients distincts" :value="number_format($this->kpis['clients'], 0, ',', ' ')" />
     </div>
 
+    {{-- ─────────────────────────────── règlements face au relevé — 07/10
+
+         Seulement pour une banque, ou pour toutes : un portefeuille mobile ne paraît sur aucun
+         relevé, et « Moyen non précisé » n'est pas un compte. --}}
+    @if ($this->banquesRegardees !== [])
+        @php
+            $reg = $this->reglementsRegardes;
+            $rel = $this->releveRegarde;
+            $ouv = $this->facturesOuvertesRegardees;
+            $nomRegarde = $supportFiltre === '' ? 'toutes les banques' : ($this->compteChoisi['libelle'] ?? '');
+        @endphp
+        <div class="carte" style="margin-bottom:16px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Ce que disent les règlements, ce que dit la banque — {{ $nomRegarde }}</h3>
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
+                Trois sources, lues côte à côte et jamais additionnées : un chèque est écrit à l'état
+                des impayés <b>et</b> au relevé. Le relevé est celui de l'entreprise : le filtre de
+                ville ne s'y applique pas.
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px;">
+                <x-kpi-card label="Selon les règlements importés et saisis" :value="ae($reg['montant'])" couleur="#0E9F6E"
+                    sub="{{ number_format($reg['nombre'], 0, ',', ' ') }} règlement(s) — CA, état des impayés, saisies" />
+                <x-kpi-card label="Selon la banque — crédits du relevé" :value="$rel['nombre'] > 0 ? ae($rel['credits']) : '—'"
+                    sub="{{ $rel['nombre'] > 0 ? 'Débits '.ae($rel['debits']).' · '.number_format($rel['nombre'], 0, ',', ' ').' opération(s)' : 'Aucun relevé déposé pour cette période' }}" />
+                <x-kpi-card label="Solde annoncé par la banque" :value="$rel['solde'] === null ? '—' : ae($rel['solde'])"
+                    :couleur="($rel['solde'] ?? 0) >= 0 ? '#0E9F6E' : '#C8102E'"
+                    sub="{{ $rel['date'] ? 'Au '.\Illuminate\Support\Carbon::parse($rel['date'])->format('d/m/Y').', tel quel' : 'Tel que le relevé le dit, jamais recalculé' }}" />
+                <x-kpi-card label="Écart (banque − règlements)" :value="$rel['nombre'] > 0 ? ae($rel['credits'] - $reg['montant']) : '—'"
+                    :couleur="$rel['nombre'] > 0 && $rel['credits'] - $reg['montant'] !== 0 ? '#C8102E' : '#0E9F6E'"
+                    sub="Le détail ligne à ligne : Trésorerie, « Lignes rapprochement CA-Banque »" />
+                <x-kpi-card label="Factures pas encore réglées" :value="ae($ouv['reste'])" couleur="#B45309"
+                    sub="{{ number_format($ouv['nombre'], 0, ',', ' ') }} facture(s) de la période, banque notée sur la créance" />
+            </div>
+
+            @if ($this->libellesAffectesDuCompte->isNotEmpty())
+                <div style="margin-top:12px; font-size:12.5px; color:#4B4E55; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <span style="color:#6B6E76;">Libellés affectés à cette banque :</span>
+                    @foreach ($this->libellesAffectesDuCompte as $affecte)
+                        <span style="border:1px solid var(--th-ligne,#E2E0D8); border-radius:999px; padding:2px 4px 2px 10px;">
+                            {{ $affecte->libelle }}
+                            @if ($this->peutDeclarer)
+                                <button type="button" wire:click="retirerLAffectation({{ $affecte->id }})"
+                                    class="bouton bouton-secondaire" style="padding:1px 7px; font-size:11px; margin-left:4px;"
+                                    title="Retirer : le libellé revient dans la liste des non rangés">Retirer</button>
+                            @endif
+                        </span>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    @endif
+
     {{-- ─────────────────────────────── ce qu'on ne sait pas ranger
 
          **Rendu à part plutôt que fondu dans un total.** C'est la liste à corriger, et elle
@@ -706,8 +991,21 @@ $declarerLaBanque = function () {
             </h3>
             <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.55;">
                 Ils ne sont comptés dans aucun bouton ci-dessus. Les ranger au jugé fausserait des
-                totaux sans que rien ne le signale.
+                totaux sans que rien ne le signale. <b>Déclarer</b> crée la banque sous ce nom ;
+                <b>Modifier</b> ouvre la même création pour corriger le nom d'abord ; <b>Affecter à</b>
+                range le libellé sous une banque déjà déclarée. La créance garde ce qui y a été noté.
             </p>
+
+            @if ($libelleAAffecter !== '')
+                <div class="bloc-saisie" style="background:#fff; border-style:solid; margin-bottom:12px;">
+                    <span style="font-size:13px; align-self:center;">Affecter « <b>{{ $libelleAAffecter }}</b> » à</span>
+                    <x-champ label="Banque" model="banqueAffectee" type="select" :requis="true" width="220"
+                        :options="$this->banques->pluck('nom', 'id')->all()" vide="— choisir une banque —" />
+                    <button type="button" wire:click="affecterLeLibelle" class="bouton">Affecter</button>
+                    <button type="button" wire:click="fermerLAffectation" class="bouton bouton-secondaire">Annuler</button>
+                </div>
+                <x-erreurs-du-bloc prefixe="banqueAffectee" />
+            @endif
 
             <div class="tableau-conteneur">
                 <table class="tableau">
@@ -734,8 +1032,20 @@ $declarerLaBanque = function () {
                                         @if ($ligne['libelle'])
                                             <button type="button" class="bouton bouton-secondaire"
                                                 style="padding:3px 9px; font-size:11.5px;"
-                                                wire:click="ouvrirLaDeclaration('{{ addslashes($ligne['libelle']) }}')">
+                                                wire:click="ouvrirLaDeclaration(@js($ligne['libelle']))">
                                                 Déclarer
+                                            </button>
+                                            @if ($this->banques->isNotEmpty())
+                                                <button type="button" class="bouton bouton-secondaire"
+                                                    style="padding:3px 9px; font-size:11.5px;"
+                                                    wire:click="ouvrirLAffectation(@js($ligne['libelle']), {{ $ligne['proposee'] ?? 'null' }})">
+                                                    Affecter à…
+                                                </button>
+                                            @endif
+                                            <button type="button" class="bouton bouton-secondaire"
+                                                style="padding:3px 9px; font-size:11.5px;"
+                                                wire:click="ouvrirLaModification(@js($ligne['libelle']))">
+                                                Modifier
                                             </button>
                                         @endif
                                     </td>
