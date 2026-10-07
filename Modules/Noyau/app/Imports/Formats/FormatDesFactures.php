@@ -2,6 +2,7 @@
 
 namespace Modules\Noyau\Imports\Formats;
 
+use Illuminate\Support\Facades\DB;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
 use Modules\Noyau\Imports\Services\PontDesFactures;
@@ -45,6 +46,9 @@ class FormatDesFactures extends Format
     private ?array $motifsDesFiches = null;
 
     private ?array $numerosConnus = null;
+
+    /** @var array<string, string>|null numéro de fiche => activité du devis */
+    private ?array $activitesDesDevis = null;
 
     /** @var array<string, true>|null les numéros CATTC déjà retrouvés à l'état des impayés */
     private ?array $numerosRetrouves = null;
@@ -323,6 +327,23 @@ class FormatDesFactures extends Format
 
         if ($fiche === null) {
             return 'Mécanique';
+        }
+
+        /*
+         * **Le devis de la même fiche d'abord — 07/10.** « Pour savoir si c'est Sinistre ou
+         * Mécanique, remonte jusqu'au devis par le n° de fiche de réception : chaque devis le
+         * dit. » Le motif de la fiche ne vient qu'après, et « Mécanique » en dernier recours.
+         */
+        $this->activitesDesDevis ??= DB::table('devis')
+            ->where('entreprise_id', $this->entrepriseId)
+            ->whereNotNull('n_fiche_reception')
+            ->whereIn('activite', ['Mécanique', 'Sinistre'])
+            ->orderBy('id')
+            ->pluck('activite', 'n_fiche_reception')
+            ->all();
+
+        if (isset($this->activitesDesDevis[$fiche])) {
+            return $this->activitesDesDevis[$fiche];
         }
 
         // Chargé d'un bloc, une seule fois. La version qui interrogeait la base à chaque

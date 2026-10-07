@@ -2426,7 +2426,7 @@ chaque section terminée est fusionnée dans `main` et poussée sur les deux dé
 | 14 | **Banques**, libellés non rangés : à côté de « Déclarer », un bouton **Affecter à** (choisir une banque déclarée : « c'est la même ») et un bouton **Modifier** (ouvrir le formulaire de création prérempli, compléter, valider) | à faire |
 | 15 | **Expliquer** le rapprochement « identique » et **le lettrage facture ↔ règlement** : sur quoi il se fait (numéro, date…), et avec quoi se rapproche le CA (impayés ? caisse ?) | ✅ 07/10 — voir « Lettrage et rapprochement » dessous |
 | 16 | **Charges** : pouvoir récupérer certaines sorties de la **caisse** dans les charges, avec une colonne **Origine** qui dit « Caisse » | à faire |
-| 17 | **Synthèse par site** (accueil du gérant) : pourquoi « Lieu non précisé », alors que chaque facture a un code ? Vérifier que ce tableau est à jour, et les autres tableaux susceptibles d'être en retard. **L'activité (Sinistre / Mécanique)** : remonter au devis par le **n° de fiche de réception** de la facture, puisque le devis la dit | à faire |
+| 17 | **Synthèse par site** (accueil du gérant) : pourquoi « Lieu non précisé », alors que chaque facture a un code ? Vérifier que ce tableau est à jour, et les autres tableaux susceptibles d'être en retard. **L'activité (Sinistre / Mécanique)** : remonter au devis par le **n° de fiche de réception** de la facture, puisque le devis la dit | ✅ 07/10 — voir dessous ; **commande à passer en ligne** |
 | 18 | **Module à venir — les factures fournisseurs FNE.** Récupérer les factures **FNE** par extraction automatique (« stripping »), avec **Origine = FNE**. Au suivi fournisseur, comme aux impayés : **porter** une facture (choisir le fournisseur, puis la facture) ; un champ **« Régler une facture fournisseur »** (choisir le fournisseur, la facture, champs préremplis) ; pour les factures que la FNE ne donne pas, le bouton du formulaire existant | **plan seulement** — module à venir |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
@@ -2460,6 +2460,27 @@ chaque section terminée est fusionnée dans `main` et poussée sur les deux dé
    virement règle souvent plusieurs factures). La colonne F du classeur de la caissière
    (contrepartie : AXA, NSIA…) pourra resserrer la règle — même montant **et** même assureur —
    quand ses noms seront alignés sur ceux des tiers.
+
+#### 17. « Lieu non précisé » et l'activité — fait le 07/10
+
+**Pourquoi la ligne existe.** L'import situe une facture **au moment du dépôt** : par la colonne
+SITE, ou par le code à deux lettres de sa fiche (« FR-KZN° 010669 » → KZ). Deux cas restent sans
+lieu : (1) une facture déposée **avant** que son code ait reçu une ville sur l'écran des codes —
+rien ne la reprenait ensuite, c'est le « tableau en retard » ; (2) une facture venue de **l'état
+des impayés**, qui n'a pas de fiche (42 % de ses lignes n'ont pas de SITE, aucune ne porte de
+code) : elle ne se situe que lorsque le CATTC la reconnaît (§ 5) et lui apporte sa fiche.
+
+- **`php artisan factures:situer`** (constat ; `--appliquer` pour écrire) reprend le cas (1) :
+  par la fiche du parc au même numéro, puis par le devis de la même fiche, puis par le code. Elle
+  dit combien restent sans lieu, et combien parce qu'elles n'ont pas de fiche du tout. Écrit en
+  base sans passer par le modèle, comme `factures:poser-la-ville`.
+- **L'activité vient du devis** de la même fiche, à l'import du CA comme dans la commande ; le
+  motif de la fiche ne vient qu'après, « Mécanique » en dernier recours.
+- **Les autres tableaux** lisent par les mêmes règles de périmètre depuis le § 2 (atelier, sinon
+  ville, sinon la ligne paraît) : ils seront à jour en même temps que les factures. Sur la
+  capture, « Abidjan — Site 2 » à 0 F et tout sous « Site 1 » vient du même retard : les factures
+  du CA prennent l'atelier que dit leur code, et `factures:situer` corrigera ce qui l'attend.
+- Tests : `LesFacturesSansLieuSeSituentTest`.
 
 ### Hors chantier, toujours en attente
 

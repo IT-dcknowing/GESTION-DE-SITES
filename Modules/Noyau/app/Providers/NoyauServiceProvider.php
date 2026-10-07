@@ -32,6 +32,7 @@ class NoyauServiceProvider extends ServiceProvider
                 \Modules\Noyau\Console\PoserLaVilleDesFactures::class,
                 \Modules\Noyau\Console\CompterLesDoublonsDuCa::class,
                 \Modules\Noyau\Console\DeclarerLesBanques::class,
+                \Modules\Noyau\Console\SituerLesFactures::class,
                 \Modules\Noyau\Console\TraiterUnLotImporte::class,
             ]);
         }

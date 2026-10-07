@@ -141,7 +141,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 14 | Banques : « Affecter à » et « Modifier » sur les libellés non rangés | à faire |
 | 15 | Expliquer le rapprochement et le lettrage | ✅ |
 | 16 | Charges récupérées de la caisse, colonne Origine | à faire |
-| 17 | Synthèse par site : « Lieu non précisé », activité par le devis | à faire |
+| 17 | Synthèse par site : « Lieu non précisé », activité par le devis | ✅ — `factures:situer` à passer en ligne |
 | 18 | Factures fournisseurs FNE (stripping), porter et régler — **module à venir** | plan |
 
 ### Au propriétaire, et qui bloque la suite
@@ -182,6 +182,9 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
    `php artisan banques:declarer --appliquer` — BGFI et AFG. Ensuite, déposer les relevés au
    type « **Relevé bancaire — suivi de la caissière** », compte BGFI, dans l'ordre des
    années (2023 → 2026).
+
+9. **`php artisan factures:situer`** (constat), rapporter la sortie, puis `--appliquer` : situe
+   les factures « Lieu non précisé » et prend leur activité au devis.
 
 ### En attente d'un accord, pas d'un travail
 
