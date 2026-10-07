@@ -48,7 +48,9 @@ class FormatDesPiecesBancaires extends Format
 
     public static function libelle(): string
     {
-        return 'Banque';
+        // « Banque » seul ne disait plus lequel des deux relevés : depuis le 07/10, celui de la
+        // caissière a son propre type, et c'est lui qui est à jour.
+        return 'Banque — pièces du logiciel comptable';
     }
 
     public static function colonnes(): array
@@ -76,6 +78,11 @@ class FormatDesPiecesBancaires extends Format
     public static function ventileParLesCodes(): bool
     {
         return false;
+    }
+
+    public static function demandeUnCompte(): bool
+    {
+        return true;
     }
 
     protected function colonneSite(array $ligne): ?string

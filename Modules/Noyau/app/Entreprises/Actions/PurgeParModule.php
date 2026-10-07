@@ -155,9 +155,14 @@ class PurgeParModule
                     'tables' => ['ouvertures_caisse', 'mouvements_caisse'],
                 ],
                 'pieces_bancaires' => [
-                    'libelle' => 'Pièces bancaires',
+                    'libelle' => 'Pièces bancaires du logiciel',
                     'ecran' => 'Banques',
                     'tables' => ['pieces_bancaires'],
+                ],
+                'mouvements_bancaires' => [
+                    'libelle' => 'Relevés bancaires (suivi de la caissière)',
+                    'ecran' => 'Banques',
+                    'tables' => ['mouvements_bancaires'],
                 ],
                 'banques' => [
                     'libelle' => 'Comptes déclarés — banques et portefeuilles',

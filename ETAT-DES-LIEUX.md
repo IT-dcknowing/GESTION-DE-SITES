@@ -2171,7 +2171,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | ✅ 07/10 — voir dessous ; **migration à passer** |
 | 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | ✅ 07/10 — oui, sauf une faille, fermée ; voir dessous |
 | 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | 🟡 07/10 — cause probable nommée, preuve à lire en ligne ; voir dessous |
-| 8 | **Les banques.** Créer **AFG** et **BGFI** pour qu'elles soient disponibles. **Constat avec la caissière** : elle n'est à jour que sur la caisse, pas sur les banques du logiciel. Elle exporte les transactions de la banque dans un classeur où elle ajoute ses colonnes de suivi : **ce classeur est le modèle à importer**. On garde l'import des banques du logiciel au cas où. BGFI : 2023 à 2026, **la colonne en plus n'existe qu'à partir de 2025**. AFG : CSV exporté du logiciel de la banque (mai à aujourd'hui), qu'elle retraitera au même modèle — l'import AFG se bâtit sur celui de BGFI | à faire |
+| 8 | **Les banques.** Créer **AFG** et **BGFI** pour qu'elles soient disponibles. **Constat avec la caissière** : elle n'est à jour que sur la caisse, pas sur les banques du logiciel. Elle exporte les transactions de la banque dans un classeur où elle ajoute ses colonnes de suivi : **ce classeur est le modèle à importer**. On garde l'import des banques du logiciel au cas où. BGFI : 2023 à 2026, **la colonne en plus n'existe qu'à partir de 2025**. AFG : CSV exporté du logiciel de la banque (mai à aujourd'hui), qu'elle retraitera au même modèle — l'import AFG se bâtit sur celui de BGFI | ✅ 07/10 — voir dessous ; **migrations et commande à passer** |
 | 9 | **Trésorerie.** Le CA et/ou les impayés nourrissent la trésorerie, mais `/caisse` ne montre rien, et des montants paraissent en banque sans banque créée — sans avoir importé caisse ni banque de certaines villes. Que se passera-t-il à l'import de la banque ? **Proposition retenue** : (a) une section de KPI qui montre la situation caisse / banque **selon ce qui la nourrit aujourd'hui** (CA, impayés) ; (b) les données de caisse et de banque **réellement importées gardées à part, sans y toucher** ; (c) un KPI de **comparaison** entre le solde de la banque et ce que montrent le CA / les impayés ; (d) un bouton « **Lignes rapprochement CA-Banque** », comme « Où part l'argent », filtre *identique / pas identique*, qui liste les lignes retrouvées ou non à la banque ; (e) **pareil pour la caisse**. La trésorerie montre le solde correct de chaque côté — caisse, banque, encaissements, décaissements — **sans rien mélanger, ni gonfler ni diminuer** | à faire |
 
 #### 1. Les habilitations — fait le 07/10
@@ -2339,6 +2339,46 @@ deux suspects déjà nommés le 02/10 : OPcache éteint, cache et sessions en ba
 rapporter la rubrique *Vitesse*. Regarder aussi, dans cPanel, « Resource Usage » à la date
 du 05/10 vers 13 h 37 GMT : un dépassement de processus (« entry processes ») y serait
 inscrit. Test : `LeDiagnosticDitCommentLesImportsSontLancesTest`.
+
+#### 8. Les banques, et le relevé tel que la caissière le tient — fait le 07/10
+
+**La réponse à la question du propriétaire** — « ajoute "banque modèle" au type de fichier, ou
+laisse-le au niveau des banques ? » : **les deux types coexistent au dépôt**. « Banque — pièces
+du logiciel comptable » (l'ancien « Banque », renommé pour qu'on ne les confonde plus) reste
+au cas où ; « **Relevé bancaire — suivi de la caissière (BGFI, AFG)** » est le nouveau, et
+c'est lui qu'on dépose. Les deux demandent **le compte au dépôt**.
+
+**Ce que portent les quatre classeurs BGFI reçus, mesuré :** douze lignes d'en-tête de banque
+et le « Solde initial », puis Date · Libellé de l'opération · Débit · Crédit · Solde en
+ligne 13 ; **F « Libellé »** — la contrepartie, SANLAM, NSIA, SALAIRES… — à partir de 2025 ;
+**G**, sans titre, la nature de la dépense, en 2026 ; une seconde feuille « POINT DES
+ENCAISSEMENTS » en 2026, tirée de la première, **non lue** (elle doublerait les entrées). Le
+fichier « 2025 » annonce une période jusqu'au 14/08/2026 mais s'arrête au 31/12/2025.
+
+**La règle de lecture** : une ligne avec un montant est une opération ; une ligne sans montant
+(« MOTIF : … », « Échéance », « TVA ») précise l'opération d'avant ; une opération sans date
+(11 sur 6 829) prend celle d'avant. **Vérifié en important les quatre vrais fichiers** sur une
+base locale : **1 382, 1 513, 2 154 et 1 780 opérations, zéro rejet, zéro rupture de la chaîne
+des soldes sur quatre ans**, dernier solde −3 001 551 F, celui du relevé. Le contrôle préalable
+du dépôt reconnaît le fichier, et avertit si l'on choisit l'autre type « banque ».
+
+- **Table neuve `mouvements_bancaires`** (migration `2026_10_07_000002`), distincte de
+  `pieces_bancaires` : une opération de banque avec son solde n'est pas une écriture du
+  logiciel, et les mêler compterait deux fois le même argent. Clé par compte : date,
+  libellé, montants, **solde annoncé** — redéposer, ou deux classeurs qui se chevauchent,
+  ne double rien.
+- **AFG** : même format ; « Débit », « Crédit », « Solde » sans la devise sont aussi
+  reconnus, pour que le CSV retraité ne soit pas refusé sur un titre.
+- **Les deux banques** : `php artisan banques:declarer` — **BGFI** et **AFG** par défaut,
+  **constat d'abord**, `--appliquer` pour écrire, `--entreprise=` s'il y en a plusieurs.
+  Nommées comme les factures les écrivent (« BGFI » 5 472 fois) et non « BGFI BANK », que la
+  reconnaissance n'aurait trouvé dans aucune. Code posé par le système, comme à l'écran.
+- **En chemin** : la mécanique commune ne cherchait l'en-tête que dans les 12 premières
+  lignes (celui-ci est en 13) — chaque format peut désormais sonder plus loin. Et les deux
+  tables bancaires manquaient à « Annuler l'import » et à la purge complète : ajoutées ; la
+  maintenance propose « Relevés bancaires (suivi de la caissière) ».
+- **Pas encore à l'écran** : ces opérations alimentent la section 9 (trésorerie, comparaison,
+  rapprochements). Tests : `LeReleveDeLaCaissiereSImporteTest`.
 
 ### Hors chantier, toujours en attente
 

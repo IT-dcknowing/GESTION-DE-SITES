@@ -108,7 +108,7 @@ class DepotController
              * paraître sous aucune banque. Le format pose la même garde de son côté — une
              * route ne protège que l'entrée.
              */
-            'banque' => ['exclude_unless:format,banque', 'required', Rule::in($banquesOuvertes)],
+            'banque' => ['exclude_unless:format,'.implode(',', Registre::formatsParCompte()), 'required', Rule::in($banquesOuvertes)],
         ], [
             'fichier.required' => "Choisissez d'abord un fichier.",
             'fichier.max' => 'Le fichier dépasse 40 Mo.',
@@ -136,7 +136,7 @@ class DepotController
 
         // Le compte n'a de sens que pour le relevé bancaire : partout ailleurs il reste nul,
         // même si quelqu'un le glisse dans la requête.
-        $banqueId = $format === 'banque' ? (int) $requete->input('banque') : null;
+        $banqueId = in_array($format, Registre::formatsParCompte(), true) ? (int) $requete->input('banque') : null;
 
         if (! $requete->boolean('confirme')) {
             // Avec « toutes les villes », il n'y a pas de ville annoncée à contredire : le

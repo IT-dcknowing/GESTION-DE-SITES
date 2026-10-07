@@ -311,7 +311,7 @@ $abandonner = function () {
                          n'est qu'un confort : le serveur, lui, exige la banque pour ce type et
                          pour lui seul. --}}
                     <div class="imp-fld" id="champ-banque"
-                         @unless (old('format') === 'banque') hidden @endunless>
+                         @unless (in_array(old('format'), \Modules\Noyau\Imports\Formats\Registre::formatsParCompte(), true)) hidden @endunless>
                         <label for="banque">Compte bancaire</label>
                         <select id="banque" name="banque">
                             <option value="">— à choisir —</option>
@@ -500,7 +500,7 @@ $abandonner = function () {
 
                     if (! c.format || ! c.banque) { return; }
 
-                    c.banque.hidden = c.format.value !== 'banque';
+                    c.banque.hidden = @json(\Modules\Noyau\Imports\Formats\Registre::formatsParCompte()).indexOf(c.format.value) === -1;
                 };
 
                 /*

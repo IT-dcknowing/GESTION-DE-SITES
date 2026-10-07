@@ -86,6 +86,7 @@ class TableauDesImports
         // Le relevé bancaire, entré le 01/10. Il se dépose **par compte** : chaque ligne
         // porte la banque déclarée au dépôt, que le fichier ne nomme pas.
         'banque' => 'pieces_bancaires',
+        'releve-banque' => 'mouvements_bancaires',
         // Les entrées et sorties ont leurs deux lecteurs depuis qu'un export Excel existe :
         // le commentaire qui disait ici « aucun lecteur, les fichiers sortent en PDF »
         // était resté en place après eux.

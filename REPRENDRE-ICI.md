@@ -125,7 +125,7 @@ URL de push).
 | 5 | Pas de doublon entre l'état des impayés et l'import du CA | ✅ — migration `2026_10_07_000001` à passer, puis `factures:doublons` |
 | 6 | Caisse centralisée à Abidjan (sites 1 et 2) : vérifier | ✅ |
 | 7 | Erreur 503 sur `/super-admin` | 🟡 cause probable nommée — **`app:diagnostic` en ligne** pour la confirmer |
-| 8 | Banques AFG et BGFI ; import du classeur de suivi de la caissière | à faire |
+| 8 | Banques AFG et BGFI ; import du classeur de suivi de la caissière | ✅ — `migrate` puis `banques:declarer --appliquer` |
 | 9 | Trésorerie : KPI par source, comparaison, rapprochements CA-Banque et CA-Caisse | à faire |
 
 ### Au propriétaire, et qui bloque la suite
@@ -160,6 +160,12 @@ URL de push).
    (`2026_10_07_000001_une_facture_du_ca_retrouve_sa_creance`, une colonne nullable), puis
    **`php artisan factures:doublons`** — lecture seule — et rapporter sa sortie : elle dit
    combien de factures sont déjà en double en ligne, et pour quel montant.
+
+8. **Les banques** : `php artisan migrate` (`2026_10_07_000002_le_releve_de_la_caissiere_entre`,
+   une table neuve), puis `php artisan banques:declarer` (constat) et
+   `php artisan banques:declarer --appliquer` — BGFI et AFG. Ensuite, déposer les relevés au
+   type « **Relevé bancaire — suivi de la caissière** », compte BGFI, dans l'ordre des
+   années (2023 → 2026).
 
 ### En attente d'un accord, pas d'un travail
 

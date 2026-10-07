@@ -94,6 +94,18 @@ abstract class Format
         return true;
     }
 
+    /**
+     * Ce fichier se dépose-t-il sur un compte bancaire choisi au dépôt ?
+     *
+     * Les deux relevés bancaires ne nomment pas le compte dans leurs lignes : il se déclare
+     * au dépôt, comme la ville. Déclaré ici plutôt que comparé à un nom de format à trois
+     * endroits — le jour où un troisième relevé arrive, il n'y a qu'une ligne à écrire.
+     */
+    public static function demandeUnCompte(): bool
+    {
+        return false;
+    }
+
     /** La valeur de la colonne SITE, quand le fichier en a une. */
     protected function colonneSite(array $ligne): ?string
     {
@@ -232,7 +244,7 @@ abstract class Format
             foreach ($lecteur->lignes($feuille) as $cellules) {
                 $score = max($score, count($this->correspondance($cellules)));
 
-                if (++$sondees >= self::LIGNES_SONDEES) {
+                if (++$sondees >= static::LIGNES_SONDEES) {
                     break;
                 }
             }
@@ -324,7 +336,7 @@ abstract class Format
                     break 2;
                 }
 
-                if (++$sondees >= self::LIGNES_SONDEES) {
+                if (++$sondees >= static::LIGNES_SONDEES) {
                     break;
                 }
             }
@@ -370,7 +382,7 @@ abstract class Format
                 $meilleure = $candidat;
             }
 
-            if ($this->suffisante($candidat) || ++$sondees >= self::LIGNES_SONDEES) {
+            if ($this->suffisante($candidat) || ++$sondees >= static::LIGNES_SONDEES) {
                 break;
             }
         }
@@ -548,7 +560,7 @@ abstract class Format
                     $meilleure = $feuille;
                 }
 
-                if (++$sondees >= self::LIGNES_SONDEES) {
+                if (++$sondees >= static::LIGNES_SONDEES) {
                     break;
                 }
             }

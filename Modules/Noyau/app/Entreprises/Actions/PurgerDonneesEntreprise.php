@@ -86,6 +86,8 @@ class PurgerDonneesEntreprise
 
         // Ce que les imports remplissent et que rien d'autre n'alimente.
         'mouvements_caisse' => 'mouvements de caisse',
+        'pieces_bancaires' => 'pièces bancaires du logiciel',
+        'mouvements_bancaires' => 'opérations des relevés bancaires',
         'mouvements_vehicules' => 'entrées et sorties de véhicules',
         'factures_fournisseurs' => 'factures fournisseurs',
         'dossiers_vehicules' => 'fiches de réception',

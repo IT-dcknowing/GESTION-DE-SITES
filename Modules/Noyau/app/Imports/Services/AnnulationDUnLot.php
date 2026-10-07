@@ -48,6 +48,10 @@ class AnnulationDUnLot
         'factures_fournisseurs' => 'Factures fournisseurs',
         'mouvements_caisse' => 'Mouvements de caisse',
         'mouvements_vehicules' => 'Entrées et sorties',
+        // Les deux relevés bancaires — ajoutés le 07/10 : un relevé déposé sur le mauvais
+        // compte doit pouvoir s'annuler comme n'importe quel autre fichier.
+        'pieces_bancaires' => 'Pièces bancaires du logiciel',
+        'mouvements_bancaires' => 'Opérations du relevé bancaire',
     ];
 
     public function __construct(private int $entrepriseId) {}

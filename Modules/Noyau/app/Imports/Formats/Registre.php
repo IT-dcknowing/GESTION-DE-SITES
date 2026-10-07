@@ -43,6 +43,10 @@ class Registre
         // pas le nom de notre banque — elle se choisit à l'écran du logiciel, au-dessus de
         // la grille — et le dépôt la demande donc, comme il demande la ville.
         'banque' => FormatDesPiecesBancaires::class,
+        // Le relevé tel que la caissière le tient — constat du 07/10 : c'est lui qui est à
+        // jour, pas les banques du logiciel. Même dépôt par compte que le précédent, qui
+        // reste au cas où.
+        'releve-banque' => FormatDuReleveBancaire::class,
         'caisse' => FormatDeLaCaisse::class,
         // Le journal de caisse imprimé vient juste après le classeur tenu à la main : ils
         // décrivent la même caisse par deux bouts, et ce sont deux villes différentes qui
@@ -152,5 +156,18 @@ class Registre
         }
 
         return self::ANNONCES[$cle]['libelle'] ?? $cle;
+    }
+
+    /**
+     * Les types qui se déposent sur un compte bancaire choisi au dépôt — les deux relevés.
+     *
+     * @return list<string>
+     */
+    public static function formatsParCompte(): array
+    {
+        return array_values(array_keys(array_filter(
+            self::DISPONIBLES,
+            fn (string $classe) => $classe::demandeUnCompte(),
+        )));
     }
 }
