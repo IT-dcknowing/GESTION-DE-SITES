@@ -93,11 +93,21 @@ class EtatDesImpayesTest extends TestCase
          * clients de l'entreprise doivent. Et ce qui compte n'est pas l'absence de l'onglet
          * mais la fermeture de l'adresse — une page retirée du menu reste atteignable en la
          * tapant.
+         *
+         * La comptabilité n'est plus dans cette liste depuis le 07/10 : l'état des impayés lui
+         * est ouvert (voir `RecouvrementTest`). Le rapprochement CA / impayés, qui lit le
+         * chiffre d'affaires, lui reste fermé.
          */
-        foreach (['commercial', 'responsable_commercial', 'caissier'] as $role) {
+        $pages = [
+            'commercial' => ['impayes', 'impayes.etat-initial', 'rapprochement-ca-impayes'],
+            'responsable_commercial' => ['impayes', 'impayes.etat-initial', 'rapprochement-ca-impayes'],
+            'caissier' => ['rapprochement-ca-impayes'],
+        ];
+
+        foreach ($pages as $role => $pagesFermees) {
             $compte = $this->compte($role);
 
-            foreach (['impayes', 'impayes.etat-initial', 'rapprochement-ca-impayes'] as $page) {
+            foreach ($pagesFermees as $page) {
                 $reponse = $this->actingAs($compte)->get(route($page));
 
                 $this->assertNotEquals(

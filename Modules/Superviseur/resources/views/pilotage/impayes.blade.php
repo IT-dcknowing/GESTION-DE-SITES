@@ -941,6 +941,11 @@ $basculerPortage = function () {
                  présent. Le formulaire est maintenant toujours rendu, replié, et le clic ne fait
                  que le déplier. Le serveur n'est appelé que lorsqu'il a quelque chose à faire :
                  quitter une modification en cours, qui doit vider les cases de la ligne. --}}
+            {{-- Créer ou porter une créance demande un atelier où l'écrire. L'équipe du
+                 recouvrement, ouverte à cet écran le 07/10, n'en a aucun : elle lit, modifie
+                 et règle, mais celui qui relance ne crée pas la facture qu'il encaisse (voir
+                 `AccesRecouvrement`). Le bouton lui aurait offert un refus. --}}
+            @if ($this->sitesSaisissables !== [])
             <button type="button" class="bouton" style="padding:9px 16px; white-space:nowrap;"
                 x-on:click="$wire.enModification
                     ? $wire.basculerFormulaire()
@@ -956,6 +961,7 @@ $basculerPortage = function () {
                 <span wire:loading.remove wire:target="basculerPortage">{{ $porterOuvert ? 'Fermer' : 'Porter une facture existante' }}</span>
                 <span wire:loading wire:target="basculerPortage">Ouverture…</span>
             </button>
+            @endif
 
             <a href="{{ route('impayes.etat-initial') }}" class="bouton bouton-secondaire"
                 style="padding:9px 16px; white-space:nowrap; text-decoration:none;">Tableau état initial</a>

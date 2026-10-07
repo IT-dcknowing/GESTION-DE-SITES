@@ -150,10 +150,19 @@ class User extends Authenticatable
      * Le gérant, par construction. Et le responsable commercial d'un groupe qui n'a qu'un
      * animateur pour l'ensemble de ses villes — cas assez fréquent pour mériter sa colonne,
      * plutôt qu'un `ville_id` laissé à nul, qui veut déjà dire « pas encore rattaché ».
+     *
+     * **Et l'équipe du recouvrement, en lecture — depuis le 07/10**, quand l'état des impayés
+     * lui a été ouvert. Elle poursuit les créances de l'entreprise entière : 1 321 des 1 341
+     * factures ouvertes n'ont pas d'atelier (voir `AccesRecouvrement`), et elle n'est
+     * rattachée à aucun lieu. Sans cette ligne, son périmètre était vide, et l'état des
+     * impayés ne lui aurait montré que les lignes sans ville. Écrire reste borné par
+     * `Site::visiblesPour()`, qui ne la connaît pas.
      */
     public function voitToutesLesVilles(): bool
     {
-        return $this->hasRole('gerant') || (bool) $this->couvre_toutes_les_villes;
+        return $this->hasRole('gerant')
+            || (bool) $this->couvre_toutes_les_villes
+            || $this->hasAnyRole(['superviseur_recouvrement', 'agent_recouvrement']);
     }
 
     public function estSuperAdmin(): bool

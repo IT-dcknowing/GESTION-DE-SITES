@@ -20,7 +20,12 @@ use App\Models\User;
  *   y figure lui-même n'est pas une objection — ses propres gestes y restent inscrits, et
  *   c'est le gérant qui les relit ;
  * - le **gérant** voit tout, et lui seul engage le contentieux ;
- * - la **comptabilité** et le **superviseur de ville** consultent, sans rien y écrire.
+ * - la **comptabilité** consulte, sans rien y écrire ;
+ * - le **superviseur de ville** travaille dans le module comme le superviseur du
+ *   recouvrement — **depuis le 07/10**, à la demande du propriétaire : « donne accès du
+ *   module recouvrement au superviseur de ville ». Il y consultait seulement depuis le
+ *   chantier 11 ; il répond du chiffre de sa ville, et l'encours en est la moitié qu'il ne
+ *   pouvait que regarder.
  *
  * **Ces deux derniers ont été ajoutés, et il faut dire pourquoi ils manquaient.** Le module
  * avait été ouvert à la seule équipe de recouvrement et à la direction, au motif que ce sont
@@ -112,7 +117,7 @@ class AccesRecouvrement
          * module : sans lui, un refus renverrait vers une page également fermée.
          */
         'caissier' => self::PAGES_CONSULTATION,
-        'responsable_ville' => self::PAGES_CONSULTATION,
+        'responsable_ville' => ['tableau-de-bord', 'saisie', 'synthese', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements', 'audit'],
         'superviseur_recouvrement' => ['tableau-de-bord', 'saisie', 'synthese', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements', 'audit'],
         'gerant' => ['tableau-de-bord', 'saisie', 'synthese', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements', 'audit'],
     ];
@@ -137,7 +142,7 @@ class AccesRecouvrement
      * pouvoir créer la facture qu'il encaisse, ni renommer le tiers qui la doit. C'est
      * la règle qui rend le reste du journal digne de foi.
      */
-    private const REDACTEURS = ['superviseur_recouvrement', 'gerant'];
+    private const REDACTEURS = ['superviseur_recouvrement', 'responsable_ville', 'gerant'];
 
     public static function ouvertA(?User $utilisateur): bool
     {
@@ -226,8 +231,9 @@ class AccesRecouvrement
         }
 
         // L'ordre est celui de l'étendue : un compte qui porterait deux rôles garde le
-        // plus large. Les deux rôles de consultation viennent donc en dernier.
-        foreach (['gerant', 'superviseur_recouvrement', 'agent_recouvrement', 'responsable_ville', 'caissier'] as $role) {
+        // plus large. Le superviseur de ville a les droits du superviseur du recouvrement
+        // depuis le 07/10 ; la comptabilité, qui consulte, vient en dernier.
+        foreach (['gerant', 'superviseur_recouvrement', 'responsable_ville', 'agent_recouvrement', 'caissier'] as $role) {
             if ($utilisateur->hasRole($role)) {
                 return $role;
             }

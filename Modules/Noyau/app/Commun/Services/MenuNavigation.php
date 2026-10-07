@@ -101,6 +101,8 @@ class MenuNavigation
                 // décrochait le téléphone sans pouvoir lire ce qu'un client devait.
                 // Consultation seulement — voir AccesRecouvrement.
                 ['label' => 'Recouvrement', 'route' => 'recouvrement.tableau-de-bord', 'actifPattern' => 'recouvrement.'],
+                // L'état d'où viennent les créances qu'il encaisse — ouvert le 07/10.
+                ['label' => 'État des impayés', 'route' => 'impayes', 'actifPattern' => 'impayes'],
                 /*
                  * Les indicateurs faits de ses propres écritures, qui lui étaient fermés :
                  * il tenait la caisse sans pouvoir lire l'état de cette caisse, ni la
@@ -154,6 +156,8 @@ class MenuNavigation
                     'route' => 'recouvrement.'.(collect($pages)->first(fn ($page) => $page !== 'tableau-de-bord') ?? 'saisie'),
                     'actifPattern' => 'recouvrement.',
                 ],
+                // L'état d'où viennent les créances qu'on poursuit — ouvert le 07/10.
+                ['label' => 'État des impayés', 'route' => 'impayes', 'actifPattern' => 'impayes'],
             ];
 
             /*

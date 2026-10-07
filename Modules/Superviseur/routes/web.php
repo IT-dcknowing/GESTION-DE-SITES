@@ -166,8 +166,36 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
         ->name('parc-fiche.numero')
         ->where('numero', '[A-Za-z0-9\s\-\x{00B0}]{1,40}');
 
+    // L'état des impayés a son groupe, plus bas : il s'ouvre à plus de rôles que le reste.
+    // Le rapprochement CA / impayés reste ici, parce qu'il lit le chiffre d'affaires.
+    Volt::route('/rapprochement-ca-impayes', 'pilotage.rapprochement-ca-impayes')->name('rapprochement-ca-impayes');
+
     /*
-     * L'état des impayés, et ce qui va avec.
+     * Le rapprochement prospection / devis.
+     *
+     * Il est ici, avec l'exploitation, et non dans le module Commercial : confirmer un
+     * rapprochement porte un devis au compte d'un commercial, c'est-à-dire un chiffre à
+     * quelqu'un. Ce geste appartient à celui qui arbitre, pas à celui qui est compté — un
+     * commercial qui se rattacherait lui-même les devis de l'atelier n'aurait aucun mal à
+     * gonfler sa performance.
+     */
+    Volt::route('/rapprochement-prospections-devis', 'pilotage.rapprochement-prospections-devis')
+        ->name('rapprochement.prospections-devis');
+});
+
+/*
+ * L'état des impayés — ouvert le 07/10 à la comptabilité et à l'équipe du recouvrement.
+ *
+ * « Donne accès du module impayés à la comptabilité, au recouvrement (superviseur et
+ * agent). » La comptabilité encaisse ce que cet état réclame, le recouvrement le poursuit :
+ * les deux lisaient la créance dans le module Recouvrement sans voir l'état d'où elle vient.
+ * Écrire reste borné par `Site::visiblesPour()` : le caissier crée dans son atelier,
+ * l'équipe du recouvrement — rattachée à aucun lieu — lit, modifie et règle, mais ne crée
+ * pas la facture qu'elle encaisse.
+ */
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caissier|superviseur_recouvrement|agent_recouvrement'])->group(function () {
+    /*
+     * Pourquoi l'état est rangé ici.
      *
      * Il est ici et non dans le module Recouvrement, et le choix se défend : ce que le
      * superviseur de veille tient dans son classeur, c'est l'état du chiffre d'affaires et de
@@ -191,19 +219,6 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->g
     // tableau vers le bas et se perdait au premier changement de page.
     Volt::route('/impayes/creance/{creance}', 'pilotage.impayes-detail')
         ->name('impayes.detail')->whereNumber('creance');
-    Volt::route('/rapprochement-ca-impayes', 'pilotage.rapprochement-ca-impayes')->name('rapprochement-ca-impayes');
-
-    /*
-     * Le rapprochement prospection / devis.
-     *
-     * Il est ici, avec l'exploitation, et non dans le module Commercial : confirmer un
-     * rapprochement porte un devis au compte d'un commercial, c'est-à-dire un chiffre à
-     * quelqu'un. Ce geste appartient à celui qui arbitre, pas à celui qui est compté — un
-     * commercial qui se rattacherait lui-même les devis de l'atelier n'aurait aucun mal à
-     * gonfler sa performance.
-     */
-    Volt::route('/rapprochement-prospections-devis', 'pilotage.rapprochement-prospections-devis')
-        ->name('rapprochement.prospections-devis');
 });
 
 /*

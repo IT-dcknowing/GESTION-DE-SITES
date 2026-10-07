@@ -2164,7 +2164,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | # | Demande | État |
 |---|---|---|
 | 0 | Le tableau par atelier du gérant en `group by` (repris du 02/10) | ✅ 07/10 |
-| 1 | **Habilitations.** Le gérant voit tout, inchangé. Le module **recouvrement** s'ouvre au **superviseur de ville**. Le module **impayés** s'ouvre à la **comptabilité** et au **recouvrement** (superviseur et agent) | à faire |
+| 1 | **Habilitations.** Le gérant voit tout, inchangé. Le module **recouvrement** s'ouvre au **superviseur de ville**. Le module **impayés** s'ouvre à la **comptabilité** et au **recouvrement** (superviseur et agent) | ✅ 07/10 — voir dessous |
 | 2 | **Tableau de bord du gérant à zéro** après l'import de données de trésorerie (capture du 05/10 : CA, charges, encaissé, trésorerie à 0 F, « Toutes villes », exercice 2026). Est-ce normal ? | à faire |
 | 3 | **Maintenance** (`/super-admin/maintenance`), carte « Dépôts de fichiers » : proposer les dépôts à supprimer, un par un ou tous, au lieu d'une case qui coche tout | à faire |
 | 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | à faire |
@@ -2173,6 +2173,26 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | à faire |
 | 8 | **Les banques.** Créer **AFG** et **BGFI** pour qu'elles soient disponibles. **Constat avec la caissière** : elle n'est à jour que sur la caisse, pas sur les banques du logiciel. Elle exporte les transactions de la banque dans un classeur où elle ajoute ses colonnes de suivi : **ce classeur est le modèle à importer**. On garde l'import des banques du logiciel au cas où. BGFI : 2023 à 2026, **la colonne en plus n'existe qu'à partir de 2025**. AFG : CSV exporté du logiciel de la banque (mai à aujourd'hui), qu'elle retraitera au même modèle — l'import AFG se bâtit sur celui de BGFI | à faire |
 | 9 | **Trésorerie.** Le CA et/ou les impayés nourrissent la trésorerie, mais `/caisse` ne montre rien, et des montants paraissent en banque sans banque créée — sans avoir importé caisse ni banque de certaines villes. Que se passera-t-il à l'import de la banque ? **Proposition retenue** : (a) une section de KPI qui montre la situation caisse / banque **selon ce qui la nourrit aujourd'hui** (CA, impayés) ; (b) les données de caisse et de banque **réellement importées gardées à part, sans y toucher** ; (c) un KPI de **comparaison** entre le solde de la banque et ce que montrent le CA / les impayés ; (d) un bouton « **Lignes rapprochement CA-Banque** », comme « Où part l'argent », filtre *identique / pas identique*, qui liste les lignes retrouvées ou non à la banque ; (e) **pareil pour la caisse**. La trésorerie montre le solde correct de chaque côté — caisse, banque, encaissements, décaissements — **sans rien mélanger, ni gonfler ni diminuer** | à faire |
+
+#### 1. Les habilitations — fait le 07/10
+
+- **Superviseur de ville → le recouvrement entier.** Il n'y faisait que consulter (7 écrans,
+  ni saisie, ni synthèse, ni audit). Il a désormais les dix écrans du superviseur du
+  recouvrement, et crée factures et tiers comme lui (`AccesRecouvrement`). **Choix fait sans
+  confirmation** : « donner accès au module » lu comme « les mêmes droits que le superviseur
+  du recouvrement ». Réversible en une ligne (`PAGES_PAR_ROLE`, `REDACTEURS`).
+- **Comptabilité, superviseur et agent du recouvrement → l'état des impayés**
+  (`/impayes`, état initial, versement, détail). Le rapprochement CA / impayés reste fermé :
+  il lit le chiffre d'affaires. L'onglet « État des impayés » paraît à leur menu.
+- **Piège évité** : l'équipe du recouvrement n'a **aucun atelier** dans `Site::visiblesPour()`.
+  Ouvrir la seule route lui aurait donné un état presque vide — les lignes sans ville. Elle
+  lit désormais toute l'entreprise (`User::voitToutesLesVilles()`, `PerimetreSites::
+  sitesConsultables()`), comme elle le fait déjà dans son module. **Écrire reste borné** :
+  sans atelier, elle ne crée ni ne porte de créance — les deux boutons ne lui sont pas
+  montrés —, mais modifie et règle. C'est la règle du module : celui qui relance ne crée pas
+  la facture qu'il encaisse. Le caissier, lui, a son atelier et crée.
+- Tests : `RecouvrementTest` (deux nouveaux, un réécrit), `EtatDesImpayesTest` et
+  `LeVehiculeEtLaComptabiliteTest` mis à la nouvelle règle.
 
 ### Hors chantier, toujours en attente
 

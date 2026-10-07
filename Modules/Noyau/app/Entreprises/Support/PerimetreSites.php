@@ -57,6 +57,12 @@ class PerimetreSites
      */
     public static function sitesConsultables(User $utilisateur): Collection
     {
+        // Qui lit toutes les villes lit tous leurs ateliers — l'équipe du recouvrement n'en
+        // a aucun pour écrire, mais en consulte l'ensemble (voir `User::voitToutesLesVilles`).
+        if ($utilisateur->voitToutesLesVilles() && Site::visiblesPour($utilisateur)->isEmpty()) {
+            return Site::where('entreprise_id', $utilisateur->entreprise_id)->orderBy('nom')->get();
+        }
+
         $actuels = Site::visiblesPour($utilisateur);
         $passes = Reaffectation::sitesPassesDe($utilisateur->id);
 

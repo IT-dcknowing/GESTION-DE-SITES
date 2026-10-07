@@ -118,7 +118,7 @@ URL de push).
 | # | Sujet | État |
 |---|---|---|
 | 0 | Tableau par atelier du gérant en `group by` | ✅ |
-| 1 | Habilitations : recouvrement → superviseur de ville ; impayés → comptabilité et recouvrement | à faire |
+| 1 | Habilitations : recouvrement → superviseur de ville ; impayés → comptabilité et recouvrement | ✅ |
 | 2 | Tableau de bord du gérant à zéro après import | à faire |
 | 3 | Maintenance : choisir les dépôts à supprimer | à faire |
 | 4 | Extrait de compte : filtre par état de règlement, export compris | à faire |

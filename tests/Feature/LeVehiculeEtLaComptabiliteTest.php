@@ -245,11 +245,12 @@ class LeVehiculeEtLaComptabiliteTest extends TestCase
     {
         $this->actingAs($this->compte('caissier'));
 
-        // L'état des impayés est un écran de saisie, le parc et les clients sont ceux de
-        // l'exploitation : ouvrir la comptabilité n'était pas ouvrir tout le pilotage.
+        // Le parc et les clients sont ceux de l'exploitation : ouvrir la comptabilité
+        // n'était pas ouvrir tout le pilotage. L'état des impayés, lui, lui est ouvert
+        // depuis le 07/10 — elle encaisse ce qu'il réclame.
         // Le refus se fait par renvoi, comme partout dans l'application : une page qu'on n'a
         // pas le droit de voir ne s'annonce pas, elle ne s'ouvre pas.
-        foreach (['impayes', 'parc-vehicules', 'clients', 'chiffre-affaires'] as $page) {
+        foreach (['parc-vehicules', 'clients', 'chiffre-affaires'] as $page) {
             $this->get(route($page))->assertRedirect();
         }
     }

@@ -102,35 +102,81 @@ class RecouvrementTest extends TestCase
             ->assertRedirect(route('recouvrement.tableau-de-bord'));
     }
 
-    public function test_la_comptabilite_et_le_superviseur_de_ville_consultent_sans_ecrire(): void
+    public function test_la_comptabilite_consulte_sans_ecrire(): void
     {
         /*
-         * Deux rôles qui subissent l'encours sans le poursuivre. La comptabilité encaisse
-         * ce que le recouvrement réclame et décrochait le téléphone sans pouvoir lire ce
-         * qu'un client devait ; le superviseur de ville répond d'un chiffre d'affaires dont
-         * l'encours est la moitié qu'on ne lui montrait pas.
+         * La comptabilité subit l'encours sans le poursuivre : elle encaisse ce que le
+         * recouvrement réclame, et décrochait le téléphone sans pouvoir lire ce qu'un client
+         * devait.
          */
-        foreach (['caissier', 'responsable_ville'] as $role) {
-            $compte = $this->compte($role);
+        $compte = $this->compte('caissier');
 
-            foreach (['tableau-de-bord', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements'] as $page) {
-                $this->actingAs($compte)->get(route('recouvrement.'.$page))
-                    ->assertOk("La page $page doit être ouverte à $role.");
-            }
-
-            // Consulter n'est pas relancer. La saisie leur est fermée : la comptabilité a
-            // son propre écran d'encaissement, et une seconde porte vers la même table
-            // n'aurait apporté qu'une chance de double saisie.
-            foreach (['saisie', 'synthese', 'audit'] as $page) {
-                $this->actingAs($compte)->get(route('recouvrement.'.$page))
-                    ->assertRedirect(route('recouvrement.tableau-de-bord'));
-            }
-
-            // Et ils n'écrivent pas le référentiel : ni facture, ni tiers.
-            $this->assertFalse(AccesRecouvrement::peutCreerUneFacture($compte));
-            $this->assertFalse(AccesRecouvrement::peutCreerUnTiers($compte));
-            $this->assertFalse(AccesRecouvrement::peutSaisir($compte));
+        foreach (['tableau-de-bord', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements'] as $page) {
+            $this->actingAs($compte)->get(route('recouvrement.'.$page))
+                ->assertOk("La page $page doit être ouverte à la comptabilité.");
         }
+
+        // Consulter n'est pas relancer. La saisie lui est fermée : elle a son propre écran
+        // d'encaissement, et une seconde porte vers la même table n'aurait apporté qu'une
+        // chance de double saisie.
+        foreach (['saisie', 'synthese', 'audit'] as $page) {
+            $this->actingAs($compte)->get(route('recouvrement.'.$page))
+                ->assertRedirect(route('recouvrement.tableau-de-bord'));
+        }
+
+        $this->assertFalse(AccesRecouvrement::peutCreerUneFacture($compte));
+        $this->assertFalse(AccesRecouvrement::peutCreerUnTiers($compte));
+        $this->assertFalse(AccesRecouvrement::peutSaisir($compte));
+    }
+
+    /**
+     * Le superviseur de ville travaille dans le module — demandé le 07/10.
+     *
+     * Il n'y faisait que consulter depuis le chantier 11. « Donne accès du module
+     * recouvrement au superviseur de ville » : il a désormais les dix écrans du
+     * superviseur du recouvrement, saisie, synthèse et piste d'audit comprises.
+     */
+    public function test_le_superviseur_de_ville_a_le_module_entier(): void
+    {
+        $compte = $this->compte('responsable_ville');
+
+        foreach (array_merge(['tableau-de-bord'], array_keys(AccesRecouvrement::PAGES)) as $page) {
+            $this->actingAs($compte)->get(route('recouvrement.'.$page))
+                ->assertOk("La page $page doit être ouverte au superviseur de ville.");
+        }
+
+        $this->assertTrue(AccesRecouvrement::peutSaisir($compte));
+        $this->assertTrue(AccesRecouvrement::peutCreerUneFacture($compte));
+    }
+
+    /**
+     * L'état des impayés s'ouvre à la comptabilité et à l'équipe du recouvrement — 07/10.
+     *
+     * Et il ne leur est pas vide : l'équipe du recouvrement n'est rattachée à aucun lieu,
+     * et sans `User::voitToutesLesVilles()` elle n'aurait vu que les lignes sans ville.
+     */
+    public function test_l_etat_des_impayes_s_ouvre_a_la_comptabilite_et_au_recouvrement(): void
+    {
+        $comptes = collect(['caissier', 'superviseur_recouvrement', 'agent_recouvrement'])
+            ->mapWithKeys(fn ($role) => [$role => $this->compte($role)]);
+
+        foreach ($comptes as $role => $compte) {
+            $this->actingAs($compte)->get(route('impayes'))
+                ->assertOk("L'état des impayés doit être ouvert à $role.");
+        }
+
+        foreach (['superviseur_recouvrement', 'agent_recouvrement'] as $role) {
+            $compte = $comptes[$role];
+            $this->assertNotEmpty(
+                \Modules\Noyau\Entreprises\Support\PerimetreSites::idsRetenus($compte, '', ''),
+                "$role doit lire les ateliers de l'entreprise."
+            );
+            // Lire n'est pas écrire : aucun atelier où créer une créance.
+            $this->assertTrue(\Modules\Noyau\Entreprises\Modeles\Site::visiblesPour($compte)->isEmpty());
+        }
+
+        // Le commercial, lui, n'y entre toujours pas.
+        $this->assertNotSame(200, $this->actingAs($this->compte('commercial'))->get(route('impayes'))->status());
     }
 
     public function test_le_tableau_de_bord_d_un_consultant_n_est_pas_vide(): void
