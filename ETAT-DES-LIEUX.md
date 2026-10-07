@@ -2168,7 +2168,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | 2 | **Tableau de bord du gérant à zéro** après l'import de données de trésorerie (capture du 05/10 : CA, charges, encaissé, trésorerie à 0 F, « Toutes villes », exercice 2026). Est-ce normal ? | ✅ 07/10 — non, corrigé ; voir dessous |
 | 3 | **Maintenance** (`/super-admin/maintenance`), carte « Dépôts de fichiers » : proposer les dépôts à supprimer, un par un ou tous, au lieu d'une case qui coche tout | ✅ 07/10 — voir dessous |
 | 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | ✅ 07/10 — voir dessous |
-| 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | à faire |
+| 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | ✅ 07/10 — voir dessous ; **migration à passer** |
 | 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | à faire |
 | 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | à faire |
 | 8 | **Les banques.** Créer **AFG** et **BGFI** pour qu'elles soient disponibles. **Constat avec la caissière** : elle n'est à jour que sur la caisse, pas sur les banques du logiciel. Elle exporte les transactions de la banque dans un classeur où elle ajoute ses colonnes de suivi : **ce classeur est le modèle à importer**. On garde l'import des banques du logiciel au cas où. BGFI : 2023 à 2026, **la colonne en plus n'existe qu'à partir de 2025**. AFG : CSV exporté du logiciel de la banque (mai à aujourd'hui), qu'elle retraitera au même modèle — l'import AFG se bâtit sur celui de BGFI | à faire |
@@ -2259,6 +2259,35 @@ le compteur « N facture(s) ouverte(s) » reste celui du compte entier.
 - Une valeur forgée dans l'adresse ne filtre rien. Test :
   `RecouvrementTest::test_l_extrait_se_filtre_par_etat_de_reglement_et_l_export_suit`, les
   cinq valeurs, écran et export.
+
+#### 5. Le CA et l'état des impayés ne se doublent plus — fait le 07/10
+
+**L'inquiétude était fondée.** Les deux imports écrivent des factures, et aucun numéro n'est
+commun aux deux fichiers (« FA -5713 » au CATTC, « 17 » à l'état, mesuré le 15/09). Chacun ne
+reconnaissait une facture que par **son** numéro : déposer le CATTC après l'état aurait écrit
+chaque facture une seconde fois, et le chiffre d'affaires les aurait comptées deux fois.
+
+- **Le pont d'appariement est une clé forte** : même **date**, même **montant**, même
+  **plaque** (normalisée), et **un seul candidat** de chaque côté (`PontDesFactures`). Pas le
+  pont plaque + montant de l'écran de rapprochement : son propre commentaire dit qu'il n'est
+  pas unique (un client de flotte, même véhicule, même tarif). Deux candidats, aucun, une
+  plaque absente : **on ne choisit pas**, la ligne est créée comme avant — un doublon visible
+  plutôt qu'une fusion fausse que rien ne montrerait.
+- **Dans les deux ordres de dépôt.** CATTC après l'état : la créance est reconnue et
+  **complétée** (sticker, code client, marque, modèle, fiche — seulement les cases vides) ;
+  elle garde son client, son assureur, son activité. État après le CATTC : la facture du
+  CATTC **devient** la créance, avec son règlement. Les redépôts de l'un ou l'autre restent
+  stables : la colonne neuve `factures.n_facture_cattc` retient le numéro CATTC.
+- **Migration additive** `2026_10_07_000001_une_facture_du_ca_retrouve_sa_creance` — une
+  colonne nullable et son index. **À passer en ligne avant le prochain dépôt du CATTC.**
+- **Ce qui reste à mesurer, et seul le serveur le peut** : la part que cette clé retrouve.
+  L'état remplace la date d'édition par celle de réception sur 341 lignes ; celles-là ne se
+  retrouveront pas. **`php artisan factures:doublons`** le compte **sans rien écrire** :
+  paires reconnues, doublons probables déjà en base, montant compté deux fois, clés
+  ambiguës. Elle n'a pas d'option qui fusionne : défaire un doublon déjà en base touche aux
+  règlements et aux commerciaux de deux lignes, c'est une décision à prendre sur ce constat.
+- Tests : `LeCaEtLEtatDesImpayesNeSeDoublentPasTest` (les deux ordres, les redépôts, deux
+  candidats, une clé qui diffère d'un jour, d'un franc ou par sa plaque, et le constat).
 
 ### Hors chantier, toujours en attente
 

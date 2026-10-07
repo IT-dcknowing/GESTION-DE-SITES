@@ -5,6 +5,7 @@ namespace Modules\Noyau\Imports\Formats;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
+use Modules\Noyau\Imports\Services\PontDesFactures;
 
 /**
  * L'état des impayés — les créances, et ce qui a déjà été encaissé dessus.
@@ -58,6 +59,8 @@ use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
  */
 class FormatDesImpayes extends Format
 {
+    private ?PontDesFactures $pont = null;
+
     public static function cle(): string
     {
         return 'impayes';
@@ -286,6 +289,25 @@ class FormatDesImpayes extends Format
             ->where('entreprise_id', $this->entrepriseId)
             ->where('numero', $this->cleDeLaLigne($ligne))
             ->first();
+
+        /*
+         * Pas encore à l'état : la facture est peut-être déjà là, venue du CATTC sous son
+         * numéro « FA -… ». Retrouvée par la clé forte et seule de son espèce, elle devient
+         * la créance — sa ligne n'est pas recopiée. Elle garde son numéro CATTC, qui reste ce
+         * que le dépôt suivant du CATTC cherchera ; la clé de l'état prend la colonne
+         * `numero`, qui est ce que le dépôt suivant de l'état cherchera. Voir
+         * `PontDesFactures` — 07/10.
+         */
+        if ($existante === null) {
+            $this->pont ??= new PontDesFactures($this->entrepriseId);
+            $id = $this->pont->factureUnique(PontDesFactures::cle($date, $montant, $valeurs['immatriculation']));
+
+            if ($id !== null) {
+                $existante = Facture::withoutGlobalScopes()->find($id);
+                $existante->numero = $this->cleDeLaLigne($ligne);
+                $existante->n_facture_cattc = $existante->n_facture;
+            }
+        }
 
         if ($existante === null) {
             $existante = Facture::withoutGlobalScopes()->create($valeurs + [

@@ -4,6 +4,7 @@ namespace Modules\Noyau\Imports\Formats;
 
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
+use Modules\Noyau\Imports\Services\PontDesFactures;
 
 /**
  * « CATTC » — le chiffre d'affaires facturé.
@@ -44,6 +45,20 @@ class FormatDesFactures extends Format
     private ?array $motifsDesFiches = null;
 
     private ?array $numerosConnus = null;
+
+    /** @var array<string, true>|null les numéros CATTC déjà retrouvés à l'état des impayés */
+    private ?array $numerosRetrouves = null;
+
+    private ?PontDesFactures $pont = null;
+
+    /**
+     * Ce que le CATTC ajoute à une facture déjà suivie à l'état des impayés — et rien d'autre.
+     *
+     * Une créance de l'état garde ses valeurs : son client, son assureur, son activité, sa
+     * date de réception sont ceux que suit le recouvrement. Le CATTC ne vient remplir que les
+     * cases qu'elle laisse vides — le sticker, le code client, la marque, le modèle, la fiche.
+     */
+    private const COMPLEMENTS = ['reference_devis', 'vehicule', 'immatriculation', 'n_sinistre', 'n_sticker', 'code_client', 'marque', 'modele'];
 
     public static function cle(): string
     {
@@ -192,6 +207,36 @@ class FormatDesFactures extends Format
                 ->first()
             : null;
 
+        /*
+         * Pas de numéro connu : la facture est peut-être déjà là, venue de l'état des impayés
+         * sous un autre numéro. D'abord par un dépôt précédent qui l'a reconnue, puis par la
+         * clé forte. Voir `PontDesFactures` — 07/10.
+         */
+        if ($existante === null && $numero !== null) {
+            $this->numerosRetrouves ??= array_fill_keys(
+                Facture::withoutGlobalScopes()
+                    ->where('entreprise_id', $this->entrepriseId)
+                    ->whereNotNull('n_facture_cattc')
+                    ->pluck('n_facture_cattc')->all(),
+                true,
+            );
+
+            if (isset($this->numerosRetrouves[$numero])) {
+                $existante = Facture::withoutGlobalScopes()
+                    ->where('entreprise_id', $this->entrepriseId)
+                    ->where('n_facture_cattc', $numero)
+                    ->first();
+            } else {
+                $this->pont ??= new PontDesFactures($this->entrepriseId);
+                $id = $this->pont->creanceUnique(PontDesFactures::cle($valeurs['date'], $valeurs['montant'], $valeurs['immatriculation']));
+                $existante = $id === null ? null : Facture::withoutGlobalScopes()->find($id);
+            }
+        }
+
+        if ($existante !== null && $existante->est_etat_initial) {
+            return $this->completerLaCreance($existante, $numero, $valeurs, $rattachement);
+        }
+
         if ($existante === null) {
             Facture::withoutGlobalScopes()->create($valeurs + [
                 'entreprise_id' => $this->entrepriseId,
@@ -222,6 +267,45 @@ class FormatDesFactures extends Format
         }
 
         $existante->save();
+
+        return 'maj';
+    }
+
+    /**
+     * Une facture déjà suivie à l'état des impayés : on la reconnaît, on la complète.
+     *
+     * Elle n'est pas réécrite. Son numéro CATTC est retenu (`n_facture_cattc`), pour que le
+     * dépôt suivant la retrouve d'emblée ; les cases vides reçoivent ce que le CATTC sait ;
+     * l'atelier et la ville ne sont posés que s'ils manquent et que la donnée les dit.
+     */
+    private function completerLaCreance(Facture $creance, ?string $numero, array $valeurs, array $rattachement): string
+    {
+        if ($numero !== null && $creance->n_facture !== $numero && $creance->n_facture_cattc === null) {
+            $creance->n_facture_cattc = $numero;
+            $this->numerosRetrouves[$numero] = true;
+        }
+
+        foreach (self::COMPLEMENTS as $colonne) {
+            if (blank($creance->{$colonne}) && ! blank($valeurs[$colonne] ?? null)) {
+                $creance->{$colonne} = $valeurs[$colonne];
+            }
+        }
+
+        if (! $rattachement['presumee']) {
+            if ($creance->site_id === null && $valeurs['site_id'] !== null) {
+                $creance->site_id = $valeurs['site_id'];
+            }
+
+            if ($creance->ville_id === null && $valeurs['ville_id'] !== null) {
+                $creance->ville_id = $valeurs['ville_id'];
+            }
+        }
+
+        if (! $creance->isDirty()) {
+            return 'ignore';
+        }
+
+        $creance->save();
 
         return 'maj';
     }

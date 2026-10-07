@@ -122,7 +122,7 @@ URL de push).
 | 2 | Tableau de bord du gérant à zéro après import | ✅ |
 | 3 | Maintenance : choisir les dépôts à supprimer | ✅ |
 | 4 | Extrait de compte : filtre par état de règlement, export compris | ✅ |
-| 5 | Pas de doublon entre l'état des impayés et l'import du CA | à faire |
+| 5 | Pas de doublon entre l'état des impayés et l'import du CA | ✅ — migration `2026_10_07_000001` à passer, puis `factures:doublons` |
 | 6 | Caisse centralisée à Abidjan (sites 1 et 2) : vérifier | à faire |
 | 7 | Erreur 503 sur `/super-admin` | à faire |
 | 8 | Banques AFG et BGFI ; import du classeur de suivi de la caissière | à faire |
@@ -152,6 +152,11 @@ URL de push).
    **Priorité la plus haute, et elle ne dépend que de lui.**
 6. **Hébergement** : OPcache sur le PHP qui sert les pages, `CACHE_STORE=file`,
    `SESSION_DRIVER=file`. Voir `MISE-A-JOUR-SERVEUR.md`.
+
+7. **Avant le prochain dépôt du CATTC** : `php artisan migrate`
+   (`2026_10_07_000001_une_facture_du_ca_retrouve_sa_creance`, une colonne nullable), puis
+   **`php artisan factures:doublons`** — lecture seule — et rapporter sa sortie : elle dit
+   combien de factures sont déjà en double en ligne, et pour quel montant.
 
 ### En attente d'un accord, pas d'un travail
 
