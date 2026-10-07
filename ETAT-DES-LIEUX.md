@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **5 octobre 2026** (25e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **7 octobre 2026** (26e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -178,6 +178,7 @@ Voir `LecteurPdf`.
 | 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **Les avoirs entrent — et le vrai blocage n'était pas l'import.** 43 lignes négatives étaient refusées depuis le premier dépôt, pour −46 808 080 F ; on croyait à un choix prudent. C'en était un, mais **`factures.montant` et `encaissements.montant` étaient `bigint unsigned`** : la base ne pouvait pas écrire un négatif, et aucun code n'aurait pu l'accepter. Migration d'élargissement (aucune ligne lue ni réécrite), colonne `est_avoir`, et le refus levé aux deux imports. Le propriétaire a tranché après dépouillement du classeur, et sa règle vit dans `NatureDeLaCreance` : **44 avoirs** (montant TTC négatif, −47 489 460 F), **29 trop-perçus** (TTC positif, plus encaissé que facturé, à signaler et non à annuler), **12 arrondis**. Et **le texte ne décide de rien** : 47 lignes portent « facture d'avoir à établir », ce sont des avoirs *annoncés*, et les ramasser avec les vrais doublerait la correction. Trouvé en écrivant le test : en francs entiers, la bande des arrondis se réduit à **−1** exactement |
 | 02/10 | voir `git log` | **tresorerie-caisse-et-banques** | **La trésorerie listait moins que ce qu'elle comptait, et je me suis trompé de classeur.** Le journal de caisse était entré dans les **totaux** le 01/10 et dans **aucune des deux listes** : le serveur affichait « Décaissements (0) » sous un total de sorties de 436 783 059 F. Les deux tableaux fusionnent désormais les trois sources par une requête `UNION` triée et paginée **en base** — charger dix mille lignes pour en afficher dix remettrait ce qu'on venait d'en retirer —, avec une colonne d'origine à trois valeurs. **Et une correction qui me revient** : les trois écarts par feuillet annoncés plus haut (1 000 F, 271 425 F, 2 000 000 F) décrivent `CAISSE DU 01012026 AU 16032026.xlsx`, le classeur **tenu à la main**, seul présent en base locale — et non `ETAT_Caisse-ABIDJAN DU 170326 AU 250926.xlsx`, celui du logiciel que le propriétaire importe. Les deux corrections de logique valent pour les deux fichiers ; les chiffres, non. L'écran nomme maintenant chaque chaîne avec **son fichier déposé**, pour qu'on ne puisse plus les confondre à l'œil |
 | 05/10 | voir `git log` | **correspondances-factures** | **Chaque commercial coche les factures nées de ses prospections.** 11 229 factures sur 11 332 ne sont comptées à personne en local : avant le 22/09, rien ne reliait une prospection à son devis. Écran `/correspondances` (toutes les factures non affectées, case + « Coché par » qui paraît à la coche, « Saisi par » et « Lieu du saisisseur » lus dans le code de deux lettres de la fiche) ; la ligne validée disparaît chez les commerciaux et reste chez les responsables, **seuls à pouvoir annuler**. Boutons **« Mes correspondances »** (ce que j'ai coché, annulations comprises) et **« Les correspondances »** (responsables : filtres du tableau de bord, récapitulatif par commercial). Table additive `correspondances_factures`. Piège : `Site::visiblesPour()` ne rend rien au simple commercial — périmètre vide sans la ville de sa fiche. Voir § 6, « Les correspondances » |
+| 07/10 | voir `git log` | **claude/friendly-archimedes-nisgxa** | **Le tableau par atelier du gérant coûte cinq requêtes au lieu de six par atelier.** Mesuré par un rendu Livewire réel, cinq ateliers, un changement de filtre : **48 requêtes avant, 23 après** — les 25 de moins sont exactement les 30 du tableau ramenées à 5. Le calcul passe dans `SyntheseParAtelier` (`group by site_id`, charges et sorties dans une même requête) ; `LaSyntheseParAtelierCoutCinqRequetesTest` garde la boucle d'avant et la compare atelier par atelier, colonne par colonne, filtres activité et commercial compris. Voir § 6, « Hors chantier » |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -187,10 +188,11 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
 
 ## 5. Le chantier en cours : l'état des impayés
 
-> **Au 05/10, la dernière branche est `correspondances-factures`** (fusionnée dans `main` et
-> poussée le 05/10) : l'écran où chaque commercial coche ses factures — § 6,
-> « Les correspondances ». La migration `2026_10_05_000001` est à passer en ligne avec elle.
-> Le chantier des impayés ci-dessous est clos ; il reste lu pour ses règles.
+> **Au 07/10, la dernière branche est `claude/friendly-archimedes-nisgxa`** (fusionnée dans
+> `main` et poussée le 07/10) : le tableau par atelier de l'accueil du gérant, réécrit en
+> `group by site_id` — § 6, « Hors chantier ». Aucune migration. Avant elle,
+> `correspondances-factures` (05/10), dont la migration `2026_10_05_000001` reste à passer en
+> ligne. Le chantier des impayés ci-dessous est clos ; il reste lu pour ses règles.
 
 **Branche `impayes`**, poussée le 16/09, **toujours pas fusionnée dans `main`** : c'est pourquoi,
 après la fusion de `import` seul, le menu *Indicateurs* du serveur n'a ni *État des impayés* ni
@@ -2204,6 +2206,38 @@ commercial 20 requêtes, 0,24 s. Le code de plateforme, recalculé à chaque lig
   les réécrirait tous d'un coup, et la journée a déjà réécrit six courbes. Le chemin est celui
   qui a marché aujourd'hui — un test qui compare chiffre par chiffre à la boucle d'avant, puis
   la réécriture. À prendre en tête de la prochaine séance.
+
+  ✅ **Fait le 07/10**, par ce chemin-là. `SyntheseParAtelier::calculer()` porte le tableau :
+  un `group by site_id` par table, et les charges (`type_operation = 'Charges'`) partagent
+  la requête des sorties en `sum(case …)` — **cinq requêtes quel que soit le nombre
+  d'ateliers**, aucune s'il n'y en a pas. Mesuré par un rendu Livewire, cinq ateliers, un
+  changement du filtre activité : **48 requêtes avant, 23 après**. Le « 30 » du 02/10 venait
+  de la base locale du propriétaire, le 48 de la base de test : les deux mesures ne sont pas
+  faites dans les mêmes conditions et ne se comparent pas entre elles — seul l'écart avant /
+  après, mesuré dans les mêmes, fait foi. **À remesurer sur la base locale.**
+
+  `tests/Feature/LaSyntheseParAtelierCoutCinqRequetesTest.php` garde la boucle d'avant mot
+  pour mot et la compare à la nouvelle sur quatre ateliers dont un vide : avoir négatif,
+  lignes sans atelier, lignes hors plage d'un jour, charges et autres sorties, filtres
+  activité et commercial seuls et ensemble, liste de commerciaux vide. Une mutation (les
+  charges prenant toute la table) fait tomber trois des six tests : il sait échouer.
+
+  `LeTauxDeTransformationDuTableauDeBordTest` reconnaissait la requête des taux à son
+  `site_id in (…)`, en notant que le tableau par atelier interrogeait « atelier par atelier » :
+  ce n'est plus vrai, son filtre écarte désormais `group by "site_id"`. L'assertion — une
+  seule requête pour les trois taux — est inchangée.
+
+  Suite complète dans le conteneur : 1 094 tests, 1 081 au vert, 13 échecs présents à
+  l'identique sur `main` sans ce changement (`PLAN/` absent, pas de `.env`).
+
+  **Le bloc suivant sur cet écran : `topCommerciaux`**, une somme de factures par commercial
+  actif. Non mesuré, non touché.
+
+  Deux constats faits en l'écrivant. **`charges.site_id` est NOT NULL** : une sortie a
+  toujours un atelier, contrairement aux factures, encaissements et devis. Et **une borne
+  passée en texte exclut son dernier jour** — `'2026-03-20'` est plus petit que
+  `2026-03-20 00:00:00` stocké ; l'écran n'y est pas exposé, `PeriodeCalculateur::plage()`
+  rend des `Carbon`, mais un test qui passe des chaînes se trompe sans le dire.
 
 - **La lenteur en ligne n'est pas expliquée, et il manque une mesure que seul le serveur peut
   donner.** Le 01/10 j'ai attribué la lenteur du serveur à Telescope ; c'était faux —

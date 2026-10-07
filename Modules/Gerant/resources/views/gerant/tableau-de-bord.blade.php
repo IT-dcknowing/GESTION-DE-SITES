@@ -12,6 +12,7 @@ use Modules\Noyau\Commun\Services\SerieParPoint;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\SyntheseParAtelier;
 use function Livewire\Volt\{state, computed, mount};
 
 state([
@@ -79,35 +80,14 @@ $idsCommercialFiltre = computed(function () {
     return $this->commercialFiltre ? [(int) $this->commercialFiltre] : null;
 });
 
+/**
+ * Une ligne par atelier retenu. Cinq requêtes en tout au lieu de six par atelier : mesuré le
+ * 02/10, ce tableau coûtait trente des requêtes d'un clic. Voir `SyntheseParAtelier`.
+ */
 $synthese = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    $activite = fn ($q) => $q->when($this->activiteFiltre, fn ($r) => $r->where('activite', $this->activiteFiltre));
-
-    return $this->sitesRetenus->map(function ($site) use ($debut, $fin, $activite) {
-        // Charges, encaissements et véhicules sans facture ne portent aucun commercial en
-        // base : seuls les devis et factures, rattachés à un commercial précis, peuvent
-        // être restreints par le filtre.
-        $caFacture = (int) $activite(Facture::where('site_id', $site->id))->whereBetween('date', [$debut, $fin])
-            ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))->sum('montant');
-        $charges = (int) $activite(Charge::where('site_id', $site->id))->where('type_operation', 'Charges')->whereBetween('date', [$debut, $fin])->sum('montant');
-        $encaisse = (int) $activite(Encaissement::where('site_id', $site->id))->whereBetween('date', [$debut, $fin])->sum('montant');
-        $decaisse = (int) $activite(Charge::where('site_id', $site->id))->whereBetween('date', [$debut, $fin])->sum('montant');
-        $devisAttente = $activite(Devis::where('site_id', $site->id))->where('statut', 'En attente')->whereBetween('date_emission', [$debut, $fin])
-            ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))->count();
-        $sansFacture = (int) SaisieJournaliere::where('site_id', $site->id)->whereBetween('date', [$debut, $fin])->sum('vehicules_sans_facture');
-
-        return [
-            'site' => $site,
-            'ca' => $caFacture,
-            'charges' => $charges,
-            'resultat' => $caFacture - $charges,
-            'encaisse' => $encaisse,
-            'treso' => $encaisse - $decaisse,
-            'devisAttente' => $devisAttente,
-            'sansFacture' => $sansFacture,
-        ];
-    });
+    return SyntheseParAtelier::calculer($this->sitesRetenus, $debut, $fin, (string) $this->activiteFiltre, $this->idsCommercialFiltre);
 });
 
 $kpis = computed(function () {

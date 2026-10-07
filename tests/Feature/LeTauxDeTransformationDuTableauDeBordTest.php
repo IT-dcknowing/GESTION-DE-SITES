@@ -125,12 +125,14 @@ class LeTauxDeTransformationDuTableauDeBordTest extends TestCase
         /*
          * On ne compte que les requetes portant sur **l'ensemble des ateliers retenus**
          * (`site_id in (…)`), qui est le perimetre des trois taux. L'ecran porte aussi un
-         * tableau par atelier, qui interroge atelier par atelier (`site_id = ?`) : c'est un
-         * autre bloc, mesure et nomme dans l'etat des lieux, et il n'a rien a voir ici.
+         * tableau par atelier : depuis le 07/10 il lit lui aussi tous les ateliers d'un
+         * coup, mais regroupe par atelier (`group by "site_id"`) — c'est un autre bloc
+         * (`SyntheseParAtelier`, son propre test), et il n'a rien a voir ici.
          */
         $pourLesTaux = collect(DB::getQueryLog())
             ->filter(fn ($entree) => str_contains($entree['query'], '"devis"')
-                && str_contains($entree['query'], '"site_id" in ('))
+                && str_contains($entree['query'], '"site_id" in (')
+                && ! str_contains($entree['query'], 'group by "site_id"'))
             ->pluck('query');
 
         $this->assertCount(1, $pourLesTaux, 'Les trois taux se lisent dans un seul regroupement.');

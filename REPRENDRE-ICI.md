@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 5 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 7 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -50,10 +50,20 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 5 octobre 2026
+## 3. Où l'on en est — 7 octobre 2026
 
-**Branche courante :** `main`, à jour avec `origin/main`. `correspondances-factures` a été
-poussée puis **fusionnée dans `main` le 05/10**, et `main` poussé. `tresorerie-caisse-et-banques` est déjà fusionnée dans `main`.
+**Branche courante :** `main`, à jour avec `origin/main`. `claude/friendly-archimedes-nisgxa`
+a été poussée puis **fusionnée dans `main` le 07/10**, et `main` poussé. `correspondances-factures`
+(05/10) et `tresorerie-caisse-et-banques` sont déjà dans `main`.
+
+### Fait le 07/10 — l'accueil du gérant
+
+Le tableau par atelier faisait **six agrégats par atelier** ; il en fait **cinq en tout**
+(`SyntheseParAtelier`, `group by site_id`). Mesuré par un rendu Livewire, cinq ateliers, un
+changement de filtre : **48 requêtes avant, 23 après**. Les chiffres sont ceux d'avant, et
+`LaSyntheseParAtelierCoutCinqRequetesTest` le tient en gardant la boucle d'avant comme
+référence (avoirs, lignes sans atelier, bornes, filtres activité et commercial). Aucune
+migration : un `git pull` suffit.
 
 ### Fait le 05/10 — les correspondances
 
@@ -71,7 +81,11 @@ Cocher écrit `factures.commercial_id` (donc le chiffre et la commission) et une
 `correspondances_factures`. Règles dans `CorrespondancesDeFactures` ; 13 tests dans
 `LesCommerciauxCochentLeursFacturesTest`. Détail : § 6 d'`ETAT-DES-LIEUX.md`.
 
-**Tests :** 1 088, **1 081 au vert, 0 échec** (05/10). Les 7 erreurs restantes sont `WebPushTest` —
+**Tests (07/10, conteneur cloud) :** 1 094, **1 081 au vert**, 13 échecs **tous présents à
+l'identique sur `main` sans le changement** : 9 + 2 dans `DepotFormulaireTest` et
+`DepotToutesVillesTest` (le dossier `PLAN/`, ignoré par git, n'existe pas hors du poste du
+propriétaire), et 2 faute de `.env` (`APP_LOCALE=en`, `APP_URL` sans `http`). Au 05/10 en local :
+1 088, 1 081 au vert, 0 échec ; les 7 erreurs restantes y sont `WebPushTest` —
 l'OpenSSL local ne sait pas générer une clé P-256. **Environnemental, pas un défaut du code.**
 
 **Les onze chantiers du plan (§ 6) sont tous terminés.** Depuis, le travail porte sur les
@@ -137,11 +151,13 @@ retours d'usage du propriétaire.
 
 ### Côté code, prêt à prendre
 
-- **Tableau de bord du gérant : six agrégats par atelier**, donc trente requêtes pour cinq
-  ateliers. C'est le dernier gros poste mesuré en local — 30 requêtes par clic contre 22 sur
-  `/tresorerie`, 16 sur `/caisse`, 12 sur `/banques`, 10 sur `/impayes`. Ce sont des montants :
-  **écrire d'abord un test qui compare chiffre par chiffre au calcul actuel**, puis réécrire en
-  `group by site_id`. C'est le chemin qui a marché les deux fois où je l'ai suivi.
+- ~~Tableau de bord du gérant : six agrégats par atelier~~ — **fait le 07/10** (§ 3). Reste
+  à **remesurer sur la base locale** : les 48 → 23 viennent de la base de test, le « 30 » du
+  02/10 de la base locale, et les deux ne se comparent pas.
+- **Accueil du gérant, le bloc suivant : `topCommerciaux`** fait une somme de factures
+  **par commercial actif** de la ville (`Facture::where('commercial_id', $c->id)`) — le
+  compte grandit avec l'équipe. Même chemin : test contre la boucle d'avant, puis
+  `group by commercial_id`. Non mesuré.
 - **Dates mal lues à l'import du classeur de caisse** : une ligne datée `31/12/1899` (le zéro
   d'Excel), une autre `15/10/2026`. Le solde n'en dépend plus, mais ces lignes restent mal
   classées dans un filtre de période. Défaut distinct, non corrigé.
@@ -274,4 +290,4 @@ php artisan test            # ~8 min ; 7 erreurs WebPush attendues
 ```
 
 **À la fin de chaque séance** : mettre à jour les §§ 4, 5 et 6 d'`ETAT-DES-LIEUX.md` **et ce
-fichier**, puis commiter avec le travail. Le propriétaire pousse lui-même.
+fichier**, puis commiter avec le travail, pousser la branche, la fusionner dans `main` et pousser `main` (§ 2, règle 4).
