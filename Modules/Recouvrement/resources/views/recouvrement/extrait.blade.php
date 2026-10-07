@@ -40,11 +40,22 @@ state(['jourFiltre' => ''])->url(except: '');
  */
 state(['tiers' => ''])->url(except: '');
 
+/*
+ * L'état de règlement — demandé le 07/10 : « voir et exporter ce qu'on veut ». Dans
+ * l'adresse, comme le tiers : l'extrait filtré se transmet par son lien, et le
+ * téléchargement le reçoit tel quel.
+ */
+state(['reglement' => ''])->url(except: '');
+
 mount(function () {
     // Un tiers inconnu est écarté plutôt que subi : afficher l'en-tête de l'entreprise
     // au-dessus d'un tableau vide laisse croire que le compte est soldé.
     if ($this->tiers !== '' && ! array_key_exists($this->tiers, Recouvrement::tiersAvecFacture())) {
         $this->tiers = '';
+    }
+
+    if (! array_key_exists($this->reglement, Recouvrement::ETATS_DE_REGLEMENT)) {
+        $this->reglement = '';
     }
 });
 
@@ -67,7 +78,10 @@ $tousLesTiers = computed(fn () => Recouvrement::tiersAvecFacture());
  * Au sens du tiers payant — un courtier se consulte donc comme n'importe quel autre
  * tiers, et son extrait porte les factures qu'il règle pour le compte de ses compagnies.
  */
-$factures = computed(fn () => Recouvrement::facturesDuTiers(Recouvrement::factures($this->arrete), $this->tiers));
+$toutes = computed(fn () => Recouvrement::facturesDuTiers(Recouvrement::factures($this->arrete), $this->tiers));
+
+/** Celles que le filtre de règlement retient — c'est ce que montrent le tableau et ses totaux. */
+$factures = computed(fn () => Recouvrement::selonLeReglement($this->toutes, (string) $this->reglement));
 
 /**
  * Vrai si ce tiers règle pour le compte d'un autre — l'extrait dit alors pour qui.
@@ -77,11 +91,11 @@ $factures = computed(fn () => Recouvrement::facturesDuTiers(Recouvrement::factur
  * déposées. Dans les deux cas, un relevé qui n'aligne que des numéros ne se vérifie pas :
  * celui qui le reçoit doit retrouver de quel dossier chaque ligne vient.
  */
-$estCourtier = computed(fn () => $this->factures->contains(
+$estCourtier = computed(fn () => $this->toutes->contains(
     fn (Facture $f) => trim((string) $f->courtier) !== '' || trim((string) $f->depose_chez) !== ''
 ));
 
-$ouvertes = computed(fn () => $this->factures->filter(fn (Facture $f) => Recouvrement::reste($f) >= Recouvrement::SEUIL_SOLDE));
+$ouvertes = computed(fn () => $this->toutes->filter(fn (Facture $f) => Recouvrement::reste($f) >= Recouvrement::SEUIL_SOLDE));
 
 $totaux = computed(fn () => [
     'ttc' => $this->factures->sum('montant'),
@@ -101,7 +115,7 @@ $totaux = computed(fn () => [
         @if ($this->tiers !== '' && $this->factures->isNotEmpty())
             <div class="no-print">
                 <x-telecharger route="recouvrement.telecharger"
-                    :parametres="['document' => 'extrait', 'tiers' => $this->tiers, 'arrete' => $this->periode->arreteIso()]" />
+                    :parametres="['document' => 'extrait', 'tiers' => $this->tiers, 'arrete' => $this->periode->arreteIso(), 'reglement' => $this->reglement]" />
             </div>
         @endif
     </x-slot:actions>
@@ -120,12 +134,22 @@ $totaux = computed(fn () => [
              Le `<select>` natif reste dessous et porte toujours son nom : sans script, la
              page continue de fonctionner. L'adresse, elle, suit le tiers choisi (`->url()`),
              si bien qu'un extrait se transmet tel quel par son lien. --}}
-        <div class="rec-frm no-print" style="grid-template-columns:2fr 1fr; margin-bottom:15px; align-items:end;">
+        <div class="rec-frm no-print" style="grid-template-columns:2fr 1fr 1fr; margin-bottom:15px; align-items:end;">
             <div class="rec-fld">
                 <x-select-cherchable id="ex-tiers" label="Tiers / assurance"
                     model="tiers" :valeur="$tiers"
                     :options="$this->tousLesTiers"
                     vide="— Sélectionner —" placeholder="Taper le nom du tiers…" />
+            </div>
+
+            {{-- Instantané, comme les autres filtres : choisir, c'est demander. --}}
+            <div class="rec-fld">
+                <label for="ex-reglement">Règlement</label>
+                <select id="ex-reglement" wire:model.live="reglement">
+                    @foreach (Recouvrement::ETATS_DE_REGLEMENT as $valeur => $libelle)
+                        <option value="{{ $valeur }}">{{ $libelle }}</option>
+                    @endforeach
+                </select>
             </div>
 
             <div class="rec-fld">
@@ -154,7 +178,7 @@ $totaux = computed(fn () => [
                 Sélectionner un tiers : son extrait complet — factures, règlements, restes à payer,
                 anciennetés — se compose instantanément.
             </div>
-        @elseif ($this->factures->isEmpty())
+        @elseif ($this->toutes->isEmpty())
             {{-- Un tiers sans aucune facture existe : il a été déclaré au référentiel, ou
                  il n'est payeur d'aucun dossier. Le dire vaut mieux que rendre un cadre
                  vide, qui se lit comme une panne — c'est ce qui s'est produit. --}}
@@ -185,6 +209,11 @@ $totaux = computed(fn () => [
                     <div style="font-size:12px;">
                         <b>{{ $this->tiers }}</b> · arrêté au {{ $this->arrete->format('d/m/Y') }}
                     </div>
+                    {{-- Le document imprimé dit ce qu'il retient : un extrait des seuls impayés
+                         remis comme un extrait complet laisserait croire le reste réglé. --}}
+                    @if ($reglement !== '')
+                        <div style="font-size:12px; font-weight:700;">{{ Recouvrement::ETATS_DE_REGLEMENT[$reglement] ?? '' }}</div>
+                    @endif
                 </div>
             </div>
 
@@ -257,7 +286,7 @@ $totaux = computed(fn () => [
                         @empty
                             <tr>
                                 <td colspan="{{ $this->estCourtier ? 11 : 10 }}" style="text-align:center; color:#5A6472; padding:26px;">
-                                    Aucune facture pour ce tiers à cette date.
+                                    Aucune facture « {{ Recouvrement::ETATS_DE_REGLEMENT[$reglement] ?? 'Tous' }} » pour ce tiers à cette date.
                                 </td>
                             </tr>
                         @endforelse

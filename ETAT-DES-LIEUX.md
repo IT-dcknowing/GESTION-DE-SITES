@@ -2167,7 +2167,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | 1 | **Habilitations.** Le gérant voit tout, inchangé. Le module **recouvrement** s'ouvre au **superviseur de ville**. Le module **impayés** s'ouvre à la **comptabilité** et au **recouvrement** (superviseur et agent) | ✅ 07/10 — voir dessous |
 | 2 | **Tableau de bord du gérant à zéro** après l'import de données de trésorerie (capture du 05/10 : CA, charges, encaissé, trésorerie à 0 F, « Toutes villes », exercice 2026). Est-ce normal ? | ✅ 07/10 — non, corrigé ; voir dessous |
 | 3 | **Maintenance** (`/super-admin/maintenance`), carte « Dépôts de fichiers » : proposer les dépôts à supprimer, un par un ou tous, au lieu d'une case qui coche tout | ✅ 07/10 — voir dessous |
-| 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | à faire |
+| 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | ✅ 07/10 — voir dessous |
 | 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | à faire |
 | 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | à faire |
 | 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | à faire |
@@ -2241,6 +2241,24 @@ fichier, type, date, déposant, lignes créées, rejets —, du plus récent au 
   de la carte ne compte donc que les dépôts et les corrections — les « 16 lignes » de la
   capture —, pas les rejets. La suppression les borne par leurs dépôts.
 - Tests : deux de plus dans `LaPurgeSelectiveNeVideQueCeQuOnDesigneTest`, sur disque simulé.
+
+#### 4. L'extrait de compte se filtre par état de règlement — fait le 07/10
+
+Un champ « **Règlement** » à côté du tiers, instantané, et dans l'adresse
+(`?tiers=ALLIANZ&reglement=impaye`) : *Tous · Payé totalement · Payé avec reste · Rien payé ·
+Payé avec reste et rien payé*. Le tableau et ses totaux montrent ce que le filtre retient ;
+le compteur « N facture(s) ouverte(s) » reste celui du compte entier.
+
+- **Une seule définition**, `Recouvrement::selonLeReglement()`, pour l'écran **et** le
+  téléchargement — un document qui ne dirait pas la même chose que l'écran d'où on l'a pris
+  serait pire que pas de filtre. « Soldée » suit `SEUIL_SOLDE`, comme partout ; « rien payé »
+  = aucun règlement enregistré ; un avoir n'a rien à encaisser et compte parmi les soldées.
+- **Le document dit ce qu'il retient** : l'en-tête imprimé et le chapeau de l'export portent
+  l'état choisi. Un extrait des seuls impayés remis comme un extrait complet laisserait
+  croire le reste réglé.
+- Une valeur forgée dans l'adresse ne filtre rien. Test :
+  `RecouvrementTest::test_l_extrait_se_filtre_par_etat_de_reglement_et_l_export_suit`, les
+  cinq valeurs, écran et export.
 
 ### Hors chantier, toujours en attente
 

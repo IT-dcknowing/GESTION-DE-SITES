@@ -933,6 +933,60 @@ class RecouvrementTest extends TestCase
             ->assertSee('Pour le compte de');
     }
 
+    /**
+     * L'extrait se filtre par état de règlement, et l'export suit — demandé le 07/10.
+     *
+     * « Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien
+     * payé, de sorte à voir et exporter ce qu'on veut. »
+     */
+    public function test_l_extrait_se_filtre_par_etat_de_reglement_et_l_export_suit(): void
+    {
+        $gerant = $this->compte('gerant');
+        $solde = $this->facture('ALLIANZ', 'F-SOLDE', 300_000, now()->subDays(40));
+        $partiel = $this->facture('ALLIANZ', 'F-PARTIEL', 500_000, now()->subDays(30));
+        $this->facture('ALLIANZ', 'F-RIEN', 700_000, now()->subDays(20));
+
+        foreach ([[$solde, 300_000], [$partiel, 200_000]] as [$facture, $montant]) {
+            Encaissement::withoutGlobalScopes()->create([
+                'entreprise_id' => $this->entreprise->id, 'site_id' => $this->site->id, 'facture_id' => $facture->id,
+                'date' => now()->subDays(5)->toDateString(), 'type' => 'Client', 'moyen' => 'Virement', 'montant' => $montant,
+            ]);
+        }
+
+        $attendu = [
+            '' => ['F-SOLDE', 'F-PARTIEL', 'F-RIEN'],
+            'solde' => ['F-SOLDE'],
+            'partiel' => ['F-PARTIEL'],
+            'rien' => ['F-RIEN'],
+            'impaye' => ['F-PARTIEL', 'F-RIEN'],
+        ];
+
+        foreach ($attendu as $etat => $numeros) {
+            $ecran = Volt::actingAs($gerant)->test('recouvrement.extrait')
+                ->set('tiers', 'ALLIANZ')->set('reglement', $etat);
+
+            $this->assertEqualsCanonicalizing($numeros, $ecran->get('factures')->pluck('n_facture')->all(), "Écran, état « $etat ».");
+
+            $document = $this->actingAs($gerant)->get(route('recouvrement.telecharger', [
+                'document' => 'extrait', 'format' => 'word', 'tiers' => 'ALLIANZ', 'reglement' => $etat,
+            ]))->assertOk()->getContent();
+
+            foreach (['F-SOLDE', 'F-PARTIEL', 'F-RIEN'] as $numero) {
+                in_array($numero, $numeros, true)
+                    ? $this->assertStringContainsString($numero, $document, "Export « $etat » : $numero manque.")
+                    : $this->assertStringNotContainsString($numero, $document, "Export « $etat » : $numero ne devrait pas y être.");
+            }
+        }
+
+        // Les totaux de l'écran sont ceux de ce qu'il montre.
+        $impayes = Volt::actingAs($gerant)->test('recouvrement.extrait')->set('tiers', 'ALLIANZ')->set('reglement', 'impaye');
+        $this->assertSame(300_000 + 700_000, $impayes->get('totaux')['reste']);
+
+        // Une valeur forgée dans l'adresse ne filtre rien.
+        $this->actingAs($gerant)->get(route('recouvrement.extrait', ['tiers' => 'ALLIANZ', 'reglement' => 'nimporte']))
+            ->assertOk()->assertSee('F-SOLDE')->assertSee('F-RIEN');
+    }
+
     public function test_le_courtier_ne_peut_pas_etre_l_assurance_qu_il_represente(): void
     {
         $superviseur = $this->compte('superviseur_recouvrement');

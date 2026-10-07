@@ -312,7 +312,12 @@ class TelechargementController
             abort(404, 'Aucun tiers désigné.');
         }
 
-        $factures = Recouvrement::facturesDuTiers(Recouvrement::factures($arrete), $tiers);
+        // Le même filtre que l'écran, par la même méthode : un état inconnu ne filtre rien.
+        $etat = (string) $requete->query('reglement', '');
+        $factures = Recouvrement::selonLeReglement(
+            Recouvrement::facturesDuTiers(Recouvrement::factures($arrete), $tiers),
+            $etat,
+        );
         $regle = 0;
         $reste = 0;
 
@@ -355,8 +360,12 @@ class TelechargementController
             [],
         ];
 
+        $libelleEtat = $etat !== '' && isset(Recouvrement::ETATS_DE_REGLEMENT[$etat])
+            ? ' — '.Recouvrement::ETATS_DE_REGLEMENT[$etat]
+            : '';
+
         $chapeau = $tiers."\n".'Extrait arrêté au '.$arrete->format('d/m/Y')
-            .' — '.$factures->count().' facture(s).';
+            .$libelleEtat.' — '.$factures->count().' facture(s).';
 
         return $this->rendre($format, 'Extrait '.$tiers.' au '.$arrete->format('d-m-Y'), $tiers, $donnees, $chapeau);
     }
