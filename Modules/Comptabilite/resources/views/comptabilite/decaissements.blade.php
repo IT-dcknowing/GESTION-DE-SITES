@@ -33,7 +33,10 @@ $site = computed(fn () => $this->siteId
 
 mount(function () {
     $this->chgDate = now()->toDateString();
-    $this->siteId = $this->mesSites->first()?->id;
+    // L'atelier du compte d'abord, s'il en porte un : la caisse est commune à la ville
+    // (voir `Site::visiblesPour`), mais la dépense a bien eu lieu quelque part.
+    $sienne = auth()->user()->site_id;
+    $this->siteId = $this->mesSites->contains('id', $sienne) ? $sienne : $this->mesSites->first()?->id;
 });
 
 $updatedSiteId = function () {

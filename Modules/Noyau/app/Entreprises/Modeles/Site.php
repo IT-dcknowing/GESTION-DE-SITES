@@ -88,13 +88,21 @@ class Site extends Model
             return $sites->orderBy('nom')->get();
         }
 
+        /*
+         * **La caisse est centralisée par ville — confirmé par le propriétaire le 07/10** :
+         * « site 1 et 2 → Abidjan ». Un seul tiroir pour les deux ateliers, une seule
+         * caissière. Son périmètre est donc la ville entière, même quand son compte porte un
+         * atelier : borné à « Abidjan 1 », il ne voyait pas les espèces rangées sous
+         * « Abidjan 2 », et la caisse se lisait en deux moitiés. L'atelier du compte ne sert
+         * plus qu'à proposer un lieu par défaut à la saisie.
+         */
         if ($user->hasRole('caissier')) {
-            if ($user->site_id) {
-                return static::where('id', $user->site_id)->get();
-            }
+            $villeId = $user->ville_id
+                ?: ($user->site_id ? static::withoutGlobalScopes()->whereKey($user->site_id)->value('ville_id') : null);
 
-            if ($user->ville_id) {
-                return static::where('ville_id', $user->ville_id)->orderBy('nom')->get();
+            if ($villeId) {
+                return static::where('entreprise_id', $user->entreprise_id)
+                    ->where('ville_id', $villeId)->orderBy('nom')->get();
             }
         }
 

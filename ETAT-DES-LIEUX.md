@@ -2169,7 +2169,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | 3 | **Maintenance** (`/super-admin/maintenance`), carte « Dépôts de fichiers » : proposer les dépôts à supprimer, un par un ou tous, au lieu d'une case qui coche tout | ✅ 07/10 — voir dessous |
 | 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | ✅ 07/10 — voir dessous |
 | 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | ✅ 07/10 — voir dessous ; **migration à passer** |
-| 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | à faire |
+| 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | ✅ 07/10 — oui, sauf une faille, fermée ; voir dessous |
 | 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | à faire |
 | 8 | **Les banques.** Créer **AFG** et **BGFI** pour qu'elles soient disponibles. **Constat avec la caissière** : elle n'est à jour que sur la caisse, pas sur les banques du logiciel. Elle exporte les transactions de la banque dans un classeur où elle ajoute ses colonnes de suivi : **ce classeur est le modèle à importer**. On garde l'import des banques du logiciel au cas où. BGFI : 2023 à 2026, **la colonne en plus n'existe qu'à partir de 2025**. AFG : CSV exporté du logiciel de la banque (mai à aujourd'hui), qu'elle retraitera au même modèle — l'import AFG se bâtit sur celui de BGFI | à faire |
 | 9 | **Trésorerie.** Le CA et/ou les impayés nourrissent la trésorerie, mais `/caisse` ne montre rien, et des montants paraissent en banque sans banque créée — sans avoir importé caisse ni banque de certaines villes. Que se passera-t-il à l'import de la banque ? **Proposition retenue** : (a) une section de KPI qui montre la situation caisse / banque **selon ce qui la nourrit aujourd'hui** (CA, impayés) ; (b) les données de caisse et de banque **réellement importées gardées à part, sans y toucher** ; (c) un KPI de **comparaison** entre le solde de la banque et ce que montrent le CA / les impayés ; (d) un bouton « **Lignes rapprochement CA-Banque** », comme « Où part l'argent », filtre *identique / pas identique*, qui liste les lignes retrouvées ou non à la banque ; (e) **pareil pour la caisse**. La trésorerie montre le solde correct de chaque côté — caisse, banque, encaissements, décaissements — **sans rien mélanger, ni gonfler ni diminuer** | à faire |
@@ -2288,6 +2288,26 @@ chaque facture une seconde fois, et le chiffre d'affaires les aurait comptées d
   règlements et aux commerciaux de deux lignes, c'est une décision à prendre sur ce constat.
 - Tests : `LeCaEtLEtatDesImpayesNeSeDoublentPasTest` (les deux ordres, les redépôts, deux
   candidats, une clé qui diffère d'un jour, d'un franc ou par sa plaque, et le constat).
+
+#### 6. La caisse d'Abidjan est bien centralisée — vérifié le 07/10
+
+**Oui pour l'essentiel.** Le journal de caisse importé ne porte que la ville, jamais
+l'atelier, et l'écran `/caisse` lit par ville sans proposer de filtre d'atelier : les deux
+ateliers d'Abidjan y forment une seule caisse, avec une seule chaîne de soldes par classeur.
+Une écriture saisie sur `/caisse` ne demande que la ville.
+
+**Une faille, fermée.** Le périmètre du **caissier** (`Site::visiblesPour`) s'arrêtait à
+l'atelier de son compte quand il en portait un : une caissière rattachée à « Abidjan 1 » ne
+voyait ni ne comptait les espèces rangées sous « Abidjan 2 » — sur son tableau de bord, ses
+encaissements, la trésorerie. Son périmètre est désormais **la ville entière** ; l'atelier
+du compte ne sert plus qu'à proposer un lieu par défaut au décaissement. Sans effet à Bouaké
+et San-Pédro, qui n'ont qu'un atelier. Je n'ai pas pu voir comment le compte en ligne est
+réglé ; la règle vaut dans les deux cas.
+
+**Ce qui reste un compromis, et l'est depuis le 01/10** : une écriture d'espèces saisie
+s'enregistre sous un atelier (les tables d'encaissements et de charges le demandent), choisi
+par défaut. Le tableau par atelier du gérant la range donc sous cet atelier ; la caisse, elle,
+la lit avec la ville. Test : `LaCaisseDAbidjanEstCentraliseeTest`.
 
 ### Hors chantier, toujours en attente
 

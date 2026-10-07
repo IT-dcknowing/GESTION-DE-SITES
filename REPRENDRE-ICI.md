@@ -123,7 +123,7 @@ URL de push).
 | 3 | Maintenance : choisir les dépôts à supprimer | ✅ |
 | 4 | Extrait de compte : filtre par état de règlement, export compris | ✅ |
 | 5 | Pas de doublon entre l'état des impayés et l'import du CA | ✅ — migration `2026_10_07_000001` à passer, puis `factures:doublons` |
-| 6 | Caisse centralisée à Abidjan (sites 1 et 2) : vérifier | à faire |
+| 6 | Caisse centralisée à Abidjan (sites 1 et 2) : vérifier | ✅ |
 | 7 | Erreur 503 sur `/super-admin` | à faire |
 | 8 | Banques AFG et BGFI ; import du classeur de suivi de la caissière | à faire |
 | 9 | Trésorerie : KPI par source, comparaison, rapprochements CA-Banque et CA-Caisse | à faire |
