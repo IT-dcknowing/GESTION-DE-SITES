@@ -2170,7 +2170,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | ✅ 07/10 — voir dessous |
 | 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | ✅ 07/10 — voir dessous ; **migration à passer** |
 | 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | ✅ 07/10 — oui, sauf une faille, fermée ; voir dessous |
-| 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | à faire |
+| 7 | **Erreur 503** sur `/super-admin` (capture du 05/10, 13:37 GMT : « Backend fetch failed », Apache ne répond pas). « Cela ne doit pas être à tout moment » | 🟡 07/10 — cause probable nommée, preuve à lire en ligne ; voir dessous |
 | 8 | **Les banques.** Créer **AFG** et **BGFI** pour qu'elles soient disponibles. **Constat avec la caissière** : elle n'est à jour que sur la caisse, pas sur les banques du logiciel. Elle exporte les transactions de la banque dans un classeur où elle ajoute ses colonnes de suivi : **ce classeur est le modèle à importer**. On garde l'import des banques du logiciel au cas où. BGFI : 2023 à 2026, **la colonne en plus n'existe qu'à partir de 2025**. AFG : CSV exporté du logiciel de la banque (mai à aujourd'hui), qu'elle retraitera au même modèle — l'import AFG se bâtit sur celui de BGFI | à faire |
 | 9 | **Trésorerie.** Le CA et/ou les impayés nourrissent la trésorerie, mais `/caisse` ne montre rien, et des montants paraissent en banque sans banque créée — sans avoir importé caisse ni banque de certaines villes. Que se passera-t-il à l'import de la banque ? **Proposition retenue** : (a) une section de KPI qui montre la situation caisse / banque **selon ce qui la nourrit aujourd'hui** (CA, impayés) ; (b) les données de caisse et de banque **réellement importées gardées à part, sans y toucher** ; (c) un KPI de **comparaison** entre le solde de la banque et ce que montrent le CA / les impayés ; (d) un bouton « **Lignes rapprochement CA-Banque** », comme « Où part l'argent », filtre *identique / pas identique*, qui liste les lignes retrouvées ou non à la banque ; (e) **pareil pour la caisse**. La trésorerie montre le solde correct de chaque côté — caisse, banque, encaissements, décaissements — **sans rien mélanger, ni gonfler ni diminuer** | à faire |
 
@@ -2308,6 +2308,37 @@ réglé ; la règle vaut dans les deux cas.
 s'enregistre sous un atelier (les tables d'encaissements et de charges le demandent), choisi
 par défaut. Le tableau par atelier du gérant la range donc sous cet atelier ; la caisse, elle,
 la lit avec la ville. Test : `LaCaisseDAbidjanEstCentraliseeTest`.
+
+#### 7. L'erreur 503 sur `/super-admin` — instrumentée le 07/10, pas encore prouvée
+
+« Backend fetch failed » est la page du **cache placé devant le serveur** (Varnish) :
+**Apache n'a pas répondu à temps**. Ce n'est pas une erreur de l'application, qui aurait
+affiché sa propre page de panne.
+
+**Ce n'est pas la page elle-même.** L'accueil du super-admin fait quatre comptages et une
+requête par entreprise : avec deux entreprises, rien qui fasse tomber un serveur.
+
+**La cause la plus probable, lue dans le code** : quand l'hébergeur interdit `exec`, la lecture
+d'un fichier déposé ne part pas dans un processus à part mais **dans le processus PHP qui sert
+les pages**, après la réponse (`LanceurDeTraitement`) — un état des impayés de neuf mille
+lignes l'occupe des minutes. L'écran qui suit l'import se rafraîchit **chaque seconde**
+(`wire:poll.1s`). Sur un hébergement mutualisé, dont le nombre de processus est plafonné,
+ces deux choses ensemble suffisent à faire attendre toutes les autres pages. S'ajoutent les
+deux suspects déjà nommés le 02/10 : OPcache éteint, cache et sessions en base.
+
+**Rien n'a été « corrigé » à l'aveugle** (règle 2). Ce qui a été fait, c'est de quoi le prouver :
+
+- le lanceur **note le mode réellement employé** à chaque dépôt — processus à part, ou
+  processus web — et si `exec` est permis côté web ;
+- **`php artisan app:diagnostic`**, rubrique *Vitesse*, l'affiche, avec le remède
+  (`IMPORT_PHP_CLI` dans le `.env`, ou `exec` à autoriser), et **les huit dernières erreurs
+  du journal de Laravel** — ce qui s'est passé au moment d'une 503, s'il s'est passé quelque
+  chose côté application.
+
+**À faire en ligne** : déposer un fichier, puis lancer `php artisan app:diagnostic` et
+rapporter la rubrique *Vitesse*. Regarder aussi, dans cPanel, « Resource Usage » à la date
+du 05/10 vers 13 h 37 GMT : un dépassement de processus (« entry processes ») y serait
+inscrit. Test : `LeDiagnosticDitCommentLesImportsSontLancesTest`.
 
 ### Hors chantier, toujours en attente
 

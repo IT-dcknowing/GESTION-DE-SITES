@@ -42,10 +42,40 @@ final class LanceurDeTraitement
         }
 
         if (self::detacher((int) $lot->id, $ecrire)) {
+            self::noter('processus');
+
             return;
         }
 
+        self::noter('requete-web');
         TraiterUnLot::dispatchAfterResponse($lot, $ecrire);
+    }
+
+    /** Où retrouver le dernier mode de lancement — lu par `app:diagnostic`. */
+    public const TEMOIN = 'diagnostic/lancement-import.json';
+
+    /**
+     * Note le mode réellement employé — ajouté le 07/10, après une erreur 503 en ligne.
+     *
+     * **Pourquoi.** Quand l'hébergeur interdit `exec`, la lecture d'un fichier se fait dans le
+     * processus PHP qui sert les pages, après la réponse : un état des impayés de neuf mille
+     * lignes en occupe un pendant des minutes. Sur un hébergement mutualisé, où le nombre de
+     * processus est plafonné, c'est une cause plausible de « Backend fetch failed ». Mais c'est
+     * le PHP **web** qui décide, et `app:diagnostic`, qui tourne en ligne de commande, ne peut
+     * pas le voir : on le note donc ici, au moment où il décide. Un témoin qui ne s'écrit pas
+     * ne doit pas empêcher un dépôt.
+     */
+    private static function noter(string $mode): void
+    {
+        try {
+            \Illuminate\Support\Facades\Storage::disk('local')->put(self::TEMOIN, json_encode([
+                'mode' => $mode,
+                'quand' => now()->toIso8601String(),
+                'php_cli' => self::phpEnLigneDeCommande(),
+                'exec_permis' => self::permise('exec'),
+            ]));
+        } catch (Throwable) {
+        }
     }
 
     /**

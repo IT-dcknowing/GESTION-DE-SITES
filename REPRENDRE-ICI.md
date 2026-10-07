@@ -124,7 +124,7 @@ URL de push).
 | 4 | Extrait de compte : filtre par état de règlement, export compris | ✅ |
 | 5 | Pas de doublon entre l'état des impayés et l'import du CA | ✅ — migration `2026_10_07_000001` à passer, puis `factures:doublons` |
 | 6 | Caisse centralisée à Abidjan (sites 1 et 2) : vérifier | ✅ |
-| 7 | Erreur 503 sur `/super-admin` | à faire |
+| 7 | Erreur 503 sur `/super-admin` | 🟡 cause probable nommée — **`app:diagnostic` en ligne** pour la confirmer |
 | 8 | Banques AFG et BGFI ; import du classeur de suivi de la caissière | à faire |
 | 9 | Trésorerie : KPI par source, comparaison, rapprochements CA-Banque et CA-Caisse | à faire |
 
@@ -145,6 +145,9 @@ URL de push).
    c'est la disparition d'un montant qui n'aurait jamais dû y être (voir § 6).
 3. **Lancer `php artisan app:diagnostic` sur le serveur**, rubrique *Vitesse*, et rapporter la
    sortie. Sans elle, toute correction de la lenteur en ligne serait une supposition.
+   **Depuis le 07/10 elle dit aussi** comment le dernier import a été lancé (processus à part
+   ou processus web — cause probable des 503) et les dernières erreurs du journal. La lancer
+   **après un dépôt**. Et regarder cPanel → « Resource Usage » au 05/10 vers 13 h 37 GMT.
 4. **Regarder le bloc « Les classeurs de cette période »** sur `/caisse` en ligne : il dira si
    deux classeurs se superposent (voir § 5, point 1).
 5. **Rotation des secrets** — le `.env` de production a circulé en clair : mot de passe du

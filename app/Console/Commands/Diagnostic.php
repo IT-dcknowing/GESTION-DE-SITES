@@ -250,6 +250,66 @@ class Diagnostic extends Command
         if ($magasin === 'database') {
             $this->line('      → <fg=yellow>CACHE_STORE=file</> dans le .env évite un aller-retour MySQL par lecture.');
         }
+
+        $this->controlerLeLancementDesImports();
+        $this->dernieresErreurs();
+    }
+
+    /**
+     * Comment le PHP **web** a lancé le dernier import — ajouté le 07/10, après une 503.
+     *
+     * Noté par `LanceurDeTraitement` au moment du dépôt : cette commande-ci, en ligne de
+     * commande, ne peut pas savoir si le PHP qui sert les pages a le droit de lancer un
+     * processus. S'il ne l'a pas, chaque lecture de fichier occupe un processus web pendant
+     * toute sa durée.
+     */
+    private function controlerLeLancementDesImports(): void
+    {
+        $temoin = \Illuminate\Support\Facades\Storage::disk('local')->get(\Modules\Noyau\Imports\Services\LanceurDeTraitement::TEMOIN);
+        $releve = $temoin ? json_decode($temoin, true) : null;
+
+        if (! is_array($releve)) {
+            $this->ligne('Lancement des imports', 'inconnu — aucun dépôt depuis la mise à jour du 07/10');
+
+            return;
+        }
+
+        if ($releve['mode'] === 'processus') {
+            $this->line('  <fg=green>✓</> Lancement des imports : processus à part (dernier dépôt le '.$releve['quand'].')');
+
+            return;
+        }
+
+        $this->line('  <fg=red>✗</> Lancement des imports : <fg=yellow>dans un processus web</> (dernier dépôt le '.$releve['quand'].')');
+        $this->line('      → Chaque lecture de fichier occupe un processus qui sert les pages pendant toute sa durée.');
+        $this->line('        Cause plausible des erreurs 503. Remède : renseigner IMPORT_PHP_CLI dans le .env avec le');
+        $this->line('        chemin du PHP en ligne de commande (souvent /usr/local/bin/php), ou demander à');
+        $this->line('        l’hébergeur d’autoriser exec. Fonction exec permise côté web : '.($releve['exec_permis'] ? 'oui' : 'non').'.');
+    }
+
+    /**
+     * Les dernières erreurs du journal de l'application — ce qui s'est passé au moment d'une 503.
+     *
+     * Le journal peut peser lourd : on n'en lit que la fin.
+     */
+    private function dernieresErreurs(): void
+    {
+        $journal = storage_path('logs/laravel.log');
+
+        if (! is_file($journal)) {
+            $this->ligne('Dernières erreurs', 'aucun journal');
+
+            return;
+        }
+
+        $fin = (string) file_get_contents($journal, false, null, max(0, filesize($journal) - 400_000));
+        preg_match_all('/^\[(\d{4}-\d\d-\d\d[ T][\d:]+)[^\]]*\] \w+\.(ERROR|CRITICAL|ALERT|EMERGENCY): (.{0,160})/m', $fin, $trouvees, PREG_SET_ORDER);
+
+        $this->ligne('Dernières erreurs', count($trouvees) === 0 ? 'aucune dans la fin du journal' : count($trouvees).' dans la fin du journal');
+
+        foreach (array_slice($trouvees, -8) as $erreur) {
+            $this->line('      '.$erreur[1].'  '.$erreur[3]);
+        }
     }
 
     /**
