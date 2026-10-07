@@ -68,6 +68,14 @@ state([
      * qui supprime, lui, recompte en base : voir `$viderLesChoisis`.
      */
     'volumesLots' => [],
+    /*
+     * **Les dépôts un par un — demandé le 07/10.** « Propose-moi ce qu'il y a à supprimer :
+     * que je coche ce que je veux, ou tout. » La carte « Dépôts de fichiers » n'avait qu'une
+     * case, qui effaçait tous les dépôts d'un coup. La liste est relevée au choix de
+     * l'entreprise, comme les volumes, et relue en base au moment d'effacer.
+     */
+    'depots' => [],
+    'depotsChoisis' => [],
     'confirmationChoix' => '',
     'resultatChoix' => null,
 ]);
@@ -142,6 +150,24 @@ $volumesParLot = computed(fn () => $this->volumesLots);
  * puis vidée par un autre geste ferait annoncer une suppression qui ne supprimerait rien, et
  * le bilan dirait « 0 » là où l'on attendait un chiffre.
  */
+/**
+ * Les dépôts cochés un à un — sans objet quand la case « tous » est cochée, qui les emporte.
+ *
+ * Bornés à la liste relevée pour cette entreprise : un identifiant qui n'y est pas ne
+ * désigne rien ici, et le service le relit de toute façon en base.
+ */
+$depotsRetenus = computed(function () {
+    if (in_array('lots', $this->lotsRetenus, true)) {
+        return [];
+    }
+
+    $connus = collect($this->depots)->pluck('id')->all();
+
+    return collect($this->depotsChoisis)
+        ->filter(fn ($coche, $id) => $coche && in_array((int) $id, $connus, true))
+        ->keys()->map(fn ($id) => (int) $id)->values()->all();
+});
+
 $lotsRetenus = computed(function () {
     $volumes = $this->volumesParLot;
 
@@ -172,9 +198,21 @@ $recapitulatif = computed(function () {
         }
     }
 
-    return ['lignes' => $lignes, 'entraines' => $entraines, 'total' => array_sum(array_map(
-        fn ($cle) => $volumes[$cle] ?? 0, $this->lotsRetenus,
-    ))];
+    $total = array_sum(array_map(fn ($cle) => $volumes[$cle] ?? 0, $this->lotsRetenus));
+
+    $depots = collect($this->depots)->whereIn('id', $this->depotsRetenus);
+
+    foreach ($depots as $depot) {
+        $lignes[] = 'Dépôt « '.$depot['fichier'].' » ('.$depot['format'].')'
+            .($depot['rejets'] + $depot['corrections'] > 0 ? ', avec '.($depot['rejets'] + $depot['corrections']).' rejet(s) et correction(s)' : '');
+        $total += 1 + $depot['rejets'] + $depot['corrections'];
+    }
+
+    if ($depots->isNotEmpty() && isset($lots['lots']['entraine'])) {
+        $entraines[] = $lots['lots']['entraine'];
+    }
+
+    return ['lignes' => $lignes, 'entraines' => array_values(array_unique($entraines)), 'total' => $total];
 });
 
 /** Cocher ou décocher un module entier — « un bouton tout cocher au niveau de chaque module ». */
@@ -199,8 +237,10 @@ $updatedChoixId = function () {
     // Changer d'entreprise remet les cases à zéro : des cases cochées pour une entreprise
     // n'ont aucun sens pour une autre, et les garder ferait supprimer ailleurs.
     $this->lotsChoisis = [];
+    $this->depotsChoisis = [];
     $this->confirmationChoix = '';
     $this->resultatChoix = null;
+    $this->depots = $this->choixId ? PurgeParModule::depots((int) $this->choixId) : [];
 
     // Les vingt et un comptages se font ici, et seulement ici : changer d'entreprise est le
     // seul geste de cet écran qui change ce qu'il y a à compter.
@@ -232,10 +272,11 @@ $viderLesChoisis = function (PurgeParModule $action) {
      * supprime recompte avant de décider ce qu'il retient.
      */
     $this->volumesLots = PurgeParModule::volumes((int) $this->choixId);
-    unset($this->volumesParLot, $this->lotsRetenus);
+    $this->depots = PurgeParModule::depots((int) $this->choixId);
+    unset($this->volumesParLot, $this->lotsRetenus, $this->depotsRetenus, $this->recapitulatif);
 
-    if ($this->lotsRetenus === []) {
-        $this->addError('lotsChoisis', 'Cochez au moins un ensemble qui porte des données.');
+    if ($this->lotsRetenus === [] && $this->depotsRetenus === []) {
+        $this->addError('lotsChoisis', 'Cochez au moins un ensemble ou un dépôt qui porte des données.');
 
         return;
     }
@@ -246,7 +287,10 @@ $viderLesChoisis = function (PurgeParModule $action) {
         return;
     }
 
-    $this->resultatChoix = $action->executer($cible, $this->lotsRetenus);
+    $this->resultatChoix = array_merge(
+        $this->lotsRetenus !== [] ? $action->executer($cible, $this->lotsRetenus) : [],
+        $this->depotsRetenus !== [] ? $action->executerDepots($cible, $this->depotsRetenus) : [],
+    );
 
     activity()
         ->causedBy(auth()->user())
@@ -254,10 +298,12 @@ $viderLesChoisis = function (PurgeParModule $action) {
         ->withProperties($this->resultatChoix)
         ->log('Purge sélective des données');
 
-    $this->reset(['lotsChoisis', 'confirmationChoix']);
+    $this->reset(['lotsChoisis', 'depotsChoisis', 'confirmationChoix']);
 
     // Ce qui vient de partir n'est plus à compter : on relève de nouveau, une fois.
     $this->volumesLots = PurgeParModule::volumes((int) $this->choixId);
+    $this->depots = PurgeParModule::depots((int) $this->choixId);
+    unset($this->depotsRetenus, $this->recapitulatif);
 
     unset($this->volumesParLot, $this->volumes);
 };
@@ -407,6 +453,34 @@ $supprimer = function (SupprimerEntreprise $action) {
                                     @endif
                                 </span>
                             </label>
+
+                            {{-- Les dépôts un par un, sous la case qui les prend tous. Ils ne se
+                                 cochent plus quand « tous » l'est : elle les emporte déjà. --}}
+                            @if ($cle === 'lots' && $this->depots !== [])
+                                <div style="grid-column:1 / -1; border:1px dashed var(--th-ligne,#E2E0D8); border-radius:8px; padding:9px 11px;">
+                                    <div style="font-size:12.5px; font-weight:700; margin-bottom:6px;">
+                                        Ou seulement ceux-ci — {{ count($this->depots) }} dépôt(s), du plus récent au plus ancien :
+                                    </div>
+                                    <div style="display:grid; gap:4px; max-height:320px; overflow:auto;">
+                                        @foreach ($this->depots as $depot)
+                                            <label style="display:flex; align-items:center; gap:9px; font-size:12.5px; cursor:pointer;">
+                                                <input type="checkbox" wire:model.live="depotsChoisis.{{ $depot['id'] }}"
+                                                    @disabled(! empty($lotsChoisis['lots']))>
+                                                <span style="min-width:0; overflow-wrap:anywhere;">
+                                                    <b>{{ $depot['fichier'] }}</b>
+                                                    <span style="color:#6B6E76;">
+                                                        · {{ $depot['format'] }}
+                                                        · déposé le {{ \Illuminate\Support\Carbon::parse($depot['depose_le'])->format('d/m/Y H:i') }}
+                                                        @if ($depot['deposant'] !== '') par {{ $depot['deposant'] }} @endif
+                                                        · {{ number_format($depot['creees'], 0, ',', ' ') }} ligne(s) créée(s)
+                                                        @if ($depot['rejets'] > 0) · {{ $depot['rejets'] }} rejet(s) @endif
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
                         @endforeach
                     </div>
                 </div>

@@ -2166,7 +2166,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 | 0 | Le tableau par atelier du gérant en `group by` (repris du 02/10) | ✅ 07/10 |
 | 1 | **Habilitations.** Le gérant voit tout, inchangé. Le module **recouvrement** s'ouvre au **superviseur de ville**. Le module **impayés** s'ouvre à la **comptabilité** et au **recouvrement** (superviseur et agent) | ✅ 07/10 — voir dessous |
 | 2 | **Tableau de bord du gérant à zéro** après l'import de données de trésorerie (capture du 05/10 : CA, charges, encaissé, trésorerie à 0 F, « Toutes villes », exercice 2026). Est-ce normal ? | ✅ 07/10 — non, corrigé ; voir dessous |
-| 3 | **Maintenance** (`/super-admin/maintenance`), carte « Dépôts de fichiers » : proposer les dépôts à supprimer, un par un ou tous, au lieu d'une case qui coche tout | à faire |
+| 3 | **Maintenance** (`/super-admin/maintenance`), carte « Dépôts de fichiers » : proposer les dépôts à supprimer, un par un ou tous, au lieu d'une case qui coche tout | ✅ 07/10 — voir dessous |
 | 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | à faire |
 | 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | à faire |
 | 6 | **La caisse est centralisée** : sites 1 et 2 → Abidjan. Vérifier que c'est le cas | à faire |
@@ -2217,6 +2217,30 @@ bien présentes. Reproduit par un test avant correction : 0 là où il y a 1 250
 - Tests : `LeTableauDeBordVoitLesLignesSansAtelierTest` (écran réel, filtre ville compris),
   deux de plus dans `LaSyntheseParAtelierCoutCinqRequetesTest` — sans les villes, rien ne
   change, et la comparaison chiffre par chiffre à la boucle d'origine tient toujours.
+
+#### 3. La maintenance propose les dépôts un par un — fait le 07/10
+
+La carte « Dépôts de fichiers » avait **une case, qui effaçait les seize dépôts d'un coup** :
+on ne pouvait pas retirer le seul relevé mal déposé pour le redéposer. Elle garde sa case,
+renommée « **Tous** les dépôts de fichiers… », et dessous, **chaque dépôt à cocher** — nom du
+fichier, type, date, déposant, lignes créées, rejets —, du plus récent au plus ancien. Quand
+« tous » est coché, le détail se grise : il est déjà emporté.
+
+- **Lecture de la demande** : « les bases à supprimer » lu comme **les dépôts** (les fichiers
+  déposés). Si c'étaient les trois tables de la carte (dépôts, rejets, corrections), le dire :
+  le découpage se fait de la même façon.
+- **Ce qui part avec un dépôt** : ses lignes rejetées, ses corrections, son fichier sur le
+  disque. **Ce qui reste**, comme pour « tous » : les lignes déjà importées, qui perdent la
+  trace de leur fichier (`lot_import_id` → nul, contrainte de la base), et le fichier
+  redevient déposable.
+- **Les identifiants reçus ne commandent rien** : `PurgeParModule::executerDepots()` les relit
+  bornés à l'entreprise visée ; un dépôt d'une autre entreprise est ignoré (testé avec un
+  identifiant trafiqué). La boîte de confirmation nomme chaque dépôt avant de l'effacer, et le
+  nom de l'entreprise reste à retaper.
+- **Constat en chemin** : `lignes_rejetees_import` ne porte pas `entreprise_id`. Le compteur
+  de la carte ne compte donc que les dépôts et les corrections — les « 16 lignes » de la
+  capture —, pas les rejets. La suppression les borne par leurs dépôts.
+- Tests : deux de plus dans `LaPurgeSelectiveNeVideQueCeQuOnDesigneTest`, sur disque simulé.
 
 ### Hors chantier, toujours en attente
 

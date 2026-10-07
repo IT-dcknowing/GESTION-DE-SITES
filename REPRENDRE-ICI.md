@@ -120,7 +120,7 @@ URL de push).
 | 0 | Tableau par atelier du gérant en `group by` | ✅ |
 | 1 | Habilitations : recouvrement → superviseur de ville ; impayés → comptabilité et recouvrement | ✅ |
 | 2 | Tableau de bord du gérant à zéro après import | ✅ |
-| 3 | Maintenance : choisir les dépôts à supprimer | à faire |
+| 3 | Maintenance : choisir les dépôts à supprimer | ✅ |
 | 4 | Extrait de compte : filtre par état de règlement, export compris | à faire |
 | 5 | Pas de doublon entre l'état des impayés et l'import du CA | à faire |
 | 6 | Caisse centralisée à Abidjan (sites 1 et 2) : vérifier | à faire |

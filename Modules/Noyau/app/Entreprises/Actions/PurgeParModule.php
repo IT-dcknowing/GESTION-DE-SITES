@@ -4,6 +4,7 @@ namespace Modules\Noyau\Entreprises\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use RuntimeException;
@@ -198,7 +199,7 @@ class PurgeParModule
             'libelle' => 'Imports',
             'lots' => [
                 'lots' => [
-                    'libelle' => 'Dépôts de fichiers, et les fichiers eux-mêmes',
+                    'libelle' => 'Tous les dépôts de fichiers, et les fichiers eux-mêmes',
                     'ecran' => 'Journal des imports',
                     'tables' => ['corrections_import', 'lignes_rejetees_import', 'lots_import'],
                     'entraine' => 'Les lignes déjà importées restent, mais perdent la trace du fichier qui les a '
@@ -262,6 +263,101 @@ class PurgeParModule
         }
 
         return $lots;
+    }
+
+    /**
+     * Les dépôts d'une entreprise, un par un — pour choisir lesquels effacer.
+     *
+     * **Demandé le 07/10**, sur la carte « Dépôts de fichiers » : « je préfère que tu me
+     * proposes ce qu'il y a à supprimer — que je coche ce que je veux, ou tout — au lieu de
+     * tout cocher en même temps ». La case unique effaçait les seize dépôts d'un coup ; on
+     * ne pouvait pas retirer le seul relevé mal déposé pour le redéposer.
+     *
+     * Une requête : les rejets et les corrections se comptent en sous-requêtes, pour que
+     * chaque ligne dise ce qui part avec elle.
+     *
+     * @return array<int, array{id: int, fichier: string, format: string, depose_le: string, deposant: string, creees: int, rejets: int, corrections: int}>
+     */
+    public static function depots(int $entrepriseId): array
+    {
+        if (! Schema::hasTable('lots_import')) {
+            return [];
+        }
+
+        return DB::table('lots_import')
+            ->where('entreprise_id', $entrepriseId)
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->select('id', 'nom_fichier', 'format', 'created_at', 'deposant', 'lignes_creees')
+            ->selectSub(fn ($q) => $q->from('lignes_rejetees_import')->whereColumn('lot_import_id', 'lots_import.id')->selectRaw('count(*)'), 'rejets')
+            ->selectSub(fn ($q) => $q->from('corrections_import')->whereColumn('lot_import_id', 'lots_import.id')->selectRaw('count(*)'), 'corrections')
+            ->get()
+            ->map(fn ($lot) => [
+                'id' => (int) $lot->id,
+                'fichier' => (string) $lot->nom_fichier,
+                'format' => (string) $lot->format,
+                'depose_le' => (string) $lot->created_at,
+                'deposant' => (string) $lot->deposant,
+                'creees' => (int) $lot->lignes_creees,
+                'rejets' => (int) $lot->rejets,
+                'corrections' => (int) $lot->corrections,
+            ])
+            ->all();
+    }
+
+    /**
+     * Efface les dépôts désignés — eux, leurs rejets, leurs corrections et leur fichier.
+     *
+     * **Les identifiants reçus ne commandent rien seuls** : ils reviennent du navigateur, et
+     * sont relus ici, bornés à l'entreprise visée. Un identifiant d'une autre entreprise, ou
+     * déjà effacé, est simplement ignoré.
+     *
+     * Ce qui ne part pas, comme pour la case « tout » : **les lignes déjà importées**. Elles
+     * perdent la trace de leur fichier (`lot_import_id` passe à nul, c'est la contrainte de
+     * la base), et ce fichier redevient déposable.
+     *
+     * @param  array<int, int|string>  $ids
+     * @return array<string, int>
+     */
+    public function executerDepots(Entreprise $entreprise, array $ids): array
+    {
+        $lots = LotImport::withoutGlobalScopes()
+            ->where('entreprise_id', $entreprise->id)
+            ->whereIn('id', array_map('intval', $ids))
+            ->get();
+
+        if ($lots->isEmpty()) {
+            throw new RuntimeException('Aucun dépôt de cette entreprise n’a été choisi.');
+        }
+
+        $idsRetenus = $lots->pluck('id')->all();
+
+        $bilan = DB::transaction(function () use ($entreprise, $idsRetenus) {
+            // Les rejets ne portent pas l'entreprise : ils se bornent par leurs dépôts, qui
+            // viennent d'être relus dans elle.
+            $rejets = DB::table('lignes_rejetees_import')->whereIn('lot_import_id', $idsRetenus)->delete();
+            $corrections = DB::table('corrections_import')->whereIn('lot_import_id', $idsRetenus)->delete();
+            $depots = DB::table('lots_import')->where('entreprise_id', $entreprise->id)->whereIn('id', $idsRetenus)->delete();
+
+            return ['dépôts' => $depots, 'lignes rejetées' => $rejets, 'corrections' => $corrections];
+        });
+
+        // Hors transaction, comme pour la purge entière : un fichier effacé ne revient pas.
+        $fichiers = 0;
+
+        foreach ($lots as $lot) {
+            try {
+                if ($lot->fichierPresent()) {
+                    Storage::disk(LotImport::DISQUE)->delete($lot->cheminRelatif());
+                    $fichiers++;
+                }
+            } catch (RuntimeException) {
+                // Une empreinte inexploitable n'a jamais eu de fichier à son nom.
+            }
+        }
+
+        $bilan['fichiers effacés du disque'] = $fichiers;
+
+        return $bilan;
     }
 
     /**

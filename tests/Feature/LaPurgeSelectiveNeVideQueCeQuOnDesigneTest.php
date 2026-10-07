@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\User;
 use Database\Seeders\SuperAdminSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Actions\PurgeParModule;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
@@ -16,6 +18,7 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
+use Modules\Noyau\Imports\Modeles\LotImport;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -55,6 +58,9 @@ class LaPurgeSelectiveNeVideQueCeQuOnDesigneTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Un disque simulé : un test n'écrit pas dans le vrai dossier des dépôts.
+        Storage::fake(LotImport::DISQUE);
 
         $this->entreprise = Entreprise::create(['nom' => 'Alpha', 'slug' => 'alpha']);
         $this->voisine = Entreprise::create(['nom' => 'Beta', 'slug' => 'beta']);
@@ -276,6 +282,63 @@ class LaPurgeSelectiveNeVideQueCeQuOnDesigneTest extends TestCase
         $this->assertDatabaseHas('activity_log', ['description' => 'Purge sélective des données']);
     }
 
+    // ------------------------------------------------------------------ les dépôts un par un
+
+    /**
+     * **Demandé le 07/10** : sur la carte « Dépôts de fichiers », proposer chaque dépôt plutôt
+     * qu'une case qui les efface tous. Choisir deux dépôts n'efface qu'eux — leurs rejets,
+     * leur fichier — et rien d'autre.
+     */
+    public function test_choisir_des_depots_n_efface_qu_eux(): void
+    {
+        $garde = $this->depot('a', 'CA.xlsx');
+        $premier = $this->depot('b', 'Releve BGFI.xlsx', rejets: 2);
+        $second = $this->depot('c', 'Caisse.xlsx');
+        $voisin = $this->depot('d', 'Voisin.xlsx', chez: $this->voisine);
+        $facture = $this->facture();
+        $facture->update(['lot_import_id' => $premier->id]);
+
+        $ecran = Volt::actingAs($this->superAdmin())->test('superadmin.maintenance')
+            ->set('choixId', (string) $this->entreprise->id);
+
+        $this->assertCount(3, $ecran->get('depots'), 'Les dépôts de l\'entreprise visée, et eux seuls.');
+
+        $ecran->set('depotsChoisis.'.$premier->id, true)
+            ->set('depotsChoisis.'.$second->id, true)
+            // Un identifiant d'une autre entreprise, renvoyé par un navigateur trafiqué.
+            ->set('depotsChoisis.'.$voisin->id, true);
+
+        $recap = $ecran->instance()->recapitulatif;
+        $this->assertCount(2, $recap['lignes'], 'La boîte nomme les deux dépôts, et pas celui d\'à côté.');
+        $this->assertStringContainsString('Releve BGFI.xlsx', $recap['lignes'][0].$recap['lignes'][1]);
+
+        $ecran->set('confirmationChoix', 'Alpha')->call('viderLesChoisis')->assertHasNoErrors();
+
+        $restants = LotImport::withoutGlobalScopes()->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$garde->id, $voisin->id], $restants);
+        $this->assertSame(0, DB::table('lignes_rejetees_import')->where('lot_import_id', $premier->id)->count());
+
+        $this->assertFalse(Storage::disk(LotImport::DISQUE)->exists($premier->cheminRelatif()));
+        $this->assertTrue(Storage::disk(LotImport::DISQUE)->exists($garde->cheminRelatif()));
+        $this->assertTrue(Storage::disk(LotImport::DISQUE)->exists($voisin->cheminRelatif()));
+
+        // La ligne importée reste ; elle perd seulement la trace de son fichier.
+        $this->assertNull($facture->fresh()->lot_import_id);
+    }
+
+    /** La case « tous » emporte tout : les cases du détail ne s'y ajoutent pas. */
+    public function test_la_case_tous_rend_le_detail_sans_objet(): void
+    {
+        $premier = $this->depot('b', 'Releve.xlsx');
+
+        $ecran = Volt::actingAs($this->superAdmin())->test('superadmin.maintenance')
+            ->set('choixId', (string) $this->entreprise->id)
+            ->set('depotsChoisis.'.$premier->id, true)
+            ->set('lotsChoisis.lots', true);
+
+        $this->assertSame([], $ecran->instance()->depotsRetenus);
+    }
+
     // ------------------------------------------------------------------ le décor
 
     private ?Commercial $commercial = null;
@@ -306,6 +369,27 @@ class LaPurgeSelectiveNeVideQueCeQuOnDesigneTest extends TestCase
             'statut_validation' => 'Validée',
             'numero' => 'P-'.Prospection::withoutGlobalScopes()->count(),
         ]);
+    }
+
+    private function depot(string $lettre, string $nom, int $rejets = 0, ?Entreprise $chez = null): LotImport
+    {
+        $chez ??= $this->entreprise;
+
+        $lot = LotImport::withoutGlobalScopes()->create([
+            'entreprise_id' => $chez->id, 'deposant' => 'Gérante', 'format' => 'factures',
+            'nom_fichier' => $nom, 'empreinte' => str_repeat($lettre, 64), 'taille' => 10, 'etat' => 'termine',
+        ]);
+
+        Storage::disk(LotImport::DISQUE)->put($lot->cheminRelatif(), 'contenu');
+
+        for ($i = 1; $i <= $rejets; $i++) {
+            DB::table('lignes_rejetees_import')->insert([
+                'lot_import_id' => $lot->id, 'numero_ligne' => $i, 'motif' => 'date illisible',
+                'valeurs' => '{}', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        return $lot;
     }
 
     private function devis(): Devis
