@@ -119,7 +119,7 @@ URL de push).
 |---|---|---|
 | 0 | Tableau par atelier du gérant en `group by` | ✅ |
 | 1 | Habilitations : recouvrement → superviseur de ville ; impayés → comptabilité et recouvrement | ✅ |
-| 2 | Tableau de bord du gérant à zéro après import | à faire |
+| 2 | Tableau de bord du gérant à zéro après import | ✅ |
 | 3 | Maintenance : choisir les dépôts à supprimer | à faire |
 | 4 | Extrait de compte : filtre par état de règlement, export compris | à faire |
 | 5 | Pas de doublon entre l'état des impayés et l'import du CA | à faire |
@@ -268,7 +268,7 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 
 | Piège | Ce qui se passe |
 |---|---|
-| **`whereIn('site_id', …)` ignore les NULL** | **Quatre écrans** touchés. 7 627 des 7 714 encaissements n'ont pas d'atelier : `/tresorerie` montrait 35 M au lieu de 5,5 Md. Toujours prévoir le `orWhereNull`, ou passer par le service de périmètre |
+| **`whereIn('site_id', …)` ignore les NULL** | **Cinq écrans** touchés — le dernier, l'accueil du gérant, le 07/10 : tout à 0 F après import. 7 627 des 7 714 encaissements n'ont pas d'atelier : `/tresorerie` montrait 35 M au lieu de 5,5 Md. Toujours prévoir le `orWhereNull`, ou passer par le service de périmètre |
 | **Une colonne `unsigned` ne peut pas porter de négatif** | A bloqué les avoirs trois semaines, et l'on accusait l'import |
 | **Trier un cumul par date** | Une date mal lue déplace sa ligne d'un bout à l'autre du fichier |
 | **Un style en ligne bat une feuille de style** | `style="display:flex"` sur le `<nav>` : la règle CSS était écrite, lue, sans effet |

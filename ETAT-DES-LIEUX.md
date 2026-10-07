@@ -2165,7 +2165,7 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
 |---|---|---|
 | 0 | Le tableau par atelier du gérant en `group by` (repris du 02/10) | ✅ 07/10 |
 | 1 | **Habilitations.** Le gérant voit tout, inchangé. Le module **recouvrement** s'ouvre au **superviseur de ville**. Le module **impayés** s'ouvre à la **comptabilité** et au **recouvrement** (superviseur et agent) | ✅ 07/10 — voir dessous |
-| 2 | **Tableau de bord du gérant à zéro** après l'import de données de trésorerie (capture du 05/10 : CA, charges, encaissé, trésorerie à 0 F, « Toutes villes », exercice 2026). Est-ce normal ? | à faire |
+| 2 | **Tableau de bord du gérant à zéro** après l'import de données de trésorerie (capture du 05/10 : CA, charges, encaissé, trésorerie à 0 F, « Toutes villes », exercice 2026). Est-ce normal ? | ✅ 07/10 — non, corrigé ; voir dessous |
 | 3 | **Maintenance** (`/super-admin/maintenance`), carte « Dépôts de fichiers » : proposer les dépôts à supprimer, un par un ou tous, au lieu d'une case qui coche tout | à faire |
 | 4 | **Extrait de compte** (`/recouvrement/extrait-de-compte?tiers=…`) : filtre *Tous / payé totalement / payé avec reste / rien payé / payé avec reste et rien payé*, et l'export suit le filtre | à faire |
 | 5 | **Doublons** : l'import de l'état des impayés a rempli la page *Chiffre d'affaires* ; les factures importées ensuite ne doivent pas faire doublon | à faire |
@@ -2193,6 +2193,30 @@ section terminée est fusionnée dans `main` et poussée sur les deux dépôts.
   la facture qu'il encaisse. Le caissier, lui, a son atelier et crée.
 - Tests : `RecouvrementTest` (deux nouveaux, un réécrit), `EtatDesImpayesTest` et
   `LeVehiculeEtLaComptabiliteTest` mis à la nouvelle règle.
+
+#### 2. Le tableau de bord du gérant à zéro — fait le 07/10
+
+**Ce n'était pas normal, et la cause est le piège n° 1, pour la cinquième fois.** Chaque
+chiffre de l'accueil — tableau par atelier, indicateurs ventilés, courbe des flux — était
+lu par `whereIn('site_id', …)`. Les lignes importées portent leur **ville** et presque
+jamais d'atelier : elles étaient toutes écartées, et l'écran disait 0 F sur des données
+bien présentes. Reproduit par un test avant correction : 0 là où il y a 1 250 000 F.
+
+- **La règle de la maison s'applique** : l'atelier s'il est connu, sinon la ville, sinon la
+  ligne paraît. Factures par `EtatDesImpayes::dansLePerimetre()`, règlements par
+  `PerimetreDeTresorerie::encaissements()` (l'atelier, sinon celui ou la ville de **sa
+  facture**), devis sans atelier toujours montrés — un devis ne porte pas de ville.
+- **Le tableau par atelier gagne des lignes** « Abidjan — atelier non précisé », une par
+  ville qui en a, et « Lieu non précisé » pour ce qui n'a ni l'un ni l'autre. Rien n'est
+  attribué au jugé à un atelier, et le total reste la somme du tableau. Toujours **cinq
+  requêtes** : les villes se lisent sur les ateliers déjà chargés.
+- **Ce qui ne paraît toujours pas sur cet écran, et c'est voulu pour l'instant** : le
+  journal de caisse et le relevé bancaire importés. L'accueil compte le chiffre d'affaires
+  et les règlements clients, pas les supports. Ils se lisent sur la Trésorerie ; les relier
+  aux indicateurs sans rien compter deux fois est la section 9 de ce plan.
+- Tests : `LeTableauDeBordVoitLesLignesSansAtelierTest` (écran réel, filtre ville compris),
+  deux de plus dans `LaSyntheseParAtelierCoutCinqRequetesTest` — sans les villes, rien ne
+  change, et la comparaison chiffre par chiffre à la boucle d'origine tient toujours.
 
 ### Hors chantier, toujours en attente
 

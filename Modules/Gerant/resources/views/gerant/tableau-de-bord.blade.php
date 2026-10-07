@@ -12,6 +12,8 @@ use Modules\Noyau\Commun\Services\SerieParPoint;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
+use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
 use Modules\Noyau\Exploitation\Services\SyntheseParAtelier;
 use function Livewire\Volt\{state, computed, mount};
 
@@ -81,20 +83,32 @@ $idsCommercialFiltre = computed(function () {
 });
 
 /**
- * Une ligne par atelier retenu. Cinq requêtes en tout au lieu de six par atelier : mesuré le
- * 02/10, ce tableau coûtait trente des requêtes d'un clic. Voir `SyntheseParAtelier`.
+ * Les villes des ateliers retenus, pour placer les lignes qui n'ont que leur ville.
+ *
+ * Le 05/10, cet écran est resté à 0 F partout après l'import de l'état des impayés et de
+ * données de trésorerie : les lignes importées portent une ville et presque jamais
+ * d'atelier, et l'écran ne les cherchait que par atelier. Voir `SyntheseParAtelier`.
+ */
+$idsVilles = computed(fn () => EtatDesImpayes::villesDesSites($this->sitesRetenus->pluck('id')->all()));
+
+/**
+ * Une ligne par atelier retenu, puis une par ville pour ce qui n'a pas d'atelier. Cinq
+ * requêtes en tout au lieu de six par atelier : mesuré le 02/10, ce tableau coûtait trente
+ * des requêtes d'un clic.
  */
 $synthese = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return SyntheseParAtelier::calculer($this->sitesRetenus, $debut, $fin, (string) $this->activiteFiltre, $this->idsCommercialFiltre);
+    return SyntheseParAtelier::calculer($this->sitesRetenus, $debut, $fin, (string) $this->activiteFiltre, $this->idsCommercialFiltre, $this->idsVilles);
 });
 
 $kpis = computed(function () {
     [$debut, $fin] = $this->plage;
     $idsSites = $this->sitesRetenus->pluck('id');
 
-    $devisEmis = Devis::whereIn('site_id', $idsSites)->whereBetween('date_emission', [$debut, $fin])
+    // Un devis sans atelier ne porte pas de ville : il paraît, comme dans le tableau.
+    $devisEmis = Devis::where(fn ($q) => $q->whereIn('site_id', $idsSites)->orWhereNull('site_id'))
+        ->whereBetween('date_emission', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre));
     /*
@@ -129,7 +143,8 @@ $kpis = computed(function () {
         return $nb > 0 ? $compter($activite, 'Validé') / $nb : null;
     };
 
-    $facturesQ = Facture::whereIn('site_id', $idsSites)->whereBetween('date', [$debut, $fin])
+    $facturesQ = EtatDesImpayes::dansLePerimetre(Facture::query(), $idsSites->all(), $this->idsVilles)
+        ->whereBetween('date', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre));
 
@@ -145,7 +160,8 @@ $kpis = computed(function () {
     $sortiesQ = Charge::whereIn('site_id', $idsSites)->whereBetween('date', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre));
 
-    $encaisseQ = Encaissement::whereIn('site_id', $idsSites)->whereBetween('date', [$debut, $fin])
+    $encaisseQ = PerimetreDeTresorerie::encaissements(Encaissement::query(), $idsSites->all(), $this->idsVilles)
+        ->whereBetween('date', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre));
 
     $ca = VentilationActivite::repartir($facturesQ);
@@ -203,12 +219,15 @@ $graphiqueFlux = computed(function () {
     // lundi, donc parfois **avant** le début de la plage. Borner au début rognerait le
     // premier point. `SerieParPoint` borne à l'union exacte des points, ce qui ne retire
     // rien et laisse l'index servir.
-    $sousPerimetre = fn ($requete) => $requete
-        ->whereIn('site_id', $idsSites)
+    $activite = fn ($requete) => $requete
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre));
 
-    $sommesEntrees = SerieParPoint::sommes($sousPerimetre(Encaissement::query()), $points, 'date', 'montant');
-    $sommesSorties = SerieParPoint::sommes($sousPerimetre(Charge::query()), $points, 'date', 'montant');
+    // Les entrées se placent comme dans le tableau : atelier, sinon ville de la facture.
+    $sommesEntrees = SerieParPoint::sommes(
+        $activite(PerimetreDeTresorerie::encaissements(Encaissement::query(), $idsSites->all(), $this->idsVilles)),
+        $points, 'encaissements.date', 'encaissements.montant',
+    );
+    $sommesSorties = SerieParPoint::sommes($activite(Charge::query()->whereIn('site_id', $idsSites)), $points, 'date', 'montant');
 
     foreach ($points as $rang => $point) {
         $e = $sommesEntrees[$rang];

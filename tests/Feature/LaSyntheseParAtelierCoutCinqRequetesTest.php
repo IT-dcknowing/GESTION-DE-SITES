@@ -241,12 +241,69 @@ class LaSyntheseParAtelierCoutCinqRequetesTest extends TestCase
         $this->assertSame(0, $requetes);
     }
 
-    private function facture(?int $siteId, string $jour, int $montant, string $activite, ?int $commercialId): void
+    /**
+     * Le tableau de bord à zéro du 05/10 : une ligne sans atelier tombe dans sa ville.
+     *
+     * Le propriétaire a importé l'état des impayés et des données de trésorerie, et l'accueil
+     * du gérant est resté à 0 F partout : les lignes importées portent leur ville, pas leur
+     * atelier, et chaque agrégat les cherchait par `site_id`. Avec les villes du périmètre,
+     * elles reçoivent leur ligne, et le total du tableau est celui de tout ce qui est dans
+     * le périmètre — ni plus, ni moins.
+     */
+    public function test_avec_les_villes_les_lignes_sans_atelier_ont_leur_ligne(): void
+    {
+        $abidjan = $this->sites['Abidjan 1']->ville_id;
+        $bouake = $this->sites['Bouaké']->id;
+
+        // Une facture d'Abidjan sans atelier, et son règlement, lui aussi sans atelier.
+        $facture = $this->facture(null, '2026-03-10', 333_000, 'Mécanique', null, $abidjan);
+        $this->encaissement(null, '2026-03-11', 111_000, 'Mécanique', $facture);
+        // Un règlement sans atelier, mais dont la facture en a un : il va à cet atelier.
+        $factureBouake = $this->facture($bouake, '2026-03-02', 50_000, 'Carrosserie', null);
+        $this->encaissement(null, '2026-03-03', 40_000, 'Carrosserie', $factureBouake);
+        // Un devis sans atelier, en attente.
+        $this->devis(null, '2026-03-05', 'En attente', 'Mécanique', null);
+
+        $idsVilles = collect($this->sites)->pluck('ville_id')->unique()->values()->all();
+
+        $sites = $this->sitesRetenus();
+        $plage = $this->plage();
+
+        DB::enableQueryLog();
+        $lignes = SyntheseParAtelier::calculer($sites, ...$plage, idsVilles: $idsVilles);
+        $requetes = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $parNom = collect($this->chiffres($lignes->all()))->keyBy('site');
+
+        $this->assertSame(333_000, $parNom['Abidjan — atelier non précisé']['ca']);
+        $this->assertSame(111_000, $parNom['Abidjan — atelier non précisé']['encaisse']);
+        $this->assertSame(3_300_000 + 40_000, $parNom['Bouaké']['encaisse'], 'Le règlement suit l\'atelier de sa facture.');
+        $this->assertSame(500_000_000, $parNom['Lieu non précisé']['ca'], 'Ni atelier ni ville : la ligne paraît, et le dit.');
+        $this->assertSame(700_000_000, $parNom['Lieu non précisé']['encaisse']);
+        $this->assertSame(2, $parNom['Lieu non précisé']['devisAttente']);
+        $this->assertArrayNotHasKey('Bouaké — atelier non précisé', $parNom->all(), 'Une ville sans ligne orpheline n\'a pas de ligne vide.');
+
+        // Le total est celui de toutes les factures de la plage, avoir compris, rien de plus.
+        $toutes = (int) Facture::whereBetween('date', $this->plage())->sum('montant');
+        $this->assertSame($toutes, $lignes->sum('ca'));
+
+        $this->assertSame(5, $requetes, 'Toujours cinq requêtes : les villes se lisent sur les ateliers chargés.');
+    }
+
+    public function test_sans_les_villes_rien_ne_change(): void
+    {
+        $this->facture(null, '2026-03-10', 333_000, 'Mécanique', null, $this->sites['Abidjan 1']->ville_id);
+
+        $this->assertSame($this->chiffres($this->boucleDAvant()), $this->chiffres($this->nouvelle()));
+    }
+
+    private function facture(?int $siteId, string $jour, int $montant, string $activite, ?int $commercialId, ?int $villeId = null): Facture
     {
         $n = ++$this->numero;
 
-        Facture::create([
-            'entreprise_id' => $this->entreprise->id, 'site_id' => $siteId, 'commercial_id' => $commercialId,
+        return Facture::create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $siteId, 'ville_id' => $villeId, 'commercial_id' => $commercialId,
             'numero' => "F-{$n}", 'n_facture' => "FA-{$n}", 'date' => $jour, 'client' => 'Client',
             'activite' => $activite, 'montant' => $montant, 'est_avoir' => $montant < 0,
         ]);
@@ -260,10 +317,10 @@ class LaSyntheseParAtelierCoutCinqRequetesTest extends TestCase
         ]);
     }
 
-    private function encaissement(?int $siteId, string $jour, int $montant, string $activite): void
+    private function encaissement(?int $siteId, string $jour, int $montant, string $activite, ?Facture $facture = null): void
     {
         Encaissement::create([
-            'entreprise_id' => $this->entreprise->id, 'site_id' => $siteId, 'date' => $jour,
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $siteId, 'facture_id' => $facture?->id, 'date' => $jour,
             'type' => 'Client', 'moyen' => 'Espèces', 'activite' => $activite, 'montant' => $montant,
         ]);
     }
