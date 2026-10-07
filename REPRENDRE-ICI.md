@@ -139,7 +139,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 12 | La comptabilité ouvre le recouvrement ; et la trésorerie | ✅ |
 | 13 | Banques : règlements face au relevé, plus de montant sur les boutons | à faire |
 | 14 | Banques : « Affecter à » et « Modifier » sur les libellés non rangés | à faire |
-| 15 | Expliquer le rapprochement et le lettrage | à faire |
+| 15 | Expliquer le rapprochement et le lettrage | ✅ |
 | 16 | Charges récupérées de la caisse, colonne Origine | à faire |
 | 17 | Synthèse par site : « Lieu non précisé », activité par le devis | à faire |
 | 18 | Factures fournisseurs FNE (stripping), porter et régler — **module à venir** | plan |

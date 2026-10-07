@@ -2424,10 +2424,42 @@ chaque section terminée est fusionnée dans `main` et poussée sur les deux dé
 | 12 | **La comptabilité ne peut pas ouvrir le module recouvrement** (« Ouvrir le module » la refuse) : lever ce blocage ; lui donner aussi la **trésorerie** | ✅ 07/10 — « Ouvrir le module » menait toujours à la saisie, qu'elle n'a pas : il mène à sa première page ouverte. La trésorerie lui était déjà ouverte (route et menu) ; c'est désormais tenu par un test |
 | 13 | **Banques** : au clic sur BGFI (ou une autre), des KPI qui disent **ce que disent les règlements** (CA, impayés importés) et **ce que dit réellement la banque** (le relevé), et les factures pas encore réglées — comme sur la trésorerie. **Ne plus afficher de montant sur les boutons des banques**, pour ne pas prêter à confusion | à faire |
 | 14 | **Banques**, libellés non rangés : à côté de « Déclarer », un bouton **Affecter à** (choisir une banque déclarée : « c'est la même ») et un bouton **Modifier** (ouvrir le formulaire de création prérempli, compléter, valider) | à faire |
-| 15 | **Expliquer** le rapprochement « identique » et **le lettrage facture ↔ règlement** : sur quoi il se fait (numéro, date…), et avec quoi se rapproche le CA (impayés ? caisse ?) | à faire |
+| 15 | **Expliquer** le rapprochement « identique » et **le lettrage facture ↔ règlement** : sur quoi il se fait (numéro, date…), et avec quoi se rapproche le CA (impayés ? caisse ?) | ✅ 07/10 — voir « Lettrage et rapprochement » dessous |
 | 16 | **Charges** : pouvoir récupérer certaines sorties de la **caisse** dans les charges, avec une colonne **Origine** qui dit « Caisse » | à faire |
 | 17 | **Synthèse par site** (accueil du gérant) : pourquoi « Lieu non précisé », alors que chaque facture a un code ? Vérifier que ce tableau est à jour, et les autres tableaux susceptibles d'être en retard. **L'activité (Sinistre / Mécanique)** : remonter au devis par le **n° de fiche de réception** de la facture, puisque le devis la dit | à faire |
 | 18 | **Module à venir — les factures fournisseurs FNE.** Récupérer les factures **FNE** par extraction automatique (« stripping »), avec **Origine = FNE**. Au suivi fournisseur, comme aux impayés : **porter** une facture (choisir le fournisseur, puis la facture) ; un champ **« Régler une facture fournisseur »** (choisir le fournisseur, la facture, champs préremplis) ; pour les factures que la FNE ne donne pas, le bouton du formulaire existant | **plan seulement** — module à venir |
+
+#### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
+
+**Trois liens différents, à ne pas confondre.**
+
+1. **Facture ↔ règlement (le lettrage).** Il **n'est pas calculé** : il vient de la **même ligne
+   de l'état des impayés**. Chaque ligne de ce classeur porte la facture (numéro, date d'édition,
+   immatriculation, montant TTC) **et** ce qui a été réglé dessus (« Montant réglé », « Date de
+   règlement », « Mode de règlement »). L'import écrit la facture, puis un règlement **rattaché à
+   elle** (`encaissements.facture_id`), daté du règlement — ou de la facture si le fichier ne dit
+   pas la date —, avec un moyen lu dans le mode (« CHQ… » → Chèque, « VIR » → Virement, « ESP » →
+   Espèces, sinon « Non précisé »). Le reste à payer est donc toujours **montant − règlements de
+   cette facture**. Le **CATTC** (fichier du CA) ne porte **aucun** règlement : une facture qui n'y
+   figure que là paraît due en entier, jusqu'à ce que l'état des impayés — ou une saisie au
+   recouvrement, à la caisse, aux impayés — lui rattache un règlement. Depuis le 07/10, une
+   facture du CATTC et sa ligne de l'état ne font qu'une (même date, montant et plaque, voir § 5).
+2. **CA ↔ impayés (l'écran « Rapprochement CA / impayés »)**. Il répond à « cette facture du CA
+   est-elle suivie en créance ? », par **plaque + montant** (`EtatDesImpayes::clePont()`), année
+   par année. C'est une vue, il ne lie rien.
+3. **Règlements ↔ banque ou caisse (la trésorerie, depuis le 07/10)**. Il ne rapproche **pas** des
+   factures : il rapproche des **règlements** (ceux du point 1, et ceux saisis à la main) avec les
+   **opérations du relevé bancaire** (crédits) ou les **entrées du journal de caisse**. Règle :
+   **même montant au franc près**, et une **date proche** — de 3 jours avant à 10 jours après le
+   règlement pour la banque (un chèque remis le 2 n'est crédité que quelques jours plus tard),
+   3 jours de part et d'autre pour la caisse ; chaque opération ne sert qu'une fois, la date la
+   plus proche l'emporte. Côté banque : les règlements par chèque ou virement **et** ceux dont le
+   moyen n'est pas dit ; côté caisse : les règlements en espèces. **Ni le numéro de facture ni le
+   nom du client n'entrent dans la règle** : un relevé bancaire ne porte ni l'un ni l'autre de
+   façon fiable (« VIR.RECU AXA COTE D IVOIRE » ne dit pas quelle facture AXA règle, et un
+   virement règle souvent plusieurs factures). La colonne F du classeur de la caissière
+   (contrepartie : AXA, NSIA…) pourra resserrer la règle — même montant **et** même assureur —
+   quand ses noms seront alignés sur ceux des tiers.
 
 ### Hors chantier, toujours en attente
 
