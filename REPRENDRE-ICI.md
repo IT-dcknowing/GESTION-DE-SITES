@@ -135,8 +135,8 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | # | Sujet | État |
 |---|---|---|
 | 10 | Extrait de compte : colonne CLIENT (assuré) à l'export | ✅ |
-| 11 | Bouton Retour sur `/recouvrement` | à faire |
-| 12 | La comptabilité ouvre le recouvrement ; et la trésorerie | à faire |
+| 11 | Bouton Retour sur `/recouvrement` | ✅ |
+| 12 | La comptabilité ouvre le recouvrement ; et la trésorerie | ✅ |
 | 13 | Banques : règlements face au relevé, plus de montant sur les boutons | à faire |
 | 14 | Banques : « Affecter à » et « Modifier » sur les libellés non rangés | à faire |
 | 15 | Expliquer le rapprochement et le lettrage | à faire |

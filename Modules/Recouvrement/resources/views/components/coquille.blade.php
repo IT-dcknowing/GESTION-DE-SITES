@@ -89,6 +89,10 @@
                  préparer une visite à Bouaké sur une balance qui mélange trois villes est
                  une opération à laquelle on n'arrive pas. --}}
             <div class="rec-datebox" style="display:flex; align-items:center; gap:9px;">
+                {{-- Le retour au tableau de bord — demandé le 07/10 : on entrait dans le
+                     module par lui, et l'on n'y revenait que par le menu. --}}
+                <a href="{{ route('recouvrement.tableau-de-bord') }}" wire:navigate class="bouton bouton-secondaire no-print"
+                    style="padding:7px 12px; text-decoration:none; white-space:nowrap;">← Tableau de bord</a>
                 <livewire:commun.selecteur-ville />
                 @if ($actions)
                     {{ $actions }}

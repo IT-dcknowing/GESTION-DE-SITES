@@ -2420,8 +2420,8 @@ chaque section terminée est fusionnée dans `main` et poussée sur les deux dé
 | # | Demande | État |
 |---|---|---|
 | 10 | **Priorité** — extrait de compte, export Excel : une colonne **CLIENT** (le nom de l'assuré) | ✅ 07/10 |
-| 11 | `/recouvrement` (la saisie) : un bouton **Retour** vers le tableau de bord du recouvrement | à faire |
-| 12 | **La comptabilité ne peut pas ouvrir le module recouvrement** (« Ouvrir le module » la refuse) : lever ce blocage ; lui donner aussi la **trésorerie** | à faire |
+| 11 | `/recouvrement` (la saisie) : un bouton **Retour** vers le tableau de bord du recouvrement | ✅ 07/10 — « ← Tableau de bord » sur toutes les pages du module |
+| 12 | **La comptabilité ne peut pas ouvrir le module recouvrement** (« Ouvrir le module » la refuse) : lever ce blocage ; lui donner aussi la **trésorerie** | ✅ 07/10 — « Ouvrir le module » menait toujours à la saisie, qu'elle n'a pas : il mène à sa première page ouverte. La trésorerie lui était déjà ouverte (route et menu) ; c'est désormais tenu par un test |
 | 13 | **Banques** : au clic sur BGFI (ou une autre), des KPI qui disent **ce que disent les règlements** (CA, impayés importés) et **ce que dit réellement la banque** (le relevé), et les factures pas encore réglées — comme sur la trésorerie. **Ne plus afficher de montant sur les boutons des banques**, pour ne pas prêter à confusion | à faire |
 | 14 | **Banques**, libellés non rangés : à côté de « Déclarer », un bouton **Affecter à** (choisir une banque déclarée : « c'est la même ») et un bouton **Modifier** (ouvrir le formulaire de création prérempli, compléter, valider) | à faire |
 | 15 | **Expliquer** le rapprochement « identique » et **le lettrage facture ↔ règlement** : sur quoi il se fait (numéro, date…), et avec quoi se rapproche le CA (impayés ? caisse ?) | à faire |

@@ -127,6 +127,18 @@ class RecouvrementTest extends TestCase
         $this->assertFalse(AccesRecouvrement::peutCreerUneFacture($compte));
         $this->assertFalse(AccesRecouvrement::peutCreerUnTiers($compte));
         $this->assertFalse(AccesRecouvrement::peutSaisir($compte));
+
+        /*
+         * « Ouvrir le module » mène à une page qui lui est ouverte — corrigé le 07/10. Il menait
+         * à la saisie, et le module la renvoyait avec un refus. Chaque page porte un retour au
+         * tableau de bord, et la trésorerie lui reste ouverte.
+         */
+        $this->actingAs($compte)->get(route('recouvrement.tableau-de-bord'))
+            ->assertOk()
+            ->assertSee(route('recouvrement.balance'), false)
+            ->assertDontSee('href="'.route('recouvrement.saisie').'"', false);
+        $this->actingAs($compte)->get(route('recouvrement.balance'))->assertOk()->assertSee('← Tableau de bord');
+        $this->actingAs($compte)->get(route('tresorerie'))->assertOk();
     }
 
     /**

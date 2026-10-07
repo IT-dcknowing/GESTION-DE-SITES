@@ -252,10 +252,13 @@ $lien = function (array $changements = []): string {
 
 ?>
 
+{{-- « Ouvrir le module » mène à la première page **ouverte au rôle** — corrigé le 07/10. Il
+     menait toujours à la saisie, que la comptabilité n'a pas : elle cliquait, et le module la
+     renvoyait avec « habilitation supérieure ». --}}
 <x-recouvrement::pleine-page
     titre="Tableau de bord du recouvrement"
     :sous-titre="\Modules\Recouvrement\Support\AccesRecouvrement::SOUS_TITRE_TABLEAU"
-    :retour="route('recouvrement.saisie')"
+    :retour="route('recouvrement.'.(collect(\Modules\Recouvrement\Support\AccesRecouvrement::pagesDe(auth()->user()))->first(fn ($p) => $p !== 'tableau-de-bord') ?? 'tableau-de-bord'))"
     retour-libelle="Ouvrir le module →">
 
     <x-slot:actions>
