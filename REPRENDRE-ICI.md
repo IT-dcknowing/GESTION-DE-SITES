@@ -140,7 +140,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 13 | Banques : règlements face au relevé, plus de montant sur les boutons | ✅ |
 | 14 | Banques : « Affecter à » et « Modifier » sur les libellés non rangés | ✅ (table `libelles_de_banque`, migration à passer) |
 | 15 | Expliquer le rapprochement et le lettrage | ✅ |
-| 16 | Charges récupérées de la caisse, colonne Origine | à faire |
+| 16 | Charges récupérées de la caisse, colonne Origine | ✅ (colonne `charges.mouvement_caisse_id`, migration à passer) |
 | 17 | Synthèse par site : « Lieu non précisé », activité par le devis | ✅ — `factures:situer` à passer en ligne |
 | 18 | Factures fournisseurs FNE (stripping), porter et régler — **module à venir** | plan |
 

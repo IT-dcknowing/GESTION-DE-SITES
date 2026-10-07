@@ -6,6 +6,10 @@ use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
+use Modules\Noyau\Commun\Modeles\Referentiel;
+use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
+use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
+use Modules\Noyau\Imports\Modeles\MouvementCaisse;
 use function Livewire\Volt\{state, computed, mount};
 
 state([
@@ -27,6 +31,22 @@ state([
     'filtresLibres' => [],
 ]);
 
+/*
+ * La reprise de sorties du journal de caisse — demandée le 07/10 : « pour certaines charges,
+ * fais en sorte qu'on puisse les récupérer sur la caisse et les mettre dans les charges ».
+ * Repliée tant qu'on ne la demande pas. **Certaines** : on choisit ligne à ligne — une sortie
+ * de caisse n'est pas toujours une charge (un versement en banque, un transfert vers un
+ * autre site), et les reprendre toutes d'office gonflerait les charges de ce qui n'en est pas.
+ */
+state([
+    'repriseOuverte' => false,
+    'repriseRecherche' => '',
+    'repriseChoix' => [],
+    'repriseLibelle' => 'Achats pièces',
+    'repriseSiteId' => '',
+    'pageReprise' => 1,
+]);
+
 mount(function () {
     $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
     $this->dateFin ??= now()->format('Y-m-d');
@@ -36,6 +56,7 @@ $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre 
 $updatedSemaineFiltre = function () { $this->jourFiltre = ''; };
 /** Changer de ville rend caduc le lieu choisi dans la précédente. */
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; };
+$updatedRepriseRecherche = function () { $this->pageReprise = 1; };
 
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin, $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null
@@ -158,6 +179,123 @@ $colonnesFiltrables = computed(fn () => [
     'charges.montant' => FiltreLibre::colonne('Montant', 'nombre'),
 ]);
 
+// ------------------------------------------------------------------ reprendre de la caisse
+
+/** Reprendre engage l'entreprise : les rôles qui saisissent la caisse, comme sur l'écran Caisse. */
+$peutReprendre = computed(fn () => auth()->user()?->hasAnyRole(['gerant', 'responsable_ville', 'caissier']) === true);
+
+/**
+ * Les sorties du journal de caisse de la période et du périmètre, **pas encore reprises**.
+ *
+ * Le périmètre est celui de la caisse (`PerimetreDeTresorerie::mouvementsDeCaisse`) :
+ * l'atelier s'il est connu, sinon la ville — le journal d'Abidjan ne dit presque jamais
+ * l'atelier. Une sortie déjà reprise disparaît de la liste : l'index unique la refuserait de
+ * toute façon, mais la proposer encore laisserait croire qu'elle manque aux charges.
+ */
+$sortiesDeCaisse = computed(function () {
+    [$debut, $fin] = $this->plage;
+    $terme = trim($this->repriseRecherche);
+
+    return PerimetreDeTresorerie::mouvementsDeCaisse(
+        MouvementCaisse::query(), $this->idsSites, EtatDesImpayes::villesDesSites($this->idsSites),
+    )
+        ->where('mouvements_caisse.sens', MouvementCaisse::SORTIE)
+        ->whereBetween('mouvements_caisse.date', [$debut, $fin])
+        ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('charges')
+            ->whereColumn('charges.mouvement_caisse_id', 'mouvements_caisse.id'))
+        ->when($terme !== '', fn ($q) => $q->where(fn ($sous) => $sous
+            ->where('mouvements_caisse.libelle', 'like', '%'.$terme.'%')
+            ->orWhere('mouvements_caisse.motif', 'like', '%'.$terme.'%')
+            ->orWhere('mouvements_caisse.beneficiaire', 'like', '%'.$terme.'%')
+            ->orWhere('mouvements_caisse.numero_piece', 'like', '%'.$terme.'%')));
+});
+
+$nombreSortiesDeCaisse = computed(fn () => $this->repriseOuverte ? (clone $this->sortiesDeCaisse)->count() : 0);
+
+$pageSortiesDeCaisse = computed(fn () => ! $this->repriseOuverte ? collect() : (clone $this->sortiesDeCaisse)
+    ->with(['site', 'ville'])
+    ->orderByDesc('mouvements_caisse.date')->orderByDesc('mouvements_caisse.id')
+    ->forPage($this->pageReprise, 15)->get());
+
+/** Les ateliers où ranger une sortie qui n'en dit aucun : `charges.site_id` est obligatoire. */
+$ateliersDeReprise = computed(fn () => PerimetreSites::sitesConsultables(auth()->user())
+    ->whereIn('id', $this->idsSites)->pluck('nom', 'id')->all());
+
+$libellesDeCharge = computed(fn () => Referentiel::options(Referentiel::LIBELLE_CHARGE));
+
+$ouvrirLaReprise = function () {
+    $this->repriseOuverte = ! $this->repriseOuverte;
+    $this->repriseChoix = [];
+    $this->pageReprise = 1;
+    $this->repriseSiteId = isset($this->ateliersDeReprise[(int) auth()->user()->site_id])
+        ? (string) auth()->user()->site_id : '';
+    $this->resetErrorBag();
+};
+
+/**
+ * Reprend les sorties cochées en charges.
+ *
+ * Chaque charge garde le lien vers sa sortie (`mouvement_caisse_id`) : c'est lui qui dit
+ * « Caisse » dans la colonne Origine, et qui empêche les écrans lisant le journal et les
+ * charges ensemble de la compter deux fois. Les sorties sont relues **sous le périmètre et
+ * parmi celles non reprises** : un identifiant envoyé par le navigateur ne suffit pas à
+ * écrire une charge.
+ */
+$reprendreDeLaCaisse = function () {
+    abort_unless($this->peutReprendre, 403, 'La reprise des sorties de caisse est réservée à ceux qui tiennent la caisse.');
+
+    $this->validate([
+        'repriseChoix' => ['required', 'array', 'min:1'],
+        'repriseLibelle' => ['required', 'string', \Illuminate\Validation\Rule::in(array_keys($this->libellesDeCharge))],
+        'repriseSiteId' => ['nullable', \Illuminate\Validation\Rule::in(array_map('strval', array_keys($this->ateliersDeReprise)))],
+    ], [
+        'repriseChoix.required' => 'Cochez au moins une sortie à reprendre.',
+    ], ['repriseLibelle' => "libellé d'opération", 'repriseSiteId' => 'atelier']);
+
+    $ids = array_map('intval', (array) $this->repriseChoix);
+    $sorties = (clone $this->sortiesDeCaisse)->whereIn('mouvements_caisse.id', $ids)->get();
+
+    // L'atelier de la sortie s'il est dans le périmètre, sinon celui qu'on a choisi.
+    $atelierDe = fn (MouvementCaisse $m) => $m->site_id && isset($this->ateliersDeReprise[$m->site_id])
+        ? (int) $m->site_id
+        : ($this->repriseSiteId !== '' ? (int) $this->repriseSiteId : null);
+
+    if ($sorties->contains(fn ($m) => $atelierDe($m) === null)) {
+        $this->addError('repriseSiteId', "Certaines sorties ne disent pas leur atelier : choisissez celui où les ranger.");
+
+        return;
+    }
+
+    \Illuminate\Support\Facades\DB::transaction(function () use ($sorties, $atelierDe) {
+        foreach ($sorties as $m) {
+            Charge::create([
+                'entreprise_id' => auth()->user()->entreprise_id,
+                'site_id' => $atelierDe($m),
+                'mouvement_caisse_id' => $m->id,
+                'date' => $m->date,
+                'type_operation' => 'Charges',
+                'libelle' => $this->repriseLibelle,
+                // Ce que le journal disait de la sortie, mot pour mot : c'est la trace.
+                'motif' => trim(implode(' — ', array_filter([$m->libelle, $m->motif]))) ?: null,
+                // Une caisse tient des espèces : le moyen n'est pas une question.
+                'moyen' => 'Espèces',
+                'montant' => (int) $m->montant,
+                'tiers' => $m->beneficiaire ?: null,
+                'reference_origine' => $m->numero_piece ?: null,
+                'observations' => 'Reprise du journal de caisse',
+                'cree_par' => auth()->id(),
+            ]);
+        }
+    });
+
+    $nombre = $sorties->count();
+    $this->repriseChoix = [];
+    unset($this->sortiesDeCaisse, $this->nombreSortiesDeCaisse, $this->pageSortiesDeCaisse, $this->detail, $this->kpis, $this->graphique);
+
+    $this->dispatch('annonce', ton: 'succes',
+        texte: $nombre.' sortie(s) de caisse reprise(s) en charges — colonne Origine « Caisse ».');
+};
+
 $detail = computed(fn () => FiltreLibre::appliquer(
     (clone $this->requeteBase)->with('site'),
     $this->colonnesFiltrables,
@@ -176,9 +314,67 @@ $detail = computed(fn () => FiltreLibre::appliquer(
 
     {{-- Les colonnes qu'aucun filtre ne couvre : le libellé, le tiers, le moyen, la
          référence, le motif, le montant. Demandé le 28/09. --}}
-    <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+    <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+        @if ($this->peutReprendre)
+            <button type="button" wire:click="ouvrirLaReprise"
+                class="bouton {{ $repriseOuverte ? '' : 'bouton-secondaire' }}" style="padding:8px 14px;">
+                Reprendre des sorties de caisse
+            </button>
+        @endif
         <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
     </div>
+
+    @if ($repriseOuverte && $this->peutReprendre)
+        <div class="carte" style="margin-bottom:16px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">
+                Sorties du journal de caisse pas encore reprises ({{ number_format($this->nombreSortiesDeCaisse, 0, ',', ' ') }})
+            </h3>
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
+                Cochez celles qui sont des charges : elles entrent dans les charges avec l'origine
+                <b>Caisse</b>, et ne sont jamais comptées deux fois — la caisse et la trésorerie
+                les lisent sous leur sortie. Une sortie reprise quitte cette liste.
+            </p>
+
+            <div class="bloc-saisie" style="background:#fff; border-style:solid; margin-bottom:12px;">
+                <x-champ label="Rechercher" model="repriseRecherche" :live="true" width="220" placeholder="Libellé, motif, bénéficiaire…" />
+                <x-champ label="Libellé d'opération" model="repriseLibelle" type="select" :requis="true" width="210"
+                    :options="$this->libellesDeCharge" />
+                <x-champ label="Atelier (si la sortie n'en dit pas)" model="repriseSiteId" type="select" width="230"
+                    :options="$this->ateliersDeReprise" vide="— choisir —" />
+                <button type="button" wire:click="reprendreDeLaCaisse" class="bouton">
+                    Reprendre la sélection ({{ count($repriseChoix) }})
+                </button>
+            </div>
+            <x-erreurs-du-bloc prefixe="reprise" />
+
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th></th><th>Date</th><th>N° pièce</th><th>Libellé</th><th>Bénéficiaire</th><th>Lieu</th>
+                            <th style="text-align:right;">Montant</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($this->pageSortiesDeCaisse as $sortie)
+                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                <td><input type="checkbox" wire:model.live="repriseChoix" value="{{ $sortie->id }}"></td>
+                                <td style="white-space:nowrap;">{{ $sortie->date?->format('d/m/Y') }}</td>
+                                <td>{{ $sortie->numero_piece ?: '—' }}</td>
+                                <td>{{ $sortie->libelle }}@if ($sortie->motif)<div style="font-size:11.5px; color:#6B6E76;">{{ $sortie->motif }}</div>@endif</td>
+                                <td style="color:#6B6E76;">{{ $sortie->beneficiaire ?: '—' }}</td>
+                                <td style="color:#6B6E76;">{{ $sortie->site?->nom ?? ($sortie->ville?->nom ? $sortie->ville->nom.' — atelier non précisé' : '—') }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $sortie->montant) }}</td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="7" texte="Aucune sortie de caisse à reprendre sur cette période." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <x-pagination :page="$pageReprise" :total="$this->nombreSortiesDeCaisse" prop="pageReprise" :par-page="15" />
+        </div>
+    @endif
 
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp
@@ -220,6 +416,8 @@ $detail = computed(fn () => FiltreLibre::appliquer(
                             <th>Site</th>
                         @endif
                         <th>Montant</th>
+                        {{-- Demandée le 07/10 : d'où vient la ligne — saisie, import, ou reprise de la caisse. --}}
+                        <th>Origine</th>
                         <th>Observations</th>
                     </tr>
                 </thead>
@@ -235,10 +433,11 @@ $detail = computed(fn () => FiltreLibre::appliquer(
                                 <td>{{ $ligne->site->nom }}</td>
                             @endif
                             <td style="font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($ligne->montant) }}</td>
+                            <td style="font-size:11.5px; color:{{ $ligne->origine() === 'Caisse' ? '#B45309' : '#6B6E76' }}; font-weight:{{ $ligne->origine() === 'Caisse' ? '700' : '400' }};">{{ $ligne->origine() }}</td>
                             <td style="color:#6B6E76;">{{ $ligne->observations ?? '—' }}</td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 8 : 7" texte="Aucune charge enregistrée sur cette période." />
+                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 9 : 8" texte="Aucune charge enregistrée sur cette période." />
                     @endforelse
                 </tbody>
             </table>
