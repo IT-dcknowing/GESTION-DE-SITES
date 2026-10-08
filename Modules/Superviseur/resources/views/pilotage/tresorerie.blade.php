@@ -118,7 +118,8 @@ $encaissementsQ = computed(function () {
         'encaissements',
         $this->supportFiltre,
     )
-        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        // L'activité du règlement, sinon celle de sa facture — voir `Encaissement::ACTIVITE_SQL`.
+        ->when($this->activiteFiltre, fn ($q) => $q->deLActivite($this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 });
 
@@ -165,7 +166,7 @@ $kpis = computed(function () {
     // Un encaissement ou un décaissement ne porte son activité que si celui qui l'a
     // saisi la connaissait : la part restante s'affiche « non ventilée » plutôt que
     // d'être répartie au jugé.
-    $encaisseVentile = VentilationActivite::repartir($this->encaissementsQ);
+    $encaisseVentile = VentilationActivite::repartir($this->encaissementsQ, 'montant', Encaissement::ACTIVITE_SQL);
     $decaisseVentile = VentilationActivite::repartir($this->chargesQ);
     $factureVentile = VentilationActivite::repartir($this->facturesQ);
 

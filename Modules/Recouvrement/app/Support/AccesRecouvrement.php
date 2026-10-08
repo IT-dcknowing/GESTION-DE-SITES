@@ -90,16 +90,6 @@ class AccesRecouvrement
         'audit' => 'Journal horodaté de toutes les actions du module, par auteur.',
     ];
 
-    /**
-     * Ce que voit qui consulte sans relancer.
-     *
-     * Ni `saisie` — ils ne relancent pas et n'encaissent pas ici —, ni `synthese`, qui
-     * porte l'objectif de la direction et les explications d'écart de l'équipe, ni `audit`.
-     */
-    private const PAGES_CONSULTATION = [
-        'tableau-de-bord', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements',
-    ];
-
     /** @var array<string, array<int, string>> */
     private const PAGES_PAR_ROLE = [
         // La page Courtiers est ouverte à l'agent : c'est une lecture de la balance âgée,
@@ -109,14 +99,14 @@ class AccesRecouvrement
         'agent_recouvrement' => ['tableau-de-bord', 'saisie', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements'],
 
         /*
-         * Consultation, pour ceux qui subissent l'encours sans le poursuivre.
-         *
-         * Les deux mêmes pages pour les deux rôles, et c'est voulu : ils posent la même
-         * question — « que nous doit-on, et où en est-on ? » — depuis deux places
-         * différentes. Le tableau de bord en fait partie parce que c'est la porte du
-         * module : sans lui, un refus renverrait vers une page également fermée.
+         * **La comptabilité a tout le module depuis le 08/10** — décision du propriétaire :
+         * « retire cette restriction au niveau du rôle comptabilité, accorde l'ouverture du
+         * recouvrement ». Elle lisait sept pages en consultation, et chaque lien vers la
+         * saisie, la synthèse ou la piste d'audit la renvoyait avec « habilitation
+         * supérieure ». Ce qui reste réservé, c'est la **création** de la créance et du tiers
+         * (REDACTEURS) : celui qui encaisse ne crée pas la facture qu'il encaisse.
          */
-        'caissier' => self::PAGES_CONSULTATION,
+        'caissier' => ['tableau-de-bord', 'saisie', 'synthese', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements', 'audit'],
         'responsable_ville' => ['tableau-de-bord', 'saisie', 'synthese', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements', 'audit'],
         'superviseur_recouvrement' => ['tableau-de-bord', 'saisie', 'synthese', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements', 'audit'],
         'gerant' => ['tableau-de-bord', 'saisie', 'synthese', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements', 'audit'],
@@ -212,8 +202,8 @@ class AccesRecouvrement
             'agent_recouvrement' => 'Habilitation N1–N3',
             'superviseur_recouvrement' => 'Habilitation N1–N4 · Validation',
             'gerant' => 'Habilitation complète · N5 Contentieux',
-            'caissier' => 'Consultation',
-            'responsable_ville' => 'Consultation',
+            'caissier' => 'Comptabilité · Module complet',
+            'responsable_ville' => 'Habilitation N1–N4 · Validation',
             default => '—',
         };
     }
@@ -232,7 +222,8 @@ class AccesRecouvrement
 
         // L'ordre est celui de l'étendue : un compte qui porterait deux rôles garde le
         // plus large. Le superviseur de ville a les droits du superviseur du recouvrement
-        // depuis le 07/10 ; la comptabilité, qui consulte, vient en dernier.
+        // depuis le 07/10 ; la comptabilité, qui a le module entier depuis le 08/10 sans
+        // créer de créance, vient en dernier.
         foreach (['gerant', 'superviseur_recouvrement', 'responsable_ville', 'agent_recouvrement', 'caissier'] as $role) {
             if ($utilisateur->hasRole($role)) {
                 return $role;

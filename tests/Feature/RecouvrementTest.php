@@ -102,41 +102,36 @@ class RecouvrementTest extends TestCase
             ->assertRedirect(route('recouvrement.tableau-de-bord'));
     }
 
-    public function test_la_comptabilite_consulte_sans_ecrire(): void
+    public function test_la_comptabilite_ouvre_tout_le_module(): void
     {
         /*
-         * La comptabilité subit l'encours sans le poursuivre : elle encaisse ce que le
-         * recouvrement réclame, et décrochait le téléphone sans pouvoir lire ce qu'un client
-         * devait.
+         * Depuis le 08/10, la comptabilité a les dix pages du module : le propriétaire a
+         * retiré la consultation seule, qui la renvoyait avec « habilitation supérieure » dès
+         * qu'elle suivait un lien vers la saisie, la synthèse ou l'audit.
          */
         $compte = $this->compte('caissier');
 
-        foreach (['tableau-de-bord', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements'] as $page) {
+        foreach (['tableau-de-bord', ...array_keys(AccesRecouvrement::PAGES)] as $page) {
             $this->actingAs($compte)->get(route('recouvrement.'.$page))
                 ->assertOk("La page $page doit être ouverte à la comptabilité.");
         }
 
-        // Consulter n'est pas relancer. La saisie lui est fermée : elle a son propre écran
-        // d'encaissement, et une seconde porte vers la même table n'aurait apporté qu'une
-        // chance de double saisie.
-        foreach (['saisie', 'synthese', 'audit'] as $page) {
-            $this->actingAs($compte)->get(route('recouvrement.'.$page))
-                ->assertRedirect(route('recouvrement.tableau-de-bord'));
-        }
+        $this->assertTrue(AccesRecouvrement::peutSaisir($compte));
 
+        // Ce qui reste réservé : créer la créance et le tiers. Celui qui encaisse ne crée pas
+        // la facture qu'il encaisse.
         $this->assertFalse(AccesRecouvrement::peutCreerUneFacture($compte));
         $this->assertFalse(AccesRecouvrement::peutCreerUnTiers($compte));
-        $this->assertFalse(AccesRecouvrement::peutSaisir($compte));
 
         /*
-         * « Ouvrir le module » mène à une page qui lui est ouverte — corrigé le 07/10. Il menait
-         * à la saisie, et le module la renvoyait avec un refus. Chaque page porte un retour au
-         * tableau de bord, et la trésorerie lui reste ouverte.
+         * « Ouvrir le module » mène à la saisie, qui lui est désormais ouverte, et le tableau de
+         * bord ne porte plus de refus. Chaque page porte un retour au tableau de bord, et la
+         * trésorerie lui reste ouverte.
          */
         $this->actingAs($compte)->get(route('recouvrement.tableau-de-bord'))
             ->assertOk()
-            ->assertSee(route('recouvrement.balance'), false)
-            ->assertDontSee('href="'.route('recouvrement.saisie').'"', false);
+            ->assertSee(route('recouvrement.saisie'), false)
+            ->assertDontSee('habilitation supérieure');
         $this->actingAs($compte)->get(route('recouvrement.balance'))->assertOk()->assertSee('← Tableau de bord');
         $this->actingAs($compte)->get(route('tresorerie'))->assertOk();
     }

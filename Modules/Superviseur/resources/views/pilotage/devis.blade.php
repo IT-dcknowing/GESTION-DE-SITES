@@ -4,6 +4,7 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Exploitation\Services\StatistiquesDevis;
+use Modules\Noyau\Exploitation\Services\TransformationDesDevis;
 use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
@@ -104,8 +105,9 @@ $idsCommercialFiltre = computed(function () {
 /** Répartition des devis par commercial sur la période retenue : nombre émis, validés et montant validé. */
 $parCommercial = computed(function () {
     $lignes = (clone $this->requeteBase)->get();
+    $transformes = TransformationDesDevis::transformes($lignes);
 
-    return $this->commerciaux->map(function ($commercial) use ($lignes) {
+    return $this->commerciaux->map(function ($commercial) use ($lignes, $transformes) {
         $siens = $lignes->where('commercial_id', $commercial->id);
         $valides = $siens->where('statut', 'Validé');
 
@@ -114,13 +116,15 @@ $parCommercial = computed(function () {
             'emis' => $siens->count(),
             'valides' => $valides->count(),
             'montantValide' => (int) $valides->sum('montant_valide'),
-            'taux' => $siens->count() > 0 ? $valides->count() / $siens->count() : null,
+            // Validés **ou facturés** — voir `TransformationDesDevis` (08/10).
+            'taux' => TransformationDesDevis::taux($siens, $transformes),
         ];
     })->filter(fn ($l) => $l['emis'] > 0)->sortByDesc('montantValide')->values();
 });
 
 $kpis = computed(function () {
     $lignes = (clone $this->requeteBase)->get();
+    $transformes = TransformationDesDevis::transformes($lignes);
     $emis = $lignes->count();
     $valides = $lignes->where('statut', 'Validé');
     $refuses = $lignes->where('statut', 'Refusé')->count();
@@ -141,9 +145,12 @@ $kpis = computed(function () {
         'attente' => $attente,
         'attenteMecanique' => $lignes->where('statut', 'En attente')->where('activite', 'Mécanique')->count(),
         'attenteSinistre' => $lignes->where('statut', 'En attente')->where('activite', 'Sinistre')->count(),
-        'tauxTransfo' => $emis > 0 ? $valides->count() / $emis : null,
-        'tauxTransfoMecanique' => StatistiquesDevis::tauxTransformation($lignes, 'Mécanique'),
-        'tauxTransfoSinistre' => StatistiquesDevis::tauxTransformation($lignes, 'Sinistre'),
+        // Validés **ou facturés** : un devis importé entre toujours « En attente », et le
+        // taux restait à zéro par construction. Voir `TransformationDesDevis` (08/10).
+        'transformes' => count($transformes),
+        'tauxTransfo' => TransformationDesDevis::taux($lignes, $transformes),
+        'tauxTransfoMecanique' => TransformationDesDevis::taux($lignes, $transformes, 'Mécanique'),
+        'tauxTransfoSinistre' => TransformationDesDevis::taux($lignes, $transformes, 'Sinistre'),
         // Écart moyen entre le montant proposé et le montant réellement validé.
         'differenciation' => $valides->count() > 0
             ? (int) round($valides->sum('montant_devis') - $valides->sum('montant_valide')) / $valides->count()
@@ -175,6 +182,7 @@ $graphique = computed(function () {
     $toutes = (clone $this->requeteBase)
         ->whereBetween('date_emission', [$bornes->min(), $bornes->max()])
         ->get();
+    $transformes = TransformationDesDevis::transformes($toutes);
 
     foreach ($points as $point) {
         $debutDuPoint = $point['debut']->toDateString();
@@ -188,11 +196,12 @@ $graphique = computed(function () {
 
         $nbEmis = $lignes->count();
         $nbValides = $lignes->where('statut', 'Validé')->count();
+        $nbTransformes = $lignes->filter(fn ($d) => isset($transformes[$d->id]))->count();
 
         $labels[] = $point['label'];
         $emis[] = $nbEmis;
         $valides[] = $nbValides;
-        $taux[] = $nbEmis > 0 ? round($nbValides / $nbEmis * 100, 1) : 0;
+        $taux[] = $nbEmis > 0 ? round($nbTransformes / $nbEmis * 100, 1) : 0;
     }
 
     return [
@@ -278,6 +287,7 @@ $traitants = computed(fn () => QuiAAgi::pour($this->detail->forPage($this->pageD
         <x-kpi-card label="En attente — {{ $this->libellePerimetre }}" :value="$this->kpis['attente']" :accent="$this->kpis['attente'] > 0"
             :mecanique="$activiteFiltre ? null : $this->kpis['attenteMecanique']" :sinistre="$activiteFiltre ? null : $this->kpis['attenteSinistre']" />
         <x-kpi-card label="Taux transfo (nb) — {{ $this->libellePerimetre }}" :value="an($this->kpis['tauxTransfo'])"
+            sub="{{ number_format($this->kpis['transformes'], 0, ',', ' ') }} devis validés ou facturés"
             :mecanique="$activiteFiltre ? null : an($this->kpis['tauxTransfoMecanique'])" :sinistre="$activiteFiltre ? null : an($this->kpis['tauxTransfoSinistre'])" />
         <x-kpi-card label="Différenciation moyenne — {{ $this->libellePerimetre }}" :value="ae($this->kpis['differenciation'] !== null ? (int) $this->kpis['differenciation'] : null)"
             sub="Écart moyen devis → validé"

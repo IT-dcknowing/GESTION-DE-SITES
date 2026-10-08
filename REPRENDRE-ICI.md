@@ -50,7 +50,7 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 7 octobre 2026
+## 3. Où l'on en est — 8 octobre 2026
 
 **Branche courante :** `main`, à jour avec `origin/main`. `claude/friendly-archimedes-nisgxa`
 a été poussée puis **fusionnée dans `main` le 07/10**, et `main` poussé. `correspondances-factures`
@@ -143,6 +143,8 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 16 | Charges récupérées de la caisse, colonne Origine | ✅ (colonne `charges.mouvement_caisse_id`, migration à passer) |
 | 17 | Synthèse par site : « Lieu non précisé », activité par le devis | ✅ — `factures:situer` à passer en ligne |
 | 18 | Factures fournisseurs FNE (stripping), porter et régler — **module à venir** | plan |
+| 19 | Accueil du gérant : taux de transformation des devis (0 %) et ventilation de l'encaissé | ✅ 08/10 — validés **ou facturés** ; l'encaissé prend l'activité de sa facture. Charges 0 F = aucune charge saisie, pas un défaut |
+| 20 | La comptabilité a **tout** le module recouvrement (plus de « habilitation supérieure ») | ✅ 08/10 |
 
 ### Au propriétaire, et qui bloque la suite
 
@@ -192,6 +194,9 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     lue ni écrite. Ensuite, sur `/banques`, **affecter** les libellés non rangés aux banques
     déclarées (« Affecter à ») ; sur `/charges`, **reprendre** les sorties de caisse qui sont
     des charges — ligne à ligne, rien ne se reprend tout seul.
+
+11. **Index du 08/10** : `php artisan migrate` passe aussi `2026_10_08_000001_une_facture_se_retrouve_par_sa_fiche`
+    (un index, rien d'autre) — il sert le taux de transformation des devis.
 
 ### En attente d'un accord, pas d'un travail
 
@@ -324,6 +329,7 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | **`wire:navigate` remonte toujours en haut** | Il écrase une ancre `#…` ; passer par `scrollIntoView` |
 | **`Site::visiblesPour()` ne rend rien au simple commercial** | `PerimetreSites` lui donne un périmètre vide : il ne verrait que les lignes sans ville. Ajouter la ville de son compte et de sa fiche (`CorrespondancesDeFactures::perimetre()`) |
 | **Deux suites de tests lancées en même temps** | Elles se marchent dessus sur les fichiers temporaires et donnent de faux échecs |
+| **Un devis importé est toujours « En attente »**, un règlement importé n'a pas d'activité | Ne jamais compter « Validé » seul : passer par `TransformationDesDevis` ; ventiler un règlement par `Encaissement::ACTIVITE_SQL` (celle de sa facture) |
 
 ---
 

@@ -20,8 +20,13 @@ final class VentilationActivite
      * @param  Builder  $requete  la requête déjà filtrée (période, sites, commercial…)
      * @return array{mecanique:int, sinistre:int, nonVentile:int}
      */
-    public static function repartir(Builder $requete, string $colonne = 'montant'): array
+    public static function repartir(Builder $requete, string $colonne = 'montant', ?string $activiteSql = null): array
     {
+        // L'activité se lit d'ordinaire dans la colonne ; un appelant peut la lire autrement
+        // — un règlement prend celle de sa facture, voir `Encaissement::ACTIVITE_SQL`. Le SQL
+        // vient d'une constante du code, jamais d'une saisie.
+        $activite = $activiteSql ?? 'activite';
+
         // La colonne agrégée ne vient jamais de l'utilisateur, mais elle entre dans du SQL
         // brut : on n'accepte donc que celles qu'on a nommées ici.
         if (! in_array($colonne, ['montant', 'montant_valide'], true)) {
@@ -33,9 +38,9 @@ final class VentilationActivite
         // reorder() retire le tri éventuel : MySQL refuse un ORDER BY sur une colonne
         // absente du GROUP BY, et l'ordre n'a de toute façon aucun sens sur un total.
         $lignes = (clone $requete)->reorder()
-            ->select('activite')
+            ->selectRaw("$activite as activite")
             ->selectRaw("SUM($colonne) as total")
-            ->groupBy('activite')
+            ->groupByRaw($activite)
             ->get();
 
         $repartition = ['mecanique' => 0, 'sinistre' => 0, 'nonVentile' => 0];

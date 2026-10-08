@@ -111,7 +111,7 @@ class LeTauxDeTransformationDuTableauDeBordTest extends TestCase
         $this->assertNull($kpis['tauxTransfoSinistre']);
     }
 
-    /** Les six comptages d'avant ne doivent plus être qu'un. */
+    /** Les six comptages d'avant ne sont plus qu'une lecture des devis — légère, cinq colonnes. */
     public function test_les_trois_taux_ne_coutent_quune_requete_sur_les_devis(): void
     {
         $this->devis('Mécanique', 'Validé');
@@ -135,8 +135,71 @@ class LeTauxDeTransformationDuTableauDeBordTest extends TestCase
                 && ! str_contains($entree['query'], 'group by "site_id"'))
             ->pluck('query');
 
-        $this->assertCount(1, $pourLesTaux, 'Les trois taux se lisent dans un seul regroupement.');
-        $this->assertStringContainsString('group by', $pourLesTaux->first());
+        $this->assertCount(1, $pourLesTaux, 'Les trois taux se lisent sur une seule lecture des devis.');
+    }
+
+    /**
+     * **Le 0 % du 08/10.** Un devis importé entre « En attente » ; s'il est suivi d'une
+     * facture, il s'est transformé. Deux lectures : la facture le désigne, ou elle porte sa
+     * fiche de réception.
+     */
+    public function test_un_devis_en_attente_suivi_d_une_facture_compte_comme_transforme(): void
+    {
+        $parLeLien = $this->devis('Mécanique', 'En attente');
+        $parLaFiche = $this->devis('Sinistre', 'En attente', 'FR-2026-0042');
+        $this->devis('Mécanique', 'En attente', 'FR-2026-0099'); // pas de facture
+
+        $this->facture(['devis_id' => $parLeLien->id]);
+        $this->facture(['reference_devis' => 'FR-2026-0042']);
+
+        $kpis = $this->kpis();
+
+        $this->assertEquals(2 / 3, $kpis['tauxTransfo']);
+        $this->assertEquals(1 / 2, $kpis['tauxTransfoMecanique']);
+        $this->assertEquals(1, $kpis['tauxTransfoSinistre']);
+        $this->assertNotNull($parLaFiche);
+    }
+
+    /** Une proforma et sa révision sur la même fiche : une facture ne transforme qu'un devis. */
+    public function test_une_fiche_facturee_ne_transforme_qu_un_devis(): void
+    {
+        $this->devis('Mécanique', 'En attente', 'FR-7');
+        $this->devis('Mécanique', 'En attente', 'FR-7');
+        $this->facture(['reference_devis' => 'FR-7']);
+
+        $this->assertEquals(1 / 2, $this->kpis()['tauxTransfo']);
+    }
+
+    /** Un couple qu'un humain a écarté ne compte pas. */
+    public function test_un_couple_ecarte_ne_compte_pas(): void
+    {
+        $devis = $this->devis('Mécanique', 'En attente', 'FR-8');
+        $facture = $this->facture(['reference_devis' => 'FR-8']);
+
+        \Modules\Noyau\Exploitation\Modeles\EcartDevisFacture::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id, 'devis_id' => $devis->id, 'facture_id' => $facture->id,
+        ]);
+
+        $this->assertEquals(0, $this->kpis()['tauxTransfo']);
+    }
+
+    /**
+     * L'encaissé se ventile par la facture qu'il règle — le « Autres : 1,37 milliard » du 08/10.
+     * Un règlement importé ne porte pas d'activité ; sa facture, si.
+     */
+    public function test_l_encaisse_prend_l_activite_de_sa_facture(): void
+    {
+        $facture = $this->facture(['activite' => 'Sinistre', 'montant' => 900_000]);
+
+        \Modules\Noyau\Exploitation\Modeles\Encaissement::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->site->id, 'facture_id' => $facture->id,
+            'date' => now()->toDateString(), 'type' => 'Client', 'moyen' => 'Chèque', 'montant' => 600_000,
+        ]);
+
+        $kpis = $this->kpis();
+
+        $this->assertSame(600_000, $kpis['encaisseVentile']['sinistre']);
+        $this->assertSame(0, $kpis['encaisseVentile']['nonVentile']);
     }
 
     private function kpis(): array
@@ -144,9 +207,23 @@ class LeTauxDeTransformationDuTableauDeBordTest extends TestCase
         return Volt::actingAs($this->gerant())->test('gerant.tableau-de-bord')->get('kpis');
     }
 
-    private function devis(?string $activite, string $statut): Devis
+    private function facture(array $valeurs): \Modules\Noyau\Exploitation\Modeles\Facture
+    {
+        return \Modules\Noyau\Exploitation\Modeles\Facture::withoutGlobalScopes()->create($valeurs + [
+            'entreprise_id' => $this->entreprise->id,
+            'site_id' => $this->site->id,
+            'date' => now()->toDateString(),
+            'n_facture' => 'F-'.\Modules\Noyau\Exploitation\Modeles\Facture::withoutGlobalScopes()->count(),
+            'client' => 'NSIA ASSURANCES',
+            'activite' => 'Mécanique',
+            'montant' => 500_000,
+        ]);
+    }
+
+    private function devis(?string $activite, string $statut, ?string $fiche = null): Devis
     {
         return Devis::withoutGlobalScopes()->create([
+            'n_fiche_reception' => $fiche,
             'entreprise_id' => $this->entreprise->id,
             'site_id' => $this->site->id,
             'date_emission' => now()->toDateString(),

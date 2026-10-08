@@ -15,6 +15,7 @@ use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
 use Modules\Noyau\Exploitation\Services\SyntheseParAtelier;
+use Modules\Noyau\Exploitation\Services\TransformationDesDevis;
 use function Livewire\Volt\{state, computed, mount};
 
 state([
@@ -112,36 +113,18 @@ $kpis = computed(function () {
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre));
     /*
-     * **Six comptages de devis en une requête.**
+     * **Le taux compte les devis validés ou facturés — 08/10.**
      *
-     * Mesuré le 02/10 sur cet écran : le taux de transformation en demandait six — émis,
-     * validés, puis émis et validés pour chacune des deux activités —, tous sur le même
-     * ensemble de devis, et tous relancés à chaque changement de filtre.
+     * Il ne comptait que le statut « Validé », et un devis importé entre toujours « En
+     * attente » : l'écran affichait 0,0 % sur l'année. Voir `TransformationDesDevis`, qui
+     * lit aussi la facture qui désigne le devis et celle qui porte sa fiche de réception.
      *
-     * Un seul `group by (activité, statut)` les porte tous : le compte global est la somme
-     * des groupes, et chaque taux se lit dedans. L'arithmétique est la même, faite en PHP
-     * au lieu d'être redemandée en base.
+     * Les devis sont lus en colonnes légères — cinq champs —, une fois ; les trois taux se
+     * calculent sur la même liste. C'était six comptages le 02/10, puis un `group by` :
+     * le `group by` ne sait pas dire si une facture suit le devis.
      */
-    $devisParGroupe = (clone $devisEmis)
-        ->selectRaw('activite, statut, count(*) as nombre')
-        ->groupBy('activite', 'statut')
-        ->get();
-
-    $compter = fn (?string $activite, ?string $statut) => (int) $devisParGroupe
-        ->when($activite !== null, fn ($g) => $g->where('activite', $activite))
-        ->when($statut !== null, fn ($g) => $g->where('statut', $statut))
-        ->sum('nombre');
-
-    $nbEmis = $compter(null, null);
-    $nbValides = $compter(null, 'Validé');
-
-    $tauxTransfoActivite = function ($activite) use ($compter) {
-        $nb = $compter($activite, null);
-
-        // `null` et non zéro : aucun devis émis, ce n'est pas un taux de 0 %, c'est
-        // l'absence de taux. L'écran affiche alors un tiret.
-        return $nb > 0 ? $compter($activite, 'Validé') / $nb : null;
-    };
+    $devisLus = (clone $devisEmis)->get(['id', 'activite', 'statut', 'n_fiche_reception', 'date_emission']);
+    $transformes = TransformationDesDevis::transformes($devisLus);
 
     $facturesQ = EtatDesImpayes::dansLePerimetre(Facture::query(), $idsSites->all(), $this->idsVilles)
         ->whereBetween('date', [$debut, $fin])
@@ -162,12 +145,12 @@ $kpis = computed(function () {
 
     $encaisseQ = PerimetreDeTresorerie::encaissements(Encaissement::query(), $idsSites->all(), $this->idsVilles)
         ->whereBetween('date', [$debut, $fin])
-        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre));
+        ->when($this->activiteFiltre, fn ($q) => $q->deLActivite($this->activiteFiltre));
 
     $ca = VentilationActivite::repartir($facturesQ);
     $charges = VentilationActivite::repartir($chargesQ);
     $sorties = VentilationActivite::repartir($sortiesQ);
-    $encaisse = VentilationActivite::repartir($encaisseQ);
+    $encaisse = VentilationActivite::repartir($encaisseQ, 'montant', Encaissement::ACTIVITE_SQL);
 
     return [
         'ca' => $this->synthese->sum('ca'),
@@ -183,9 +166,9 @@ $kpis = computed(function () {
         'treso' => $this->synthese->sum('treso'),
         'tresoVentilee' => VentilationActivite::difference($encaisse, $sorties),
         // Taux de transformation des devis émis sur la période.
-        'tauxTransfo' => $nbEmis > 0 ? $nbValides / $nbEmis : null,
-        'tauxTransfoMecanique' => $tauxTransfoActivite('Mécanique'),
-        'tauxTransfoSinistre' => $tauxTransfoActivite('Sinistre'),
+        'tauxTransfo' => TransformationDesDevis::taux($devisLus, $transformes),
+        'tauxTransfoMecanique' => TransformationDesDevis::taux($devisLus, $transformes, 'Mécanique'),
+        'tauxTransfoSinistre' => TransformationDesDevis::taux($devisLus, $transformes, 'Sinistre'),
         // Anomalie critique remontée par les responsables de site.
         'sansFacture' => (int) SaisieJournaliere::whereIn('site_id', $idsSites)
             ->whereBetween('date', [$debut, $fin])->sum('vehicules_sans_facture'),
@@ -365,7 +348,7 @@ $commentaires = computed(function () {
             :mecanique="$ventile ? ae($this->kpis['tresoVentilee']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['tresoVentilee']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['tresoVentilee']['nonVentile'] ? ae($this->kpis['tresoVentilee']['nonVentile']) : null" />
-        <x-kpi-card label="Taux transfo devis — {{ $this->libellePerimetre }}" :value="an($this->kpis['tauxTransfo'])"
+        <x-kpi-card label="Taux transfo devis — {{ $this->libellePerimetre }}" :value="an($this->kpis['tauxTransfo'])" sub="Devis validés ou facturés"
             :mecanique="$ventile ? an($this->kpis['tauxTransfoMecanique']) : null"
             :sinistre="$ventile ? an($this->kpis['tauxTransfoSinistre']) : null" />
         <x-kpi-card label="Véhicules sans facture — {{ $this->libellePerimetre }}" :value="$this->kpis['sansFacture']"
