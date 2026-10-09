@@ -147,6 +147,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 20 | La comptabilité a **tout** le module recouvrement (plus de « habilitation supérieure ») | ✅ 08/10 |
 | 21 | **Panne `/banques` (ERR-XEYTWV)** ; incidents lisibles depuis la Maintenance | ✅ 09/10 — écrans tolérants aux migrations en attente ; Maintenance → Incidents (champ, liste cliquable, migrations en attente) |
 | 22 | Tableau de bord de la comptabilité à 0 F | ✅ 09/10 — périmètre par ville, jour = fin de période, encours complet |
+| 23 | Les pannes réglées quittent la liste des incidents ; causes réelles corrigées (GROUP BY MySQL, relances longues, date en chaîne) | ✅ 09/10 |
 
 ### Au propriétaire, et qui bloque la suite
 
@@ -205,6 +206,9 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     → Incidents** : taper `ERR-XEYTWV` — la fiche dira la vraie cause de la panne de
     `/banques`, et l'encart rouge listera les migrations encore en attente. **Rapporter ce
     qu'elle dit** : la cause « migration non passée » est la plus probable, pas prouvée.
+    → **Fait le 09/10 après-midi** : la liste a donné la vraie cause (GROUP BY refusé par MySQL),
+    corrigée. Après le prochain `git pull` + `app:deployer` (migration `incidents_regles`), les
+    pannes corrigées quittent la liste d'elles-mêmes ; vérifier qu'aucune ne revient.
 
 ### En attente d'un accord, pas d'un travail
 
@@ -337,6 +341,7 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | **`wire:navigate` remonte toujours en haut** | Il écrase une ancre `#…` ; passer par `scrollIntoView` |
 | **`Site::visiblesPour()` ne rend rien au simple commercial** | `PerimetreSites` lui donne un périmètre vide : il ne verrait que les lignes sans ville. Ajouter la ville de son compte et de sa fiche (`CorrespondancesDeFactures::perimetre()`) |
 | **Deux suites de tests lancées en même temps** | Elles se marchent dessus sur les fichiers temporaires et donnent de faux échecs |
+| **SQLite (tests) accepte ce que MySQL (serveur) refuse** : une sous-requête corrélée dans un `sum()` groupé (ERR-XEYTWV) ; une chaîne plus longue que sa colonne `varchar` | Calculer ligne à ligne dans une sous-requête, regrouper par-dessus (`fromSub`) ; borner la longueur dans le code et la tester explicitement |
 | **Le code d'un écran lit une table neuve avant que le serveur ne l'ait** (ERR-XEYTWV, 09/10) | Une nouveauté qui dépend d'une migration récente passe par `App\Support\SchemaDisponible` ; et `app:deployer` après chaque `git pull` |
 | **Un devis importé est toujours « En attente »**, un règlement importé n'a pas d'activité | Ne jamais compter « Validé » seul : passer par `TransformationDesDevis` ; ventiler un règlement par `Encaissement::ACTIVITE_SQL` (celle de sa facture) |
 

@@ -650,10 +650,42 @@ $libelleDesFacturesRelancees = protect(function (): string {
     $cochees = $this->relSelection;
 
     if ($cochees->isNotEmpty()) {
-        return $cochees
+        $detail = $cochees
             ->map(fn (Facture $f) => 'N° '.($f->n_facture ?: $f->numero)
                 .' · reste '.Recouvrement::fr(Recouvrement::reste($f)))
             ->implode(' ; ');
+
+        if (mb_strlen($detail) <= 255) {
+            return $detail;
+        }
+
+        /*
+         * **Trop long pour la colonne — ERR-21UZZP et ERR-UQMKET, le 09/10.** Une relance qui
+         * vise une vingtaine de factures dépassait les 255 caractères de `factures_visees`, et
+         * MySQL refusait l'enregistrement entier. On écrit alors la forme courte — combien,
+         * pour quel reste, et les premiers numéros — et la liste complète part au journal
+         * d'activité de la relance, où rien n'est tronqué.
+         */
+        $total = (int) $cochees->sum(fn (Facture $f) => Recouvrement::reste($f));
+        $numeros = $cochees->map(fn (Facture $f) => (string) ($f->n_facture ?: $f->numero))->values();
+        $tete = $cochees->count().' factures · reste '.Recouvrement::fr($total).' : N° ';
+
+        $pris = [];
+
+        foreach ($numeros as $rang => $numero) {
+            $reste = $numeros->count() - $rang - 1;
+            $essai = $tete.implode(', ', [...$pris, $numero]).($reste > 0 ? ' (+'.$reste.' autres)' : '');
+
+            if (mb_strlen($essai) > 255) {
+                break;
+            }
+
+            $pris[] = $numero;
+        }
+
+        $autres = $numeros->count() - count($pris);
+
+        return mb_substr($tete.implode(', ', $pris).($autres > 0 ? ' (+'.$autres.' autres)' : ''), 0, 255);
     }
 
     return trim((string) $this->relFacture) ?: 'Situation globale';
@@ -723,7 +755,10 @@ $enregistrerRelance = function () {
     ]);
 
     activity()->causedBy(auth()->user())
-        ->withProperties(['tiers' => $donnees['relTiers'], 'niveau' => 'N'.$donnees['relNiveau'], 'canal' => $donnees['relCanal']])
+        ->withProperties(['tiers' => $donnees['relTiers'], 'niveau' => 'N'.$donnees['relNiveau'], 'canal' => $donnees['relCanal'],
+            // La liste entière des factures visées : la colonne de la relance n'en garde
+            // qu'une forme courte quand elles sont nombreuses.
+            'factures' => $this->relSelection->map(fn (Facture $f) => $f->n_facture ?: $f->numero)->values()->all()])
         ->log('Recouvrement — relance N'.$donnees['relNiveau'].' tracée');
 
     // Vidé en entier, pour la même raison que l'encaissement : une relance N5 qu'on

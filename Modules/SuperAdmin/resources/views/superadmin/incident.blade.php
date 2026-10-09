@@ -27,6 +27,14 @@ $explication = computed(fn () => JournalDesIncidents::explication($this->inciden
 
 $migrationsEnAttente = computed(fn () => JournalDesIncidents::migrationsEnAttente());
 
+/** Réglée par le code ou à la main — la fiche le dit, la liste ne la montre plus. */
+$reglement = computed(fn () => $this->incident === null ? null : JournalDesIncidents::reglement($this->incident));
+
+$declarerRegle = function () {
+    JournalDesIncidents::declarerRegle($this->reference, auth()->id());
+    $this->redirect(route('super-admin.maintenance').'#incidents', navigate: true);
+};
+
 $compte = computed(fn () => isset($this->incident['user_id']) && $this->incident['user_id']
     ? User::withoutGlobalScopes()->find($this->incident['user_id'])
     : null);
@@ -54,6 +62,17 @@ $assistant = computed(fn () => isset($this->incident['assistant_id']) && $this->
         </div>
     @else
         @php $i = $this->incident; @endphp
+
+        @if ($this->reglement)
+            <div class="encart encart-succes" style="margin-bottom:14px;">
+                <b>Réglée.</b> {{ $this->reglement }} Elle ne paraît plus dans la liste ; si elle revient, elle reparaîtra.
+            </div>
+        @else
+            <div style="margin-bottom:14px;">
+                <button type="button" wire:click="declarerRegle" class="bouton">Corrigé — retirer de la liste</button>
+                <span style="font-size:12.5px; color:#6B6E76; margin-left:8px;">Retire aussi ses répétitions.</span>
+            </div>
+        @endif
 
         @if ($this->explication)
             <div class="encart encart-alerte" style="margin-bottom:14px;">

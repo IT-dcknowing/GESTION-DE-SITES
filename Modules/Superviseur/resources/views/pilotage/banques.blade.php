@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
@@ -551,14 +552,23 @@ $reglementsRegardes = computed(function () {
 $facturesOuvertesParBanque = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    $groupes = EtatDesImpayes::dansLePerimetre(Facture::query(), $this->idsSites, $this->idsVilles)
+    /*
+     * **En deux temps, et c'est ce qui a fait tomber `/banques` en ligne (ERR-XEYTWV, 09/10).**
+     * Le reste d'une facture est une sous-requête qui lit `factures.id` ; la placer dans un
+     * `sum()` regroupé par banque, MySQL le refuse (« factures.id isn't in GROUP BY ») là où
+     * SQLite, celui des tests, l'accepte. Le reste se calcule donc ligne à ligne dans une
+     * sous-requête, et l'on regroupe par-dessus — la forme de `EtatDesImpayes::totauxEnBase`.
+     */
+    $lignes = EtatDesImpayes::dansLePerimetre(Facture::query(), $this->idsSites, $this->idsVilles)
         ->whereBetween('factures.date', [$debut, $fin])
         ->whereNotNull('factures.banque')
         ->avecResteAEncaisser()
-        ->groupBy('factures.banque')
-        ->selectRaw('factures.banque as libelle, count(*) as nombre, '
-            .'coalesce(sum(factures.montant - '.Facture::ENCAISSE_SQL.'), 0) as reste')
-        ->toBase()->get();
+        ->selectRaw('factures.banque as libelle, factures.montant - '.Facture::ENCAISSE_SQL.' as reste');
+
+    $groupes = DB::query()->fromSub($lignes->toBase(), 'l')
+        ->groupBy('l.libelle')
+        ->selectRaw('l.libelle as libelle, count(*) as nombre, coalesce(sum(l.reste), 0) as reste')
+        ->get();
 
     $parBanque = [];
 

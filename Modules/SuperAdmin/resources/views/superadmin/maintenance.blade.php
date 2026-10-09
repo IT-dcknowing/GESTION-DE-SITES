@@ -392,6 +392,12 @@ $ouvrirLIncident = function () {
         $reference = 'ERR-'.$reference;
     }
 
+    if ($reference === '') {
+        $this->addError('referenceCherchee', 'Tapez la référence lue sur la page de panne — par exemple ERR-XEYTWV.');
+
+        return;
+    }
+
     if (preg_match('/^ERR-[A-Z0-9]{4,12}$/', $reference) !== 1) {
         $this->addError('referenceCherchee', 'Une référence s’écrit ERR- suivi de six caractères, par exemple ERR-XEYTWV.');
 
@@ -399,6 +405,16 @@ $ouvrirLIncident = function () {
     }
 
     $this->redirectRoute('super-admin.incident', ['reference' => $reference], navigate: true);
+};
+
+/*
+ * « Corrigé » : la panne quitte la liste, avec toutes ses répétitions. Si elle revient après,
+ * elle reparaît — voir `JournalDesIncidents::declarerRegle()`.
+ */
+$declarerRegle = function (string $reference) {
+    JournalDesIncidents::declarerRegle($reference, auth()->id());
+    unset($this->incidentsRecents);
+    $this->dispatch('annonce', ton: 'succes', texte: 'Panne déclarée réglée : elle quitte la liste. Si elle revient, elle reparaîtra.');
 };
 
 ?>
@@ -426,12 +442,17 @@ $ouvrirLIncident = function () {
             <x-champ label="Référence de l'incident" model="referenceCherchee" width="240" placeholder="ERR-XEYTWV" />
             <button type="submit" class="bouton">Voir l'erreur</button>
         </form>
-        <x-erreurs-du-bloc prefixe="referenceCherchee" />
+        <p style="margin:0 0 10px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
+            Seules les pannes <b>encore ouvertes</b> sont listées, une ligne par panne — ses
+            répétitions comptées dans « Fois ». Une panne corrigée dans le code disparaît d'elle-même
+            une fois la correction mise en ligne ; les autres se retirent par « Corrigé ». Si une
+            panne revient ensuite, elle reparaît.
+        </p>
 
         <div class="tableau-conteneur">
             <table class="tableau">
                 <thead>
-                    <tr><th>Référence</th><th>Date</th><th>Erreur</th><th>Adresse</th></tr>
+                    <tr><th>Référence</th><th>Dernière fois</th><th style="text-align:right;">Fois</th><th>Erreur</th><th>Adresse</th><th class="colonne-collee"></th></tr>
                 </thead>
                 <tbody>
                     @forelse ($this->incidentsRecents as $incident)
@@ -441,11 +462,16 @@ $ouvrirLIncident = function () {
                                     style="font-weight:700; color:var(--th-accent,#C8102E);">{{ $incident['reference'] }}</a>
                             </td>
                             <td style="white-space:nowrap; color:#6B6E76;">{{ $incident['date'] ?? '—' }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums;" title="Depuis le {{ $incident['premiere'] ?? '—' }}">{{ $incident['fois'] }}</td>
                             <td style="font-size:12.5px;">{{ \Illuminate\Support\Str::limit((string) $incident['message'], 140) }}</td>
                             <td style="font-size:12px; color:#6B6E76; word-break:break-all;">{{ \Illuminate\Support\Str::limit((string) $incident['url'], 70) }}</td>
+                            <td class="colonne-collee" style="white-space:nowrap;">
+                                <button type="button" class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;"
+                                    wire:click="declarerRegle('{{ $incident['reference'] }}')">Corrigé</button>
+                            </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="4" texte="Aucun incident enregistré." />
+                        <x-table-vide :colspan="6" texte="Aucune panne ouverte." />
                     @endforelse
                 </tbody>
             </table>

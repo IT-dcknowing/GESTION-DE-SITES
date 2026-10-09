@@ -222,10 +222,17 @@ final class PortefeuilleDeRecouvrement
                 'encaissements' => $siens->count(),
                 'encaisse' => (int) $siens->sum('montant'),
                 'tiers_suivis' => $siennes->pluck('tiers')->unique()->count(),
+                /*
+                 * **Toujours une date, jamais une chaîne — ERR-H9PKK0 et suivants, 08/10.** Les
+                 * règlements sont lus bruts (`encaissementsDeLaPeriode`) : leur date est une
+                 * chaîne ISO, quand celle d'une relance est un Carbon. Un compte qui avait
+                 * encaissé sans relancer — la comptabilité, entrée dans le module le 08/10 —
+                 * rendait une chaîne, et l'écran appelait `format()` dessus.
+                 */
                 'dernier_geste' => collect([
                     $siennes->max('date'),
                     $siens->max('date'),
-                ])->filter()->max(),
+                ])->filter()->map(fn ($date) => $date instanceof \Carbon\CarbonInterface ? Carbon::instance($date) : Carbon::parse(substr((string) $date, 0, 19)))->max(),
             ];
         })->sortByDesc('encaisse')->values();
     }

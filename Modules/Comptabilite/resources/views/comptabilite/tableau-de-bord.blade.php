@@ -97,9 +97,13 @@ $facturesEnAttente = computed(fn () => (clone $this->facturesEnAttenteQ)
     ->get());
 
 $encours = computed(function () {
-    $ligne = (clone $this->facturesEnAttenteQ)
-        ->selectRaw('count(*) as nombre, coalesce(sum(factures.montant - '.Facture::ENCAISSE_SQL.'), 0) as reste')
-        ->toBase()->first();
+    // En deux temps : MySQL refuse la sous-requête du reste dans un `sum()` (ERR-XEYTWV).
+    $lignes = (clone $this->facturesEnAttenteQ)
+        ->selectRaw('factures.montant - '.Facture::ENCAISSE_SQL.' as reste');
+
+    $ligne = \Illuminate\Support\Facades\DB::query()->fromSub($lignes->toBase(), 'l')
+        ->selectRaw('count(*) as nombre, coalesce(sum(l.reste), 0) as reste')
+        ->first();
 
     return ['nombre' => (int) ($ligne->nombre ?? 0), 'reste' => (int) ($ligne->reste ?? 0)];
 });

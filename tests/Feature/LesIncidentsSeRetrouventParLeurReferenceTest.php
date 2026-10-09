@@ -36,6 +36,11 @@ class LesIncidentsSeRetrouventParLeurReferenceTest extends TestCase
 
         config(['app.rendre_la_page_de_panne_en_test' => true]);
 
+        // Un dossier de journal à ce test : celui de `storage/logs` porte les pannes des
+        // autres tests, et les compterait ici.
+        JournalDesIncidents::$dossierDuJournal = sys_get_temp_dir().'/journal-incidents-'.getmypid();
+        @mkdir(JournalDesIncidents::$dossierDuJournal);
+
         Route::get('/tests/panne-banques', function () {
             throw new RuntimeException("SQLSTATE[42S02]: Base table or view not found: 1146 Table 'gs.libelles_de_banque' doesn't exist");
         })->middleware('web');
@@ -46,6 +51,8 @@ class LesIncidentsSeRetrouventParLeurReferenceTest extends TestCase
         if ($this->journalDeTest !== null) {
             @unlink($this->journalDeTest);
         }
+
+        JournalDesIncidents::$dossierDuJournal = null;
 
         parent::tearDown();
     }
@@ -76,7 +83,7 @@ class LesIncidentsSeRetrouventParLeurReferenceTest extends TestCase
 
     public function test_un_incident_d_avant_la_table_se_relit_dans_le_journal(): void
     {
-        $this->journalDeTest = storage_path('logs/zz-test-incidents.log');
+        $this->journalDeTest = JournalDesIncidents::$dossierDuJournal.'/zz-test-incidents.log';
         file_put_contents($this->journalDeTest,
             "[2026-10-09 00:42:01] production.ERROR: ERR-XEYTWV — Unknown column 'mouvement_caisse_id' "
             .'{"exception":"Illuminate\\\\Database\\\\QueryException","origine":"/app/Modules/Superviseur/x.php:12","url":"https://gestionsites.test/banques","utilisateur":7} '."\n");
@@ -110,6 +117,44 @@ class LesIncidentsSeRetrouventParLeurReferenceTest extends TestCase
     public function test_un_visiteur_n_ouvre_pas_la_fiche(): void
     {
         $this->get(route('super-admin.incident', $this->referenceDUnePanne()))->assertRedirect();
+    }
+
+    /**
+     * « Si l'erreur est réglée, la ligne doit disparaître » — 09/10. Les répétitions d'une même
+     * panne font une ligne ; « Corrigé » la retire, ses répétitions comprises.
+     */
+    public function test_une_panne_reglee_quitte_la_liste_avec_ses_repetitions(): void
+    {
+        $premiere = $this->referenceDUnePanne();
+        $this->referenceDUnePanne();
+
+        $ouvertes = JournalDesIncidents::recents();
+        $this->assertCount(1, $ouvertes, 'Deux fois la même panne : une seule ligne.');
+        $this->assertSame(2, $ouvertes->first()['fois']);
+
+        Volt::actingAs($this->superAdmin())->test('superadmin.maintenance')
+            ->call('declarerRegle', $premiere);
+
+        $this->assertCount(0, JournalDesIncidents::recents());
+        $this->assertSame(0, DB::table('incidents')->count());
+
+        // Elle revient : elle reparaît — elle n'était pas réglée.
+        $this->travel(1)->minutes();
+        $this->referenceDUnePanne();
+        $this->assertCount(1, JournalDesIncidents::recents());
+    }
+
+    /** Une panne corrigée dans le code disparaît d'elle-même, journal du serveur compris. */
+    public function test_une_panne_corrigee_dans_le_code_ne_parait_plus(): void
+    {
+        $this->journalDeTest = JournalDesIncidents::$dossierDuJournal.'/zz-test-incidents.log';
+        file_put_contents($this->journalDeTest,
+            "[2026-10-09 00:42:36] production.ERROR: ERR-XEYTWV — SQLSTATE[42000]: Syntax error or access violation: 1055 'gs.factures.id' isn't in GROUP BY "
+            .'{"exception":"Illuminate\\Database\\QueryException","origine":"/vendor/x.php:1","url":"https://gestionsites.test/banques","utilisateur":7} '."\n");
+
+        $this->assertFalse(JournalDesIncidents::recents()->contains('reference', 'ERR-XEYTWV'));
+        // La fiche reste lisible, et dit ce qui l'a corrigée.
+        $this->assertNotNull(JournalDesIncidents::reglement(JournalDesIncidents::trouver('ERR-XEYTWV')));
     }
 
     // ------------------------------------------------------------------ le décor

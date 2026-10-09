@@ -37,11 +37,28 @@ final class VentilationActivite
         // entreprise posé par le scope global s'applique encore à l'agrégat.
         // reorder() retire le tri éventuel : MySQL refuse un ORDER BY sur une colonne
         // absente du GROUP BY, et l'ordre n'a de toute façon aucun sens sur un total.
-        $lignes = (clone $requete)->reorder()
-            ->selectRaw("$activite as activite")
-            ->selectRaw("SUM($colonne) as total")
-            ->groupByRaw($activite)
-            ->get();
+        if ($activiteSql === null) {
+            $lignes = (clone $requete)->reorder()
+                ->select('activite')
+                ->selectRaw("SUM($colonne) as total")
+                ->groupBy('activite')
+                ->get();
+        } else {
+            /*
+             * Une activité lue par une sous-requête se regroupe **en deux temps** : MySQL
+             * refuse un `group by` sur une expression qui lit une autre ligne (« … isn't in
+             * GROUP BY », ERR-XEYTWV du 09/10), là où SQLite l'accepte. La sous-requête rend
+             * une ligne par écriture avec son activité ; on regroupe par-dessus.
+             */
+            $table = (clone $requete)->getModel()->getTable();
+            $parLigne = (clone $requete)->reorder()
+                ->selectRaw("$activite as activite, $table.$colonne as valeur");
+
+            $lignes = \Illuminate\Support\Facades\DB::query()->fromSub($parLigne->toBase(), 'l')
+                ->selectRaw('l.activite as activite, SUM(l.valeur) as total')
+                ->groupBy('l.activite')
+                ->get();
+        }
 
         $repartition = ['mecanique' => 0, 'sinistre' => 0, 'nonVentile' => 0];
 

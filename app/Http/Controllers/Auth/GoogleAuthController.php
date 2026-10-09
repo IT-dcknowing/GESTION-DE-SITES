@@ -21,7 +21,19 @@ class GoogleAuthController extends Controller
 
     public function callback(): RedirectResponse
     {
-        $compteGoogle = Socialite::driver('google')->user();
+        /*
+         * Un retour de Google après une session expirée, un bouton « précédent » ou un
+         * second onglet ne porte plus le jeton attendu : Socialite lève alors
+         * `InvalidStateException`. Ce n'est pas une panne — ERR-F3QP71, le 14/09, en était
+         * une dans la liste des incidents —, c'est une connexion à recommencer.
+         */
+        try {
+            $compteGoogle = Socialite::driver('google')->user();
+        } catch (\Laravel\Socialite\Two\InvalidStateException) {
+            return redirect()->route('login')->withErrors([
+                'email' => 'La connexion Google a expiré. Cliquez de nouveau sur « Se connecter avec Google ».',
+            ]);
+        }
 
         $utilisateur = User::where('google_id', $compteGoogle->getId())
             ->orWhere('email', $compteGoogle->getEmail())

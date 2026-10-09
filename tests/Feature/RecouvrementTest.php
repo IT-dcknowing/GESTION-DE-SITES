@@ -1607,6 +1607,53 @@ class RecouvrementTest extends TestCase
         $this->assertStringContainsString('Créer le tiers', $html);
     }
 
+    /**
+     * **ERR-H9PKK0, le 08/10.** Un compte du module qui a encaissé sans relancer — la
+     * comptabilité, entrée dans le module ce jour-là — faisait tomber le tableau de bord : la
+     * date de son dernier geste était une chaîne, et l'écran l'affichait avec `format()`.
+     */
+    public function test_un_compte_qui_encaisse_sans_relancer_n_abat_pas_le_tableau_de_bord(): void
+    {
+        $agent = $this->compte('agent_recouvrement');
+        $facture = $this->facture('SIFCA', 'F-0091', 400_000, now()->subDays(20)->toDateString());
+
+        \Modules\Noyau\Exploitation\Modeles\Encaissement::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->site->id, 'facture_id' => $facture->id,
+            'date' => now()->toDateString(), 'type' => 'Client', 'moyen' => 'Chèque', 'montant' => 100_000,
+            'cree_par' => $agent->id,
+        ]);
+
+        $this->actingAs($this->compte('gerant'))->get(route('recouvrement.tableau-de-bord'))
+            ->assertOk()
+            ->assertSee(now()->format('d/m/Y'));
+    }
+
+    /**
+     * **ERR-21UZZP, le 09/10.** Une relance qui cochait une trentaine de factures dépassait les
+     * 255 caractères de `factures_visees`, et MySQL refusait la relance entière. Elle passe,
+     * sous une forme courte.
+     */
+    public function test_une_relance_sur_trente_factures_s_enregistre(): void
+    {
+        foreach (range(1, 30) as $n) {
+            $this->facture('NSIA ASSURANCES', 'FA-2026-'.str_pad((string) $n, 5, '0', STR_PAD_LEFT), 250_000, now()->subDays(60));
+        }
+
+        Volt::actingAs($this->compte('gerant'))->test('recouvrement.saisie')
+            ->set('relTiers', 'NSIA ASSURANCES')
+            ->call('toutCocherRelance')
+            ->set('relCanal', 'LRAR')
+            ->set('relNiveau', 3)
+            ->set('relStatut', 'En cours')
+            ->call('enregistrerRelance')
+            ->assertHasNoErrors();
+
+        $visees = RelanceRecouvrement::withoutGlobalScopes()->sole()->factures_visees;
+
+        $this->assertLessThanOrEqual(255, mb_strlen($visees));
+        $this->assertStringStartsWith('30 factures', $visees);
+    }
+
     private function facture(
         string $tiers,
         string $numero,
