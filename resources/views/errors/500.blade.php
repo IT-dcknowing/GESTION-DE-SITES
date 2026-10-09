@@ -22,11 +22,9 @@
 
     <h1>Cette page est en maintenance</h1>
 
-    <p>
-        Une opération n'a pas abouti et nous avons préféré interrompre l'affichage plutôt
-        que de vous montrer des informations incomplètes.
-    </p>
-
+    {{-- La phrase « Une opération n'a pas abouti et nous avons préféré interrompre
+         l'affichage… » a été retirée le 09/10, à la demande du propriétaire : elle
+         inquiétait sans rien apprendre à personne. --}}
     <p class="gris">
         Rien de ce que vous avez enregistré n'est perdu&nbsp;: une saisie n'est écrite que
         lorsqu'elle a abouti entièrement. Si vous étiez en train de remplir un formulaire,
@@ -37,8 +35,8 @@
         <div class="reference">
             Référence de l'incident&nbsp;: <b>{{ $reference }}</b><br>
             <span class="gris">
-                Communiquez-la à votre administrateur&nbsp;: elle lui permet de retrouver
-                exactement cette panne dans le journal du serveur.
+                Communiquez-la à votre administrateur&nbsp;: il la retrouve dans la page
+                Maintenance, rubrique «&nbsp;Incidents&nbsp;».
             </span>
         </div>
     @endif
@@ -47,6 +45,10 @@
         <a class="bouton" href="{{ url('/') }}">Revenir à l'accueil</a>
         <a class="bouton discret" href="{{ url()->current() }}">Réessayer cette page</a>
     </div>
+
+    @if (! empty($detail) && ! empty($reference) && \Illuminate\Support\Facades\Route::has('super-admin.incident'))
+        <p style="margin-top:12px;"><a class="bouton discret" href="{{ route('super-admin.incident', $reference) }}">Ouvrir la fiche de l'incident</a></p>
+    @endif
 
     @if (! empty($detail) && ! empty($exception))
         <details class="detail">

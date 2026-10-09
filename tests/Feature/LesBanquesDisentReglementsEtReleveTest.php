@@ -146,6 +146,28 @@ class LesBanquesDisentReglementsEtReleveTest extends TestCase
         $this->assertSame(0, LibelleDeBanque::withoutGlobalScopes()->count());
     }
 
+    /**
+     * **ERR-XEYTWV, le 09/10.** En ligne, `/banques` est tombé : le code lisait des tables que
+     * la migration n'avait pas encore créées. L'écran s'ouvre désormais sans elles — sans les
+     * affectations ni le relevé —, et la page Maintenance dit quelle migration attend.
+     */
+    public function test_l_ecran_s_ouvre_meme_si_les_migrations_du_07_10_ne_sont_pas_passees(): void
+    {
+        $this->banque('BGFI');
+        $this->reglement('BGIF', 300_000, 300_000);
+        $gerant = $this->compte();
+
+        \Illuminate\Support\Facades\Schema::drop('libelles_de_banque');
+        \Illuminate\Support\Facades\Schema::drop('mouvements_bancaires');
+        \App\Support\SchemaDisponible::oublier();
+
+        try {
+            $this->actingAs($gerant)->get('/banques')->assertOk()->assertDontSee('Affecter à…');
+        } finally {
+            \App\Support\SchemaDisponible::oublier();
+        }
+    }
+
     // ------------------------------------------------------------------ le décor
 
     private function banque(string $nom): Banque

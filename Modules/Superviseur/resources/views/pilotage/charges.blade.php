@@ -182,7 +182,10 @@ $colonnesFiltrables = computed(fn () => [
 // ------------------------------------------------------------------ reprendre de la caisse
 
 /** Reprendre engage l'entreprise : les rôles qui saisissent la caisse, comme sur l'écran Caisse. */
-$peutReprendre = computed(fn () => auth()->user()?->hasAnyRole(['gerant', 'responsable_ville', 'caissier']) === true);
+// Et seulement une fois la colonne du 07/10 en base : sans elle, une reprise ne saurait pas
+// dire de quelle sortie elle vient.
+$peutReprendre = computed(fn () => auth()->user()?->hasAnyRole(['gerant', 'responsable_ville', 'caissier']) === true
+    && \App\Support\SchemaDisponible::colonne('charges', 'mouvement_caisse_id'));
 
 /**
  * Les sorties du journal de caisse de la période et du périmètre, **pas encore reprises**.

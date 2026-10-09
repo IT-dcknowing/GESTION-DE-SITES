@@ -409,7 +409,8 @@ $rapprochements = computed(function () {
     $de = Illuminate\Support\Carbon::parse($debut);
     $a = Illuminate\Support\Carbon::parse($fin);
 
-    $credits = fn () => Modules\Noyau\Imports\Modeles\MouvementBancaire::query()
+    // Sans la table des relevés (migration du 07/10 non passée), aucun crédit à pointer.
+    $credits = fn () => ! \App\Support\SchemaDisponible::table('mouvements_bancaires') ? collect() : Modules\Noyau\Imports\Modeles\MouvementBancaire::query()
         ->where('sens', Modules\Noyau\Imports\Modeles\MouvementBancaire::ENTREE)
         ->whereBetween('date_operation', [
             $de->copy()->subDays(RapprochementDeTresorerie::FENETRE_BANQUE[0])->toDateString(),

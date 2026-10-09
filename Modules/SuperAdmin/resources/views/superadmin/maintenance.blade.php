@@ -14,6 +14,7 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Illuminate\Support\Facades\DB;
+use App\Support\JournalDesIncidents;
 
 use function Livewire\Volt\{computed, state};
 
@@ -370,11 +371,87 @@ $supprimer = function (SupprimerEntreprise $action) {
     unset($this->entreprises, $this->portee, $this->volumes);
 };
 
+// ------------------------------------------------------------------ les incidents — 09/10
+
+/*
+ * « Dans la page maintenance, une section avec un champ : dès que je dépose le code, je dois
+ * voir l'erreur ; et tous les codes qui surviennent, listés et cliquables. » La liste lit la
+ * table `incidents` et le journal du serveur : un incident d'avant la table s'y trouve aussi.
+ */
+state(['referenceCherchee' => '']);
+
+$incidentsRecents = computed(fn () => JournalDesIncidents::recents(50));
+
+$migrationsEnAttente = computed(fn () => JournalDesIncidents::migrationsEnAttente());
+
+$ouvrirLIncident = function () {
+    $reference = strtoupper(trim((string) $this->referenceCherchee));
+
+    // On accepte « XEYTWV » comme « ERR-XEYTWV » : on recopie souvent sans le préfixe.
+    if ($reference !== '' && ! str_starts_with($reference, 'ERR-')) {
+        $reference = 'ERR-'.$reference;
+    }
+
+    if (preg_match('/^ERR-[A-Z0-9]{4,12}$/', $reference) !== 1) {
+        $this->addError('referenceCherchee', 'Une référence s’écrit ERR- suivi de six caractères, par exemple ERR-XEYTWV.');
+
+        return;
+    }
+
+    $this->redirectRoute('super-admin.incident', ['reference' => $reference], navigate: true);
+};
+
 ?>
 
 <div>
     <x-titre-ecran titre="Maintenance"
         sous-titre="L'état technique de la plateforme et les gestes d'entretien." />
+
+    {{-- ═══════════════════════════════ les incidents — 09/10
+
+         En tête : c'est ce qu'on vient chercher quand un utilisateur appelle avec une
+         référence. --}}
+    <div id="incidents">
+    <x-carte-section titre="Incidents — retrouver une panne par sa référence">
+        @if ($this->migrationsEnAttente !== [])
+            <div class="encart encart-alerte" style="margin-bottom:12px;">
+                <b>{{ count($this->migrationsEnAttente) }} migration(s) en attente sur ce serveur.</b>
+                Les pages qui en dépendent tombent en panne tant qu'elles ne sont pas passées :
+                lancer <code>php artisan app:deployer</code>.
+                <span style="font-size:12px;">({{ implode(', ', $this->migrationsEnAttente) }})</span>
+            </div>
+        @endif
+
+        <form wire:submit="ouvrirLIncident" class="bloc-saisie" style="margin-bottom:12px;">
+            <x-champ label="Référence de l'incident" model="referenceCherchee" width="240" placeholder="ERR-XEYTWV" />
+            <button type="submit" class="bouton">Voir l'erreur</button>
+        </form>
+        <x-erreurs-du-bloc prefixe="referenceCherchee" />
+
+        <div class="tableau-conteneur">
+            <table class="tableau">
+                <thead>
+                    <tr><th>Référence</th><th>Date</th><th>Erreur</th><th>Adresse</th></tr>
+                </thead>
+                <tbody>
+                    @forelse ($this->incidentsRecents as $incident)
+                        <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                            <td style="white-space:nowrap;">
+                                <a href="{{ route('super-admin.incident', $incident['reference']) }}" wire:navigate
+                                    style="font-weight:700; color:var(--th-accent,#C8102E);">{{ $incident['reference'] }}</a>
+                            </td>
+                            <td style="white-space:nowrap; color:#6B6E76;">{{ $incident['date'] ?? '—' }}</td>
+                            <td style="font-size:12.5px;">{{ \Illuminate\Support\Str::limit((string) $incident['message'], 140) }}</td>
+                            <td style="font-size:12px; color:#6B6E76; word-break:break-all;">{{ \Illuminate\Support\Str::limit((string) $incident['url'], 70) }}</td>
+                        </tr>
+                    @empty
+                        <x-table-vide :colspan="4" texte="Aucun incident enregistré." />
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </x-carte-section>
+    </div>
 
     {{-- ═══════════════════════════════ vider ce qu'on désigne
 

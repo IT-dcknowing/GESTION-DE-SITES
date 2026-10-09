@@ -128,8 +128,17 @@ return Application::configure(basePath: dirname(__DIR__))
             try {
                 $utilisateur = auth()->user();
 
-                return $utilisateur !== null
-                    && ((bool) $utilisateur->est_fondateur || $utilisateur->estSuperAdmin());
+                if ($utilisateur !== null && ((bool) $utilisateur->est_fondateur || $utilisateur->estSuperAdmin())) {
+                    return true;
+                }
+
+                // Un super administrateur qui assiste un compte (mode switch) voit le détail :
+                // c'est précisément là qu'il cherche ce que la personne a rencontré.
+                $origine = \Modules\SuperAdmin\Services\ModeSwitch::enCours()
+                    ? \Modules\SuperAdmin\Services\ModeSwitch::origine()
+                    : null;
+
+                return $origine !== null && ((bool) $origine->est_fondateur || $origine->estSuperAdmin());
             } catch (Throwable) {
                 /*
                  * Base ou session injoignables — c'est justement le cas le plus fréquent
@@ -193,17 +202,23 @@ return Application::configure(basePath: dirname(__DIR__))
                 // Journal injoignable lui aussi : la page doit sortir quand même.
             }
 
+            $trace = Str::of($e->getTraceAsString())
+                ->replace(base_path(), '')
+                ->explode("\n")
+                ->take(20)
+                ->implode("\n");
+
+            // La même panne en base, sous la même référence : elle se relit depuis la page
+            // Maintenance du super administrateur, sans accès au serveur — demandé le 09/10.
+            \App\Support\JournalDesIncidents::noter($reference, $e, $request, $trace);
+
             return response()->view('errors.500', [
                 'exception' => $e,
                 'reference' => $reference,
                 'detail' => $peutVoirLeDetail(),
                 // Le chemin du projet est retiré et la pile écourtée : les vingt premières
                 // lignes disent d'où vient une panne, les cent suivantes sont du vendor.
-                'trace' => Str::of($e->getTraceAsString())
-                    ->replace(base_path(), '')
-                    ->explode("\n")
-                    ->take(20)
-                    ->implode("\n"),
+                'trace' => $trace,
             ], 500);
         });
     })->create();

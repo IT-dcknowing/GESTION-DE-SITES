@@ -153,7 +153,13 @@ $peutDeclarer = computed(fn () => auth()->user()->hasRole('gerant'));
 
 // Chargées avec leurs libellés affectés : la reconnaissance les lit sur chaque fiche, et les
 // charger ici évite une requête par banque.
-$banques = computed(fn () => Banque::query()->with('libellesAffectes')->where('est_active', true)->orderBy('nom')->get());
+// Sans la table (migration du 07/10 non passée), l'écran s'ouvre sans les affectations.
+$banques = computed(fn () => Banque::query()
+    ->when(\App\Support\SchemaDisponible::table('libelles_de_banque'), fn ($q) => $q->with('libellesAffectes'))
+    ->where('est_active', true)->orderBy('nom')->get());
+
+/** « Affecter à » et « Modifier » attendent la table des libellés affectés. */
+$affectationsPossibles = computed(fn () => \App\Support\SchemaDisponible::table('libelles_de_banque'));
 
 /**
  * Le code que le prochain compte recevra — montré, jamais saisi.
@@ -1035,7 +1041,7 @@ $declarerLaBanque = function () {
                                                 wire:click="ouvrirLaDeclaration(@js($ligne['libelle']))">
                                                 Déclarer
                                             </button>
-                                            @if ($this->banques->isNotEmpty())
+                                            @if ($this->banques->isNotEmpty() && $this->affectationsPossibles)
                                                 <button type="button" class="bouton bouton-secondaire"
                                                     style="padding:3px 9px; font-size:11.5px;"
                                                     wire:click="ouvrirLAffectation(@js($ligne['libelle']), {{ $ligne['proposee'] ?? 'null' }})">

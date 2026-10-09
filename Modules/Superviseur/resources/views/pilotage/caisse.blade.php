@@ -688,7 +688,7 @@ $saisiesEnEspeces = computed(function () {
         ->whereNull('lot_import_id')
         // Une charge reprise du journal **est** une ligne du journal : elle paraît déjà sous
         // l'origine « journal », la compter ici la doublerait.
-        ->whereNull('mouvement_caisse_id')
+        ->when(\App\Support\SchemaDisponible::colonne('charges', 'mouvement_caisse_id'), fn ($q) => $q->whereNull('mouvement_caisse_id'))
         ->whereBetween('date', [$debut, $fin])
         ->with('site.ville')
         ->get()
