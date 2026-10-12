@@ -43,5 +43,10 @@ class LeChiffreDAffairesNeCompteQueLesVentesTest extends TestCase
         $facture(['montant' => 4_000, 'est_etat_initial' => true]);                                     // reprise du classeur
 
         $this->assertSame(700, (int) Facture::withoutGlobalScopes()->duChiffreDAffaires()->sum('montant'));
+
+        // Le « CA selon les impayés » (12/10) en est exactement le complément : rien n'est
+        // perdu, rien n'est compté deux fois.
+        $this->assertSame(7_000, (int) Facture::withoutGlobalScopes()->selonLesImpayesSeulement()->sum('montant'));
+        $this->assertSame(7_700, (int) Facture::withoutGlobalScopes()->sum('montant'));
     }
 }

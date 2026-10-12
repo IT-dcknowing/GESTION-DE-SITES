@@ -144,6 +144,23 @@ $requeteCharges = computed(function () {
 $chargesPeriode = computed(fn () => (int) (clone $this->requeteCharges)->sum('montant'));
 
 /*
+ * Le CA selon les impayés — 12/10 : ce que l'état des impayés porte sans que le fichier du CA
+ * ne l'ait retrouvé. Lu à côté du CA, jamais dans son total. Mêmes bornes que le CA (période,
+ * périmètre, activité, commercial).
+ */
+$caSelonImpayes = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return (int) EtatDesImpayes::dansLePerimetre(
+        Facture::query()->selonLesImpayesSeulement(), $this->idsSites, EtatDesImpayes::villesDesSites($this->idsSites),
+    )
+        ->whereBetween('date', [$debut, $fin])
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->when($this->commercialFiltre, fn ($q) => $q->where('commercial_id', $this->commercialFiltre))
+        ->sum('montant');
+});
+
+/*
  * Les totaux et le graphique sont additionnés par la base, ou sur trois colonnes seulement.
  *
  * Mesuré en local : l'écran chargeait toutes les factures de la période quatorze fois par
@@ -378,11 +395,13 @@ $comptesParOrigine = computed(function () {
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
 
-    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp
-        <x-kpi-card label="CA — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" :sub="$this->nombreDetail.' facture(s)'"
+        <x-kpi-card label="CA — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" :sub="$this->nombreDetail.' facture(s) — fichier du CA et saisies'"
             :mecanique="$ventile ? ae($this->kpis['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['sinistre']) : null" />
+        <x-kpi-card label="CA selon les impayés" :value="ae($this->caSelonImpayes)" couleur="#B45309"
+            sub="Créances de l'état non retrouvées dans le fichier du CA — à côté, jamais additionné" />
         <x-kpi-card label="Charges — {{ $this->libellePerimetre }}" :value="ae($this->chargesPeriode)"
             :mecanique="$ventile ? ae($this->kpis['chargesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['chargesVentilees']['sinistre']) : null"

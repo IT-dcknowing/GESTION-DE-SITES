@@ -155,6 +155,9 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 28 | Charges par origine (caisse, FNE à venir, non normalisées) | ✅ 12/10 |
 | 29 | Trésorerie : listes et libellés sans ambiguïté | ✅ 12/10 |
 | 30 | Correspondances : prospections passées en devis | ✅ 12/10 |
+| 32 | KPI « CA selon les impayés », à côté du CA | ✅ 12/10 |
+| 33 | « Lieu non précisé » : origine dite (état des impayés) | ✅ 12/10 |
+| 34 | Suivi fournisseur : « Régler », achats FNE à compléter, KPI des différences de numéros | **plus tard** — pas de rattachement caisse ↔ FNE automatique |
 
 ### Au propriétaire, et qui bloque la suite
 

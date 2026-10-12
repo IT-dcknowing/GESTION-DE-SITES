@@ -172,12 +172,21 @@ $kpis = computed(function () {
         ->when($this->activiteFiltre, fn ($q) => $q->deLActivite($this->activiteFiltre));
 
     $ca = VentilationActivite::repartir($facturesQ);
+
+    // À côté du CA, jamais dedans : ce que l'état des impayés porte sans que le fichier du CA
+    // ne l'ait retrouvé — 12/10, voir `Facture::scopeSelonLesImpayesSeulement`.
+    $caSelonImpayes = (int) EtatDesImpayes::dansLePerimetre(Facture::query()->selonLesImpayesSeulement(), $idsSites->all(), $this->idsVilles)
+        ->whereBetween('date', [$debut, $fin])
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))
+        ->sum('montant');
     $charges = VentilationActivite::repartir($chargesQ);
     $sorties = VentilationActivite::repartir($sortiesQ);
     $encaisse = VentilationActivite::repartir($encaisseQ, 'montant', Encaissement::ACTIVITE_SQL);
 
     return [
         'ca' => $this->synthese->sum('ca'),
+        'caSelonImpayes' => $caSelonImpayes,
         'caMecanique' => $ca['mecanique'],
         'caSinistre' => $ca['sinistre'],
         'caNonVentile' => $ca['nonVentile'],
@@ -353,7 +362,10 @@ $commentaires = computed(function () {
         <x-kpi-card label="CA — {{ $this->libellePerimetre }}" :value="ae($this->kpis['ca'])"
             :mecanique="$ventile ? ae($this->kpis['caMecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['caSinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['caNonVentile'] ? ae($this->kpis['caNonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['caNonVentile'] ? ae($this->kpis['caNonVentile']) : null"
+            sub="Fichier du CA et saisies" />
+        <x-kpi-card label="CA selon les impayés — {{ $this->libellePerimetre }}" :value="ae($this->kpis['caSelonImpayes'])"
+            sub="Créances de l'état non retrouvées dans le fichier du CA — à côté, jamais additionné" couleur="#B45309" />
         <x-kpi-card label="Charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['charges'])"
             :mecanique="$ventile ? ae($this->kpis['chargesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['chargesVentilees']['sinistre']) : null"
@@ -481,6 +493,15 @@ $commentaires = computed(function () {
                             <td style="font-weight:700;">
                                 <span style="display:inline-block; width:9px; height:9px; border-radius:99px; background:{{ $ligne['site']->ville->couleur ?? '#2563EB' }}; margin-right:8px;"></span>
                                 {{ $ligne['site']->nom }}
+                                {{-- D'où vient une ligne sans atelier — demandé le 12/10 : « à préciser
+                                     que cela vient des impayés ». --}}
+                                @if ($ligne['site']->id === null)
+                                    <div style="font-size:11px; font-weight:400; color:#6B6E76; margin-top:2px;">
+                                        {{ $ligne['site']->relationLoaded('ville')
+                                            ? "Vient de l'état des impayés (ville connue, pas l'atelier)"
+                                            : "Vient de l'état des impayés : ni fiche de réception, ni atelier, ni ville" }}
+                                    </div>
+                                @endif
                             </td>
                             <td style="font-variant-numeric:tabular-nums;">{{ ae($ligne['ca']) }}</td>
                             <td style="font-variant-numeric:tabular-nums;">{{ ae($ligne['charges']) }}</td>
@@ -497,5 +518,13 @@ $commentaires = computed(function () {
             </table>
         </div>
         <x-pagination :page="$pageSynthese" :total="$this->synthese->count()" prop="pageSynthese" />
+        @if ($this->synthese->contains(fn ($l) => $l['site']->id === null))
+            <p style="margin:10px 0 0; font-size:12px; color:#6B6E76; line-height:1.5;">
+                Les lignes « non précisé » portent surtout les <b>règlements de l'état des impayés</b> :
+                ce fichier ne donne ni la fiche de réception ni l'atelier. Leur CA, s'il y en a, vient de
+                lignes du fichier du CA dont la fiche n'est pas connue. <code>php artisan factures:situer</code>
+                les range dans leur atelier quand la fiche ou le devis le dit.
+            </p>
+        @endif
     </div>
 </div>
