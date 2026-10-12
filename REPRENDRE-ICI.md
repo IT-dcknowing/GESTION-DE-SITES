@@ -157,7 +157,10 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 30 | Correspondances : prospections passées en devis | ✅ 12/10 |
 | 32 | KPI « CA selon les impayés », à côté du CA | ✅ 12/10 |
 | 33 | « Lieu non précisé » : origine dite (état des impayés) | ✅ 12/10 |
-| 34 | Suivi fournisseur : « Régler », achats FNE à compléter, KPI des différences de numéros | **plus tard** — pas de rattachement caisse ↔ FNE automatique |
+| 34 | **Plan fournisseurs** : fichier de suivi = base, import avant ou après la FNE (sens unique de correspondance : fournisseur + n° de pièce), achats FNE **portés** au suivi, bouton « Régler » et lettrage, avoirs récupérés, KPI des différences | **plus tard** — détail : ETAT-DES-LIEUX § 6, ligne 34 |
+| 35 | Suivi fournisseurs : aucune facture écartée ; échu par la date de facture sans échéance ni règlement | ✅ 12/10 |
+| 36 | Synthèse par site en deux sections (CA / impayés) | ✅ 12/10 |
+| 37 | `factures:situer --appliquer` en ligne (8 + 7 lignes situables, constat du 12/10) | **à faire sur le serveur** |
 
 ### Au propriétaire, et qui bloque la suite
 

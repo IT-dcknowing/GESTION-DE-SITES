@@ -308,18 +308,24 @@ class LeReferentielFournisseurEntreTest extends TestCase
         $this->assertNull($piece->fresh()->date_echeance);
     }
 
-    public function test_une_piece_dont_l_echeance_est_seulement_deduite_n_est_pas_echue(): void
+    /**
+     * **Règle changée le 12/10 par le propriétaire** : « s'il n'a pas de date de règlement ni
+     * d'échéance, le système doit compter le nombre de jours écoulés entre la date de la
+     * facture et le jour actuel ; pas de facture écartée ». Une pièce ouverte sans échéance
+     * ni règlement, dont la date de facture est passée, est donc échue — par sa date de facture, et non par
+     * l'échéance déduite du terme fournisseur, qui ne s'écrit toujours pas sur la pièce.
+     */
+    public function test_une_piece_sans_echeance_ni_reglement_est_echue_par_sa_date_de_facture(): void
     {
         $this->importer();
-        // Facturée il y a un an à trente jours : l'échéance comptée est largement passée.
-        $this->piece('CFAO TOYOTA', Carbon::now()->subYear()->format('Y-m-d'));
+        // Facturée en début d'exercice : elle est à l'état de cette année, et sa date est passée.
+        $piece = $this->piece('CFAO TOYOTA', Carbon::now()->startOfYear()->addDays(5)->format('Y-m-d'));
 
-        // Le filtre « Échues » ne regarde que les échéances déclarées : aucune ligne n'y
-        // entre par un calcul. C'est le compteur du tableau qui le dit, et non l'absence
-        // du nom — le bandeau « À qui nous devons le plus » le montre de toute façon.
+        // La pièce paraît sous « Échues ». (Les pièces du classeur sans échéance ni règlement
+        // y entrent aussi désormais : on vérifie la nôtre, pas un compte.)
         Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs')
             ->set('etatFiltre', 'echues')
-            ->assertSee('Factures reçues (0)');
+            ->assertSee($piece->numero_piece);
     }
 
     // ------------------------------------------------------------------ les écrans

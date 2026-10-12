@@ -168,7 +168,7 @@ class LaSyntheseParAtelierCoutCinqRequetesTest extends TestCase
     /** Les lignes sans l'objet Site, pour qu'un écart se lise dans le message d'échec. */
     private function chiffres(array $lignes): array
     {
-        return array_map(fn ($l) => ['site' => $l['site']->nom] + array_diff_key($l, ['site' => true]), $lignes);
+        return array_map(fn ($l) => ['site' => $l['site']->nom] + array_diff_key($l, ['site' => true, 'genre' => true]), $lignes);
     }
 
     public function test_la_synthese_dit_exactement_ce_que_disait_la_boucle(): void

@@ -142,6 +142,22 @@ $devisLus = computed(function () {
 
 $devisTransformes = computed(fn () => TransformationDesDevis::transformes($this->devisLus));
 
+/**
+ * La première section : le CA seul. Une ligne sans atelier qui ne porte ni CA ni devis n'y
+ * paraît pas — elle n'existait que par ses règlements, qui sont à la seconde section. Elle
+ * reste dans `$synthese`, dont les cartes du haut font la somme.
+ */
+$syntheseDuCa = computed(fn () => $this->synthese
+    ->reject(fn ($l) => ($l['genre'] ?? 'atelier') !== 'atelier' && $l['ca'] === 0 && $l['devisAttente'] === 0)
+    ->values());
+
+/** La seconde section de la synthèse : l'état des impayés par lieu — 12/10, voir `SyntheseParAtelier::impayes`. */
+$syntheseImpayes = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return SyntheseParAtelier::impayes($this->sitesRetenus, $debut, $fin, (string) $this->activiteFiltre, $this->idsCommercialFiltre, $this->idsVilles);
+});
+
 $kpis = computed(function () {
     [$debut, $fin] = $this->plage;
     $idsSites = $this->sitesRetenus->pluck('id');
@@ -471,8 +487,14 @@ $commentaires = computed(function () {
         @endforeach
     </div>
 
-    <div class="carte">
-        <h3 class="titre-section">Synthèse par site</h3>
+    {{-- ─────────────────────────────── la synthèse, en deux sections — 12/10
+
+         « Une section qui illustre uniquement le CA importé, et une deuxième qui montre celui
+         des impayés, pour éviter les confusions. » Les règlements de l'état des impayés
+         remplissaient les lignes « non précisé » du tableau du CA, où on les lisait comme du
+         CA mal rangé. Chacun a désormais son tableau. --}}
+    <div class="carte" style="margin-bottom:16px;">
+        <h3 class="titre-section">Synthèse par site — chiffre d'affaires (fichier du CA et saisies)</h3>
         <div class="tableau-conteneur">
             <table class="tableau">
                 <thead>
@@ -481,50 +503,88 @@ $commentaires = computed(function () {
                         <th>CA facturé</th>
                         <th>Charges</th>
                         <th>Résultat net</th>
-                        <th>Encaissé</th>
-                        <th>Trésorerie nette</th>
                         <th>Devis en attente</th>
                         <th>Sans facture</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse ($this->synthese->forPage($pageSynthese, 10) as $ligne)
+                    @forelse ($this->syntheseDuCa->forPage($pageSynthese, 10) as $ligne)
                         <tr>
                             <td style="font-weight:700;">
                                 <span style="display:inline-block; width:9px; height:9px; border-radius:99px; background:{{ $ligne['site']->ville->couleur ?? '#2563EB' }}; margin-right:8px;"></span>
                                 {{ $ligne['site']->nom }}
-                                {{-- D'où vient une ligne sans atelier — demandé le 12/10 : « à préciser
-                                     que cela vient des impayés ». --}}
-                                @if ($ligne['site']->id === null)
+                                @if (($ligne['genre'] ?? 'atelier') !== 'atelier')
                                     <div style="font-size:11px; font-weight:400; color:#6B6E76; margin-top:2px;">
-                                        {{ $ligne['site']->relationLoaded('ville')
-                                            ? "Vient de l'état des impayés (ville connue, pas l'atelier)"
-                                            : "Vient de l'état des impayés : ni fiche de réception, ni atelier, ni ville" }}
+                                        {{ $ligne['genre'] === 'ville'
+                                            ? "Lignes du fichier du CA : ville connue, pas l'atelier"
+                                            : "Lignes du fichier du CA dont la fiche de réception n'est pas connue" }}
                                     </div>
                                 @endif
                             </td>
                             <td style="font-variant-numeric:tabular-nums;">{{ ae($ligne['ca']) }}</td>
                             <td style="font-variant-numeric:tabular-nums;">{{ ae($ligne['charges']) }}</td>
                             <td style="font-variant-numeric:tabular-nums; color:{{ $ligne['resultat'] >= 0 ? '#0E9F6E' : '#C8102E' }}; font-weight:700;">{{ ae($ligne['resultat']) }}</td>
-                            <td style="font-variant-numeric:tabular-nums;">{{ ae($ligne['encaisse']) }}</td>
-                            <td style="font-variant-numeric:tabular-nums; color:{{ $ligne['treso'] >= 0 ? 'inherit' : '#C8102E' }};">{{ ae($ligne['treso']) }}</td>
                             <td>{{ $ligne['devisAttente'] }}</td>
                             <td style="font-weight:700; color:{{ $ligne['sansFacture'] > 0 ? '#C8102E' : 'inherit' }};">{{ $ligne['sansFacture'] }}</td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="8" texte="Aucun site à afficher." />
+                        <x-table-vide :colspan="6" texte="Aucun site à afficher." />
                     @endforelse
                 </tbody>
             </table>
         </div>
-        <x-pagination :page="$pageSynthese" :total="$this->synthese->count()" prop="pageSynthese" />
-        @if ($this->synthese->contains(fn ($l) => $l['site']->id === null))
+        <x-pagination :page="$pageSynthese" :total="$this->syntheseDuCa->count()" prop="pageSynthese" />
+        @if ($this->syntheseDuCa->contains(fn ($l) => ($l['genre'] ?? 'atelier') !== 'atelier'))
             <p style="margin:10px 0 0; font-size:12px; color:#6B6E76; line-height:1.5;">
-                Les lignes « non précisé » portent surtout les <b>règlements de l'état des impayés</b> :
-                ce fichier ne donne ni la fiche de réception ni l'atelier. Leur CA, s'il y en a, vient de
-                lignes du fichier du CA dont la fiche n'est pas connue. <code>php artisan factures:situer</code>
-                les range dans leur atelier quand la fiche ou le devis le dit.
+                Les lignes « non précisé » sont des lignes du fichier du CA dont l'atelier n'est pas
+                connu. <code>php artisan factures:situer --appliquer</code> les range dans leur atelier
+                quand la fiche de réception ou le devis le dit.
             </p>
         @endif
+    </div>
+
+    <div class="carte">
+        <h3 class="titre-section">Synthèse par site — état des impayés</h3>
+        <p style="margin:-4px 0 10px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
+            Les créances portées à l'état et leurs règlements, à part du CA : un règlement n'est pas
+            une vente, et l'état ne dit presque jamais l'atelier. « Dont hors CA » : ce que le fichier
+            du CA n'a pas retrouvé.
+        </p>
+        <div class="tableau-conteneur">
+            <table class="tableau">
+                <thead>
+                    <tr>
+                        <th>Site</th>
+                        <th>Créances de la période</th>
+                        <th>Dont hors CA</th>
+                        <th>Encaissé</th>
+                        <th>Reste à encaisser</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($this->syntheseImpayes as $ligne)
+                        <tr>
+                            <td style="font-weight:700;">
+                                <span style="display:inline-block; width:9px; height:9px; border-radius:99px; background:{{ $ligne['site']->ville->couleur ?? '#2563EB' }}; margin-right:8px;"></span>
+                                {{ $ligne['site']->nom }}
+                                @if ($ligne['genre'] !== 'atelier')
+                                    <div style="font-size:11px; font-weight:400; color:#6B6E76; margin-top:2px;">
+                                        {{ $ligne['genre'] === 'ville'
+                                            ? "Vient de l'état des impayés : ville connue, pas l'atelier"
+                                            : "Vient de l'état des impayés : ni fiche de réception, ni atelier, ni ville" }}
+                                    </div>
+                                @endif
+                            </td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae($ligne['creances']) }}</td>
+                            <td style="font-variant-numeric:tabular-nums; color:#B45309;">{{ ae($ligne['horsCa']) }}</td>
+                            <td style="font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae($ligne['encaisse']) }}</td>
+                            <td style="font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($ligne['reste']) }}</td>
+                        </tr>
+                    @empty
+                        <x-table-vide :colspan="5" texte="Aucune créance ni règlement sur cette période." />
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>

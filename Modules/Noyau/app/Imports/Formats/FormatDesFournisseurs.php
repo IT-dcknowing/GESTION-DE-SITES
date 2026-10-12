@@ -389,12 +389,12 @@ class FormatDesFournisseurs extends Format
             return "Le montant de la facture n'est pas un nombre exploitable.";
         }
 
-        // Sans date de facture, la dette n'a pas d'âge : elle ne peut ni entrer dans une
-        // balance âgée ni être relancée à échéance. Mieux vaut la signaler que la ranger
-        // à une date inventée. Mesuré sur les deux classeurs : 49 lignes sur 10 147.
-        if (self::date($ligne['date_facture'] ?? null) === null) {
-            return 'La date de la facture est absente ou illisible.';
-        }
+        /*
+         * **Plus aucune facture écartée — décidé le 12/10.** Les 49 lignes sans date de facture
+         * (sur 10 147) étaient refusées « faute d'âge ». Le propriétaire : « pas de facture
+         * écartée ». Elles entrent ; leur âge se lit sur la date de réception quand elle est
+         * connue, et l'écran dit « — » sinon. Les avoirs (montant négatif) entraient déjà.
+         */
 
         return null;
     }
@@ -404,7 +404,8 @@ class FormatDesFournisseurs extends Format
         $fournisseur = self::texte($ligne['fournisseur'] ?? null, 160);
         $piece = self::texte($ligne['numero_piece'] ?? null, 60);
         $montant = self::entier($ligne['montant'] ?? null) ?? 0;
-        $dateFacture = self::date($ligne['date_facture'] ?? null);
+        // Sans date de facture, la date de réception en tient lieu — 12/10 : la ligne entre.
+        $dateFacture = self::date($ligne['date_facture'] ?? null) ?? self::date($ligne['date_reception'] ?? null);
 
         $regle = self::entier($ligne['montant_regle'] ?? null);
         $reste = self::entier($ligne['reste_a_payer'] ?? null);

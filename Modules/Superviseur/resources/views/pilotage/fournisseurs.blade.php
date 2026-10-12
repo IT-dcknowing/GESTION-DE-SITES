@@ -227,11 +227,13 @@ $requete = computed(function () {
         'ouvertes' => $requete->where('reste_a_payer', '>', 0),
         'anciennes' => $requete->where('reste_a_payer', '>', 0)
             ->whereDate('date_facture', '<', now()->subDays(90)),
-        // Échue veut dire : l'échéance est connue, et elle est passée. Une ligne sans
-        // échéance n'y figure pas — on ne la déclare ni à jour ni en retard.
+        // Échue : l'échéance est passée — ou, sans échéance ni règlement, la facture elle-même
+        // est passée (12/10 : « s'il n'y a ni date de règlement ni échéance, compter les jours
+        // écoulés depuis la facture ; pas de facture écartée »).
         'echues' => $requete->where('reste_a_payer', '>', 0)
-            ->whereNotNull('date_echeance')
-            ->whereDate('date_echeance', '<', now()),
+            ->where(fn ($q) => $q->whereDate('date_echeance', '<', now())
+                ->orWhere(fn ($r) => $r->whereNull('date_echeance')->whereNull('date_reglement')
+                    ->whereDate('date_facture', '<', now()))),
         'soldees' => $requete->where('reste_a_payer', '<=', 0),
         default => $requete,
     };
@@ -257,8 +259,12 @@ $kpis = computed(fn () => EtatDesFournisseurs::totaux($this->perimetre, $this->a
      * 1 480 pièces dont l'échéance est connue ». Annoncer le premier seul laisserait croire
      * que le reste est à jour, alors qu'il est simplement sans date.
      */
+    // Sans échéance ni règlement, la date de la facture fait foi (12/10) : aucune pièce
+    // n'échappe à l'échu parce qu'une date manque.
     'echu' => (int) (clone $this->perimetre)->where('reste_a_payer', '>', 0)
-        ->whereNotNull('date_echeance')->whereDate('date_echeance', '<', now())
+        ->where(fn ($q) => $q->whereDate('date_echeance', '<', now())
+            ->orWhere(fn ($r) => $r->whereNull('date_echeance')->whereNull('date_reglement')
+                ->whereDate('date_facture', '<', now())))
         ->sum('reste_a_payer'),
     'avecEcheance' => (clone $this->perimetre)->where('reste_a_payer', '>', 0)
         ->whereNotNull('date_echeance')->count(),
@@ -743,9 +749,7 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                 : 'Aucune pièce ouverte'" />
         <x-kpi-card label="Échu" :value="ae($this->kpis['echu'])"
             :accent="$this->kpis['echu'] > 0"
-            :sub="$this->kpis['avecEcheance'] > 0
-                ? 'Sur les '.$this->kpis['avecEcheance'].' pièce(s) ouverte(s) dont l\'échéance est connue'
-                : 'Aucune pièce ouverte ne porte d\'échéance'" />
+            :sub="'Échéance passée, ou — sans échéance ni règlement — facture passée ('.$this->kpis['avecEcheance'].' pièce(s) ouverte(s) portent une échéance)'" />
         <x-kpi-card label="Reporté des années passées" :value="ae($this->kpis['resteReporte'])"
             :sub="$this->kpis['reportees'].' pièce(s) antérieure(s) encore due(s) — rien n\'est recopié'" />
         <x-kpi-card label="Facturé en {{ $this->annee }}" :value="ae($this->kpis['facture'])"
@@ -872,7 +876,9 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                 ? NombreDeJours::entre($ligne->date_facture, now())
                                 : null;
                             $vieille = $ligne->reste_a_payer > 0 && $jours !== null && $jours > 90;
-                            $echue = $ligne->reste_a_payer > 0 && $ligne->date_echeance?->isPast();
+                            $echue = $ligne->reste_a_payer > 0 && ($ligne->date_echeance
+                                ? $ligne->date_echeance->isPast()
+                                : ($ligne->date_reglement === null && $ligne->date_facture?->isPast()));
                             /* L'échéance attendue, quand le fichier n'en porte pas : elle
                                vient du terme du fournisseur et se dit « attendue ». Elle
                                n'entre pas dans le filtre « Échues » ni dans le KPI de
