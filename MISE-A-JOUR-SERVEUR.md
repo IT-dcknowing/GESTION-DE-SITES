@@ -515,6 +515,21 @@ est déjà écrite en fichier quel que soit ce réglage.
 **Ne pas** toucher à `SESSION_DRIVER` en même temps : le passer de `database` à `file`
 déconnecterait tout le monde une fois, sans rien accélérer de sensible.
 
+**3. La configuration en cache — depuis le 12/10, faite par `app:deployer`.**
+
+Mesuré ce jour-là sur la base de test : une page coûte **10 à 40 ms** à l'application et
+charge **environ 2 000 fichiers PHP**. Les cinq secondes vues en ligne pour une page vide ne
+viennent donc pas des écrans : elles viennent de ce que le serveur refait à chaque clic —
+relire ces 2 000 fichiers sans OPcache (point 1), relire le `.env` et une quarantaine de
+fichiers de configuration, aller chercher le cache en MySQL (point 2).
+
+`app:deployer` met désormais la **configuration** en cache avec les routes, les évènements et
+les gabarits. Conséquence à retenir : **après toute modification du `.env`, relancer
+`php artisan app:deployer`** — sinon le cache garde l'ancienne valeur.
+
+**Ordre conseillé, du plus rentable au moins rentable :** OPcache (cPanel), puis
+`CACHE_STORE=file` et `app:deployer`. Ces deux gestes ne dépendent que de l'hébergement.
+
 ## 2. Ce qu'un envoi ne doit jamais emporter
 
 Le 14 septembre 2026, le projet a été mis en ligne par un zip du dossier local. La

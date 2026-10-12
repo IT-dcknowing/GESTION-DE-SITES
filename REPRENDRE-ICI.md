@@ -50,7 +50,7 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 9 octobre 2026
+## 3. Où l'on en est — 12 octobre 2026
 
 **Branche courante :** `main`, à jour avec `origin/main`. `claude/friendly-archimedes-nisgxa`
 a été poussée puis **fusionnée dans `main` le 07/10**, et `main` poussé. `correspondances-factures`
@@ -148,6 +148,13 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 21 | **Panne `/banques` (ERR-XEYTWV)** ; incidents lisibles depuis la Maintenance | ✅ 09/10 — écrans tolérants aux migrations en attente ; Maintenance → Incidents (champ, liste cliquable, migrations en attente) |
 | 22 | Tableau de bord de la comptabilité à 0 F | ✅ 09/10 — périmètre par ville, jour = fin de période, encours complet |
 | 23 | Les pannes réglées quittent la liste des incidents ; causes réelles corrigées (GROUP BY MySQL, relances longues, date en chaîne) | ✅ 09/10 |
+| 24 | Lenteur : configuration en cache à chaque déploiement ; le reste = OPcache et `CACHE_STORE=file` chez l'hébergeur | ✅ code 12/10 — **serveur à faire** |
+| 25 | E-mail refusé pour un caractère invisible | ✅ 12/10 |
+| 26 | CA = fichier du CA ou saisie ; atelier par la fiche puis le devis | ✅ 12/10 — **`factures:situer` à passer** |
+| 27 | Page Devis : validés ou facturés, délai par la fiche du parc | ✅ 12/10 |
+| 28 | Charges par origine (caisse, FNE à venir, non normalisées) | ✅ 12/10 |
+| 29 | Trésorerie : listes et libellés sans ambiguïté | ✅ 12/10 |
+| 30 | Correspondances : prospections passées en devis | ✅ 12/10 |
 
 ### Au propriétaire, et qui bloque la suite
 
@@ -209,6 +216,13 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     → **Fait le 09/10 après-midi** : la liste a donné la vraie cause (GROUP BY refusé par MySQL),
     corrigée. Après le prochain `git pull` + `app:deployer` (migration `incidents_regles`), les
     pannes corrigées quittent la liste d'elles-mêmes ; vérifier qu'aucune ne revient.
+
+13. **Le 12/10** : `git pull`, **`php artisan app:deployer`** (il met maintenant aussi la
+    configuration en cache : **le relancer après toute modification du `.env`**). Puis
+    `php artisan factures:situer` (constat), rapporter la sortie, puis `--appliquer` : il
+    donne leur atelier aux lignes « Lieu non précisé » et « Ville — atelier non précisé ».
+    **Vitesse** : cocher OPcache dans cPanel et passer `CACHE_STORE=file` — c'est l'essentiel
+    des cinq secondes (voir `MISE-A-JOUR-SERVEUR.md`).
 
 ### En attente d'un accord, pas d'un travail
 
@@ -343,6 +357,8 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | **Deux suites de tests lancées en même temps** | Elles se marchent dessus sur les fichiers temporaires et donnent de faux échecs |
 | **SQLite (tests) accepte ce que MySQL (serveur) refuse** : une sous-requête corrélée dans un `sum()` groupé (ERR-XEYTWV) ; une chaîne plus longue que sa colonne `varchar` | Calculer ligne à ligne dans une sous-requête, regrouper par-dessus (`fromSub`) ; borner la longueur dans le code et la tester explicitement |
 | **Le code d'un écran lit une table neuve avant que le serveur ne l'ait** (ERR-XEYTWV, 09/10) | Une nouveauté qui dépend d'une migration récente passe par `App\Support\SchemaDisponible` ; et `app:deployer` après chaque `git pull` |
+| **La table `factures` mêle les ventes et les créances** (12/10) | Tout KPI de chiffre d'affaires passe par `Facture::scopeDuChiffreDAffaires()` ; une créance de l'état non retrouvée au CATTC n'est pas une vente |
+| **Une méthode d'import peut exister sans être appelée** (`siteConnuDe`, 12/10) | Vérifier que la cascade de rattachement la lit (`dossierExistant()`) — un test qui appelle la méthode seule ne le prouve pas |
 | **Un devis importé est toujours « En attente »**, un règlement importé n'a pas d'activité | Ne jamais compter « Validé » seul : passer par `TransformationDesDevis` ; ventiler un règlement par `Encaissement::ACTIVITE_SQL` (celle de sa facture) |
 
 ---
