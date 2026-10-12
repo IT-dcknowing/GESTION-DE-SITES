@@ -77,7 +77,7 @@ class LesBanquesDisentReglementsEtReleveTest extends TestCase
         $this->assertSame(1_200_000, $page->releveRegarde['solde']);
         $this->assertSame(['nombre' => 2, 'reste' => 350_000], $page->facturesOuvertesRegardees);
 
-        $ecran->assertSee('Selon la banque — crédits du relevé')
+        $ecran->assertSee('Selon la banque — argent entré sur le compte')
             ->assertSee('Factures pas encore réglées');
     }
 

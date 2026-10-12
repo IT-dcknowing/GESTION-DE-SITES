@@ -965,8 +965,8 @@ $declarerLaBanque = function () {
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px;">
                 <x-kpi-card label="Selon les règlements importés et saisis" :value="ae($reg['montant'])" couleur="#0E9F6E"
                     sub="{{ number_format($reg['nombre'], 0, ',', ' ') }} règlement(s) — CA, état des impayés, saisies" />
-                <x-kpi-card label="Selon la banque — crédits du relevé" :value="$rel['nombre'] > 0 ? ae($rel['credits']) : '—'"
-                    sub="{{ $rel['nombre'] > 0 ? 'Débits '.ae($rel['debits']).' · '.number_format($rel['nombre'], 0, ',', ' ').' opération(s)' : 'Aucun relevé déposé pour cette période' }}" />
+                <x-kpi-card label="Selon la banque — argent entré sur le compte" :value="$rel['nombre'] > 0 ? ae($rel['credits']) : '—'"
+                    sub="{{ $rel['nombre'] > 0 ? 'Crédits du relevé. Sorties (débits) '.ae($rel['debits']).' · '.number_format($rel['nombre'], 0, ',', ' ').' opération(s)' : 'Aucun relevé déposé pour cette période' }}" />
                 <x-kpi-card label="Solde annoncé par la banque" :value="$rel['solde'] === null ? '—' : ae($rel['solde'])"
                     :couleur="($rel['solde'] ?? 0) >= 0 ? '#0E9F6E' : '#C8102E'"
                     sub="{{ $rel['date'] ? 'Au '.\Illuminate\Support\Carbon::parse($rel['date'])->format('d/m/Y').', tel quel' : 'Tel que le relevé le dit, jamais recalculé' }}" />

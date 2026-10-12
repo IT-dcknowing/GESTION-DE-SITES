@@ -594,6 +594,15 @@ $unionEncaissements = computed(fn () => MouvementsDeTresorerie::entrees(
 
 $nombreEncaissements = computed(fn () => MouvementsDeTresorerie::compter($this->unionEncaissements));
 
+/*
+ * Ce que chaque liste réunit, dit séparément — 12/10 : « les banques et caisses ne comptent
+ * que l'importé ; les règlements se comptent entre eux, à titre informatif, sans jamais
+ * interférer ». Les listes montrent les deux, ligne à ligne, chacune marquée ; leur en-tête
+ * dit combien de chaque, plutôt qu'un seul nombre qui les mêlerait.
+ */
+$nombreReglementsEncaisses = computed(fn () => (clone $this->requeteEncaissements)->count());
+$nombreReglementsDecaisses = computed(fn () => (clone $this->chargesQ)->count());
+
 $detailEncaissements = computed(fn () => $this->garnir(
     MouvementsDeTresorerie::page($this->unionEncaissements, (int) $this->pageEncaissements),
 ));
@@ -838,7 +847,7 @@ $origineDe = protect(function ($ligne) {
             :mecanique="$ventile ? ae($this->kpis['decaisseVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['decaisseVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['decaisseVentile']['nonVentile'] ? ae($this->kpis['decaisseVentile']['nonVentile']) : null" />
-        <x-kpi-card label="Trésorerie nette — {{ $this->libellePerimetre }}" :value="ae($this->kpis['net'])" :accent="$this->kpis['net'] < 0" :couleur="$this->kpis['net'] >= 0 ? '#0E9F6E' : '#C8102E'"
+        <x-kpi-card label="Net des règlements — {{ $this->libellePerimetre }}" :value="ae($this->kpis['net'])" sub="Encaissements − décaissements enregistrés, à titre informatif" :accent="$this->kpis['net'] < 0" :couleur="$this->kpis['net'] >= 0 ? '#0E9F6E' : '#C8102E'"
             :mecanique="$ventile ? ae($this->kpis['netVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['netVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['netVentile']['nonVentile'] ? ae($this->kpis['netVentile']['nonVentile']) : null" />
@@ -907,7 +916,7 @@ $origineDe = protect(function ($ligne) {
                     $declare = $this->reglementsParCote[$cote];
                 @endphp
                 <div style="padding:12px 14px; border:1px solid var(--th-ligne,#E2E0D8); border-radius:10px; font-size:12.5px;">
-                    <div style="display:flex; justify-content:space-between;"><span>{{ $cote === 'banque' ? 'Crédits des relevés' : 'Entrées du journal de caisse' }}</span><b>{{ ae($releve) }}</b></div>
+                    <div style="display:flex; justify-content:space-between;"><span>{{ $cote === 'banque' ? 'Argent entré sur les comptes (crédits des relevés)' : 'Entrées du journal de caisse' }}</span><b>{{ ae($releve) }}</b></div>
                     <div style="display:flex; justify-content:space-between;"><span>Règlements {{ $cote === 'banque' ? 'par banque ou sans moyen dit' : 'en espèces' }}</span><b>{{ ae($declare) }}</b></div>
                     <div style="display:flex; justify-content:space-between; border-top:1px solid var(--th-ligne,#E2E0D8); margin-top:4px; padding-top:4px;">
                         <span>Écart ({{ $nom }} − règlements)</span>
@@ -1052,7 +1061,11 @@ $origineDe = protect(function ($ligne) {
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(430px, 1fr)); gap:20px;">
         <div class="carte">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:0 0 14px;">
-                <h3 style="font-size:15px; font-weight:700; margin:0;">Encaissements ({{ number_format($this->nombreEncaissements, 0, ',', ' ') }})</h3>
+                <h3 style="font-size:15px; font-weight:700; margin:0;">Encaissements ({{ number_format($this->nombreEncaissements, 0, ',', ' ') }})
+                    <span style="display:block; font-size:12px; font-weight:400; color:#6B6E76; margin-top:2px;">
+                        {{ number_format($this->nombreReglementsEncaisses, 0, ',', ' ') }} règlement(s) ·
+                        {{ number_format(max(0, $this->nombreEncaissements - $this->nombreReglementsEncaisses), 0, ',', ' ') }} entrée(s) du journal de caisse — listées, jamais additionnées
+                    </span></h3>
                 {{-- Les colonnes qu'aucun filtre ne couvre : le client, le type, le moyen,
                      la référence, le règlement global, le montant. Demandé le 28/09. --}}
                 <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
@@ -1128,7 +1141,11 @@ $origineDe = protect(function ($ligne) {
         </div>
 
         <div class="carte">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Décaissements ({{ number_format($this->nombreDecaissements, 0, ',', ' ') }})</h3>
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Décaissements ({{ number_format($this->nombreDecaissements, 0, ',', ' ') }})
+                <span style="display:block; font-size:12px; font-weight:400; color:#6B6E76; margin-top:2px;">
+                    {{ number_format($this->nombreReglementsDecaisses, 0, ',', ' ') }} charge(s) ·
+                    {{ number_format(max(0, $this->nombreDecaissements - $this->nombreReglementsDecaisses), 0, ',', ' ') }} sortie(s) du journal de caisse — listées, jamais additionnées
+                </span></h3>
             <div class="tableau-conteneur">
                 <table class="tableau">
                     <thead>
