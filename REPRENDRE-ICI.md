@@ -142,7 +142,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 15 | Expliquer le rapprochement et le lettrage | ✅ |
 | 16 | Charges récupérées de la caisse, colonne Origine | ✅ (colonne `charges.mouvement_caisse_id`, migration à passer) |
 | 17 | Synthèse par site : « Lieu non précisé », activité par le devis | ✅ — `factures:situer` à passer en ligne |
-| 18 | Factures fournisseurs FNE (stripping), porter et régler — **module à venir** | plan |
+| 18 | Factures fournisseurs FNE (stripping), porter et régler | ✅ 12/10 — scraper repris de Selflow (`SCRAPER-PORTAIL-FNE/`), écran Fournisseurs › **Factures FNE**, « Régler » sur la pièce. **Migration à passer, accès FNE attendus** |
 | 19 | Accueil du gérant : taux de transformation des devis (0 %) et ventilation de l'encaissé | ✅ 08/10 — validés **ou facturés** ; l'encaissé prend l'activité de sa facture. Charges 0 F = aucune charge saisie, pas un défaut |
 | 20 | La comptabilité a **tout** le module recouvrement (plus de « habilitation supérieure ») | ✅ 08/10 |
 | 21 | **Panne `/banques` (ERR-XEYTWV)** ; incidents lisibles depuis la Maintenance | ✅ 09/10 — écrans tolérants aux migrations en attente ; Maintenance → Incidents (champ, liste cliquable, migrations en attente) |
@@ -157,7 +157,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 30 | Correspondances : prospections passées en devis | ✅ 12/10 |
 | 32 | KPI « CA selon les impayés », à côté du CA | ✅ 12/10 |
 | 33 | « Lieu non précisé » : origine dite (état des impayés) | ✅ 12/10 |
-| 34 | **Plan fournisseurs** : fichier de suivi = base, import avant ou après la FNE (sens unique de correspondance : fournisseur + n° de pièce), achats FNE **portés** au suivi, bouton « Régler » et lettrage, avoirs récupérés, KPI des différences | **plus tard** — détail : ETAT-DES-LIEUX § 6, ligne 34 |
+| 34 | **Plan fournisseurs** : suivi = base, correspondance dans les deux sens, achats FNE **portés** au suivi, « Régler » et lettrage, avoirs, KPI des différences | ✅ 12/10 — `AchatsFne`, tables `releves_fne` / `factures_fne`, `reglements_fournisseur.facture_fournisseur_id`. Détail : ETAT-DES-LIEUX § 6, ligne 34 |
 | 35 | Suivi fournisseurs : aucune facture écartée ; échu par la date de facture sans échéance ni règlement | ✅ 12/10 |
 | 36 | Synthèse par site en deux sections (CA / impayés) | ✅ 12/10 |
 | 37 | `factures:situer --appliquer` en ligne (8 + 7 lignes situables, constat du 12/10) | **à faire sur le serveur** |
@@ -229,6 +229,14 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     donne leur atelier aux lignes « Lieu non précisé » et « Ville — atelier non précisé ».
     **Vitesse** : cocher OPcache dans cPanel et passer `CACHE_STORE=file` — c'est l'essentiel
     des cinq secondes (voir `MISE-A-JOUR-SERVEUR.md`).
+
+14. **Le 12/10, soir — les factures FNE des fournisseurs** : `git pull` puis
+    **`php artisan app:deployer`** (migration `2026_10_12_000001_les_factures_fne_des_fournisseurs_entrent` :
+    deux tables neuves et deux colonnes nullables sur `reglements_fournisseur` ; aucune ligne lue
+    ni écrite). Vérifier que la fiche de l'entreprise porte son **NCC** (c'est le login du portail).
+    Quand les accès FNE arrivent : sur un poste avec Node, suivre `SCRAPER-PORTAIL-FNE/CONSIGNES.md`
+    (`npm install`, `.env` avec `FNE_URL`, `node achats.js <NCC> <mdp>`), puis déposer le JSON à
+    **Fournisseurs › Factures FNE** — ou `php artisan fne:releve-achats` sur le serveur.
 
 ### En attente d'un accord, pas d'un travail
 

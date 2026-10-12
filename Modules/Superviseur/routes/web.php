@@ -117,6 +117,9 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // répondaient à « quels fournisseurs connaissons-nous ? », qui est pourtant la
     // première question qu'on pose avant de saisir.
     Volt::route('/fournisseurs/liste', 'pilotage.fournisseurs-liste')->name('fournisseurs.liste');
+    // Les achats relevés au portail FNE (12/10) : chaque pièce émise par un tiers, avoirs
+    // compris, dans son exercice ; rapprochée du suivi dans les deux sens, ou portée au suivi.
+    Volt::route('/fournisseurs/fne', 'pilotage.fournisseurs-fne')->name('fournisseurs.fne');
     /*
      * Les deux exports du logiciel comptable ont leur page, à côté du suivi tenu à la main.
      *

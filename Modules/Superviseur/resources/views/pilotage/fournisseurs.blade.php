@@ -585,6 +585,8 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
             <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Conditions de règlement</a>
             <a href="{{ route('balance-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Balance fournisseurs</a>
             <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements fournisseurs</a>
+            {{-- Les achats relevés au portail FNE, 12/10 : ils confirment le suivi ou s'y portent. --}}
+            <a href="{{ route('fournisseurs.fne') }}" wire:navigate class="bouton bouton-secondaire">Factures FNE</a>
             @if ($this->peutEcrire)
                 {{-- Rendu replié et déplié par x-show : un @if autour du formulaire rendrait
                      son ouverture aussi lente qu'une requête, pour un panneau déjà en page. --}}

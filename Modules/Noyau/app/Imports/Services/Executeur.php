@@ -128,6 +128,14 @@ class Executeur
             $this->journaliserLesRejets($lot, $resultat);
         }
 
+        // Le classeur de suivi peut arriver après le relevé FNE (12/10) : la correspondance
+        // tient dans les deux sens, donc elle se refait ici. Hors transaction, et sans faire
+        // échouer un dépôt réussi si la table n'est pas encore migrée.
+        if ($ecrire && $format === \Modules\Noyau\Imports\Formats\FormatDesFournisseurs::class
+            && \Illuminate\Support\Facades\Schema::hasTable('factures_fne')) {
+            AchatsFne::rapprocher($this->entrepriseId);
+        }
+
         $lot->forceFill([
             'etat' => $ecrire ? 'termine' : 'controle',
             'termine_le' => now(),

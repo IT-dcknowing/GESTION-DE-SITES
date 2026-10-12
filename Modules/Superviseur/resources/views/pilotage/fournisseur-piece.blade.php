@@ -4,7 +4,10 @@ use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
+use Modules\Noyau\Imports\Modeles\FactureFne;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
+use Modules\Noyau\Imports\Modeles\ReglementFournisseur;
+use Modules\Noyau\Imports\Services\AchatsFne;
 use Spatie\Activitylog\Models\Activity;
 
 use function Livewire\Volt\{computed, mount, state};
@@ -39,6 +42,9 @@ state([
     'modeReglement' => '', 'imputation' => '', 'immatriculation' => '',
     'numeroFacture' => '', 'observations' => '',
 ]);
+
+// « Régler », 12/10 : chaque paiement s'enregistre et se lettre avec la facture qu'il solde.
+state(['enReglement' => false, 'reglerMontant' => '', 'reglerDate' => '', 'reglerMode' => '']);
 
 mount(function (int $piece) {
     $this->id = $piece;
@@ -82,6 +88,58 @@ $historique = computed(fn () => $this->piece === null ? collect() : Activity::qu
     ->latest('id')
     ->limit(30)
     ->get());
+
+/** Les règlements lettrés à cette pièce — ceux que « Régler » a saisis. */
+$reglements = computed(fn () => $this->piece === null ? collect() : ReglementFournisseur::query()
+    ->where('facture_fournisseur_id', $this->piece->id)
+    ->orderBy('date_reglement')->orderBy('id')
+    ->get());
+
+/** La facture FNE qui confirme cette pièce, quand le relevé du portail l'a trouvée. */
+$fne = computed(fn () => $this->piece === null ? null : FactureFne::query()
+    ->where('facture_fournisseur_id', $this->piece->id)->first());
+
+$ouvrirReglement = function () {
+    if (! EtatDesFournisseurs::peutEcrire(auth()->user()) || $this->piece === null) {
+        abort(403);
+    }
+
+    // Prérempli de ce qui reste dû, à la date du jour : le cas courant est le solde.
+    $this->reglerMontant = (string) (int) $this->piece->reste_a_payer;
+    $this->reglerDate = now()->toDateString();
+    $this->reglerMode = (string) $this->piece->mode_reglement;
+    $this->enReglement = true;
+};
+
+$regler = function () {
+    if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
+        abort(403);
+    }
+
+    $p = $this->piece;
+
+    if ($p === null) {
+        abort(404);
+    }
+
+    $donnees = $this->validate([
+        'reglerMontant' => ['required', 'integer', 'not_in:0'],
+        'reglerDate' => ['required', 'date'],
+        'reglerMode' => ['nullable', 'string', 'max:80'],
+    ], [], ['reglerMontant' => 'montant', 'reglerDate' => 'date', 'reglerMode' => 'mode']);
+
+    try {
+        $reglement = AchatsFne::regler($p, (int) $donnees['reglerMontant'], $donnees['reglerDate'], $donnees['reglerMode'] ?: null, auth()->user());
+    } catch (\RuntimeException $e) {
+        $this->addError('reglerMontant', $e->getMessage());
+
+        return;
+    }
+
+    $this->enReglement = false;
+    unset($this->piece, $this->reglements, $this->historique);
+    $this->dispatch('annonce', texte: 'Règlement '.$reglement->code_reglement.' enregistré et lettré.', ton: 'succes');
+};
 
 $modifier = function () {
     if (! EtatDesFournisseurs::peutEcrire(auth()->user()) || $this->piece === null) {
@@ -228,8 +286,11 @@ $enregistrer = function () {
             :sous-titre="'Pièce '.($p->numero_piece ?: '—').' — '.EtatDesFournisseurs::origine($p)">
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
                 <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Retour au suivi</a>
+                @if ($this->peutEcrire && ! $enReglement && (int) $p->reste_a_payer !== 0)
+                    <button type="button" wire:click="ouvrirReglement" class="bouton">Régler</button>
+                @endif
                 @if ($this->peutEcrire && ! $enModification)
-                    <button type="button" wire:click="modifier" class="bouton">Modifier</button>
+                    <button type="button" wire:click="modifier" class="bouton bouton-secondaire">Modifier</button>
                 @endif
             </div>
         </x-titre-ecran>
@@ -317,6 +378,58 @@ $enregistrer = function () {
                 @endif
             @endif
         </div>
+
+        @if ($enReglement)
+            <div class="carte" style="margin-bottom:16px; border-left:3px solid #0E9F6E;">
+                <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Régler la pièce</h3>
+                <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
+                    Le règlement est enregistré et <b>lettré</b> à cette pièce ; le réglé et le reste suivent.
+                    Un paiement partiel se saisit pour son montant, le suivant viendra solder.
+                    @if ((int) $p->reste_a_payer < 0) Pour un avoir, le montant est négatif : c'est l'argent récupéré. @endif
+                </p>
+                <form wire:submit="regler">
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px;">
+                        <x-champ label="Montant" model="reglerMontant" type="number" requis />
+                        <x-champ label="Date du règlement" model="reglerDate" type="date" requis />
+                        <x-champ label="Mode de règlement" model="reglerMode" />
+                    </div>
+                    <div style="display:flex; gap:9px; margin-top:14px;">
+                        <button type="submit" class="bouton">Enregistrer le règlement</button>
+                        <button type="button" wire:click="$set('enReglement', false)" class="bouton bouton-secondaire">Annuler</button>
+                    </div>
+                </form>
+            </div>
+        @endif
+
+        @if ($this->reglements->isNotEmpty() || $this->fne)
+            <div class="carte" style="margin-bottom:16px;">
+                <h3 style="font-size:15px; font-weight:700; margin:0 0 10px;">Lettrage</h3>
+                @if ($this->fne)
+                    <p style="margin:0 0 10px; font-size:13px; color:#4B4E55;">
+                        Confirmée par la FNE : <b>{{ $this->fne->reference }}</b>
+                        du {{ $this->fne->date_facture?->format('d/m/Y') ?? '—' }},
+                        {{ ae((int) $this->fne->montant_ttc) }} TTC{{ $this->fne->est_avoir ? ' — avoir' : '' }}.
+                    </p>
+                @endif
+                @if ($this->reglements->isNotEmpty())
+                    <div class="tableau-conteneur">
+                        <table class="tableau">
+                            <thead><tr><th>Règlement</th><th>Date</th><th>Mode</th><th style="text-align:right;">Montant</th></tr></thead>
+                            <tbody>
+                                @foreach ($this->reglements as $r)
+                                    <tr>
+                                        <td>{{ $r->code_reglement }}</td>
+                                        <td>{{ $r->date_reglement?->format('d/m/Y') }}</td>
+                                        <td>{{ $r->mode_reglement ?: '—' }}</td>
+                                        <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $r->montant) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </div>
+        @endif
 
         @if ($enModification)
             <div class="carte" style="margin-bottom:16px;">

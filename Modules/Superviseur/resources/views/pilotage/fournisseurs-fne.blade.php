@@ -1,0 +1,260 @@
+<?php
+
+use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
+use Modules\Noyau\Imports\Modeles\FactureFne;
+use Modules\Noyau\Imports\Modeles\ReleveFne;
+use Modules\Noyau\Imports\Services\AchatsFne;
+
+use function Livewire\Volt\{computed, mount, protect, state, usesFileUploads};
+
+usesFileUploads();
+
+/*
+|--------------------------------------------------------------------------
+| Les factures d'achat FNE — 12/10
+|--------------------------------------------------------------------------
+| « La récupération FNE prend toutes les pièces émises par un tiers sur la plateforme, avoirs
+| compris — elle doit mettre chacune dans son exercice. »
+|
+| Le relevé vient du scraper `SCRAPER-PORTAIL-FNE/achats.js` (repris de Selflow) : déposé ici,
+| ou rangé par `php artisan fne:releve-achats`. Chaque facture est **rapprochée** du suivi
+| fournisseurs quand une ligne la confirme — dans les deux sens : le classeur peut venir avant
+| ou après — ; sinon elle attend d'être **portée au suivi**, comme une créance à l'état des
+| impayés. Rien ne se porte d'office : une dette créée parce qu'un fichier est arrivé
+| doublonnerait la ligne que le classeur apportera.
+|
+| Les **différences** se lisent dans les deux sens : FNE sans ligne au suivi, et lignes du suivi
+| sans FNE — ces dernières sont des achats non normalisés, ou pas encore relevés.
+*/
+
+state(['exercice' => null, 'filtre' => 'tous', 'page' => 1, 'fichier' => null, 'bilan' => null]);
+
+mount(function () {
+    $this->exercice = (int) (FactureFne::query()->max('exercice') ?: now()->year);
+});
+
+$updatedExercice = function () { $this->page = 1; };
+$updatedFiltre = function () { $this->page = 1; };
+
+$peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()));
+
+$exercices = computed(function () {
+    $annees = FactureFne::query()->whereNotNull('exercice')->distinct()->orderByDesc('exercice')->pluck('exercice')
+        ->push(now()->year)->unique()->sortDesc()->values();
+
+    return $annees->mapWithKeys(fn ($a) => [$a => (string) $a])->all();
+});
+
+$base = protect(fn () => FactureFne::query()->where('exercice', (int) $this->exercice));
+
+$kpi = computed(function () {
+    $toutes = $this->base()->selectRaw('count(*) as n, sum(case when est_avoir then 1 else 0 end) as avoirs,
+        sum(case when facture_fournisseur_id is null then 0 else 1 end) as au_suivi,
+        sum(montant_ttc) as ttc, sum(case when facture_fournisseur_id is null then montant_ttc else 0 end) as ttc_a_porter')
+        ->first();
+
+    return [
+        'n' => (int) $toutes->n,
+        'avoirs' => (int) $toutes->avoirs,
+        'au_suivi' => (int) $toutes->au_suivi,
+        'a_porter' => (int) $toutes->n - (int) $toutes->au_suivi,
+        'ttc' => (int) $toutes->ttc,
+        'ttc_a_porter' => (int) $toutes->ttc_a_porter,
+        'suivi_sans_fne' => AchatsFne::suiviSansFne((int) auth()->user()->entreprise_id, (int) $this->exercice)->count(),
+    ];
+});
+
+$lignes = computed(function () {
+    return $this->base()
+        ->when($this->filtre === 'a_porter', fn ($q) => $q->whereNull('facture_fournisseur_id'))
+        ->when($this->filtre === 'au_suivi', fn ($q) => $q->whereNotNull('facture_fournisseur_id'))
+        ->when($this->filtre === 'avoirs', fn ($q) => $q->where('est_avoir', true))
+        ->with('pieceDuSuivi:id,numero_piece,reste_a_payer')
+        ->orderByDesc('date_facture')->orderByDesc('id')
+        ->get();
+});
+
+$suiviSansFne = computed(fn () => $this->filtre !== 'suivi_sans_fne' ? collect()
+    : AchatsFne::suiviSansFne((int) auth()->user()->entreprise_id, (int) $this->exercice)
+        ->orderByDesc('date_facture')->limit(500)
+        ->get(['id', 'fournisseur', 'numero_piece', 'date_facture', 'montant', 'reste_a_payer']));
+
+$releves = computed(fn () => ReleveFne::query()->latest('id')->limit(5)->get());
+
+$deposer = function () {
+    if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
+        abort(403);
+    }
+
+    $this->validate(['fichier' => ['required', 'file', 'max:51200']], [], ['fichier' => 'relevé']);
+
+    try {
+        $this->bilan = AchatsFne::importer(
+            (string) file_get_contents($this->fichier->getRealPath()),
+            $this->fichier->getClientOriginalName(),
+            (int) auth()->user()->entreprise_id,
+            auth()->id(),
+        );
+    } catch (\RuntimeException $e) {
+        $this->addError('fichier', $e->getMessage());
+
+        return;
+    }
+
+    $this->fichier = null;
+    unset($this->kpi, $this->lignes, $this->releves, $this->exercices);
+};
+
+$rapprocher = function () {
+    if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
+        abort(403);
+    }
+
+    $n = AchatsFne::rapprocher((int) auth()->user()->entreprise_id);
+    unset($this->kpi, $this->lignes);
+    $this->dispatch('annonce', texte: $n === 0 ? 'Aucune nouvelle correspondance au suivi.' : "{$n} facture(s) rapprochée(s) du suivi.", ton: 'succes');
+};
+
+$porter = function (int $id) {
+    if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
+        abort(403);
+    }
+
+    $facture = FactureFne::query()->find($id);
+
+    if ($facture === null || $facture->facture_fournisseur_id !== null) {
+        return;
+    }
+
+    $piece = AchatsFne::porter($facture, auth()->user());
+    unset($this->kpi, $this->lignes);
+    $this->dispatch('annonce', texte: 'Portée au suivi : '.$piece->numero_piece.'.', ton: 'succes');
+};
+
+?>
+
+<div>
+    <x-titre-ecran titre="Factures FNE des fournisseurs"
+        sous-titre="Les pièces émises par les tiers sur la plateforme, avoirs compris, chacune dans son exercice.">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+            <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Retour au suivi</a>
+            <x-champ label="Exercice" model="exercice" type="select" :options="$this->exercices" :live="true" width="130" />
+            @if ($this->peutEcrire)
+                <button type="button" wire:click="rapprocher" class="bouton bouton-secondaire">Relancer le rapprochement</button>
+            @endif
+        </div>
+    </x-titre-ecran>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:16px;">
+        <x-kpi-card label="Récupérées de la FNE" :value="number_format($this->kpi['n'], 0, ',', ' ')" :sub="ae($this->kpi['ttc']).' TTC'" />
+        <x-kpi-card label="Dont avoirs" :value="number_format($this->kpi['avoirs'], 0, ',', ' ')" sub="Montants négatifs" />
+        <x-kpi-card label="Rapprochées du suivi" :value="number_format($this->kpi['au_suivi'], 0, ',', ' ')" couleur="#0E9F6E" />
+        {{-- Les deux sens des différences, demandées le 12/10 : ce que la FNE connaît et le
+             suivi non, et ce que le suivi porte sans pièce normalisée. --}}
+        <x-kpi-card label="FNE absentes du suivi" :value="number_format($this->kpi['a_porter'], 0, ',', ' ')"
+            :sub="ae($this->kpi['ttc_a_porter']).' à porter'" :couleur="$this->kpi['a_porter'] > 0 ? '#C8102E' : '#6B6E76'" />
+        <x-kpi-card label="Suivi sans FNE" :value="number_format($this->kpi['suivi_sans_fne'], 0, ',', ' ')"
+            sub="Non normalisées, ou pas encore relevées" :couleur="$this->kpi['suivi_sans_fne'] > 0 ? '#D97706' : '#6B6E76'" />
+    </div>
+
+    @if ($this->peutEcrire)
+        <div class="carte" style="margin-bottom:16px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 6px;">Déposer un relevé</h3>
+            <p style="margin:0 0 10px; font-size:12.5px; color:#6B6E76;">
+                Le fichier JSON qu'écrit le scraper (<code>node achats.js</code>). Un relevé déjà lu n'entre pas deux fois ;
+                une facture déjà connue est mise à jour sans perdre son lien au suivi.
+            </p>
+            <form wire:submit="deposer" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <input type="file" wire:model="fichier" accept=".json,application/json">
+                <button type="submit" class="bouton" wire:loading.attr="disabled">Lire le relevé</button>
+            </form>
+            @error('fichier') <p style="margin:8px 0 0; color:#C8102E; font-size:12.5px;">{{ $message }}</p> @enderror
+            @if ($bilan)
+                <p style="margin:10px 0 0; font-size:13px; color:#1E7B34; font-weight:600;">
+                    @if ($bilan['deja'])
+                        Ce relevé a déjà été lu : rien n'a changé.
+                    @else
+                        {{ $bilan['factures'] }} factures lues ({{ $bilan['nouvelles'] }} nouvelles, dont {{ $bilan['avoirs'] }} avoirs),
+                        {{ $bilan['rapprochees'] }} rapprochées du suivi{{ $bilan['ignorees'] ? ', '.$bilan['ignorees'].' sans référence ignorées' : '' }}.
+                    @endif
+                </p>
+            @endif
+            @if ($this->releves->isNotEmpty())
+                <p style="margin:10px 0 0; font-size:12px; color:#9A9DA5;">
+                    Derniers relevés :
+                    @foreach ($this->releves as $r)
+                        {{ $r->fichier }} ({{ $r->created_at?->format('d/m/Y') }}, {{ $r->factures }} factures){{ $loop->last ? '' : ' · ' }}
+                    @endforeach
+                </p>
+            @endif
+        </div>
+    @endif
+
+    <div class="carte">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+            <x-champ label="Afficher" model="filtre" type="select" :live="true" width="240" :options="[
+                'tous' => 'Toutes les factures FNE',
+                'a_porter' => 'FNE absentes du suivi',
+                'au_suivi' => 'Rapprochées du suivi',
+                'avoirs' => 'Avoirs',
+                'suivi_sans_fne' => 'Lignes du suivi sans FNE',
+            ]" />
+        </div>
+
+        @if ($filtre === 'suivi_sans_fne')
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead><tr><th>Fournisseur</th><th>N° de pièce</th><th>Date</th><th style="text-align:right;">Montant</th><th style="text-align:right;">Reste</th></tr></thead>
+                    <tbody>
+                        @forelse ($this->suiviSansFne->forPage($page, 25) as $l)
+                            <tr>
+                                <td><a href="{{ route('fournisseurs.piece', $l->id) }}" wire:navigate>{{ $l->fournisseur }}</a></td>
+                                <td>{{ $l->numero_piece }}</td>
+                                <td>{{ $l->date_facture?->format('d/m/Y') }}</td>
+                                <td style="text-align:right;">{{ ae((int) $l->montant) }}</td>
+                                <td style="text-align:right;">{{ ae((int) $l->reste_a_payer) }}</td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="5" texte="Chaque ligne du suivi de cet exercice a sa facture FNE." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <x-pagination :page="$page" :total="$this->suiviSansFne->count()" prop="page" :par-page="25" />
+        @else
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr><th>N° FNE</th><th>Date</th><th>Émetteur</th><th style="text-align:right;">HT</th>
+                            <th style="text-align:right;">TVA</th><th style="text-align:right;">TTC</th><th>Au suivi</th></tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($this->lignes->forPage($page, 25) as $f)
+                            <tr wire:key="fne-{{ $f->id }}">
+                                <td>{{ $f->reference }} @if ($f->est_avoir)<span style="color:#C8102E; font-weight:700;">avoir</span>@endif</td>
+                                <td>{{ $f->date_facture?->format('d/m/Y') ?? '—' }}</td>
+                                <td>{{ $f->emetteur_nom ?: '—' }}<div style="font-size:11px; color:#9A9DA5;">{{ $f->emetteur_ncc }}</div></td>
+                                <td style="text-align:right;">{{ ae((int) $f->montant_ht) }}</td>
+                                <td style="text-align:right;">{{ ae((int) $f->montant_tva) }}</td>
+                                <td style="text-align:right; font-weight:700;">{{ ae((int) $f->montant_ttc) }}</td>
+                                <td>
+                                    @if ($f->pieceDuSuivi)
+                                        <a href="{{ route('fournisseurs.piece', $f->pieceDuSuivi->id) }}" wire:navigate>{{ $f->pieceDuSuivi->numero_piece }}</a>
+                                        <div style="font-size:11px; color:#6B6E76;">reste {{ ae((int) $f->pieceDuSuivi->reste_a_payer) }}</div>
+                                    @elseif ($this->peutEcrire)
+                                        <button type="button" wire:click="porter({{ $f->id }})" class="bouton">Porter au suivi</button>
+                                    @else
+                                        <span style="color:#C8102E;">absente du suivi</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="7" texte="Aucune facture FNE pour cet exercice." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <x-pagination :page="$page" :total="$this->lignes->count()" prop="page" :par-page="25" />
+        @endif
+    </div>
+</div>

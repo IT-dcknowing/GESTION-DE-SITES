@@ -37,3 +37,10 @@ PLAN/
 # se pousse sur un serveur distant ; des écritures clients n'y ont pas leur place.
 *.xls
 *.xlsx
+
+# Le relevé du portail FNE : identifiants et traces d'exécution restent sur le poste.
+SCRAPER-PORTAIL-FNE/identifiants.json
+SCRAPER-PORTAIL-FNE/.env
+SCRAPER-PORTAIL-FNE/node_modules/
+SCRAPER-PORTAIL-FNE/erreurs/
+SCRAPER-PORTAIL-FNE/reconnaissance/

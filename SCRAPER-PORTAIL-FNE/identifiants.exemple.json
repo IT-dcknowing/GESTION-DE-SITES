@@ -1,0 +1,10 @@
+{
+  "_lisez-moi": "Copier ce fichier en identifiants.json (ignoré par git) et y mettre les accès réels. La clé est le login du portail — le NCC de l'entreprise, que `php artisan fne:releve-achats` retrouve dans sa fiche.",
+
+  "1864699A": "le-mot-de-passe-du-portail",
+
+  "2201455B": {
+    "motDePasse": "le-mot-de-passe-du-portail",
+    "libelle": "Sert seulement à s'y retrouver, le scraper ne le lit pas."
+  }
+}

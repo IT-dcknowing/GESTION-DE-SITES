@@ -19,6 +19,8 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
  */
 #[Fillable([
     'entreprise_id', 'ville_id', 'site_id', 'lot_import_id',
+    // Le lettrage, depuis le 12/10 : la facture que ce règlement solde — posé par « Régler ».
+    'facture_fournisseur_id', 'saisi_par',
     'date_reglement', 'code_reglement', 'fournisseur', 'mode_reglement', 'montant',
     'code_agent', 'source_rattachement', 'rattachement_presume',
 ])]

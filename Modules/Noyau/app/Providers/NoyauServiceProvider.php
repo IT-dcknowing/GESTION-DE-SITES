@@ -34,6 +34,7 @@ class NoyauServiceProvider extends ServiceProvider
                 \Modules\Noyau\Console\DeclarerLesBanques::class,
                 \Modules\Noyau\Console\SituerLesFactures::class,
                 \Modules\Noyau\Console\TraiterUnLotImporte::class,
+                \Modules\Noyau\Console\ReleverLesAchatsFne::class,
             ]);
         }
     }
