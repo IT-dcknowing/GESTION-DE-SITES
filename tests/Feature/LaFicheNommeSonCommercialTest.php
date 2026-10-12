@@ -136,6 +136,16 @@ class LaFicheNommeSonCommercialTest extends TestCase
         $this->assertSame('code_application', $lu['source']);
     }
 
+    /** « C0001 » écrit à la main par la réception — « C2 », « c 0002 » — désigne le même commercial (12/10). */
+    public function test_le_numero_du_commercial_ecrit_a_la_main_designe_son_commercial(): void
+    {
+        foreach (['C2', 'c 0002', 'C0002'] as $ecrit) {
+            $lu = (new CommercialDeLaFiche($this->entreprise->id))->lire($ecrit);
+
+            $this->assertSame($this->marieClaire->id, $lu['commercial_id'], "« $ecrit » doit désigner C-0002.");
+        }
+    }
+
     public function test_un_nom_exact_designe_son_commercial_quelle_que_soit_la_casse(): void
     {
         $lu = (new CommercialDeLaFiche($this->entreprise->id))->lire('KOFFI YAO, RAS');

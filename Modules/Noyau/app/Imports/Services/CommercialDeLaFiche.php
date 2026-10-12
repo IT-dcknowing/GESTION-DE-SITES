@@ -356,8 +356,19 @@ class CommercialDeLaFiche
     {
         $cle = mb_strtoupper(trim($saisi));
 
+        /*
+         * **Le numéro du commercial, tel que la réception l'écrit — 12/10.** « L'ancien numéro
+         * des commerciaux, C0001, est facile à retenir : c'est lui que les réceptionnistes
+         * mettront dans le logiciel. » On l'écrit à la main : « C1 », « c 0001 », « C-0001 »
+         * désignent le même commercial. On compare donc la lettre et la valeur du nombre.
+         */
+        $forme = fn (string $v) => preg_match('/^([A-Z]+)[\s\-_.]*0*(\d+)$/', mb_strtoupper(trim($v)), $m) === 1
+            ? $m[1].'|'.(int) $m[2] : null;
+        $cleNumero = $forme($cle);
+
         $commercial = $this->referentiel()
             ->first(fn (object $c) => mb_strtoupper((string) $c->numero) === $cle
+                || ($cleNumero !== null && $forme((string) $c->numero) === $cleNumero)
                 || ($c->code_de_saisie !== null && mb_strtoupper((string) $c->code_de_saisie) === $cle));
 
         return $commercial === null ? null : [(int) $commercial->id, 'code_application'];

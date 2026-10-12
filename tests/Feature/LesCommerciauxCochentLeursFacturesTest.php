@@ -335,6 +335,65 @@ class LesCommerciauxCochentLeursFacturesTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
+    /**
+     * « Mes prospections passées en devis » — 12/10. La commerciale met le numéro du devis sur
+     * sa prospection ; le devis est relié, et la facture qui le suit lui est comptée et quitte
+     * la liste des factures.
+     */
+    public function test_le_numero_de_devis_sur_la_prospection_compte_la_facture_qui_suit(): void
+    {
+        $koffi = $this->vendeur('Koffi Yao', $this->abidjan);
+        $fiche = $this->ficheDe($koffi);
+
+        $prospection = \Modules\Noyau\Exploitation\Modeles\Prospection::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->atelierAbidjan->id, 'commercial_id' => $fiche->id,
+            'numero' => 'P-0001', 'date' => '2026-03-01', 'client' => 'NSIA', 'moyen' => 'RDV', 'activite' => 'Mécanique',
+            'devis_apres_passage' => true, 'statut_validation' => 'Validée',
+        ]);
+        $devis = \Modules\Noyau\Exploitation\Modeles\Devis::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->atelierAbidjan->id, 'numero' => 'PR-SK-16091',
+            'n_fiche_reception' => 'FR-SKN° 000123', 'date_emission' => '2026-03-02', 'client' => 'NSIA',
+            'activite' => 'Mécanique', 'statut' => 'En attente', 'montant_devis' => 1_000_000,
+        ]);
+        $facture = $this->facture('FA -777', $this->atelierAbidjan, ['reference_devis' => 'FR-SKN° 000123']);
+
+        $this->actingAs($koffi);
+        Volt::test('pilotage.correspondances')
+            ->assertSee('FA -777')
+            ->call('ouvrirLesProspections')
+            ->assertSee('P-0001')
+            // Tapé comme on le dicte : la forme réduite le reconnaît.
+            ->set('numerosDevis.'.$prospection->id, 'pr sk 16091')
+            ->call('relierLaProspection', $prospection->id)
+            ->assertSet('erreur', '')
+            ->assertDontSee('FA -777')
+            ->assertDontSee('P-0001');
+
+        $this->assertSame($prospection->id, $devis->fresh()->prospection_id);
+        $this->assertSame($fiche->id, $facture->fresh()->commercial_id);
+        $this->assertSame(1, CorrespondanceFacture::withoutGlobalScopes()->count(), 'Le rattachement laisse sa trace.');
+    }
+
+    /** Le devis pas encore importé : le numéro est gardé, et le dépôt reliera seul. */
+    public function test_un_devis_pas_encore_importe_garde_le_numero(): void
+    {
+        $koffi = $this->vendeur('Koffi Yao', $this->abidjan);
+        $prospection = \Modules\Noyau\Exploitation\Modeles\Prospection::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->atelierAbidjan->id, 'commercial_id' => $this->ficheDe($koffi)->id,
+            'numero' => 'P-0002', 'date' => '2026-03-01', 'client' => 'NSIA', 'moyen' => 'RDV', 'activite' => 'Mécanique',
+            'devis_apres_passage' => true, 'statut_validation' => 'Validée',
+        ]);
+
+        $this->actingAs($koffi);
+        Volt::test('pilotage.correspondances')
+            ->call('ouvrirLesProspections')
+            ->set('numerosDevis.'.$prospection->id, 'PR-SK-20001')
+            ->call('relierLaProspection', $prospection->id)
+            ->assertSet('erreur', '');
+
+        $this->assertSame('PR-SK-20001', $prospection->fresh()->n_devis);
+    }
+
     private function facture(string $numero, ?Site $site, array $attributs = []): Facture
     {
         $facture = Facture::withoutGlobalScopes()->create(array_merge([

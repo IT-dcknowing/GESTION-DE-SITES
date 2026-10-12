@@ -8,6 +8,7 @@ use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Services\CorrespondancesDeFactures;
 use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
+use Modules\Noyau\Exploitation\Services\ProspectionsPasseesEnDevis;
 
 use function Livewire\Volt\{computed, protect, state};
 
@@ -246,6 +247,52 @@ $valider = function () {
     }
 };
 
+// ------------------------------------------------------------------ mes prospections passées en devis — 12/10
+
+/*
+ * « Un bouton : appeler mes prospections saisies passées en devis, qui ouvre une section où
+ * l'on a les prospections saisies dans l'application. » Chaque commercial y met le numéro du
+ * devis ; si la facture qui suit ce devis est dans la liste ci-dessous, elle lui est comptée
+ * et disparaît. La liste des factures n'est pas touchée autrement. Voir
+ * `ProspectionsPasseesEnDevis`.
+ */
+state(['prospectionsOuvertes' => false, 'numerosDevis' => []]);
+
+$prospectionsEnDevis = computed(fn () => $this->prospectionsOuvertes
+    ? ProspectionsPasseesEnDevis::liste(auth()->user())
+    : collect());
+
+$ouvrirLesProspections = function () {
+    $this->prospectionsOuvertes = ! $this->prospectionsOuvertes;
+    unset($this->prospectionsEnDevis);
+    // Le numéro déjà écrit sur la prospection, s'il y en a un : on le complète, on ne le retape pas.
+    $this->numerosDevis = $this->prospectionsEnDevis
+        ->mapWithKeys(fn ($p) => [$p->id => (string) $p->n_devis])->all();
+};
+
+$relierLaProspection = function (int $id) {
+    $this->message = '';
+    $this->erreur = '';
+
+    $bilan = ProspectionsPasseesEnDevis::relier(auth()->user(), $id, (string) ($this->numerosDevis[$id] ?? ''));
+
+    if ($bilan['refus'] !== null) {
+        $this->erreur = $bilan['refus'];
+
+        return;
+    }
+
+    unset($this->prospectionsEnDevis);
+    $this->oublier();
+
+    $this->message = match (true) {
+        $bilan['devis'] === null => 'Numéro enregistré. Le devis n’est pas encore importé : il se reliera seul à son dépôt.',
+        $bilan['factures'] > 0 => 'Devis '.$bilan['devis'].' relié — '.$bilan['factures'].' facture(s) vous sont comptées et quittent la liste.',
+        default => 'Devis '.$bilan['devis'].' relié. Aucune facture ne le suit encore : elle vous sera comptée à son arrivée.',
+    };
+    $this->dispatch('annonce', texte: $this->message, ton: 'succes');
+};
+
 $annuler = function (int $correspondance) {
     $this->message = '';
     $refus = CorrespondancesDeFactures::annuler(auth()->user(), $correspondance);
@@ -273,6 +320,10 @@ $annuler = function (int $correspondance) {
     {{-- Les deux pages de suivi, en tête : on y va pour relire ce qu'on a coché. --}}
     @if ($this->fiche || $this->estResponsable)
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+            <button type="button" wire:click="ouvrirLesProspections"
+                class="bouton {{ $prospectionsOuvertes ? '' : 'bouton-secondaire' }}" style="padding:9px 16px;">
+                {{ $this->fiche && ! $this->estResponsable ? 'Mes prospections passées en devis' : 'Prospections passées en devis' }}
+            </button>
             @if ($this->fiche)
                 <a href="{{ route('correspondances.miennes') }}" wire:navigate class="bouton bouton-sombre"
                     style="padding:9px 16px; text-decoration:none;">Mes correspondances</a>
@@ -281,6 +332,50 @@ $annuler = function (int $correspondance) {
                 <a href="{{ route('correspondances.suivi') }}" wire:navigate class="bouton bouton-secondaire"
                     style="padding:9px 16px; text-decoration:none;">Les correspondances</a>
             @endif
+        </div>
+    @endif
+
+    @if ($prospectionsOuvertes)
+        <div class="carte" style="margin-bottom:16px; border-left:3px solid #0E9F6E;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">
+                Prospections passées en devis, sans devis relié ({{ $this->prospectionsEnDevis->count() }})
+            </h3>
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
+                Saisissez le <b>numéro du devis</b> de chaque prospection et validez. Le devis est
+                relié, et la facture qui le suit — si elle est dans la liste plus bas — vous est
+                comptée et en disparaît. Le code commercial sur la fiche de réception n'est plus
+                nécessaire.
+            </p>
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Prospection</th><th>Client</th><th>Plaque</th><th>Fiche</th>
+                            @if ($this->estResponsable)<th>Commercial</th>@endif
+                            <th>N° de devis</th><th class="colonne-collee"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($this->prospectionsEnDevis as $p)
+                            <tr wire:key="pros-{{ $p->id }}" style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                <td style="white-space:nowrap;">{{ $p->date?->format('d/m/Y') ?? '—' }}</td>
+                                <td>{{ $p->numero ?: '—' }}</td>
+                                <td>{{ $p->client ?: '—' }}</td>
+                                <td>{{ $p->immatriculation ?: '—' }}</td>
+                                <td>{{ $p->n_fiche_reception ?: '—' }}</td>
+                                @if ($this->estResponsable)<td>{{ $p->commercial?->nom ?? '—' }}</td>@endif
+                                <td><input type="text" wire:model="numerosDevis.{{ $p->id }}" class="champ" style="width:170px;" placeholder="PR-SK-16091"></td>
+                                <td class="colonne-collee">
+                                    <button type="button" class="bouton" style="padding:5px 12px; font-size:12px;"
+                                        wire:click="relierLaProspection({{ $p->id }})">Valider</button>
+                                </td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="$this->estResponsable ? 8 : 7" texte="Aucune prospection passée en devis n'attend son numéro." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
     @endif
 
