@@ -105,62 +105,122 @@ $idsCommercialFiltre = computed(function () {
 /** Répartition des devis par commercial sur la période retenue : nombre émis, validés et montant validé. */
 $parCommercial = computed(function () {
     $lignes = (clone $this->requeteBase)->get();
-    $transformes = TransformationDesDevis::transformes($lignes);
+    $suites = TransformationDesDevis::facturesDesTransformes($lignes);
+    $transformes = array_map(fn () => true, $suites);
+    $montantsFactures = \Modules\Noyau\Exploitation\Modeles\Facture::query()
+        ->whereIn('id', array_values(array_filter($suites)))->pluck('montant', 'id');
 
-    return $this->commerciaux->map(function ($commercial) use ($lignes, $transformes) {
+    return $this->commerciaux->map(function ($commercial) use ($lignes, $transformes, $suites, $montantsFactures) {
         $siens = $lignes->where('commercial_id', $commercial->id);
-        $valides = $siens->where('statut', 'Validé');
+        // Validés ou facturés, comme la carte du haut (12/10) : un devis importé n'est jamais
+        // « Validé », et la colonne restait à zéro pour tout le monde.
+        $valides = $siens->filter(fn ($d) => isset($transformes[(int) $d->id]));
 
         return [
             'commercial' => $commercial,
             'emis' => $siens->count(),
             'valides' => $valides->count(),
-            'montantValide' => (int) $valides->sum('montant_valide'),
+            'montantValide' => (int) $valides->sum(fn ($d) => $suites[(int) $d->id] !== null
+                ? (int) ($montantsFactures[$suites[(int) $d->id]] ?? 0) : (int) $d->montant_valide),
             // Validés **ou facturés** — voir `TransformationDesDevis` (08/10).
             'taux' => TransformationDesDevis::taux($siens, $transformes),
         ];
     })->filter(fn ($l) => $l['emis'] > 0)->sortByDesc('montantValide')->values();
 });
 
+/*
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ * **Les KPI revus le 12/10** — « vérifie si tout est correct, si les données sont celles qui
+ * doivent être lues ». Ils ne l'étaient pas, et pour une seule raison : **un devis importé
+ * entre toujours « En attente »**, avec pour date de réception la date de la proforma.
+ *
+ *   - « Validés : 0 » et « En attente : 3 171 » à côté d'un taux de 12 % : les devis suivis
+ *     d'une facture restaient « en attente ». La carte compte désormais les devis
+ *     **transformés** — validés à l'écran ou suivis d'une facture (`TransformationDesDevis`) —,
+ *     et l'attente n'en compte plus aucun.
+ *   - « Différenciation : — » : elle n'avait que le montant validé saisi à l'écran. Elle lit
+ *     aussi le montant de la facture qui suit le devis.
+ *   - « Délai moyen d'envoi : 0 h » : réception et émission valaient la même date. La
+ *     réception d'un devis importé se lit sur **sa fiche du parc** (`date_fiche`) ; sans fiche
+ *     connue, le devis n'entre pas dans la moyenne plutôt que d'y ajouter un faux zéro.
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ */
 $kpis = computed(function () {
     $lignes = (clone $this->requeteBase)->get();
-    $transformes = TransformationDesDevis::transformes($lignes);
+    $suites = TransformationDesDevis::facturesDesTransformes($lignes);
+    $transformes = array_map(fn () => true, $suites);
     $emis = $lignes->count();
-    $valides = $lignes->where('statut', 'Validé');
-    $refuses = $lignes->where('statut', 'Refusé')->count();
-    $attente = $lignes->where('statut', 'En attente')->count();
+
+    $estTransforme = fn ($d) => array_key_exists((int) $d->id, $suites);
+    $transformesL = $lignes->filter($estTransforme);
+    $refusesL = $lignes->where('statut', 'Refusé')->reject($estTransforme);
+    $attenteL = $lignes->where('statut', 'En attente')->reject($estTransforme);
+
+    // Le montant retenu d'un devis transformé : celui de sa facture, sinon le validé saisi.
+    $montantsFactures = \Modules\Noyau\Exploitation\Modeles\Facture::query()
+        ->whereIn('id', array_values(array_filter($suites)))
+        ->pluck('montant', 'id');
+    $retenu = fn ($d) => $suites[(int) $d->id] !== null
+        ? (int) ($montantsFactures[$suites[(int) $d->id]] ?? 0)
+        : (int) $d->montant_valide;
+
+    $ecart = function ($groupe) use ($retenu) {
+        $avecMontant = $groupe->filter(fn ($d) => $retenu($d) > 0);
+
+        return $avecMontant->isEmpty() ? null
+            : $avecMontant->sum(fn ($d) => (int) $d->montant_devis - $retenu($d)) / $avecMontant->count();
+    };
+
+    // La réception d'un devis importé : la date de sa fiche du parc, quand on la connaît.
+    $fiches = $lignes->whereNotNull('lot_import_id')->pluck('n_fiche_reception')->filter()->unique()->values();
+    $datesDesFiches = collect();
+
+    foreach ($fiches->chunk(1000) as $paquet) {
+        $datesDesFiches = $datesDesFiches->union(\Modules\Noyau\Imports\Modeles\DossierVehicule::query()
+            ->whereIn('numero_fiche', $paquet->all())->whereNotNull('date_fiche')
+            ->pluck('date_fiche', 'numero_fiche'));
+    }
+
+    $pourLeDelai = $lignes->map(function ($d) use ($datesDesFiches) {
+        $copie = clone $d;
+
+        if ($d->lot_import_id !== null) {
+            $date = $datesDesFiches[$d->n_fiche_reception] ?? null;
+            $copie->date_reception = $date ? \Illuminate\Support\Carbon::parse($date) : null;
+        }
+
+        return $copie;
+    });
 
     return [
         'emis' => $emis,
         'montantEmis' => $lignes->sum('montant_devis'),
         'montantEmisMecanique' => (int) $lignes->where('activite', 'Mécanique')->sum('montant_devis'),
         'montantEmisSinistre' => (int) $lignes->where('activite', 'Sinistre')->sum('montant_devis'),
-        'valides' => $valides->count(),
-        'montantValide' => $valides->sum('montant_valide'),
-        'montantValideMecanique' => (int) $valides->where('activite', 'Mécanique')->sum('montant_valide'),
-        'montantValideSinistre' => (int) $valides->where('activite', 'Sinistre')->sum('montant_valide'),
-        'refuses' => $refuses,
-        'refusesMecanique' => $lignes->where('statut', 'Refusé')->where('activite', 'Mécanique')->count(),
-        'refusesSinistre' => $lignes->where('statut', 'Refusé')->where('activite', 'Sinistre')->count(),
-        'attente' => $attente,
-        'attenteMecanique' => $lignes->where('statut', 'En attente')->where('activite', 'Mécanique')->count(),
-        'attenteSinistre' => $lignes->where('statut', 'En attente')->where('activite', 'Sinistre')->count(),
-        // Validés **ou facturés** : un devis importé entre toujours « En attente », et le
-        // taux restait à zéro par construction. Voir `TransformationDesDevis` (08/10).
+        'valides' => $transformesL->count(),
+        'validesALEcran' => $lignes->where('statut', 'Validé')->count(),
+        'montantValide' => (int) $transformesL->sum($retenu),
+        'montantValideMecanique' => (int) $transformesL->where('activite', 'Mécanique')->sum($retenu),
+        'montantValideSinistre' => (int) $transformesL->where('activite', 'Sinistre')->sum($retenu),
+        'refuses' => $refusesL->count(),
+        'refusesMecanique' => $refusesL->where('activite', 'Mécanique')->count(),
+        'refusesSinistre' => $refusesL->where('activite', 'Sinistre')->count(),
+        'attente' => $attenteL->count(),
+        'attenteMecanique' => $attenteL->where('activite', 'Mécanique')->count(),
+        'attenteSinistre' => $attenteL->where('activite', 'Sinistre')->count(),
+        // Validés **ou facturés** : voir `TransformationDesDevis` (08/10).
         'transformes' => count($transformes),
         'tauxTransfo' => TransformationDesDevis::taux($lignes, $transformes),
         'tauxTransfoMecanique' => TransformationDesDevis::taux($lignes, $transformes, 'Mécanique'),
         'tauxTransfoSinistre' => TransformationDesDevis::taux($lignes, $transformes, 'Sinistre'),
-        // Écart moyen entre le montant proposé et le montant réellement validé.
-        'differenciation' => $valides->count() > 0
-            ? (int) round($valides->sum('montant_devis') - $valides->sum('montant_valide')) / $valides->count()
-            : null,
-        'differenciationMecanique' => StatistiquesDevis::differenciationMoyenne($valides, 'Mécanique'),
-        'differenciationSinistre' => StatistiquesDevis::differenciationMoyenne($valides, 'Sinistre'),
-        // Délai moyen, en jours, entre la réception du véhicule et l'émission du devis.
-        'delaiEnvoi' => StatistiquesDevis::delaiMoyenEnvoi($lignes),
-        'delaiEnvoiMecanique' => StatistiquesDevis::delaiMoyenEnvoi($lignes->where('activite', 'Mécanique')),
-        'delaiEnvoiSinistre' => StatistiquesDevis::delaiMoyenEnvoi($lignes->where('activite', 'Sinistre')),
+        // Écart moyen entre le montant chiffré et le montant retenu (facturé, sinon validé).
+        'differenciation' => $ecart($transformesL),
+        'differenciationMecanique' => $ecart($transformesL->where('activite', 'Mécanique')),
+        'differenciationSinistre' => $ecart($transformesL->where('activite', 'Sinistre')),
+        // Délai moyen entre la réception du véhicule et l'émission du devis.
+        'delaiEnvoi' => StatistiquesDevis::delaiMoyenEnvoi($pourLeDelai),
+        'delaiEnvoiMecanique' => StatistiquesDevis::delaiMoyenEnvoi($pourLeDelai->where('activite', 'Mécanique')),
+        'delaiEnvoiSinistre' => StatistiquesDevis::delaiMoyenEnvoi($pourLeDelai->where('activite', 'Sinistre')),
     ];
 });
 
@@ -195,8 +255,9 @@ $graphique = computed(function () {
         });
 
         $nbEmis = $lignes->count();
-        $nbValides = $lignes->where('statut', 'Validé')->count();
         $nbTransformes = $lignes->filter(fn ($d) => isset($transformes[$d->id]))->count();
+        // La courbe « Validés » suit la carte : validés ou facturés (12/10).
+        $nbValides = $nbTransformes;
 
         $labels[] = $point['label'];
         $emis[] = $nbEmis;
@@ -208,7 +269,7 @@ $graphique = computed(function () {
         'labels' => $labels,
         'datasets' => [
             ['label' => 'Émis', 'data' => $emis, 'color' => '#191B20'],
-            ['label' => 'Validés', 'data' => $valides, 'color' => '#0E9F6E'],
+            ['label' => 'Validés ou facturés', 'data' => $valides, 'color' => '#0E9F6E'],
             ['label' => 'Taux transfo (%)', 'data' => $taux, 'color' => '#D97706', 'type' => 'line', 'axe' => 'y1'],
         ],
     ];
@@ -280,17 +341,19 @@ $traitants = computed(fn () => QuiAAgi::pour($this->detail->forPage($this->pageD
     <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Devis émis — {{ $this->libellePerimetre }}" :value="$this->kpis['emis']" :sub="ae($this->kpis['montantEmis'])"
             :mecanique="$activiteFiltre ? null : ae($this->kpis['montantEmisMecanique'])" :sinistre="$activiteFiltre ? null : ae($this->kpis['montantEmisSinistre'])" />
-        <x-kpi-card label="Validés — {{ $this->libellePerimetre }}" :value="$this->kpis['valides']" :sub="ae($this->kpis['montantValide'])" couleur="#0E9F6E"
+        <x-kpi-card label="Validés ou facturés — {{ $this->libellePerimetre }}" :value="$this->kpis['valides']"
+            sub="{{ ae($this->kpis['montantValide']) }} retenus · {{ $this->kpis['validesALEcran'] }} validé(s) à l'écran" couleur="#0E9F6E"
             :mecanique="$activiteFiltre ? null : ae($this->kpis['montantValideMecanique'])" :sinistre="$activiteFiltre ? null : ae($this->kpis['montantValideSinistre'])" />
         <x-kpi-card label="Refusés — {{ $this->libellePerimetre }}" :value="$this->kpis['refuses']" couleur="#C8102E"
             :mecanique="$activiteFiltre ? null : $this->kpis['refusesMecanique']" :sinistre="$activiteFiltre ? null : $this->kpis['refusesSinistre']" />
         <x-kpi-card label="En attente — {{ $this->libellePerimetre }}" :value="$this->kpis['attente']" :accent="$this->kpis['attente'] > 0"
+            sub="Ni validés, ni facturés, ni refusés"
             :mecanique="$activiteFiltre ? null : $this->kpis['attenteMecanique']" :sinistre="$activiteFiltre ? null : $this->kpis['attenteSinistre']" />
         <x-kpi-card label="Taux transfo (nb) — {{ $this->libellePerimetre }}" :value="an($this->kpis['tauxTransfo'])"
             sub="{{ number_format($this->kpis['transformes'], 0, ',', ' ') }} devis validés ou facturés"
             :mecanique="$activiteFiltre ? null : an($this->kpis['tauxTransfoMecanique'])" :sinistre="$activiteFiltre ? null : an($this->kpis['tauxTransfoSinistre'])" />
         <x-kpi-card label="Différenciation moyenne — {{ $this->libellePerimetre }}" :value="ae($this->kpis['differenciation'] !== null ? (int) $this->kpis['differenciation'] : null)"
-            sub="Écart moyen devis → validé"
+            sub="Écart moyen chiffré → facturé (ou validé)"
             :mecanique="$activiteFiltre ? null : ae($this->kpis['differenciationMecanique'] !== null ? (int) $this->kpis['differenciationMecanique'] : null)"
             :sinistre="$activiteFiltre ? null : ae($this->kpis['differenciationSinistre'] !== null ? (int) $this->kpis['differenciationSinistre'] : null)" />
         <x-kpi-card label="Délai moyen d'envoi — {{ $this->libellePerimetre }}"
@@ -298,7 +361,7 @@ $traitants = computed(fn () => QuiAAgi::pour($this->detail->forPage($this->pageD
                  bien pour six heures que pour vingt, et le délai visé est de vingt-quatre
                  heures. Une demi-journée, elle, ne veut rien dire pour personne. --}}
             :value="StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoi'])"
-            sub="Réception → émission"
+            sub="Réception du véhicule (fiche) → émission"
             :mecanique="$activiteFiltre ? null : StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoiMecanique'])"
             :sinistre="$activiteFiltre ? null : StatistiquesDevis::libelleDelai($this->kpis['delaiEnvoiSinistre'])" />
     </div>
@@ -316,8 +379,8 @@ $traitants = computed(fn () => QuiAAgi::pour($this->detail->forPage($this->pageD
                     <tr>
                         <th>Commercial</th>
                         <th>Devis émis</th>
-                        <th>Devis validés</th>
-                        <th>Montant validé</th>
+                        <th>Validés ou facturés</th>
+                        <th>Montant retenu</th>
                         <th>Taux de transformation</th>
                     </tr>
                 </thead>

@@ -100,33 +100,56 @@ $idsVilles = computed(fn () => EtatDesImpayes::villesDesSites($this->sitesRetenu
 $synthese = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return SyntheseParAtelier::calculer($this->sitesRetenus, $debut, $fin, (string) $this->activiteFiltre, $this->idsCommercialFiltre, $this->idsVilles);
+    $lignes = SyntheseParAtelier::calculer($this->sitesRetenus, $debut, $fin, (string) $this->activiteFiltre, $this->idsCommercialFiltre, $this->idsVilles);
+
+    /*
+     * **« Devis en attente » sans les devis facturés — 12/10.** La colonne comptait le statut
+     * « En attente », que porte tout devis importé, facturé ou non : 2 484 pour Abidjan 1.
+     * Un devis suivi d'une facture n'attend plus rien (`TransformationDesDevis`).
+     */
+    $transformes = $this->devisTransformes;
+    $parSite = $this->devisLus->where('statut', 'En attente')
+        ->reject(fn ($d) => isset($transformes[(int) $d->id]))
+        ->countBy(fn ($d) => (string) $d->site_id);
+
+    return $lignes->map(function (array $ligne) use ($parSite) {
+        $site = $ligne['site'];
+        // Une ligne « Ville — atelier non précisé » ne porte pas de devis : un devis sans
+        // atelier ne dit pas sa ville. La dernière ligne, « Lieu non précisé », les prend.
+        $ligne['devisAttente'] = $site->id !== null
+            ? (int) ($parSite[(string) $site->id] ?? 0)
+            : ($site->relationLoaded('ville') ? 0 : (int) ($parSite[''] ?? 0));
+
+        return $ligne;
+    });
 });
+
+/**
+ * Les devis de la période, en colonnes légères, lus **une fois** : les trois taux et la
+ * colonne « Devis en attente » de la synthèse se calculent sur la même liste.
+ */
+$devisLus = computed(function () {
+    [$debut, $fin] = $this->plage;
+    $idsSites = $this->sitesRetenus->pluck('id');
+
+    // Un devis sans atelier ne porte pas de ville : il paraît, comme dans le tableau.
+    return Devis::where(fn ($q) => $q->whereIn('site_id', $idsSites)->orWhereNull('site_id'))
+        ->whereBetween('date_emission', [$debut, $fin])
+        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+        ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))
+        ->get(['id', 'site_id', 'activite', 'statut', 'n_fiche_reception', 'date_emission']);
+});
+
+$devisTransformes = computed(fn () => TransformationDesDevis::transformes($this->devisLus));
 
 $kpis = computed(function () {
     [$debut, $fin] = $this->plage;
     $idsSites = $this->sitesRetenus->pluck('id');
 
-    // Un devis sans atelier ne porte pas de ville : il paraît, comme dans le tableau.
-    $devisEmis = Devis::where(fn ($q) => $q->whereIn('site_id', $idsSites)->orWhereNull('site_id'))
-        ->whereBetween('date_emission', [$debut, $fin])
-        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
-        ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre));
-    /*
-     * **Le taux compte les devis validés ou facturés — 08/10.**
-     *
-     * Il ne comptait que le statut « Validé », et un devis importé entre toujours « En
-     * attente » : l'écran affichait 0,0 % sur l'année. Voir `TransformationDesDevis`, qui
-     * lit aussi la facture qui désigne le devis et celle qui porte sa fiche de réception.
-     *
-     * Les devis sont lus en colonnes légères — cinq champs —, une fois ; les trois taux se
-     * calculent sur la même liste. C'était six comptages le 02/10, puis un `group by` :
-     * le `group by` ne sait pas dire si une facture suit le devis.
-     */
-    $devisLus = (clone $devisEmis)->get(['id', 'activite', 'statut', 'n_fiche_reception', 'date_emission']);
-    $transformes = TransformationDesDevis::transformes($devisLus);
+    // Les devis sont lus une fois pour tout l'écran — voir `$devisLus`.
+    $devisLus = $this->devisLus;
+    $transformes = $this->devisTransformes;
 
-    // Le CA vrai : le fichier du CA ou la saisie (12/10) — voir `Facture::scopeDuChiffreDAffaires`.
     $facturesQ = EtatDesImpayes::dansLePerimetre(Facture::query()->duChiffreDAffaires(), $idsSites->all(), $this->idsVilles)
         ->whereBetween('date', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
