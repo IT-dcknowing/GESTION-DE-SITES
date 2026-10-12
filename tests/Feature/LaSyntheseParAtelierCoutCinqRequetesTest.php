@@ -288,7 +288,10 @@ class LaSyntheseParAtelierCoutCinqRequetesTest extends TestCase
         $toutes = (int) Facture::whereBetween('date', $this->plage())->sum('montant');
         $this->assertSame($toutes, $lignes->sum('ca'));
 
-        $this->assertSame(5, $requetes, 'Toujours cinq requêtes : les villes se lisent sur les ateliers chargés.');
+        // Cinq requêtes, plus trois pour relire le lieu des lignes sans atelier ni ville par le code
+        // de leur fiche (LieuDesFiches) — et seulement quand il y en a. Toujours indépendant du
+        // nombre d'ateliers.
+        $this->assertSame(8, $requetes, 'Cinq agrégats, trois de plus pour les lignes sans lieu.');
     }
 
     public function test_sans_les_villes_rien_ne_change(): void

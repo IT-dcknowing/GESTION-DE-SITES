@@ -4,6 +4,8 @@ use Modules\Noyau\Exploitation\Modeles\Charge;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Imports\Formats\Format;
+use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
 use Modules\Noyau\Exploitation\Modeles\SaisieJournaliere;
@@ -112,7 +114,7 @@ $synthese = computed(function () {
         ->reject(fn ($d) => isset($transformes[(int) $d->id]))
         ->countBy(fn ($d) => (string) $d->site_id);
 
-    return $lignes->map(function (array $ligne) use ($parSite) {
+    $lignes = $lignes->map(function (array $ligne) use ($parSite) {
         $site = $ligne['site'];
         // Une ligne « Ville — atelier non précisé » ne porte pas de devis : un devis sans
         // atelier ne dit pas sa ville. La dernière ligne, « Lieu non précisé », les prend.
@@ -122,6 +124,64 @@ $synthese = computed(function () {
 
         return $ligne;
     });
+
+    /*
+     * **Le tableau doit refaire le CA — 12/10.** « Le montant annoncé n'est pas le vrai total :
+     * le CA fait 1 867 767 452 et le cumul de la synthèse ne fait pas ce calcul. » Pour celui
+     * qui voit tout, le CA de l'entreprise sur la période se compte une seconde fois **sans
+     * regarder le lieu** ; ce que les lignes ci-dessus n'ont pas pris (un atelier ou une ville
+     * désactivés, une ligne dont le lieu n'est dans aucun d'eux) paraît dans une ligne qui le
+     * dit, au lieu de manquer en silence. Le total est alors celui du CA, pas celui du tableau.
+     */
+    if ($this->voitToutLeCa) {
+        $complet = (int) Facture::query()->duChiffreDAffaires()
+            ->whereBetween('date', $this->plage)
+            ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
+            ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))
+            ->sum('montant');
+        $ecart = $complet - (int) $lignes->sum('ca');
+
+        if ($ecart !== 0) {
+            $lignes->push([
+                'site' => new Site(['nom' => 'Autres lignes du CA']),
+                'genre' => 'hors',
+                'ca' => $ecart, 'charges' => 0, 'resultat' => $ecart,
+                'encaisse' => 0, 'treso' => 0, 'devisAttente' => 0, 'sansFacture' => 0,
+            ]);
+        }
+    }
+
+    return $lignes;
+});
+
+/** Celui qui voit toute l'entreprise, sans filtre de lieu : le seul pour qui « le CA » a un total unique. */
+$voitToutLeCa = computed(fn () => auth()->user()->hasRole('gerant')
+    && $this->villeFiltre === '' && $this->siteFiltre === '');
+
+/**
+ * Les lignes du dernier fichier du CA que l'import a **refusées** — date absente ou illisible,
+ * montant illisible. Elles ne sont dans aucune facture, donc dans aucun total ; le montant que
+ * le fichier leur donne est dit ici pour qu'on retrouve le total de son classeur.
+ */
+$rejetsDuCa = computed(function () {
+    $lot = LotImport::query()->where('format', 'factures')->where('etat', 'termine')->latest('id')->first();
+
+    if ($lot === null) {
+        return null;
+    }
+
+    $rejets = $lot->rejets()->get(['motif', 'valeurs']);
+
+    if ($rejets->isEmpty()) {
+        return null;
+    }
+
+    return [
+        'n' => $rejets->count(),
+        'montant' => (int) round($rejets->sum(fn ($r) => (float) (Format::montant($r->valeurs['montant'] ?? null) ?? 0))),
+        'motifs' => $rejets->countBy('motif')->sortDesc()->all(),
+        'fichier' => $lot->nom_fichier,
+    ];
 });
 
 /**
@@ -515,9 +575,19 @@ $commentaires = computed(function () {
                                 {{ $ligne['site']->nom }}
                                 @if (($ligne['genre'] ?? 'atelier') !== 'atelier')
                                     <div style="font-size:11px; font-weight:400; color:#6B6E76; margin-top:2px;">
-                                        {{ $ligne['genre'] === 'ville'
-                                            ? "Lignes du fichier du CA : ville connue, pas l'atelier"
-                                            : "Lignes du fichier du CA dont la fiche de réception n'est pas connue" }}
+                                        @if ($ligne['genre'] === 'ville')
+                                            Lignes du fichier du CA : ville connue (par le code de la fiche), pas l'atelier
+                                        @elseif ($ligne['genre'] === 'hors')
+                                            Lignes du CA rattachées à un lieu absent de ce tableau (atelier ou ville désactivé)
+                                        @else
+                                            Lignes du fichier du CA dont le code de fiche ne désigne aucune ville
+                                            @if (! empty($ligne['codesSansLieu']))
+                                                :
+                                                @foreach (array_slice($ligne['codesSansLieu'], 0, 8) as $c)
+                                                    <b>{{ $c['code'] !== '' ? $c['code'] : 'sans fiche' }}</b> ({{ $c['n'] }} ligne{{ $c['n'] > 1 ? 's' : '' }}, {{ ae($c['ca']) }}){{ $loop->last ? '' : ' ·' }}
+                                                @endforeach
+                                            @endif
+                                        @endif
                                     </div>
                                 @endif
                             </td>
@@ -531,14 +601,33 @@ $commentaires = computed(function () {
                         <x-table-vide :colspan="6" texte="Aucun site à afficher." />
                     @endforelse
                 </tbody>
+                {{-- Le total du CA, 12/10 : sur toutes les lignes du tableau, pas sur la page. --}}
+                @if ($this->syntheseDuCa->isNotEmpty())
+                    <tfoot>
+                        <tr style="font-weight:800; border-top:2px solid #191B20;">
+                            <td>Total</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseDuCa->sum('ca')) }}</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseDuCa->sum('charges')) }}</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseDuCa->sum('resultat')) }}</td>
+                            <td>{{ $this->syntheseDuCa->sum('devisAttente') }}</td>
+                            <td>{{ $this->syntheseDuCa->sum('sansFacture') }}</td>
+                        </tr>
+                    </tfoot>
+                @endif
             </table>
         </div>
         <x-pagination :page="$pageSynthese" :total="$this->syntheseDuCa->count()" prop="pageSynthese" />
-        @if ($this->syntheseDuCa->contains(fn ($l) => ($l['genre'] ?? 'atelier') !== 'atelier'))
-            <p style="margin:10px 0 0; font-size:12px; color:#6B6E76; line-height:1.5;">
-                Les lignes « non précisé » sont des lignes du fichier du CA dont l'atelier n'est pas
-                connu. <code>php artisan factures:situer --appliquer</code> les range dans leur atelier
-                quand la fiche de réception ou le devis le dit.
+        @if ($this->rejetsDuCa)
+            {{-- Ce qui explique un total de classeur plus haut que celui-ci : les lignes refusées
+                 n'entrent dans aucune facture. --}}
+            <p style="margin:10px 0 0; font-size:12px; color:#B45309; line-height:1.5;">
+                <b>{{ $this->rejetsDuCa['n'] }} ligne(s)</b> du dernier fichier du CA
+                ({{ $this->rejetsDuCa['fichier'] }}) ont été refusées à l'import et ne sont pas comptées ici —
+                {{ ae($this->rejetsDuCa['montant']) }} d'après le fichier :
+                @foreach ($this->rejetsDuCa['motifs'] as $motif => $nombre)
+                    {{ $motif }} ({{ $nombre }}){{ $loop->last ? '' : ' ;' }}
+                @endforeach
+                — à corriger depuis l'écran des imports.
             </p>
         @endif
     </div>
@@ -584,6 +673,17 @@ $commentaires = computed(function () {
                         <x-table-vide :colspan="5" texte="Aucune créance ni règlement sur cette période." />
                     @endforelse
                 </tbody>
+                @if ($this->syntheseImpayes->isNotEmpty())
+                    <tfoot>
+                        <tr style="font-weight:800; border-top:2px solid #191B20;">
+                            <td>Total</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseImpayes->sum('creances')) }}</td>
+                            <td style="font-variant-numeric:tabular-nums; color:#B45309;">{{ ae((int) $this->syntheseImpayes->sum('horsCa')) }}</td>
+                            <td style="font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae((int) $this->syntheseImpayes->sum('encaisse')) }}</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseImpayes->sum('reste')) }}</td>
+                        </tr>
+                    </tfoot>
+                @endif
             </table>
         </div>
     </div>

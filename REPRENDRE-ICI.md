@@ -141,7 +141,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 14 | Banques : « Affecter à » et « Modifier » sur les libellés non rangés | ✅ (table `libelles_de_banque`, migration à passer) |
 | 15 | Expliquer le rapprochement et le lettrage | ✅ |
 | 16 | Charges récupérées de la caisse, colonne Origine | ✅ (colonne `charges.mouvement_caisse_id`, migration à passer) |
-| 17 | Synthèse par site : « Lieu non précisé », activité par le devis | ✅ — `factures:situer` à passer en ligne |
+| 17 | Synthèse par site : « Lieu non précisé », activité par le devis | ✅ — `factures:situer` **déjà appliqué en ligne** |
 | 18 | Factures fournisseurs FNE (stripping), porter et régler | ✅ 12/10 — scraper repris de Selflow (`SCRAPER-PORTAIL-FNE/`), écran Fournisseurs › **Factures FNE**, « Régler » sur la pièce. **Migration à passer, accès FNE attendus** |
 | 19 | Accueil du gérant : taux de transformation des devis (0 %) et ventilation de l'encaissé | ✅ 08/10 — validés **ou facturés** ; l'encaissé prend l'activité de sa facture. Charges 0 F = aucune charge saisie, pas un défaut |
 | 20 | La comptabilité a **tout** le module recouvrement (plus de « habilitation supérieure ») | ✅ 08/10 |
@@ -150,7 +150,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 23 | Les pannes réglées quittent la liste des incidents ; causes réelles corrigées (GROUP BY MySQL, relances longues, date en chaîne) | ✅ 09/10 |
 | 24 | Lenteur : configuration en cache à chaque déploiement ; le reste = OPcache et `CACHE_STORE=file` chez l'hébergeur | ✅ code 12/10 — **serveur à faire** |
 | 25 | E-mail refusé pour un caractère invisible | ✅ 12/10 |
-| 26 | CA = fichier du CA ou saisie ; atelier par la fiche puis le devis | ✅ 12/10 — **`factures:situer` à passer** |
+| 26 | CA = fichier du CA ou saisie ; atelier par la fiche puis le devis | ✅ 12/10 — `factures:situer` déjà appliqué ; le lieu se relit aussi à l'affichage par le code de la fiche |
 | 27 | Page Devis : validés ou facturés, délai par la fiche du parc | ✅ 12/10 |
 | 28 | Charges par origine (caisse, FNE à venir, non normalisées) | ✅ 12/10 |
 | 29 | Trésorerie : listes et libellés sans ambiguïté | ✅ 12/10 |
@@ -160,7 +160,8 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 34 | **Plan fournisseurs** : suivi = base, correspondance dans les deux sens, achats FNE **portés** au suivi, « Régler » et lettrage, avoirs, KPI des différences | ✅ 12/10 — `AchatsFne`, tables `releves_fne` / `factures_fne`, `reglements_fournisseur.facture_fournisseur_id`. Détail : ETAT-DES-LIEUX § 6, ligne 34 |
 | 35 | Suivi fournisseurs : aucune facture écartée ; échu par la date de facture sans échéance ni règlement | ✅ 12/10 |
 | 36 | Synthèse par site en deux sections (CA / impayés) | ✅ 12/10 |
-| 37 | `factures:situer --appliquer` en ligne (8 + 7 lignes situables, constat du 12/10) | **à faire sur le serveur** |
+| 37 | `factures:situer --appliquer` en ligne | ✅ **appliqué par le propriétaire** — ne plus le demander |
+| 38 | Synthèse : lieu relu par le code de la fiche (écran des codes, sinon ce que disent les autres lignes), ligne **Total** aux deux tableaux, total = CA de l'entreprise (ligne « Autres lignes du CA » si un lieu manque), lignes **refusées** à l'import dites avec leur montant | ✅ 12/10 — `LieuDesFiches` |
 
 ### Au propriétaire, et qui bloque la suite
 
@@ -201,8 +202,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
    type « **Relevé bancaire — suivi de la caissière** », compte BGFI, dans l'ordre des
    années (2023 → 2026).
 
-9. **`php artisan factures:situer`** (constat), rapporter la sortie, puis `--appliquer` : situe
-   les factures « Lieu non précisé » et prend leur activité au devis.
+9. ~~`php artisan factures:situer`~~ — **appliqué** (12/10) ; ne plus le demander.
 
 10. **Banques et charges (sections 14 et 16)** : `php artisan migrate` passe aussi
     `2026_10_07_000003_un_libelle_s_affecte_a_sa_banque` (table neuve) et
@@ -225,8 +225,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 
 13. **Le 12/10** : `git pull`, **`php artisan app:deployer`** (il met maintenant aussi la
     configuration en cache : **le relancer après toute modification du `.env`**). Puis
-    `php artisan factures:situer` (constat), rapporter la sortie, puis `--appliquer` : il
-    donne leur atelier aux lignes « Lieu non précisé » et « Ville — atelier non précisé ».
+    ~~`php artisan factures:situer`~~ — **déjà appliqué** par le propriétaire.
     **Vitesse** : cocher OPcache dans cPanel et passer `CACHE_STORE=file` — c'est l'essentiel
     des cinq secondes (voir `MISE-A-JOUR-SERVEUR.md`).
 
