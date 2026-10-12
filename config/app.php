@@ -84,6 +84,12 @@ return [
     'timezone' => 'UTC',
 
     /*
+     * Les proxys de confiance (serveur frontal HTTPS de l'hébergeur). Lus ici et non par
+     * `env()` ailleurs : c'est ce qui permet `php artisan config:cache`. Vide = « * ».
+     */
+    'proxys_de_confiance' => env('PROXYS_DE_CONFIANCE'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------

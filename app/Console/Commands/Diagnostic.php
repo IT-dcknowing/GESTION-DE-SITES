@@ -149,13 +149,13 @@ class Diagnostic extends Command
 
         // La déclaration retombe sur « * » quand la variable est absente ou vide :
         // elle est donc toujours active. On se contente d'afficher la valeur retenue.
-        $proxys = env('PROXYS_DE_CONFIANCE') ?: '*';
+        $proxys = config('app.proxys_de_confiance') ?: '*';
         $this->line('  <fg=green>✓</> Proxys de confiance déclarés (HTTPS derrière un frontal)');
         $this->ligne('Proxys retenus', $proxys === '*' ? '* (tous — usage courant en mutualisé)' : $proxys);
 
         // Un cookie « secure » n'est jamais renvoyé par le navigateur sur une page en http :
         // la session se perd à chaque page, l'utilisateur est renvoyé sans fin vers la connexion.
-        $cookieSecurise = filter_var(env('SESSION_SECURE_COOKIE'), FILTER_VALIDATE_BOOL);
+        $cookieSecurise = (bool) config('session.secure');
 
         if ($cookieSecurise && $schemaApp !== 'https') {
             $this->toutVaBien = false;
@@ -167,7 +167,7 @@ class Diagnostic extends Command
         }
 
         // Un domaine de cookie qui ne correspond pas au site produit le même effet.
-        $domaineSession = env('SESSION_DOMAIN');
+        $domaineSession = config('session.domain');
 
         if ($domaineSession && $hoteApp && ! str_ends_with($hoteApp, ltrim((string) $domaineSession, '.'))) {
             $this->toutVaBien = false;

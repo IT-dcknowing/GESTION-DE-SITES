@@ -64,18 +64,22 @@ class Deployer extends Command
      * le vidage, ils partent des fichiers qui viennent d'arriver : la panne de la classe Volt
      * périmée, qui justifie le vidage, ne peut pas revenir par là.
      *
-     * **Pas `config:cache`**, délibérément : `bootstrap/app.php` lit `PROXYS_DE_CONFIANCE` par
-     * `env()`, et une configuration en cache ne charge plus le `.env` — la valeur retomberait en
-     * silence sur « * ».
+     * **La configuration aussi, depuis le 12/10.** Elle en était écartée parce que
+     * `bootstrap/app.php` lisait `PROXYS_DE_CONFIANCE` par `env()` ; c'est désormais
+     * `config('app.proxys_de_confiance')`, lu à la requête (`FaireConfianceAuxProxys`).
+     * Une configuration en cache évite de relire le `.env` et une quarantaine de fichiers à
+     * chaque page — sur un hébergement sans OPcache, c'est du temps à chaque clic.
+     * **Après toute modification du `.env`, relancer `app:deployer`** : sinon le cache garde
+     * l'ancienne valeur.
      *
      * Un cache qui refuse de se construire ne bloque pas la mise à jour : il est revidé, et
      * l'application tourne comme avant, seulement moins vite.
      */
     private function reconstruireLesCaches(): void
     {
-        $this->info('→ Reconstruction des caches (routes, évènements, gabarits)');
+        $this->info('→ Reconstruction des caches (configuration, routes, évènements, gabarits)');
 
-        foreach (['route' => 'route:clear', 'event' => 'event:clear', 'view' => 'view:clear'] as $cache => $vider) {
+        foreach (['config' => 'config:clear', 'route' => 'route:clear', 'event' => 'event:clear', 'view' => 'view:clear'] as $cache => $vider) {
             try {
                 if ($this->callSilently($cache.':cache') !== self::SUCCESS) {
                     throw new \RuntimeException('code de sortie non nul');

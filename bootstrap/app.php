@@ -42,8 +42,10 @@ return Application::configure(basePath: dirname(__DIR__))
          * lorsqu'elle est présente mais vide : une ligne « PROXYS_DE_CONFIANCE= »
          * oubliée dans un .env ne peut donc pas ramener la boucle de redirection.
          */
+        // La liste des proxys se lit dans la configuration, au moment de la requête — voir
+        // `FaireConfianceAuxProxys`, et pourquoi c'est ce qui rend `config:cache` possible.
+        $middleware->replace(\Illuminate\Http\Middleware\TrustProxies::class, \App\Http\Middleware\FaireConfianceAuxProxys::class);
         $middleware->trustProxies(
-            at: env('PROXYS_DE_CONFIANCE') ?: '*',
             headers: Request::HEADER_X_FORWARDED_FOR
                 | Request::HEADER_X_FORWARDED_PORT
                 | Request::HEADER_X_FORWARDED_PROTO
