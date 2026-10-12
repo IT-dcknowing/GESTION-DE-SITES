@@ -123,6 +123,25 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
         $this->assertSame(0, Charge::withoutGlobalScopes()->count());
     }
 
+    /** D'où viennent les charges (12/10) : la reprise de caisse se compte à part, le journal à côté. */
+    public function test_la_page_des_charges_dit_d_ou_viennent_les_charges(): void
+    {
+        $sortie = $this->sortie('ACHAT HUILE', 45_000, $this->site->id);
+        $this->sortie('VERSEMENT BANQUE', 500_000, $this->site->id);
+
+        $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.charges')
+            ->call('ouvrirLaReprise')
+            ->set('repriseChoix', [(string) $sortie->id])
+            ->call('reprendreDeLaCaisse');
+
+        $origines = $ecran->instance()->origines;
+        $this->assertSame(45_000, $origines['caisse']);
+        $this->assertSame(0, $origines['fne']);
+        $this->assertSame(45_000, $origines['nonNormalisees']);
+        $this->assertSame(545_000, $ecran->instance()->selonLaCaisse['sorties']);
+        $ecran->assertSee('Charges venant des factures fournisseurs FNE');
+    }
+
     // ------------------------------------------------------------------ le décor
 
     private function sortie(string $libelle, int $montant, ?int $siteId): MouvementCaisse

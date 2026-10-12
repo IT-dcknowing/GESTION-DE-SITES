@@ -152,6 +152,25 @@ $perimetre = computed(fn () => (clone $this->perimetreDeLaCaisse)
  * Le solde d'avant se lit forcément **hors** de la période regardée : c'est tout son
  * objet. Il lui faut donc un périmètre qui s'arrête à la ville et à la caisse.
  */
+/**
+ * Les sorties de la période déjà reprises en charges — 12/10 : « que les charges de la caisse
+ * alimentent la page caisse ». La sortie reste une ligne du journal ; la carte dit seulement
+ * quelle part en est devenue une charge, sans rien additionner.
+ */
+$sortiesReprises = computed(function () {
+    if (! \App\Support\SchemaDisponible::colonne('charges', 'mouvement_caisse_id')) {
+        return ['nombre' => 0, 'montant' => 0];
+    }
+
+    $ligne = (clone $this->perimetre)
+        ->where('mouvements_caisse.sens', MouvementCaisse::SORTIE)
+        ->whereExists(fn ($q) => $q->selectRaw('1')->from('charges')->whereColumn('charges.mouvement_caisse_id', 'mouvements_caisse.id'))
+        ->selectRaw('count(*) as nombre, coalesce(sum(mouvements_caisse.montant), 0) as montant')
+        ->toBase()->first();
+
+    return ['nombre' => (int) ($ligne->nombre ?? 0), 'montant' => (int) ($ligne->montant ?? 0)];
+});
+
 $perimetreDeLaCaisse = computed(fn () => MouvementCaisse::query()
     ->whereIn('ville_id', $this->idsVilles)
     ->when($this->caisseFiltre !== '', fn ($q) => $q->where('caisse', $this->caisseFiltre)));
@@ -987,7 +1006,8 @@ $mouvements = computed(function () {
 
         <x-kpi-card label="Entrées — {{ $this->libellePerimetre }}" :value="ae($this->kpis['entrees'])"
             :sub="$this->kpis['lignes'].' mouvement(s) sur la période'" />
-        <x-kpi-card label="Sorties" :value="ae($this->kpis['sorties'])" couleur="#C8102E" />
+        <x-kpi-card label="Sorties" :value="ae($this->kpis['sorties'])" couleur="#C8102E"
+            :sub="$this->sortiesReprises['nombre'] > 0 ? 'dont '.ae($this->sortiesReprises['montant']).' repris en charges' : 'Aucune reprise en charges'" />
 
         {{-- « Mouvement net » et non « solde » : ce nombre dit de combien la caisse a varié
              pendant la période, pas ce qu'elle contient. C'est la confusion entre les deux

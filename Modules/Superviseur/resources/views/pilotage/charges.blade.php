@@ -94,6 +94,67 @@ $requeteCa = computed(function () {
 
 $caPeriode = computed(fn () => (int) (clone $this->requeteCa)->sum('montant'));
 
+/*
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ * **D'où viennent les charges — demandé le 12/10.** « Comme on l'a fait pour la banque —
+ * ce que dit réellement la banque, et ce que disent les impayés —, fais-le pour les
+ * charges ; comme on alimente, on doit avoir une trace. »
+ *
+ * | Origine | Lue sur |
+ * |---|---|
+ * | reprise de la caisse | `mouvement_caisse_id` |
+ * | facture fournisseur FNE | le module FNE, à venir : zéro tant qu'il n'existe pas |
+ * | importée | `lot_import_id` |
+ * | saisie dans l'application | ni l'un ni l'autre |
+ *
+ * « Non normalisée » = tout ce qui n'est pas porté par une facture FNE : aujourd'hui, toutes.
+ * Le journal de caisse se lit **à côté**, jamais additionné : une sortie reprise en charge
+ * est la même dépense, la compter deux fois gonflerait les charges. L'exercice est celui du
+ * filtre de période, comme partout.
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ */
+$origines = computed(function () {
+    $colonne = \App\Support\SchemaDisponible::colonne('charges', 'mouvement_caisse_id');
+
+    $ligne = (clone $this->requeteBase)->where('type_operation', 'Charges')->reorder()
+        ->selectRaw('count(*) as nombre, coalesce(sum(montant), 0) as montant')
+        ->when($colonne, fn ($q) => $q
+            ->selectRaw('coalesce(sum(case when mouvement_caisse_id is not null then 1 else 0 end), 0) as n_caisse')
+            ->selectRaw('coalesce(sum(case when mouvement_caisse_id is not null then montant else 0 end), 0) as m_caisse')
+            ->selectRaw('coalesce(sum(case when mouvement_caisse_id is null and lot_import_id is not null then montant else 0 end), 0) as m_import')
+            ->selectRaw('coalesce(sum(case when mouvement_caisse_id is null and lot_import_id is null then montant else 0 end), 0) as m_saisie')
+            ->selectRaw('coalesce(sum(case when mouvement_caisse_id is null and lot_import_id is null then 1 else 0 end), 0) as n_saisie'))
+        ->toBase()->first();
+
+    return [
+        'total' => (int) ($ligne->montant ?? 0),
+        'nombre' => (int) ($ligne->nombre ?? 0),
+        'caisse' => (int) ($ligne->m_caisse ?? 0),
+        'nCaisse' => (int) ($ligne->n_caisse ?? 0),
+        'importees' => (int) ($ligne->m_import ?? 0),
+        'saisies' => (int) ($ligne->m_saisie ?? 0),
+        'nSaisies' => (int) ($ligne->n_saisie ?? 0),
+        // Le module des factures fournisseurs FNE n'existe pas encore : rien n'en vient.
+        'fne' => 0,
+        'nonNormalisees' => (int) ($ligne->montant ?? 0),
+    ];
+});
+
+/** Ce que dit le journal de caisse sur la période : ses sorties, et ce qui en a été repris. */
+$selonLaCaisse = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    $ligne = PerimetreDeTresorerie::mouvementsDeCaisse(
+        MouvementCaisse::query(), $this->idsSites, EtatDesImpayes::villesDesSites($this->idsSites),
+    )
+        ->where('mouvements_caisse.sens', MouvementCaisse::SORTIE)
+        ->whereBetween('mouvements_caisse.date', [$debut, $fin])
+        ->selectRaw('count(*) as nombre, coalesce(sum(mouvements_caisse.montant), 0) as montant')
+        ->toBase()->first();
+
+    return ['sorties' => (int) ($ligne->montant ?? 0), 'nombre' => (int) ($ligne->nombre ?? 0)];
+});
+
 $kpis = computed(function () {
     $lignes = (clone $this->requeteBase)->where('type_operation', 'Charges')->get();
     $total = (int) $lignes->sum('montant');
@@ -381,6 +442,28 @@ $detail = computed(fn () => FiltreLibre::appliquer(
             <x-pagination :page="$pageReprise" :total="$this->nombreSortiesDeCaisse" prop="pageReprise" :par-page="15" />
         </div>
     @endif
+
+    {{-- ─────────────────────────────── d'où viennent les charges — 12/10 --}}
+    @php $o = $this->origines; $c = $this->selonLaCaisse; $exercice = \Illuminate\Support\Carbon::parse($this->plage[0])->year; @endphp
+    <div class="carte" style="margin-bottom:16px;">
+        <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">D'où viennent les charges — exercice {{ $exercice }}</h3>
+        <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
+            Chaque charge dit son origine. Le journal de caisse se lit à côté, sans jamais
+            s'additionner : une sortie reprise en charge est la même dépense.
+        </p>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
+            <x-kpi-card label="Charges venant de la caisse" :value="ae($o['caisse'])"
+                sub="{{ number_format($o['nCaisse'], 0, ',', ' ') }} sortie(s) du journal reprise(s)" couleur="#B45309" />
+            <x-kpi-card label="Charges venant des factures fournisseurs FNE" :value="ae($o['fne'])"
+                sub="Module FNE à venir : les achats normalisés y entreront d'eux-mêmes" />
+            <x-kpi-card label="Charges non normalisées" :value="ae($o['nonNormalisees'])"
+                sub="Sans facture FNE — aujourd'hui, toutes les charges" couleur="#C8102E" />
+            <x-kpi-card label="Saisies dans l'application" :value="ae($o['saisies'])"
+                sub="{{ number_format($o['nSaisies'], 0, ',', ' ') }} décaissement(s){{ $o['importees'] > 0 ? ' · importées '.ae($o['importees']) : '' }}" />
+            <x-kpi-card label="Selon la caisse — sorties du journal" :value="$c['nombre'] > 0 ? ae($c['sorties']) : '—'"
+                sub="{{ $c['nombre'] > 0 ? number_format($c['nombre'], 0, ',', ' ').' sortie(s) · toutes ne sont pas des charges' : 'Aucun journal de caisse sur la période' }}" />
+        </div>
+    </div>
 
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp
