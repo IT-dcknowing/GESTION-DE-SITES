@@ -50,6 +50,9 @@ class FormatDesFactures extends Format
     /** @var array<string, string>|null numéro de fiche => activité du devis */
     private ?array $activitesDesDevis = null;
 
+    /** @var array<string, int>|null numéro de fiche => atelier du devis */
+    private ?array $sitesDesDevis = null;
+
     /** @var array<string, true>|null les numéros CATTC déjà retrouvés à l'état des impayés */
     private ?array $numerosRetrouves = null;
 
@@ -135,6 +138,17 @@ class FormatDesFactures extends Format
         return null;
     }
 
+    /**
+     * **Branché le 12/10** : `siteConnuDe()` existait et n'était appelée par personne. La
+     * cascade de rattachement demande ce qu'on sait déjà de l'affaire par `dossierExistant()`
+     * — qui rendait toujours « rien » pour les factures. Chaque ligne du CA restait donc sans
+     * atelier quand le code agent ne le disait pas, alors que sa fiche le disait.
+     */
+    protected function dossierExistant(array $ligne): array
+    {
+        return ['site_id' => $this->siteConnuDe($ligne), 'presume' => false];
+    }
+
     /** La fiche de réception, si elle a déjà été importée : c'est elle qui fait autorité. */
     protected function siteConnuDe(array $ligne): ?int
     {
@@ -150,7 +164,24 @@ class FormatDesFactures extends Format
             ->pluck('site_id', 'numero_fiche')
             ->all();
 
-        return $this->fichesConnues[$fiche] ?? null;
+        if (isset($this->fichesConnues[$fiche])) {
+            return $this->fichesConnues[$fiche];
+        }
+
+        /*
+         * **Le devis de la même fiche, ensuite — 12/10.** « Dans le CA importé, chaque ligne a
+         * une fiche de réception ; en remontant aux devis, on trouve l'atelier. » Le parc n'est
+         * pas toujours déposé ; les devis, si, et chacun porte sa fiche et son atelier. Sans
+         * ce repli, la ligne tombait en « Lieu non précisé » sur l'accueil du gérant.
+         */
+        $this->sitesDesDevis ??= DB::table('devis')
+            ->where('entreprise_id', $this->entrepriseId)
+            ->whereNotNull('n_fiche_reception')->whereNotNull('site_id')
+            ->orderBy('id')
+            ->pluck('site_id', 'n_fiche_reception')
+            ->all();
+
+        return isset($this->sitesDesDevis[$fiche]) ? (int) $this->sitesDesDevis[$fiche] : null;
     }
 
     protected function ecrire(array $ligne, array $rattachement, ?int $lotId): string

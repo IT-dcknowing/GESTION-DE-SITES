@@ -90,6 +90,52 @@ class LesFacturesSansLieuSeSituentTest extends TestCase
         $this->assertSame('Sinistre', Facture::withoutGlobalScopes()->first()->activite);
     }
 
+    /**
+     * « Abidjan — atelier non précisé » (12/10) : la ville est connue, la fiche donne
+     * l'atelier. Mais jamais celui d'une autre ville.
+     */
+    public function test_une_facture_qui_n_a_que_sa_ville_recoit_son_atelier_par_la_fiche(): void
+    {
+        $b1 = Site::create(['entreprise_id' => $this->entreprise->id, 'ville_id' => $this->bouake->id, 'code' => 'B1', 'nom' => 'Bouaké 1', 'est_actif' => true]);
+
+        $abidjan = $this->facture('FR-A-1', 'Mécanique');
+        $abidjan->update(['ville_id' => $this->abidjan->id]);
+        $autreVille = $this->facture('FR-B-1', 'Mécanique');
+        $autreVille->update(['ville_id' => $this->abidjan->id]);
+
+        foreach ([['FR-A-1', $this->a1->id, 'D-A'], ['FR-B-1', $b1->id, 'D-B']] as [$fiche, $site, $numero]) {
+            Devis::withoutGlobalScopes()->create([
+                'entreprise_id' => $this->entreprise->id, 'site_id' => $site, 'numero' => $numero,
+                'n_fiche_reception' => $fiche, 'date_emission' => '2026-03-01', 'client' => 'NSIA',
+                'activite' => 'Mécanique', 'statut' => 'En attente', 'montant_devis' => 100_000,
+            ]);
+        }
+
+        $this->artisan('factures:situer', ['--appliquer' => true])->assertSuccessful();
+
+        $this->assertSame($this->a1->id, $abidjan->fresh()->site_id);
+        $this->assertNull($autreVille->fresh()->site_id, 'La fiche ne déplace pas une facture d\'une ville à l\'autre.');
+        $this->assertSame($this->abidjan->id, $autreVille->fresh()->ville_id);
+    }
+
+    /** L'import du CA trouve l'atelier par le devis de la même fiche quand le parc ne le dit pas. */
+    public function test_l_import_du_ca_trouve_l_atelier_par_le_devis(): void
+    {
+        Devis::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id, 'site_id' => $this->a1->id, 'numero' => 'D-9',
+            'n_fiche_reception' => 'FR-QQN° 000777', 'date_emission' => '2026-03-01', 'client' => 'NSIA',
+            'activite' => 'Mécanique', 'statut' => 'En attente', 'montant_devis' => 100_000,
+        ]);
+
+        $format = new class($this->entreprise->id, new Rattachement($this->entreprise->id)) extends FormatDesFactures
+        {
+            public function connu(array $ligne): array { return $this->dossierExistant($ligne); }
+        };
+
+        $this->assertSame($this->a1->id, $format->connu(['fiche' => 'FR-QQN° 000777'])['site_id']);
+        $this->assertNull($format->connu(['fiche' => 'FR-inconnue'])['site_id']);
+    }
+
     private int $n = 0;
 
     private function facture(?string $fiche, string $activite): Facture

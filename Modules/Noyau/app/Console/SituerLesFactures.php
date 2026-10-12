@@ -85,7 +85,8 @@ class SituerLesFactures extends Command
             ->where(fn ($q) => $q->whereNotNull('ville_id')->orWhereNotNull('site_id'))
             ->get(['code', 'ville_id', 'site_id'])->keyBy(fn ($c) => mb_strtoupper($c->code));
 
-        $compte = ['sans_lieu' => 0, 'fiche' => 0, 'devis' => 0, 'code' => 0, 'restent' => 0, 'activite' => 0, 'sans_fiche' => 0];
+        $compte = ['sans_lieu' => 0, 'fiche' => 0, 'devis' => 0, 'code' => 0, 'restent' => 0, 'activite' => 0, 'sans_fiche' => 0,
+            'ville_seule' => 0, 'atelier_trouve' => 0];
 
         $factures = DB::table('factures')->where('entreprise_id', $entrepriseId)
             ->get(['id', 'site_id', 'ville_id', 'reference_devis', 'activite']);
@@ -104,6 +105,22 @@ class SituerLesFactures extends Command
                 } else {
                     $compte[$source]++;
                     $changements = array_filter(['site_id' => $site, 'ville_id' => $ville], fn ($v) => $v !== null);
+                }
+            }
+
+            /*
+             * **La ville sans atelier — 12/10.** « Abidjan — atelier non précisé » portait
+             * 1,44 milliard sur l'accueil du gérant : la ville est connue, pas l'atelier. La
+             * fiche le dit souvent (parc, sinon devis). On ne prend l'atelier que **dans la
+             * même ville** : une fiche ne déplace jamais une facture d'une ville à l'autre.
+             */
+            if ($f->site_id === null && $f->ville_id !== null && $fiche !== '') {
+                $compte['ville_seule']++;
+                [$site] = $this->lieu($fiche, $fiches, $devis, $codes, $villeDuSite);
+
+                if ($site !== null && (int) ($villeDuSite[$site] ?? 0) === (int) $f->ville_id) {
+                    $compte['atelier_trouve']++;
+                    $changements['site_id'] = $site;
                 }
             }
 
@@ -128,6 +145,8 @@ class SituerLesFactures extends Command
             ["… situées{$verbe} par le code de leur fiche", number_format($compte['code'], 0, ',', ' ')],
             ['… restant sans lieu', number_format($compte['restent'], 0, ',', ' ')],
             ['    dont sans n° de fiche (état des impayés)', number_format($compte['sans_fiche'], 0, ',', ' ')],
+            ['Factures avec ville mais sans atelier, et une fiche', number_format($compte['ville_seule'], 0, ',', ' ')],
+            ["… atelier trouvé{$verbe} dans la même ville", number_format($compte['atelier_trouve'], 0, ',', ' ')],
             ["Activité corrigée{$verbe} d'après le devis", number_format($compte['activite'], 0, ',', ' ')],
         ];
     }

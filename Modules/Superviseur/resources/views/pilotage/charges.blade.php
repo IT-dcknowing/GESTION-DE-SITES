@@ -84,7 +84,10 @@ $requeteBase = computed(function () {
 $requeteCa = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return Facture::whereIn('site_id', $this->idsSites)
+    // Le CA vrai (fichier du CA ou saisie), placé par l'atelier sinon la ville — 12/10.
+    // Il s'écrivait `whereIn('site_id', …)` : une facture sans atelier n'entrait dans aucun
+    // résultat net (piège n° 1).
+    return EtatDesImpayes::dansLePerimetre(Facture::query()->duChiffreDAffaires(), $this->idsSites, EtatDesImpayes::villesDesSites($this->idsSites))
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 });

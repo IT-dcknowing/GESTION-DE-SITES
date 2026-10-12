@@ -110,10 +110,11 @@ class FiltrerAuJourEtSupprimerTest extends TestCase
         $this->actingAs($gerant);
 
         $dans = $this->creance('F-DANS', 111_111);
-        $dans->update(['date' => now()->startOfMonth()->addDays(4)]);
+        // Des ventes de l'atelier : une créance « IMP- » n'est plus du CA depuis le 12/10.
+        $dans->update(['date' => now()->startOfMonth()->addDays(4), 'numero' => 'NFA-DANS']);
 
         $hors = $this->creance('F-HORS', 222_222);
-        $hors->update(['date' => now()->startOfMonth()->addDays(20)]);
+        $hors->update(['date' => now()->startOfMonth()->addDays(20), 'numero' => 'NFA-HORS']);
 
         $du = now()->startOfMonth()->addDays(3)->toDateString();
         $au = now()->startOfMonth()->addDays(5)->toDateString();

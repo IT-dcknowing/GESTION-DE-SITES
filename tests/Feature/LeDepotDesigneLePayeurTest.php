@@ -223,8 +223,10 @@ class LeDepotDesigneLePayeurTest extends TestCase
 
         // Le chiffre d'affaires s'ouvre sur le mois courant : les deux factures doivent y
         // tomber, sans quoi le tableau serait vide et le test ne prouverait rien.
-        $ouverte->update(['date' => now()->startOfMonth()]);
-        $soldee->update(['date' => now()->startOfMonth()]);
+        // Des factures **de l'atelier** (numéro de pièce ordinaire) : une créance « IMP- », saisie
+        // à l'état, n'est pas du chiffre d'affaires depuis le 12/10.
+        $ouverte->update(['date' => now()->startOfMonth(), 'numero' => 'NFA-0030']);
+        $soldee->update(['date' => now()->startOfMonth(), 'numero' => 'NFA-0031']);
 
         Encaissement::create([
             'entreprise_id' => $this->entreprise->id,

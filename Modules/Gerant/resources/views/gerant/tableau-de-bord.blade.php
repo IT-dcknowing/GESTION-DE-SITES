@@ -126,7 +126,8 @@ $kpis = computed(function () {
     $devisLus = (clone $devisEmis)->get(['id', 'activite', 'statut', 'n_fiche_reception', 'date_emission']);
     $transformes = TransformationDesDevis::transformes($devisLus);
 
-    $facturesQ = EtatDesImpayes::dansLePerimetre(Facture::query(), $idsSites->all(), $this->idsVilles)
+    // Le CA vrai : le fichier du CA ou la saisie (12/10) — voir `Facture::scopeDuChiffreDAffaires`.
+    $facturesQ = EtatDesImpayes::dansLePerimetre(Facture::query()->duChiffreDAffaires(), $idsSites->all(), $this->idsVilles)
         ->whereBetween('date', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre));

@@ -94,8 +94,10 @@ $requeteBase = computed(function () {
      * s'il est connu, sinon la ville, sinon la ligne paraît partout — on ne sait pas où elle
      * est, et la cacher reviendrait à la perdre.
      */
+    // Le CA vrai : le fichier du CA ou la saisie, jamais une créance de l'état seule — 12/10,
+    // voir `Facture::scopeDuChiffreDAffaires`.
     $q = EtatDesImpayes::dansLePerimetre(
-        Facture::query(),
+        Facture::query()->duChiffreDAffaires(),
         $this->idsSites,
         EtatDesImpayes::villesDesSites($this->idsSites),
     )

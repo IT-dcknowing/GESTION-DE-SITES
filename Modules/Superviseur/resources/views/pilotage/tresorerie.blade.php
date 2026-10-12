@@ -138,7 +138,8 @@ $chargesQ = computed(function () {
 $facturesQ = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return EtatDesImpayes::dansLePerimetre(Facture::query(), $this->idsSites, $this->idsVilles)
+    // Le CA vrai (12/10) : le « facturé » de la trésorerie est celui du fichier du CA ou de la saisie.
+    return EtatDesImpayes::dansLePerimetre(Facture::query()->duChiffreDAffaires(), $this->idsSites, $this->idsVilles)
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->whereBetween('date', [$debut, $fin]);
 });
