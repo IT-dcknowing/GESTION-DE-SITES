@@ -10,7 +10,7 @@
     <form method="POST" action="{{ route('password.email') }}">
         @csrf
         <label for="email" class="champ-libelle">Adresse e-mail</label>
-        <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus class="champ">
+        <input id="email" name="email" type="text" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" value="{{ old('email') }}" required autofocus class="champ">
 
         <button type="submit" class="bouton bouton-sombre" style="width:100%; justify-content:center; padding:12px; margin-top:18px;">
             Envoyer le lien de réinitialisation

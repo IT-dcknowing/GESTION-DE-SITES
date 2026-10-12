@@ -507,7 +507,7 @@ $creer = function (CreerAcces $action) {
             @error('nom') <div style="color:#C8102E; font-size:13.5px; margin-bottom:8px;">{{ $message }}</div> @enderror
 
             <label style="display:block; font-size:14px; font-weight:600; color:#4B4E55; margin:10px 0 6px;">Adresse e-mail</label>
-            <input type="email" wire:model="email"
+            <input type="text" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" wire:model="email"
                 style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid #E2E0D8; border-radius:8px; font-size:15.5px; margin-bottom:4px;">
             @error('email') <div style="color:#C8102E; font-size:13.5px; margin-bottom:8px;">{{ $message }}</div> @enderror
 

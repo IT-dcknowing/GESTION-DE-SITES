@@ -280,7 +280,7 @@
                 @csrf
 
                 <label for="email" class="cnx-label">Email</label>
-                <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus
+                <input id="email" name="email" type="text" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" value="{{ old('email') }}" required autofocus
                        autocomplete="username" placeholder="vous@entreprise.ci" class="champ-connexion">
 
                 <div class="cnx-ligne-label">
@@ -321,5 +321,6 @@
     </section>
 </main>
 
+    <x-nettoyer-courriels />
 </body>
 </html>

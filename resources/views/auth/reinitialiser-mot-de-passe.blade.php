@@ -9,7 +9,7 @@
         <input type="hidden" name="token" value="{{ $request->route('token') }}">
 
         <label for="email" class="champ-libelle">Adresse e-mail</label>
-        <input id="email" name="email" type="email" value="{{ old('email', $request->email) }}" required class="champ" style="margin-bottom:14px;">
+        <input id="email" name="email" type="text" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" value="{{ old('email', $request->email) }}" required class="champ" style="margin-bottom:14px;">
 
         <label for="password" class="champ-libelle">Nouveau mot de passe</label>
         <div class="champ-mot-de-passe" style="margin-bottom:14px;">

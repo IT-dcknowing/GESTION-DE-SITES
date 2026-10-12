@@ -10,5 +10,6 @@
 <body class="antialiased" style="margin:0; font-family:var(--font-sans);">
     {{ $slot }}
     @livewireScripts
+    <x-nettoyer-courriels />
 </body>
 </html>

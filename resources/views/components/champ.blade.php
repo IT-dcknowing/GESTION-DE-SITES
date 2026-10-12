@@ -50,7 +50,10 @@
                 <x-oeil-mot-de-passe />
             </div>
         @else
-            <input type="{{ $type }}" {{ $wire }}="{{ $model }}" placeholder="{{ $placeholder }}" class="champ"
+            {{-- Un e-mail n'est plus `type="email"` : le navigateur refusait une adresse juste qui
+                 portait un caractère invisible (12/10). Voir `x-nettoyer-courriels`. --}}
+            <input type="{{ $type === 'email' ? 'text' : $type }}" {{ $wire }}="{{ $model }}" placeholder="{{ $placeholder }}" class="champ"
+                @if ($type === 'email') inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" @endif
                 @if ($liste) list="{{ $liste }}" @endif @if ($disabled) disabled @endif>
         @endif
         @if ($aide)

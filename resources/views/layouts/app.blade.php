@@ -147,5 +147,6 @@
 
     {{-- Après le script : si celui-ci manque, ce témoin est le seul à pouvoir le dire. --}}
     <x-veille-livewire />
+    <x-nettoyer-courriels />
 </body>
 </html>

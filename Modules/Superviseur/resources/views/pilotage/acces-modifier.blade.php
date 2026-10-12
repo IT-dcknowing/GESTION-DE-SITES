@@ -116,7 +116,7 @@ $mutations = computed(fn () => Reaffectation::where('user_id', $this->compteId)
             @error('nom') <div style="{{ $erreur }}">{{ $message }}</div> @enderror
 
             <label style="{{ $etiquette }}" for="email">Adresse e-mail</label>
-            <input type="email" id="email" name="email" required maxlength="255"
+            <input type="text" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" id="email" name="email" required maxlength="255"
                    value="{{ old('email', $compte->email) }}" style="{{ $saisie }}">
             @error('email') <div style="{{ $erreur }}">{{ $message }}</div> @enderror
 

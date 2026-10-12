@@ -26,5 +26,6 @@
         </div>
         {{ $slot }}
     </div>
+    <x-nettoyer-courriels />
 </body>
 </html>

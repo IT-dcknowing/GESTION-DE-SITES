@@ -7,6 +7,7 @@ use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -24,6 +25,25 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, HasRoles, LogsActivity, Notifiable;
+
+    /**
+     * L'adresse e-mail, débarrassée des caractères invisibles — 12/10.
+     *
+     * Une espace insécable ou de largeur nulle, venue d'un copier-coller, faisait refuser une
+     * adresse juste (« t.tou@lartisanauto.com ») et, si elle passait, créait un compte auquel
+     * personne ne pouvait se connecter en tapant l'adresse à la main.
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $valeur) => $valeur === null ? null : self::courrielPropre($valeur),
+        );
+    }
+
+    public static function courrielPropre(string $valeur): string
+    {
+        return (string) preg_replace('/[\s\x{00A0}\x{1680}\x{180E}\x{2000}-\x{200F}\x{2028}-\x{202F}\x{205F}-\x{2064}\x{3000}\x{FEFF}]+/u', '', $valeur);
+    }
 
     protected function casts(): array
     {
