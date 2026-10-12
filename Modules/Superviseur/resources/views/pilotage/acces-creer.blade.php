@@ -366,7 +366,7 @@ $choisirRole = function (string $role) {
 $creer = function (CreerAcces $action) {
     $regles = [
         'nom' => ['required', 'string', 'max:255'],
-        'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+        'email' => ['required', new \App\Rules\AdresseEmail, 'max:255', 'unique:users,email'],
         'motDePasse' => ['required', 'string', 'min:8'],
         // Deux lettres : c'est sous cette forme que le logiciel d'atelier inscrit le code
         // dans les numéros de fiche, « FR-KZN° 010669 ». On le vérifie ici pour éviter une

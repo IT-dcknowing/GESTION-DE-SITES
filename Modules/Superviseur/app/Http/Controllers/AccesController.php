@@ -86,7 +86,7 @@ class AccesController
 
         $donnees = $requete->validate([
             'nom' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($utilisateur->id)],
+            'email' => ['required', new \App\Rules\AdresseEmail, 'max:255', Rule::unique('users', 'email')->ignore($utilisateur->id)],
             'telephone' => ['nullable', 'string', 'max:40'],
             'motDePasse' => ['nullable', 'string', 'min:8'],
             'role' => ['required', Rule::in(array_keys($permission->rolesAtteignables()))],

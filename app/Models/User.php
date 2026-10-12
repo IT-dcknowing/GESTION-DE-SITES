@@ -42,7 +42,8 @@ class User extends Authenticatable
 
     public static function courrielPropre(string $valeur): string
     {
-        return (string) preg_replace('/[\s\x{00A0}\x{1680}\x{180E}\x{2000}-\x{200F}\x{2028}-\x{202F}\x{205F}-\x{2064}\x{3000}\x{FEFF}]+/u', '', $valeur);
+        // La même règle que les formulaires : voir `App\Support\Courriel`.
+        return \App\Support\Courriel::nettoyer($valeur);
     }
 
     protected function casts(): array

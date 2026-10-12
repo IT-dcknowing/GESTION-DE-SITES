@@ -34,8 +34,17 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
     // Le détail d'un devis a sa page, comme la créance et la pièce fournisseur : toutes
     // ses colonnes au large, et une adresse qu'on transmet.
     Volt::route('/devis/{id}', 'pilotage.devis-detail')->name('devis.detail')->whereNumber('id');
-    Volt::route('/chiffre-affaires', 'pilotage.chiffre-affaires')->name('chiffre-affaires');
     Volt::route('/commerciaux', 'pilotage.commerciaux')->name('commerciaux');
+});
+
+/*
+ * **Le chiffre d'affaires, sans le responsable commercial — décidé le 12/10** : « les
+ * commerciaux ne doivent pas voir la page chiffre d'affaires ». Elle porte le CA de toute
+ * l'entreprise, ses charges et son résultat net : ce n'est pas l'écran d'une équipe de vente,
+ * qui garde sa propre performance et celle de ses commerciaux.
+ */
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site'])->group(function () {
+    Volt::route('/chiffre-affaires', 'pilotage.chiffre-affaires')->name('chiffre-affaires');
 });
 
 /*

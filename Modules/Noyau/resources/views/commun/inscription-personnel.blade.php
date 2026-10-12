@@ -65,7 +65,7 @@ $sInscrire = function (CreerAcces $action) {
     $regles = [
         'role' => ['required', 'in:commercial,responsable_site'],
         'nom' => ['required', 'string', 'max:255'],
-        'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+        'email' => ['required', new \App\Rules\AdresseEmail, 'max:255', 'unique:users,email'],
         'telephone' => ['nullable', 'string', 'max:40'],
         'motDePasse' => ['required', 'string', 'min:8', 'confirmed'],
         // Le site doit appartenir à l'entreprise du code saisi : on ne fait pas confiance

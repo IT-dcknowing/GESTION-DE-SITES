@@ -288,7 +288,7 @@ $enregistrer = function (\Modules\Noyau\Entreprises\Actions\ModifierAcces $actio
 
     $regles = [
         'nom' => ['required', 'string', 'max:255'],
-        'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($compte->id)],
+        'email' => ['required', new \App\Rules\AdresseEmail, 'max:255', Rule::unique('users', 'email')->ignore($compte->id)],
         'telephone' => ['nullable', 'string', 'max:40'],
         'motDePasse' => ['nullable', 'string', 'min:8'],
         'codeAgent' => ['nullable', 'string', 'regex:/^[A-Za-z]{2}$/'],
@@ -375,7 +375,7 @@ $creer = function (CreerAcces $action) {
     $regles = [
         'entrepriseId' => ['required', 'exists:entreprises,id'],
         'nom' => ['required', 'string', 'max:255'],
-        'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+        'email' => ['required', new \App\Rules\AdresseEmail, 'max:255', 'unique:users,email'],
         'motDePasse' => ['required', 'string', 'min:8'],
         // Facultatif : tout le monde ne saisit pas dans le logiciel d'atelier, et une
         // arrivée se prépare souvent avant qu'on connaisse son code.

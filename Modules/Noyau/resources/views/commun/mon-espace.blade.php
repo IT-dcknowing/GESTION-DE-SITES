@@ -173,7 +173,7 @@ $basculerSite = function (int $id) {
 $enregistrerProfil = function (EnregistreurPhoto $enregistreur) {
     $donnees = $this->validate([
         'nom' => ['required', 'string', 'max:255'],
-        'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore(auth()->id())],
+        'email' => ['required', new \App\Rules\AdresseEmail, 'max:255', Rule::unique('users', 'email')->ignore(auth()->id())],
         'telephone' => ['nullable', 'string', 'max:40'],
         'photo' => EnregistreurPhoto::REGLES,
     ], [], ['nom' => 'nom', 'email' => 'adresse e-mail', 'telephone' => 'téléphone']);

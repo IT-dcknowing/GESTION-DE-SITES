@@ -79,7 +79,7 @@ class ResponsableCommercialTest extends TestCase
     {
         $animateur = $this->animateur((string) $this->abidjan->id);
 
-        foreach (['commerciaux', 'prospects', 'devis', 'chiffre-affaires', 'saisie-du-jour', 'mes-prospections'] as $ecran) {
+        foreach (['commerciaux', 'prospects', 'devis', 'saisie-du-jour', 'mes-prospections'] as $ecran) {
             $this->actingAs($animateur)->get(route($ecran))
                 ->assertStatus(200, "L'écran « $ecran » devrait lui être ouvert.");
         }
@@ -96,7 +96,9 @@ class ResponsableCommercialTest extends TestCase
          * Recouvrement et import : encadrer des vendeurs n'a aucun rapport avec la
          * poursuite d'une créance ni avec le versement d'un fichier dans la base.
          */
-        foreach (['charges', 'tresorerie', 'recouvrement.tableau-de-bord', 'import.depot'] as $ecran) {
+        // Le chiffre d'affaires lui est fermé depuis le 12/10 : « les commerciaux ne doivent pas
+        // voir la page chiffre d'affaires ».
+        foreach (['charges', 'tresorerie', 'recouvrement.tableau-de-bord', 'import.depot', 'chiffre-affaires'] as $ecran) {
             $this->actingAs($animateur)->get(route($ecran))
                 ->assertStatus(302, "L'écran « $ecran » ne devrait pas lui être ouvert.");
         }

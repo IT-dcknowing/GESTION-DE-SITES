@@ -80,7 +80,7 @@ class MenuNavigation
                     ['label' => 'Commerciaux', 'route' => 'commerciaux'],
                     ['label' => 'Prospects', 'route' => 'prospects'],
                     ['label' => 'Devis', 'route' => 'devis'],
-                    ['label' => "Chiffre d'affaires", 'route' => 'chiffre-affaires'],
+                    // Plus de « Chiffre d'affaires » depuis le 12/10 : réservé à la direction.
                 ]],
                 ['label' => 'Paramètres', 'groupe' => [
                     ['label' => 'Ma performance individuelle', 'route' => 'ma-performance'],

@@ -63,7 +63,7 @@ $enregistrer = function () {
 
     $donnees = $this->validate([
         'nom' => ['required', 'string', 'max:255'],
-        'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->editionId)],
+        'email' => ['required', new \App\Rules\AdresseEmail, 'max:255', Rule::unique('users', 'email')->ignore($this->editionId)],
         'telephone' => ['nullable', 'string', 'max:40'],
         'motDePasse' => [$this->editionId ? 'nullable' : 'required', 'string', 'min:10'],
         'habilitations' => ['array'],

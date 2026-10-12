@@ -20,7 +20,9 @@
         if (window.__nettoyerCourriels) { return; }
         window.__nettoyerCourriels = true;
 
-        var invisibles = /[\s  ᠎ -‏ -  -⁤　﻿]/g;
+        // Tous les caractères de mise en forme (trait d'union conditionnel compris), les
+        // séparateurs et les contrôles — corrigé le 12/10 : la première liste en oubliait.
+        var invisibles = /[\p{Cf}\p{Z}\p{Cc}\s]/gu;
 
         document.addEventListener('input', function (e) {
             var champ = e.target;

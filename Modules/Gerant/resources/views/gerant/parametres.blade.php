@@ -140,10 +140,10 @@ $enregistrerEntreprise = function (EnregistreurLogo $enregistreurLogo) {
         'gerantNom' => ['nullable', 'string', 'max:255'],
         'gerantPrenom' => ['nullable', 'string', 'max:255'],
         'gerantFonction' => ['nullable', 'string', 'max:255'],
-        'gerantEmail' => ['nullable', 'email', 'max:255'],
+        'gerantEmail' => ['nullable', new \App\Rules\AdresseEmail, 'max:255'],
         'adresse' => ['nullable', 'string', 'max:255'],
         'telephone' => ['nullable', 'string', 'max:40'],
-        'email' => ['nullable', 'email', 'max:255'],
+        'email' => ['nullable', new \App\Rules\AdresseEmail, 'max:255'],
         'rccm' => ['nullable', 'string', 'max:60'],
         'ncc' => ['nullable', 'string', 'max:40'],
         'regimeImposition' => ['nullable', 'string', 'max:255'],
@@ -199,7 +199,7 @@ $regenererCode = function () {
 $enregistrerMonCompte = function () {
     $donnees = $this->validate([
         'monNom' => ['required', 'string', 'max:255'],
-        'monEmail' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore(auth()->id())],
+        'monEmail' => ['required', new \App\Rules\AdresseEmail, 'max:255', Rule::unique('users', 'email')->ignore(auth()->id())],
         'monTelephone' => ['nullable', 'string', 'max:40'],
     ], [], ['monNom' => 'nom', 'monEmail' => 'adresse e-mail', 'monTelephone' => 'téléphone']);
 
