@@ -1,7 +1,7 @@
 # GESTION-DE-SITES — consignes de séance
 
 **Avant tout travail, lire [REPRENDRE-ICI.md](REPRENDRE-ICI.md) en entier.** Deux cents lignes :
-où l'on en est, ce qui reste et par qui, les règles métier de l'argent, et les seize pièges qui
+où l'on en est, ce qui reste et par qui, les règles métier de l'argent, et les dix-sept pièges qui
 ont déjà coûté une séance chacun.
 
 [ETAT-DES-LIEUX.md](ETAT-DES-LIEUX.md) est la mémoire longue — 2 800 lignes, l'histoire de
@@ -16,5 +16,6 @@ Règles qui priment sur tout le reste (détail au § 2 d'ETAT-DES-LIEUX.md) :
   de données sans constat préalable, rien qui écrive des données dans `app:deployer`.
 - Une branche git par module ; commits sur cette branche ; en fin de travail, pousser la
   branche **puis la fusionner dans `main` et pousser `main`** (consignes du 05/10).
+- **Ne jamais arrondir un montant** (13/10) : colonnes décimales, `montant_de()` pour lire, `ae()` pour écrire ; jamais `(int)`, `round()` ni `number_format(…, 0)` sur de l'argent. Détail : piège 17 de REPRENDRE-ICI.md.
 - Jamais de déploiement par zip.
 - Écrire comme le code existant : français, commentaires qui disent pourquoi.
