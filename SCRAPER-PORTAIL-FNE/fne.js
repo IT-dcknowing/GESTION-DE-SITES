@@ -52,7 +52,8 @@ const RACINE_SELFLOW = path.join(__dirname, '..');
 // jamais une variable déjà posée, il a donc le dernier mot — puis celui de
 // Selflow, pour y lire PORTAIL_FNE_DOSSIER_IMPORT sans avoir à le recopier.
 require('dotenv').config({ path: path.join(__dirname, '.env') });
-require('dotenv').config({ path: path.join(RACINE_SELFLOW, '.env') });
+// GESTION-DE-SITES : le .env de l'application n'est PAS relu ici (il porte le mot de passe de la
+// base, rien dont le scraper ait besoin) ; tout ce qu'il lui faut est dans SCRAPER-PORTAIL-FNE/.env.
 
 const FICHIER_IDENTIFIANTS = path.join(__dirname, 'identifiants.json');
 const DOSSIER_ERREURS = path.join(__dirname, 'erreurs');

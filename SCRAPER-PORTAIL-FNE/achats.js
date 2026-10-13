@@ -56,7 +56,6 @@ const {
   seConnecter,
   lireMagasin,
   motDePassePour,
-  lireFileDemandes,
   journaliser,
 } = require('./fne.js');
 
@@ -120,7 +119,8 @@ const CHEMIN_API = '/ws/invoices';
  * La FNE n'a pas d'histoire antérieure à son entrée en service ; remonter plus
  * loin ne rendrait rien de plus et ferait tourner la pagination pour rien.
  */
-const DEPUIS_PAR_DEFAUT = process.env.ACHATS_DEPUIS || '2024-01-01';
+// Le CA de l'entreprise remonte à 2023 : le relevé complet part de là (ACHATS_DEPUIS pour le changer).
+const DEPUIS_PAR_DEFAUT = process.env.ACHATS_DEPUIS || '2023-01-01';
 
 /* ------------------------------ Le mouchard ------------------------------- */
 
@@ -603,7 +603,15 @@ function resoudreTaches() {
     };
   }
 
-  return { mode, logins: lireFileDemandes(), motDePasseDirect: null };
+  // Sans argument — GESTION-DE-SITES, 12/10 : l'entreprise n'a **qu'un compte**, le sien. Pas de
+  // file de demandes comme chez Selflow (il en sert plusieurs) : on relève les comptes de
+  // identifiants.json, ou à défaut LOGIN/PASSWORD du .env. Rien d'autre que ce qui nous concerne.
+  const magasin = lireMagasin();
+  const logins = Object.keys(magasin).filter(login => motDePassePour(login, magasin));
+
+  if (!logins.length && process.env.LOGIN && process.env.PASSWORD) logins.push(process.env.LOGIN);
+
+  return { mode, logins, motDePasseDirect: null };
 }
 
 async function passage() {

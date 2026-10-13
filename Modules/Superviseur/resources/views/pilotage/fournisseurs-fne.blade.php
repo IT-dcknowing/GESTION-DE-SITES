@@ -4,6 +4,7 @@ use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Imports\Modeles\FactureFne;
 use Modules\Noyau\Imports\Modeles\ReleveFne;
 use Modules\Noyau\Imports\Services\AchatsFne;
+use Modules\Noyau\Imports\Services\LanceurDeReleveFne;
 
 use function Livewire\Volt\{computed, mount, protect, state, usesFileUploads};
 
@@ -28,6 +29,9 @@ usesFileUploads();
 */
 
 state(['exercice' => null, 'filtre' => 'tous', 'page' => 1, 'fichier' => null, 'bilan' => null]);
+
+// Le bouton « Actualiser » : l'instant du lancement (Unix) tant que le relevé est attendu, sinon null.
+state(['attenteDepuis' => null, 'messageActualisation' => null]);
 
 mount(function () {
     $this->exercice = (int) (FactureFne::query()->max('exercice') ?: now()->year);
@@ -105,6 +109,80 @@ $deposer = function () {
     unset($this->kpi, $this->lignes, $this->releves, $this->exercices);
 };
 
+/**
+ * « Actualiser » — relève le portail maintenant, sans attendre l'heure pleine.
+ *
+ * Le script part détaché (un relevé dure des dizaines de secondes) ; la page interroge ensuite
+ * toutes les cinq secondes (`verifier`) et range le fichier dès qu'il arrive. Le même verrou que le
+ * passage horaire : cliquer dix fois n'ouvre pas dix sessions sur le portail de l'État.
+ */
+$actualiser = function () {
+    if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
+        abort(403);
+    }
+
+    $this->messageActualisation = null;
+
+    if (! LanceurDeReleveFne::actif()) {
+        $this->messageActualisation = "Le relevé automatique n'est pas activé sur ce serveur (FNE_SCRAPER_ACTIF). Déposez le fichier du scraper à la main ci-dessous.";
+
+        return;
+    }
+
+    if (! LanceurDeReleveFne::verrouiller()) {
+        $this->messageActualisation = 'Un relevé est déjà en cours : le résultat apparaîtra ici dès son arrivée.';
+        $this->attenteDepuis ??= now()->timestamp;
+
+        return;
+    }
+
+    // Le premier relevé est complet (depuis 2023) ; les suivants ne reprennent que les derniers jours.
+    $complet = ! ReleveFne::query()->exists();
+    $ncc = trim((string) auth()->user()->entreprise?->ncc);
+
+    try {
+        LanceurDeReleveFne::detacher($complet, $ncc !== '' ? $ncc : null);
+    } catch (\RuntimeException $e) {
+        LanceurDeReleveFne::deverrouiller();
+        $this->messageActualisation = $e->getMessage();
+
+        return;
+    }
+
+    $this->attenteDepuis = now()->timestamp;
+};
+
+/** Appelée par `wire:poll` : le fichier est-il arrivé ? Le range, ou renonce passé le délai. */
+$verifier = function () {
+    if ($this->attenteDepuis === null) {
+        return;
+    }
+
+    $arrives = LanceurDeReleveFne::relevesArrivesDepuis((int) $this->attenteDepuis - 2);
+
+    if ($arrives !== []) {
+        $bilan = ['deja' => true, 'factures' => 0, 'nouvelles' => 0, 'avoirs' => 0, 'ignorees' => 0, 'rapprochees' => 0];
+
+        foreach ($arrives as $fichier) {
+            $lu = AchatsFne::importer((string) file_get_contents($fichier), basename($fichier), (int) auth()->user()->entreprise_id, auth()->id());
+            $bilan = $lu['deja'] ? $bilan : $lu;
+        }
+
+        $this->bilan = $bilan;
+        $this->attenteDepuis = null;
+        LanceurDeReleveFne::deverrouiller();
+        unset($this->kpi, $this->lignes, $this->releves, $this->exercices);
+
+        return;
+    }
+
+    if (now()->timestamp - (int) $this->attenteDepuis > (int) config('fne.delai_secondes')) {
+        $this->attenteDepuis = null;
+        LanceurDeReleveFne::deverrouiller();
+        $this->messageActualisation = "Le relevé n'est pas arrivé après ".((int) config('fne.delai_secondes') / 60).' minutes. La cause est dans storage/logs/fne-scraper.log (accès refusés, portail injoignable…).';
+    }
+};
+
 $rapprocher = function () {
     if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
         abort(403);
@@ -140,10 +218,26 @@ $porter = function (int $id) {
             <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Retour au suivi</a>
             <x-champ label="Exercice" model="exercice" type="select" :options="$this->exercices" :live="true" width="130" />
             @if ($this->peutEcrire)
+                {{-- Relève le portail FNE maintenant ; les relevés automatiques passent d'eux-mêmes
+                     toutes les heures aux heures ouvrées. --}}
+                <button type="button" wire:click="actualiser" class="bouton" @disabled($attenteDepuis !== null)>
+                    {{ $attenteDepuis !== null ? 'Relevé en cours…' : 'Actualiser depuis la FNE' }}
+                </button>
                 <button type="button" wire:click="rapprocher" class="bouton bouton-secondaire">Relancer le rapprochement</button>
             @endif
         </div>
     </x-titre-ecran>
+
+    @if ($attenteDepuis !== null)
+        <div wire:poll.5s="verifier" class="carte" style="margin-bottom:16px; border-left:3px solid #2563EB;">
+            <p style="margin:0; font-size:13px; color:#1E3A8A;">Relevé du portail FNE en cours — la page se met à jour toute seule dès que les factures sont arrivées (une à deux minutes).</p>
+        </div>
+    @endif
+    @if ($messageActualisation)
+        <div class="carte" style="margin-bottom:16px; border-left:3px solid #D97706;">
+            <p style="margin:0; font-size:13px; color:#92400E;">{{ $messageActualisation }}</p>
+        </div>
+    @endif
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Récupérées de la FNE" :value="number_format($this->kpi['n'], 0, ',', ' ')" :sub="ae($this->kpi['ttc']).' TTC'" />
@@ -179,6 +273,11 @@ $porter = function (int $id) {
                     @endif
                 </p>
             @endif
+            <p style="margin:10px 0 0; font-size:12px; color:#6B6E76;">
+                Relevé automatique : toutes les heures de {{ config('fne.heure_debut') }} à {{ config('fne.heure_fin') }}, du lundi au samedi,
+                et l'historique entier à {{ config('fne.heure_complet') }}.
+                {{ \Modules\Noyau\Imports\Services\LanceurDeReleveFne::actif() ? '' : 'Il n\'est pas encore activé sur ce serveur.' }}
+            </p>
             @if ($this->releves->isNotEmpty())
                 <p style="margin:10px 0 0; font-size:12px; color:#9A9DA5;">
                     Derniers relevés :

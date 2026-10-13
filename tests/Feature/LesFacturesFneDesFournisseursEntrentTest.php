@@ -210,6 +210,55 @@ class LesFacturesFneDesFournisseursEntrentTest extends TestCase
         @unlink($fichier);
     }
 
+    public function test_actualiser_dit_pourquoi_quand_le_releve_automatique_est_eteint(): void
+    {
+        config()->set('fne.actif', false);
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs-fne')
+            ->call('actualiser')
+            ->assertSet('attenteDepuis', null)
+            ->assertSee('pas activé');
+    }
+
+    public function test_actualiser_refuse_proprement_quand_node_est_introuvable(): void
+    {
+        config()->set('fne.actif', true);
+        config()->set('fne.node', '/chemin/inexistant/node');
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs-fne')
+            ->call('actualiser')
+            ->assertSet('attenteDepuis', null)
+            ->assertSee('Node est introuvable');
+
+        $this->assertTrue(\Modules\Noyau\Imports\Services\LanceurDeReleveFne::verrouiller(), 'Le verrou n\'est pas resté posé après l\'échec.');
+        \Modules\Noyau\Imports\Services\LanceurDeReleveFne::deverrouiller();
+    }
+
+    public function test_la_page_range_le_fichier_des_qu_il_arrive(): void
+    {
+        $dossier = \Modules\Noyau\Imports\Services\LanceurDeReleveFne::dossierDesReleves();
+        @mkdir($dossier, 0775, true);
+        $fichier = $dossier.'/9999999Z_test.json';
+        file_put_contents($fichier, $this->releve());
+
+        try {
+            Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs-fne')
+                ->set('attenteDepuis', time() - 30)
+                ->call('verifier')
+                ->assertSet('attenteDepuis', null)
+                ->assertSet('bilan.factures', 3);
+        } finally {
+            @unlink($fichier);
+        }
+    }
+
+    public function test_le_planificateur_ne_fait_rien_tant_que_le_scraper_n_est_pas_arme(): void
+    {
+        config()->set('fne.actif', false);
+
+        $this->artisan('fne:actualiser')->expectsOutputToContain('éteint')->assertSuccessful();
+    }
+
     // ------------------------------------------------------------------------------ outils
 
     private function releve(array $enveloppe = []): string
