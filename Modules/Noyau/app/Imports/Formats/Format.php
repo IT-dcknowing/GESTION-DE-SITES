@@ -182,6 +182,8 @@ abstract class Format
             );
 
             $resultat->desaccords = $this->rattachement->desaccords();
+            $this->villeDuDepotCourante = $villeDuDepot;
+            $this->apresRattachement($ou, $villeDuDepot, $resultat);
 
             $resultat->compter($ecrire ? $this->ecrire($ligne, $ou, $lotId) : 'ignore');
 
@@ -196,6 +198,17 @@ abstract class Format
 
         return $resultat;
     }
+
+    /** La ville déclarée au dépôt, pour la ligne en cours — les formats qui en ont besoin dans `ecrire()`. */
+    protected ?int $villeDuDepotCourante = null;
+
+    /**
+     * Un point d'accroche, appelé après chaque rattachement et avant l'écriture — même en
+     * simulation. Sans effet par défaut.
+     *
+     * @param  array{ville_id: int|null, site_id: int|null, code: string|null, source: string, presumee: bool}  $ou
+     */
+    protected function apresRattachement(array $ou, ?int $villeDuDepot, Resultat $resultat): void {}
 
     /**
      * Pourquoi refuser cette ligne, ou null pour l'accepter.

@@ -545,7 +545,7 @@ $colonnesFiltrables = computed(fn () => [
 ]);
 
 $detail = computed(fn () => (clone $this->requete)
-    ->with('ville')
+    ->with(['ville', 'recuePar'])
     // La plus vieille dette en tête : faute d'échéance dans le fichier, c'est
     // l'ancienneté de la facture qui dit ce qui presse.
     ->orderBy('date_facture')
@@ -892,7 +892,13 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                             );
                         @endphp
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                            <td>{{ $ligne->fournisseur ?: '—' }}</td>
+                            <td>
+                                {{ $ligne->fournisseur ?: '—' }}
+                                @if ($ligne->recuePar)
+                                    {{-- La ville a commandé, une autre a reçu la facture (13/10). --}}
+                                    <div style="font-size:11px; color:#9A9DA5;">Reçue par {{ $ligne->recuePar->nom }}</div>
+                                @endif
+                            </td>
                             <td style="color:#6B6E76;">
                                 {{ $ligne->numero_piece ?: '—' }}
                                 @if ($ligne->lot_import_id === null)

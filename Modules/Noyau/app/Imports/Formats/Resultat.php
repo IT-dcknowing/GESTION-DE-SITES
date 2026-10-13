@@ -42,6 +42,12 @@ class Resultat
     public int $desaccords = 0;
 
     /**
+     * Factures fournisseurs d'une autre ville que celle du dépôt — 13/10. Ce n'est pas une
+     * erreur : la ville a commandé, une autre a reçu la facture. Dit à part, jamais en alerte.
+     */
+    public int $pourUneAutreVille = 0;
+
+    /**
      * Fiches posées par une feuille annexe, hors des cinq compteurs.
      *
      * Le classeur du suivi fournisseurs porte une seconde feuille qui ne décrit pas des
@@ -102,7 +108,7 @@ class Resultat
         }
 
         return $this->lues.' ligne'.($this->lues > 1 ? 's' : '').' lue'.($this->lues > 1 ? 's' : '')
-            .' : '.implode(', ', $morceaux).'.'.$this->fichesPosees().$this->avertissementDAtelier();
+            .' : '.implode(', ', $morceaux).'.'.$this->fichesPosees().$this->factureRecuePourUneAutreVille().$this->avertissementDAtelier();
     }
 
     /**
@@ -120,6 +126,17 @@ class Resultat
 
         return ' '.$this->fiches.' fiche'.($this->fiches > 1 ? 's' : '')
             .' fournisseur'.($this->fiches > 1 ? 's' : '').' à jour (délai de règlement, TVA).';
+    }
+
+    private function factureRecuePourUneAutreVille(): string
+    {
+        if ($this->pourUneAutreVille === 0) {
+            return '';
+        }
+
+        return ' '.$this->pourUneAutreVille.' facture'.($this->pourUneAutreVille > 1 ? 's' : '')
+            .' reçue'.($this->pourUneAutreVille > 1 ? 's' : '').' pour le compte d\'une autre ville : '
+            .($this->pourUneAutreVille > 1 ? 'rangées' : 'rangée').' à la ville qui a commandé, avec la mention « reçue par ».';
     }
 
     /**

@@ -164,6 +164,11 @@ class FormatDesFournisseurs extends Format
     ): Resultat {
         $resultat = parent::parcourir($lecteur, $villeDuDepot, $lotId, $ecrire, $surAvancee, $siteDuDepot);
 
+        // Une ligne d'une autre ville dans le fichier d'une ville est NORMALE ici (13/10) : la ville
+        // qui a commandé n'est pas celle qui a reçu la facture. Ce n'est donc pas l'alerte « fichier
+        // non filtré » des autres formats — elle est dite à part, par `pourUneAutreVille`.
+        $resultat->desaccords = 0;
+
         $this->lireLesFiches($lecteur, $lotId, $ecrire, $resultat);
 
         return $resultat;
@@ -326,6 +331,32 @@ class FormatDesFournisseurs extends Format
         };
     }
 
+    /**
+     * La ville qui a REÇU la facture, quand ce n'est pas celle qui a commandé — 13/10.
+     *
+     * « Si tu vois une ligne de Bouaké dans le fichier d'Abidjan, enregistre-la à Bouaké, et marque
+     * qu'elle vient d'Abidjan. » La ville de la ligne est déjà celle de sa colonne SITE (la cascade
+     * du rattachement la lit avant la ville du dépôt) ; il reste à garder la ville du dépôt comme
+     * celle qui l'a reçue. Une ligne dont la ville est seulement présumée ne dit rien d'elle.
+     *
+     * @param  array{ville_id: int|null, presumee: bool}  $ou
+     */
+    private function recuePar(array $ou, ?int $villeDuDepot): ?int
+    {
+        if ($villeDuDepot === null || $ou['ville_id'] === null || $ou['presumee']) {
+            return null;
+        }
+
+        return (int) $ou['ville_id'] !== $villeDuDepot ? $villeDuDepot : null;
+    }
+
+    protected function apresRattachement(array $ou, ?int $villeDuDepot, Resultat $resultat): void
+    {
+        if ($this->recuePar($ou, $villeDuDepot) !== null) {
+            $resultat->pourUneAutreVille++;
+        }
+    }
+
     protected function colonneSite(array $ligne): ?string
     {
         return self::texte($ligne['site'] ?? null, 60);
@@ -414,6 +445,7 @@ class FormatDesFournisseurs extends Format
             'entreprise_id' => $this->entrepriseId,
             'ville_id' => $rattachement['ville_id'],
             'site_id' => $rattachement['site_id'],
+            'recue_par_ville_id' => $this->recuePar($rattachement, $this->villeDuDepotCourante),
             'lot_import_id' => $lotId,
 
             'mois' => $this->mois($ligne['mois'] ?? null),
@@ -486,6 +518,12 @@ class FormatDesFournisseurs extends Format
 
         if ($rattachement['presumee'] && $existante->site_id !== null) {
             unset($valeurs['site_id']);
+        }
+
+        // La mention « reçue par » n'est jamais effacée : la même facture peut figurer dans le fichier
+        // de la ville qui a commandé (rien à mentionner) et dans celui de la ville qui l'a reçue.
+        if ($valeurs['recue_par_ville_id'] === null) {
+            unset($valeurs['recue_par_ville_id']);
         }
 
         $existante->fill($valeurs);

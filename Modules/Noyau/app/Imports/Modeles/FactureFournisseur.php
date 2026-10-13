@@ -22,6 +22,8 @@ use Modules\Noyau\Imports\Formats\FormatDesFournisseurs;
  */
 #[Fillable([
     'entreprise_id', 'ville_id', 'site_id', 'lot_import_id', 'user_id',
+    // La ville qui a REÇU la facture quand elle n'est pas celle qui a commandé (13/10).
+    'recue_par_ville_id',
     'numero_piece', 'nature_piece', 'numero_bc', 'fournisseur',
     'date_facture', 'date_reception', 'date_echeance', 'date_reglement',
     'montant', 'montant_regle', 'reste_a_payer', 'montant_refacture', 'marge',
@@ -112,6 +114,12 @@ class FactureFournisseur extends Model
     public function ville(): BelongsTo
     {
         return $this->belongsTo(Ville::class);
+    }
+
+    /** La ville qui a reçu la facture, quand ce n'est pas celle qui a commandé. */
+    public function recuePar(): BelongsTo
+    {
+        return $this->belongsTo(Ville::class, 'recue_par_ville_id');
     }
 
     public function site(): BelongsTo

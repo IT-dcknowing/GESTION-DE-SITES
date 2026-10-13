@@ -54,7 +54,7 @@ $piece = computed(function () {
     return EtatDesFournisseurs::dansLePerimetre(
         FactureFournisseur::query(),
         PerimetreSites::idsVillesRetenus(auth()->user(), ''),
-    )->with(['ville', 'site', 'lot', 'auteur'])->find((int) $this->id);
+    )->with(['ville', 'site', 'lot', 'auteur', 'recuePar'])->find((int) $this->id);
 });
 
 $peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()));
@@ -519,6 +519,8 @@ $enregistrer = function () {
                 $poses = array_filter([
                     'Ville' => $p->ville?->nom,
                     'Atelier' => $p->site?->nom,
+                    // La ville a commandé, une autre a reçu la facture (13/10).
+                    'Reçue par' => $p->recuePar?->nom,
                     'N° de fiche' => $p->numero_fiche,
                 ]);
             @endphp
