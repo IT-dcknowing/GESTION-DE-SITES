@@ -74,7 +74,7 @@ $encaisser = function () {
         'motif' => ['required', 'string', 'max:190'],
     ], [], ['montant' => 'montant', 'moyen' => 'moyen de paiement', 'motif' => 'motif']);
 
-    $montant = (int) $donnees['montant'];
+    $montant = montant_de($donnees['montant']);
     $encaissement = null;
 
     // Verrou en base : deux saisies simultanées (responsable + caissier, ou deux

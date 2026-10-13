@@ -127,7 +127,7 @@ class Exportateur
 
         $enClair = fn (array $ligne) => array_map(
             fn ($valeur) => is_int($valeur) || is_float($valeur)
-                ? number_format((float) $valeur, 0, ',', ' ')
+                ? montant_nombre((float) $valeur)
                 : (string) ($valeur ?? ''),
             array_values($ligne),
         );
@@ -570,7 +570,7 @@ class Exportateur
                 $valeur = array_values($ligne)[$rang] ?? '';
                 $maximum = max($maximum, mb_strlen(
                     is_int($valeur) || is_float($valeur)
-                        ? number_format((float) $valeur, 0, ',', ' ')
+                        ? montant_nombre((float) $valeur)
                         : (string) $valeur
                 ));
             }
@@ -579,7 +579,7 @@ class Exportateur
                 $valeur = array_values($total)[$rang] ?? '';
                 $maximum = max($maximum, mb_strlen(
                     is_int($valeur) || is_float($valeur)
-                        ? number_format((float) $valeur, 0, ',', ' ')
+                        ? montant_nombre((float) $valeur)
                         : (string) $valeur
                 ));
             }
@@ -755,7 +755,7 @@ class Exportateur
 
         foreach ($cellules as $rang => $valeur) {
             $nombre = is_int($valeur) || is_float($valeur);
-            $affiche = $nombre ? number_format((float) $valeur, 0, ',', ' ') : (string) $valeur;
+            $affiche = $nombre ? montant_nombre((float) $valeur) : (string) $valeur;
             $teinte = $etiquettes[$rang][$affiche] ?? null;
 
             $contenu = $teinte === null

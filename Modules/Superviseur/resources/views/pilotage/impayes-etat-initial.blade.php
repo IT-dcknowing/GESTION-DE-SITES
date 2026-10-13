@@ -103,8 +103,8 @@ $totaux = computed(function () {
 
     foreach ($this->lignes as $ligne) {
         $duReste = Recouvrement::reste($ligne);
-        $facture += (int) $ligne->montant;
-        $encaisse += (int) ($ligne->encaissements_sum_montant ?? 0);
+        $facture += montant_de($ligne->montant);
+        $encaisse += montant_de($ligne->encaissements_sum_montant ?? 0);
         $reste += $duReste;
 
         if ($duReste >= Recouvrement::SEUIL_SOLDE) {
@@ -219,7 +219,7 @@ $totaux = computed(function () {
                             <td>{{ $ligne->immatriculation ?? '—' }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae($ligne->montant) }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
-                                {{ ae((int) ($ligne->encaissements_sum_montant ?? 0)) }}
+                                {{ ae(montant_de($ligne->encaissements_sum_montant ?? 0)) }}
                             </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $reste >= Recouvrement::SEUIL_SOLDE ? '#C8102E' : '#6B6E76' }};">

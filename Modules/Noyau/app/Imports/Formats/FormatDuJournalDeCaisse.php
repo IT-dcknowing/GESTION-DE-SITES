@@ -318,7 +318,7 @@ class FormatDuJournalDeCaisse extends Format
         int $page,
     ): array {
         $sens = $entree !== null ? MouvementCaisse::ENTREE : MouvementCaisse::SORTIE;
-        $montant = (int) round($entree ?? $sortie ?? 0);
+        $montant = montant_de($entree ?? $sortie ?? 0);
         $motif = $description === null ? null : trim($description[5]);
 
         /*
@@ -349,7 +349,7 @@ class FormatDuJournalDeCaisse extends Format
             'date' => $date,
             'sens' => $sens,
             'montant' => abs($montant),
-            'solde_annonce' => ($solde = self::montant($ligne['solde'] ?? null)) === null ? null : (int) round($solde),
+            'solde_annonce' => ($solde = self::montant($ligne['solde'] ?? null)) === null ? null : montant_de($solde),
             'numero_piece' => $description === null ? null : self::texte($description[4], 40),
             'type_piece' => $description === null ? null : self::texte($description[3], 20),
             'motif' => self::texte($motif, 190),
@@ -424,7 +424,7 @@ class FormatDuJournalDeCaisse extends Format
             ->where('caisse', $mouvement['caisse'])
             ->where('date', $mouvement['date'])
             ->where('sens', $mouvement['sens'])
-            ->where('montant', $mouvement['montant'])
+            ->where(fn ($q) => self::aPeuPres($q, 'montant', $mouvement['montant']))
             ->where('libelle', $valeurs['libelle'])
             ->where(fn ($q) => $this->memeValeur($q, 'numero_piece', $mouvement['numero_piece']))
             ->where(fn ($q) => $this->memeValeur($q, 'motif', $mouvement['motif']))
@@ -474,7 +474,7 @@ class FormatDuJournalDeCaisse extends Format
                 $montant = self::montant($valeur);
 
                 if ($montant !== null && preg_match('/\d/', (string) $valeur) === 1) {
-                    $this->soldeAvant = (int) round($montant);
+                    $this->soldeAvant = montant_de($montant);
 
                     break;
                 }

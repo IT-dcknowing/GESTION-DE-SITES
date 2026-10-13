@@ -160,9 +160,9 @@ $nombre = computed(fn () => (clone $this->requete)->count());
  * une dette inférieure à la somme des pièces réellement ouvertes.
  */
 $totaux = computed(fn () => [
-    'facture' => (int) (clone $this->requete)->sum('montant'),
-    'regle' => (int) (clone $this->requete)->sum('montant_regle'),
-    'reste' => (int) (clone $this->requete)->where('reste_a_payer', '>', 0)->sum('reste_a_payer'),
+    'facture' => montant_de((clone $this->requete)->sum('montant')),
+    'regle' => montant_de((clone $this->requete)->sum('montant_regle')),
+    'reste' => montant_de((clone $this->requete)->where('reste_a_payer', '>', 0)->sum('reste_a_payer')),
     'ouvertes' => (clone $this->requete)->where('reste_a_payer', '>', 0)->count(),
     'saisies' => (clone $this->requete)->whereNull('lot_import_id')->count(),
 ]);
@@ -314,22 +314,22 @@ $lignes = computed(fn () => (clone $this->requete)->forPage($this->page, 20)->ge
                             <td style="white-space:nowrap; color:#6B6E76;">{{ $ligne->date_reglement?->format('d/m/Y') ?? '—' }}</td>
                             <td style="white-space:nowrap; color:#6B6E76;">{{ $ligne->date_echeance?->format('d/m/Y') ?? '—' }}</td>
                             <td style="color:#6B6E76;">{{ $ligne->delai_reglement ?: '—' }}</td>
-                            <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $ligne->montant) }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae(montant_de($ligne->montant)) }}</td>
                             {{-- Vide veut dire « la colonne n'existe pas dans ce classeur-là », et
                                  non « zéro » : San-Pédro porte le HT, Abidjan ne le porte pas. --}}
                             <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
-                                {{ $ligne->montant_ht === null ? '—' : ae((int) $ligne->montant_ht) }}
+                                {{ $ligne->montant_ht === null ? '—' : ae(montant_de($ligne->montant_ht)) }}
                             </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
-                                {{ $ligne->tva === null ? '—' : ae((int) $ligne->tva) }}
+                                {{ $ligne->tva === null ? '—' : ae(montant_de($ligne->tva)) }}
                             </td>
-                            <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae((int) $ligne->montant_regle) }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae(montant_de($ligne->montant_regle)) }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $ligne->reste_a_payer > 0 ? '#C8102E' : '#6B6E76' }};">
-                                {{ ae((int) $ligne->reste_a_payer) }}
+                                {{ ae(montant_de($ligne->reste_a_payer)) }}
                             </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
-                                {{ $ligne->montant_refacture === null ? '—' : ae((int) $ligne->montant_refacture) }}
+                                {{ $ligne->montant_refacture === null ? '—' : ae(montant_de($ligne->montant_refacture)) }}
                             </td>
                             <td style="color:#6B6E76;">{{ $ligne->mode_reglement ?: '—' }}</td>
                             <td style="color:#6B6E76;">{{ $ligne->numero_cheque ?: '—' }}</td>

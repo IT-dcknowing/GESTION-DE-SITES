@@ -143,7 +143,7 @@ class SituerLesFactures extends Command
             ["… situées{$verbe} par leur fiche du parc", number_format($compte['fiche'], 0, ',', ' ')],
             ["… situées{$verbe} par leur devis", number_format($compte['devis'], 0, ',', ' ')],
             ["… situées{$verbe} par le code de leur fiche", number_format($compte['code'], 0, ',', ' ')],
-            ['… restant sans lieu', number_format($compte['restent'], 0, ',', ' ')],
+            ['… restant sans lieu', montant_nombre($compte['restent'])],
             ['    dont sans n° de fiche (état des impayés)', number_format($compte['sans_fiche'], 0, ',', ' ')],
             ['Factures avec ville mais sans atelier, et une fiche', number_format($compte['ville_seule'], 0, ',', ' ')],
             ["… atelier trouvé{$verbe} dans la même ville", number_format($compte['atelier_trouve'], 0, ',', ' ')],

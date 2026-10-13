@@ -162,6 +162,9 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 36 | Synthèse par site en deux sections (CA / impayés) | ✅ 12/10 |
 | 37 | `factures:situer --appliquer` en ligne | ✅ **appliqué par le propriétaire** — ne plus le demander |
 | 38 | Synthèse : lieu relu par le code de la fiche (écran des codes, sinon ce que disent les autres lignes), ligne **Total** aux deux tableaux, total = CA de l'entreprise (ligne « Autres lignes du CA » si un lieu manque), lignes **refusées** à l'import dites avec leur montant | ✅ 12/10 — `LieuDesFiches` |
+| 39 | Relevé FNE automatique (horaire 7 h–19 h, complet 2 h 30) + bouton Actualiser ; scraper à compte unique | ✅ 13/10 — **à armer sur le serveur** (§ 4, point 15) ; accès `2197588Q` reçus, adresse de production du portail à fournir |
+| 40 | Fournisseurs : facture d'une autre ville → rangée à la ville qui a commandé, mention « reçue par » | ✅ 13/10 |
+| 41 | **Aucun arrondi de montant** : colonnes décimales, centimes gardés de l'import à l'écran | ✅ 13/10 — **migration à passer, puis redéposer les fichiers** (§ 4, point 16) |
 
 ### Au propriétaire, et qui bloque la suite
 
@@ -236,6 +239,22 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     Quand les accès FNE arrivent : sur un poste avec Node, suivre `SCRAPER-PORTAIL-FNE/CONSIGNES.md`
     (`npm install`, `.env` avec `FNE_URL`, `node achats.js <NCC> <mdp>`), puis déposer le JSON à
     **Fournisseurs › Factures FNE** — ou `php artisan fne:releve-achats` sur le serveur.
+
+15. **Le 13/10 — le relevé FNE tourne seul** : lire `SCRAPER-PORTAIL-FNE/CONSIGNES.md` (six étapes concrètes).
+    En bref : `node -v` sur le serveur ; `npm install` dans le dossier ; `.env` du scraper avec **`FNE_URL`**
+    (l'adresse de connexion du portail **de production** — PAS `54.247.95.108`, qui est l'essai), `LOGIN` (NCC
+    `2197588Q`) et `PASSWORD` ; `node achats.js` à la main ; puis `FNE_SCRAPER_ACTIF=true` dans le `.env` de
+    l'application. Le cron `schedule:run` lance ensuite `fne:actualiser` **toutes les heures de 7 h à 19 h, lundi→samedi**
+    (35 derniers jours) et **tout l'historique à 2 h 30** ; le bouton **Actualiser depuis la FNE** le fait tout de suite.
+    **Le mot de passe du portail a été écrit dans la conversation : ne jamais le committer, le changer si doute.**
+
+16. **Le 13/10 — migrations** (`app:deployer`) : `2026_10_13_000001` (colonne `recue_par_ville_id`, nullable) et
+    **`2026_10_13_000002_les_montants_gardent_leurs_centimes`** : 31 colonnes d'argent passent de `bigint` à
+    `decimal(18,4)` — valeurs reprises à l'identique, aucune réécrite. **Les lignes déjà importées restent arrondies
+    au franc** (l'ancien import l'avait fait) : pour qu'elles retrouvent leurs centimes, **redéposer les fichiers
+    d'origine** (CA, impayés, fournisseurs, caisse, relevés). Un redépôt retrouve les lignes d'avant — par leur numéro, ou
+    à ±0,5 F près pour celles qui n'ont pas de numéro — et met leurs montants à jour : rien ne se double. Après le
+    redépôt du CA, le total de l'écran doit être celui du classeur (1 867 767 452,25 sur le fichier du 12/10).
 
 ### En attente d'un accord, pas d'un travail
 
@@ -370,6 +389,7 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | **Deux suites de tests lancées en même temps** | Elles se marchent dessus sur les fichiers temporaires et donnent de faux échecs |
 | **SQLite (tests) accepte ce que MySQL (serveur) refuse** : une sous-requête corrélée dans un `sum()` groupé (ERR-XEYTWV) ; une chaîne plus longue que sa colonne `varchar` | Calculer ligne à ligne dans une sous-requête, regrouper par-dessus (`fromSub`) ; borner la longueur dans le code et la tester explicitement |
 | **Le code d'un écran lit une table neuve avant que le serveur ne l'ait** (ERR-XEYTWV, 09/10) | Une nouveauté qui dépend d'une migration récente passe par `App\Support\SchemaDisponible` ; et `app:deployer` après chaque `git pull` |
+| **Ne jamais arrondir un montant** (13/10, règle du propriétaire : « tel que donné ») | Les colonnes d'argent sont des `decimal(18,4)`. **Jamais `(int)`, `round()`, `number_format(…, 0)` ni `intdiv` sur un montant ou un total** : `montant_de()` pour lire (entier si entier, flottant sinon — MySQL rend les décimaux et leurs `sum()` **en chaînes**), `ae()` / `montant_nombre()` pour écrire, la cast `App\Casts\Montant` + le trait `CompareLesMontants` sur les modèles. Un type `int` sur un paramètre d'argent est un arrondi caché. Seules exceptions voulues : les **clés de rapprochement** (`PontDesFactures`, banque ↔ règlement, clé du relevé bancaire, clé synthétique des impayés) qui restent calculées au franc pour retrouver les lignes d'avant ; les commissions et objectifs (calculés, jamais importés) ; les pourcentages |
 | **La table `factures` mêle les ventes et les créances** (12/10) | Tout KPI de chiffre d'affaires passe par `Facture::scopeDuChiffreDAffaires()` ; une créance de l'état non retrouvée au CATTC n'est pas une vente |
 | **Une méthode d'import peut exister sans être appelée** (`siteConnuDe`, 12/10) | Vérifier que la cascade de rattachement la lit (`dossierExistant()`) — un test qui appelle la méthode seule ne le prouve pas |
 | **Un devis importé est toujours « En attente »**, un règlement importé n'a pas d'activité | Ne jamais compter « Validé » seul : passer par `TransformationDesDevis` ; ventiler un règlement par `Encaissement::ACTIVITE_SQL` (celle de sa facture) |

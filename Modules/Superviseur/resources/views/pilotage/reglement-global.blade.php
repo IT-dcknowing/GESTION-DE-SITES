@@ -52,7 +52,7 @@ $ecritures = computed(function () {
         ->values();
 });
 
-$total = computed(fn () => (int) $this->ecritures->sum('montant'));
+$total = computed(fn () => montant_de($this->ecritures->sum('montant')));
 
 /** Le geste qui a produit ce versement : une seule date, un seul mode, un seul auteur. */
 $entete = computed(function () {
@@ -152,10 +152,10 @@ $traitants = computed(fn () => $this->ecritures->isEmpty()
                                 <td style="white-space:nowrap;">{{ $facture?->date?->format('d/m/Y') ?? '—' }}</td>
                                 <td style="color:#6B6E76;">{{ $facture?->site?->nom ?? '—' }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums;">
-                                    {{ ae((int) ($facture->montant ?? 0)) }}
+                                    {{ ae(montant_de($facture->montant ?? 0)) }}
                                 </td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; color:#2563EB;">
-                                    {{ ae((int) $ecriture->montant) }}
+                                    {{ ae(montant_de($ecriture->montant)) }}
                                 </td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                            color:{{ $reste >= Recouvrement::SEUIL_SOLDE ? '#C8102E' : '#6B6E76' }};">

@@ -593,7 +593,7 @@ $declarerRegle = function (string $reference) {
 
             @if ($recap['lignes'] !== [])
                 <div class="encart encart-alerte" style="margin-top:18px;">
-                    <b>{{ number_format($recap['total'], 0, ',', ' ') }} ligne(s)</b> seront supprimées pour
+                    <b>{{ montant_nombre($recap['total']) }} ligne(s)</b> seront supprimées pour
                     <b>{{ $this->cibleChoix->nom }}</b> :
                     <ul style="margin:8px 0 0; padding-left:18px; font-size:13px;">
                         @foreach ($recap['lignes'] as $ligne)
@@ -613,7 +613,7 @@ $declarerRegle = function (string $reference) {
                      part directement : c'est une dégradation assumée, et le champ de
                      confirmation au-dessus, lui, ne dépend d'aucun script. --}}
                 <button type="button" wire:click="viderLesChoisis" class="bouton bouton-sombre"
-                    data-confirmer="Supprimer définitivement {{ number_format($recap['total'], 0, ',', ' ') }} ligne(s) de « {{ $this->cibleChoix->nom }} » ?"
+                    data-confirmer="Supprimer définitivement {{ montant_nombre($recap['total']) }} ligne(s) de « {{ $this->cibleChoix->nom }} » ?"
                     data-confirmer-titre="Vider les données cochées"
                     data-confirmer-ton="alerte"
                     data-confirmer-detail="{{ implode(' · ', $recap['lignes']) }}{{ $recap['entraines'] !== [] ? ' — '.implode(' ', $recap['entraines']) : '' }}">

@@ -199,6 +199,18 @@ abstract class Format
         return $resultat;
     }
 
+    /**
+     * `colonne` égale à `$montant` à un demi-franc près.
+     *
+     * Les lignes écrites avant le 13/10 ont leur montant arrondi au franc ; celles d'après le gardent
+     * tel que donné. Pour retrouver la même ligne dans les deux cas, on compare à ±0,5 F — jamais deux
+     * montants distincts d'une même pièce ne sont si proches.
+     */
+    protected static function aPeuPres($requete, string $colonne, int|float $montant): void
+    {
+        $requete->whereBetween($colonne, [$montant - 0.5001, $montant + 0.5001]);
+    }
+
     /** La ville déclarée au dépôt, pour la ligne en cours — les formats qui en ont besoin dans `ecrire()`. */
     protected ?int $villeDuDepotCourante = null;
 

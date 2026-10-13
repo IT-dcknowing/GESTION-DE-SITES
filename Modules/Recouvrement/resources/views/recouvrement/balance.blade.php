@@ -102,9 +102,9 @@ $totaux = computed(function () {
                                 {{-- Un point plutôt qu'un zéro : dans une grille de cinq colonnes,
                                      les zéros font du bruit et cachent les cases qui portent
                                      réellement quelque chose. --}}
-                                <td class="num">{{ $montant ? number_format($montant, 0, ',', ' ') : '·' }}</td>
+                                <td class="num">{{ $montant ? montant_nombre($montant) : '·' }}</td>
                             @endforeach
-                            <td class="num"><b>{{ number_format($ligne['reste'], 0, ',', ' ') }}</b></td>
+                            <td class="num"><b>{{ montant_nombre($ligne['reste']) }}</b></td>
                             <td><span class="pill {{ $ligne['niveau']['classe'] }}">{{ $ligne['niveau']['libelle'] }}</span></td>
                             <td class="no-print">
                                 <a href="{{ route('recouvrement.extrait', ['tiers' => $ligne['tiers']]) }}" wire:navigate
@@ -126,7 +126,7 @@ $totaux = computed(function () {
                         <tr class="tot">
                             <td>TOTAL</td>
                             @foreach ($this->totaux as $montant)
-                                <td class="num">{{ number_format($montant, 0, ',', ' ') }}</td>
+                                <td class="num">{{ montant_nombre($montant) }}</td>
                             @endforeach
                             <td class="num">{{ number_format(array_sum($this->totaux), 0, ',', ' ') }}</td>
                             <td></td>

@@ -91,7 +91,7 @@ $traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::de
     @else
         @php
             $f = $this->creance;
-            $encaisse = (int) ($f->encaissements_sum_montant ?? 0);
+            $encaisse = montant_de($f->encaissements_sum_montant ?? 0);
             $reste = Recouvrement::reste($f);
             $age = Recouvrement::anciennete($f, now());
             $niveau = Recouvrement::niveau($f, now());

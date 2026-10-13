@@ -133,7 +133,7 @@ class FormatDesDevis extends Format
             true,
         );
 
-        $montant = (int) round((float) self::montant($ligne['montant'] ?? null));
+        $montant = montant_de(self::montant($ligne['montant'] ?? null));
 
         /*
          * **Le code de celui qui a rédigé la proforma, écrit sur la ligne.**

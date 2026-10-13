@@ -105,7 +105,7 @@ $encours = computed(function () {
         ->selectRaw('count(*) as nombre, coalesce(sum(l.reste), 0) as reste')
         ->first();
 
-    return ['nombre' => (int) ($ligne->nombre ?? 0), 'reste' => (int) ($ligne->reste ?? 0)];
+    return ['nombre' => (int) ($ligne->nombre ?? 0), 'reste' => montant_de($ligne->reste ?? 0)];
 });
 
 $kpis = computed(function () {
@@ -116,10 +116,10 @@ $kpis = computed(function () {
     // `charges.site_id` est NOT NULL : le périmètre par atelier suffit, et c'est celui de la trésorerie.
     $charges = fn () => PerimetreDeTresorerie::charges(Charge::query(), $this->idsSites);
 
-    $encaisseJour = (int) $encaissements()->whereDate('encaissements.date', $jour)->sum('encaissements.montant');
-    $encaissePeriode = (int) $encaissements()->whereBetween('encaissements.date', [$debut, $fin])->sum('encaissements.montant');
-    $decaisseJour = (int) $charges()->whereDate('charges.date', $jour)->sum('charges.montant');
-    $decaissePeriode = (int) $charges()->whereBetween('charges.date', [$debut, $fin])->sum('charges.montant');
+    $encaisseJour = montant_de($encaissements()->whereDate('encaissements.date', $jour)->sum('encaissements.montant'));
+    $encaissePeriode = montant_de($encaissements()->whereBetween('encaissements.date', [$debut, $fin])->sum('encaissements.montant'));
+    $decaisseJour = montant_de($charges()->whereDate('charges.date', $jour)->sum('charges.montant'));
+    $decaissePeriode = montant_de($charges()->whereBetween('charges.date', [$debut, $fin])->sum('charges.montant'));
 
     $journal = PerimetreDeTresorerie::mouvementsDeCaisse(MouvementCaisse::query(), $this->idsSites, $this->idsVilles)
         ->whereBetween('mouvements_caisse.date', [$debut, $fin])
@@ -138,8 +138,8 @@ $kpis = computed(function () {
         'soldePeriode' => $encaissePeriode - $decaissePeriode,
         'resteAEncaisser' => $this->encours['reste'],
         'facturesEnAttente' => $this->encours['nombre'],
-        'journalEntrees' => (int) ($journal->entrees ?? 0),
-        'journalSorties' => (int) ($journal->sorties ?? 0),
+        'journalEntrees' => montant_de($journal->entrees ?? 0),
+        'journalSorties' => montant_de($journal->sorties ?? 0),
         'journalNombre' => (int) ($journal->nombre ?? 0),
     ];
 });
@@ -204,7 +204,7 @@ $dernieresOperations = computed(function () {
                                 <td style="font-weight:700;">{{ $f->n_facture }}</td>
                                 <td>{{ $f->client }}</td>
                                 <td style="font-variant-numeric:tabular-nums;">{{ ae($f->montant) }}</td>
-                                <td style="font-weight:700; color:#D97706; font-variant-numeric:tabular-nums;">{{ ae((int) $f->reste_calcule) }}</td>
+                                <td style="font-weight:700; color:#D97706; font-variant-numeric:tabular-nums;">{{ ae(montant_de($f->reste_calcule)) }}</td>
                             </tr>
                         @empty
                             <x-table-vide :colspan="4" texte="Aucune facture en attente d'encaissement." />

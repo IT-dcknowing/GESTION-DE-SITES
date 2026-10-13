@@ -194,7 +194,7 @@ $annuler = function (int $correspondance) {
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:18px;">
         <x-kpi-card label="Factures affectées" :value="number_format((int) $this->parCommercial->sum('nombre'), 0, ',', ' ')" />
-        <x-kpi-card label="Montant affecté" :value="ae((int) $this->parCommercial->sum('montant'))" />
+        <x-kpi-card label="Montant affecté" :value="ae(montant_de($this->parCommercial->sum('montant')))" />
         <x-kpi-card label="Commerciaux concernés" :value="$this->parCommercial->count()" />
     </div>
 
@@ -211,7 +211,7 @@ $annuler = function (int $correspondance) {
                             <tr wire:key="par-commercial-{{ $ligne->commercial_id }}">
                                 <td style="font-weight:600;">{{ $ligne->nom }}</td>
                                 <td style="font-variant-numeric:tabular-nums;">{{ (int) $ligne->nombre }}</td>
-                                <td style="font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $ligne->montant) }}</td>
+                                <td style="font-variant-numeric:tabular-nums; font-weight:700;">{{ ae(montant_de($ligne->montant)) }}</td>
                             </tr>
                         @endforeach
                     </tbody>

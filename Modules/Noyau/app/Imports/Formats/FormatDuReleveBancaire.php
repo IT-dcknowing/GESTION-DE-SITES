@@ -197,13 +197,16 @@ class FormatDuReleveBancaire extends Format
         }
 
         $this->derniereDate = $date;
-        $debit = (int) round(abs((float) $debit));
-        $credit = (int) round(abs((float) $credit));
+        // Les montants sont gardés tels que donnés ; la CLÉ de l'opération, elle, reste celle d'avant le
+        // 13/10 (montants arrondis), pour qu'un redépôt retrouve les lignes déjà en base et mette à jour
+        // leurs centimes au lieu de les doubler.
+        $debit = montant_de(abs((float) $debit));
+        $credit = montant_de(abs((float) $credit));
         $solde = self::montant($ligne['solde'] ?? null);
-        $solde = $solde === null ? null : (int) round($solde);
+        $solde = $solde === null ? null : montant_de($solde);
         $libelle ??= 'Opération sans libellé';
 
-        $cle = substr(hash('sha256', implode('|', [$banqueId, $date, $libelle, $debit, $credit, $solde ?? ''])), 0, 40);
+        $cle = substr(hash('sha256', implode('|', [$banqueId, $date, $libelle, (int) round($debit), (int) round($credit), $solde === null ? '' : (int) round($solde)])), 0, 40);
 
         $valeurs = [
             'lot_import_id' => $lotId,

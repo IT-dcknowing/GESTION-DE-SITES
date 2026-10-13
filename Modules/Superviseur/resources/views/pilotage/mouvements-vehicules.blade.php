@@ -215,11 +215,11 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
     {{-- L'écart est le chiffre qui compte : entrées moins sorties, c'est ce qui est encore
          immobilisé. Le laisser calculer de tête, c'est le laisser non calculé. --}}
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:16px;">
-        <x-kpi-card label="Entrées" :value="number_format($this->entrees, 0, ',', ' ')"
+        <x-kpi-card label="Entrées" :value="montant_nombre($this->entrees)"
             sub="véhicules reçus sur la période" />
-        <x-kpi-card label="Sorties" :value="number_format($this->sorties, 0, ',', ' ')"
+        <x-kpi-card label="Sorties" :value="montant_nombre($this->sorties)"
             sub="véhicules livrés sur la période" bon />
-        <x-kpi-card label="Écart" :value="number_format($this->entrees - $this->sorties, 0, ',', ' ')"
+        <x-kpi-card label="Écart" :value="montant_nombre($this->entrees - $this->sorties)"
             sub="entrés et non ressortis" :accent="$this->entrees - $this->sorties > 0" />
         <x-kpi-card label="Sans atelier affecté" :value="number_format($this->sansAtelier, 0, ',', ' ')"
             :sub="$this->sansAtelier > 0 ? 'à rattacher — voir « À traiter »' : 'tout est rattaché'"
@@ -390,7 +390,7 @@ $lignes = computed(fn () => $this->requete()->with(['site', 'ville'])->forPage($
                         @disabled($this->page <= 1)>Précédent</button>
                 <span style="font-size:12.5px; color:#6B6E76;">
                     Page {{ $this->page }} sur {{ max(1, (int) ceil($this->total / $this->parPage)) }}
-                    — {{ number_format($this->total, 0, ',', ' ') }} mouvement(s)
+                    — {{ montant_nombre($this->total) }} mouvement(s)
                 </span>
                 <button type="button" class="bouton bouton-secondaire bouton-petit"
                         wire:click="$set('pageDetail', {{ $this->page + 1 }})"

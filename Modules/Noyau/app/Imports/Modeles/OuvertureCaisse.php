@@ -34,6 +34,8 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 ])]
 class OuvertureCaisse extends Model
 {
+    use \App\Casts\CompareLesMontants;
+
     use AppartientAUneEntreprise;
 
     protected $table = 'ouvertures_caisse';
@@ -48,7 +50,7 @@ class OuvertureCaisse extends Model
         return [
             'debut' => 'date',
             'fin' => 'date',
-            'solde_avant' => 'integer',
+            'solde_avant' => \App\Casts\Montant::class,
         ];
     }
 

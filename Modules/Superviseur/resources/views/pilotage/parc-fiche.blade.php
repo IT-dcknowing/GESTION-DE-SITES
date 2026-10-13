@@ -186,7 +186,7 @@ $piste = computed(fn () => $this->fiche === null
                             <span style="color:#6B6E76;"> · {{ $devis->date_emission?->format('d/m/Y') ?? $devis->date_reception?->format('d/m/Y') ?? '—' }}</span>
                             <div style="color:#6B6E76;">
                                 {{ $devis->statut ?: 'statut inconnu' }} ·
-                                <b style="font-variant-numeric:tabular-nums;">{{ ae((int) $devis->montant_devis) }}</b>
+                                <b style="font-variant-numeric:tabular-nums;">{{ ae(montant_de($devis->montant_devis)) }}</b>
                             </div>
                         </div>
                     @empty
@@ -203,7 +203,7 @@ $piste = computed(fn () => $this->fiche === null
                             <span style="color:#6B6E76;"> · {{ $facture->date?->format('d/m/Y') ?? '—' }}</span>
                             <div style="color:#6B6E76;">
                                 {{ $facture->client ?: '—' }} ·
-                                <b style="font-variant-numeric:tabular-nums;">{{ ae((int) $facture->montant) }}</b>
+                                <b style="font-variant-numeric:tabular-nums;">{{ ae(montant_de($facture->montant)) }}</b>
                             </div>
                         </div>
                     @empty

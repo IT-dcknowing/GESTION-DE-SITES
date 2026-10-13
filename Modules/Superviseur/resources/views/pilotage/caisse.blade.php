@@ -168,7 +168,7 @@ $sortiesReprises = computed(function () {
         ->selectRaw('count(*) as nombre, coalesce(sum(mouvements_caisse.montant), 0) as montant')
         ->toBase()->first();
 
-    return ['nombre' => (int) ($ligne->nombre ?? 0), 'montant' => (int) ($ligne->montant ?? 0)];
+    return ['nombre' => (int) ($ligne->nombre ?? 0), 'montant' => montant_de($ligne->montant ?? 0)];
 });
 
 $perimetreDeLaCaisse = computed(fn () => MouvementCaisse::query()
@@ -264,11 +264,11 @@ $soldeAvant = computed(function () {
         $avant->whereDate('date', '>=', $annonce->debut);
     }
 
-    $entrees = (int) (clone $avant)->where('sens', MouvementCaisse::ENTREE)->sum('montant');
-    $sorties = (int) (clone $avant)->where('sens', MouvementCaisse::SORTIE)->sum('montant');
+    $entrees = montant_de((clone $avant)->where('sens', MouvementCaisse::ENTREE)->sum('montant'));
+    $sorties = montant_de((clone $avant)->where('sens', MouvementCaisse::SORTIE)->sum('montant'));
 
     return [
-        'montant' => (int) ($annonce->solde_avant ?? 0) + $entrees - $sorties,
+        'montant' => montant_de($annonce->solde_avant ?? 0) + $entrees - $sorties,
         'annonce' => $annonce,
         'phrase' => $annonce === null
             ? "Reconstitué à partir des seuls mouvements connus : aucun fichier ne l'annonce."
@@ -300,16 +300,16 @@ $kpisDeLaSaisie = computed(function () {
 
     return [
         'nombre' => $lignes->count(),
-        'entrees' => (int) $lignes->where('sens', MouvementCaisse::ENTREE)->sum('montant'),
-        'sorties' => (int) $lignes->where('sens', MouvementCaisse::SORTIE)->sum('montant'),
+        'entrees' => montant_de($lignes->where('sens', MouvementCaisse::ENTREE)->sum('montant')),
+        'sorties' => montant_de($lignes->where('sens', MouvementCaisse::SORTIE)->sum('montant')),
     ];
 });
 
 $kpis = computed(function () {
     $lignes = $this->mouvements;
 
-    $entrees = (int) $lignes->where('sens', MouvementCaisse::ENTREE)->sum('montant');
-    $sorties = (int) $lignes->where('sens', MouvementCaisse::SORTIE)->sum('montant');
+    $entrees = montant_de($lignes->where('sens', MouvementCaisse::ENTREE)->sum('montant'));
+    $sorties = montant_de($lignes->where('sens', MouvementCaisse::SORTIE)->sum('montant'));
 
     return [
         'entrees' => $entrees,
@@ -560,7 +560,7 @@ $enregistrerLaSaisie = function () {
         return;
     }
 
-    $montant = (int) $donnees['saisieMontant'];
+    $montant = montant_de($donnees['saisieMontant']);
     $entree = $donnees['saisieSens'] === MouvementCaisse::ENTREE;
 
     if ($entree) {
@@ -692,7 +692,7 @@ $saisiesEnEspeces = computed(function () {
             'immatriculation' => $e->facture?->immatriculation,
             'caisse' => null,
             'ville' => $e->site?->ville,
-            'montant' => (int) $e->montant,
+            'montant' => montant_de($e->montant),
             'solde_annonce' => null,
             // Une ecriture saisie ici n'appartient a aucune chaine de classeur : lui
             // donner un solde cumule la melangerait a celle du journal, et c'est
@@ -725,7 +725,7 @@ $saisiesEnEspeces = computed(function () {
             'immatriculation' => null,
             'caisse' => null,
             'ville' => $c->site?->ville,
-            'montant' => (int) $c->montant,
+            'montant' => montant_de($c->montant),
             'solde_annonce' => null,
             // Une ecriture saisie ici n'appartient a aucune chaine de classeur : lui
             // donner un solde cumule la melangerait a celle du journal, et c'est
@@ -783,7 +783,7 @@ $mouvementsDuJournal = computed(fn () => (clone $this->requete)
         'immatriculation' => $m->immatriculation,
         'caisse' => $m->caisse,
         'ville' => $m->ville,
-        'montant' => (int) $m->montant,
+        'montant' => montant_de($m->montant),
         'solde_annonce' => $m->solde_annonce,
         'origine' => 'journal',
         'lien' => null,
@@ -1170,7 +1170,7 @@ $mouvements = computed(function () {
                                 <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                                     <td>{{ $poste->poste ?: '—' }}</td>
                                     <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ $poste->nombre }}</td>
-                                    <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $poste->total) }}</td>
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae(montant_de($poste->total)) }}</td>
                                     <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
                                         {{ $this->kpis['sorties'] > 0 ? round($poste->total / $this->kpis['sorties'] * 100) : 0 }} %
                                     </td>
@@ -1287,7 +1287,7 @@ $mouvements = computed(function () {
                             </td>
                             <td class="colonne-collee"
                                 style="text-align:right; font-variant-numeric:tabular-nums;
-                                       color:{{ $ligne->solde_annonce !== null && $ligne->solde_calcule !== null && (int) $ligne->solde_annonce !== $ligne->solde_calcule ? '#C8102E' : '#6B6E76' }};">
+                                       color:{{ $ligne->solde_annonce !== null && $ligne->solde_calcule !== null && montant_de($ligne->solde_annonce) !== $ligne->solde_calcule ? '#C8102E' : '#6B6E76' }};">
                                 {{ $ligne->solde_annonce === null ? '—' : ae($ligne->solde_annonce) }}
                             </td>
                         </tr>

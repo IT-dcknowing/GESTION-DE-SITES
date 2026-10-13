@@ -69,7 +69,7 @@ final class VentilationActivite
                 default => 'nonVentile',
             };
 
-            $repartition[$cle] += (int) $ligne->total;
+            $repartition[$cle] += montant_de($ligne->total);
         }
 
         return $repartition;
@@ -86,9 +86,9 @@ final class VentilationActivite
     public static function repartirCollection($lignes, string $colonne = 'montant'): array
     {
         return [
-            'mecanique' => (int) $lignes->where('activite', 'Mécanique')->sum($colonne),
-            'sinistre' => (int) $lignes->where('activite', 'Sinistre')->sum($colonne),
-            'nonVentile' => (int) $lignes->whereNotIn('activite', self::ACTIVITES)->sum($colonne),
+            'mecanique' => montant_de($lignes->where('activite', 'Mécanique')->sum($colonne)),
+            'sinistre' => montant_de($lignes->where('activite', 'Sinistre')->sum($colonne)),
+            'nonVentile' => montant_de($lignes->whereNotIn('activite', self::ACTIVITES)->sum($colonne)),
         ];
     }
 

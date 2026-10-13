@@ -41,6 +41,8 @@ use Modules\Noyau\Imports\Formats\FormatDesFournisseurs;
 ])]
 class FactureFournisseur extends Model
 {
+    use \App\Casts\CompareLesMontants;
+
     use AppartientAUneEntreprise;
     use MontreLesColonnesDuFichier;
 
@@ -91,18 +93,18 @@ class FactureFournisseur extends Model
             'date_echeance' => 'date',
             'date_reglement' => 'date',
             'rattachement_presume' => 'boolean',
-            'montant' => 'integer',
-            'montant_regle' => 'integer',
-            'reste_a_payer' => 'integer',
-            'montant_refacture' => 'integer',
-            'marge' => 'integer',
+            'montant' => \App\Casts\Montant::class,
+            'montant_regle' => \App\Casts\Montant::class,
+            'reste_a_payer' => \App\Casts\Montant::class,
+            'montant_refacture' => \App\Casts\Montant::class,
+            'marge' => \App\Casts\Montant::class,
             'mois' => 'integer',
-            'montant_ht' => 'integer',
-            'tva' => 'integer',
-            'tva_2' => 'integer',
-            'difference' => 'integer',
-            'montant_net_achat' => 'integer',
-            'montant_net_vente' => 'integer',
+            'montant_ht' => \App\Casts\Montant::class,
+            'tva' => \App\Casts\Montant::class,
+            'tva_2' => \App\Casts\Montant::class,
+            'difference' => \App\Casts\Montant::class,
+            'montant_net_achat' => \App\Casts\Montant::class,
+            'montant_net_vente' => \App\Casts\Montant::class,
             // Les deux quantités et le taux gardent leurs décimales : ce ne sont pas des
             // francs, et arrondir une quantité de 2,5 litres à 3 fausserait la marge.
             'quantite_totale' => 'decimal:3',

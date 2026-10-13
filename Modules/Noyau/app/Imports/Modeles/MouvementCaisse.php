@@ -35,6 +35,8 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 ])]
 class MouvementCaisse extends Model
 {
+    use \App\Casts\CompareLesMontants;
+
     use AppartientAUneEntreprise;
 
     protected $table = 'mouvements_caisse';
@@ -47,8 +49,8 @@ class MouvementCaisse extends Model
     {
         return [
             'date' => 'date',
-            'montant' => 'integer',
-            'solde_annonce' => 'integer',
+            'montant' => \App\Casts\Montant::class,
+            'solde_annonce' => \App\Casts\Montant::class,
             'page' => 'integer',
         ];
     }

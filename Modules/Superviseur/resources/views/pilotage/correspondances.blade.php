@@ -186,7 +186,7 @@ $filtrer = protect(function () {
 $totaux = computed(function () {
     $ligne = $this->filtrer()->selectRaw('count(*) as nombre, coalesce(sum(factures.montant), 0) as montant')->first();
 
-    return ['nombre' => (int) ($ligne->nombre ?? 0), 'montant' => (int) ($ligne->montant ?? 0)];
+    return ['nombre' => (int) ($ligne->nombre ?? 0), 'montant' => montant_de($ligne->montant ?? 0)];
 });
 
 $parPage = 25;

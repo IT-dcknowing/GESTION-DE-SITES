@@ -103,7 +103,7 @@ $annuaire = computed(function () {
             'code' => $fiche?->code,
             'terme' => $fiche?->delai_reglement,
             'pieces' => (int) $ligne->n,
-            'reste' => (int) $ligne->du,
+            'reste' => montant_de($ligne->du),
             'fiche' => $fiche !== null,
         ];
     }

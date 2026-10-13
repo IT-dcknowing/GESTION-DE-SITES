@@ -181,9 +181,9 @@ $dossier = computed(fn () => (new PortefeuilleDeRecouvrement($this->arrete, $thi
                                 </td>
                                 <td>{{ $facture->activite ?? '·' }}</td>
                                 <td>{{ $facture->client ?? '·' }}</td>
-                                <td class="num">{{ number_format((int) $facture->montant, 0, ',', ' ') }}</td>
-                                <td class="num">{{ number_format((int) ($facture->encaissements_sum_montant ?? 0), 0, ',', ' ') }}</td>
-                                <td class="num"><b>{{ number_format($reste, 0, ',', ' ') }}</b></td>
+                                <td class="num">{{ montant_nombre(montant_de($facture->montant)) }}</td>
+                                <td class="num">{{ montant_nombre(montant_de($facture->encaissements_sum_montant ?? 0)) }}</td>
+                                <td class="num"><b>{{ montant_nombre($reste) }}</b></td>
                                 <td><span class="pill {{ $niveau['classe'] }}">{{ $niveau['libelle'] }}</span></td>
                             </tr>
                         @endforeach
@@ -191,7 +191,7 @@ $dossier = computed(fn () => (new PortefeuilleDeRecouvrement($this->arrete, $thi
                     <tfoot>
                         <tr class="tot">
                             <td colspan="7">TOTAL — {{ $d['factures']->count() }} facture(s)</td>
-                            <td class="num">{{ number_format($ligne['reste'], 0, ',', ' ') }}</td>
+                            <td class="num">{{ montant_nombre($ligne['reste']) }}</td>
                             <td></td>
                         </tr>
                     </tfoot>
@@ -236,7 +236,7 @@ $dossier = computed(fn () => (new PortefeuilleDeRecouvrement($this->arrete, $thi
                                     <td>{{ $relance->interlocuteur ?: '·' }}</td>
                                     <td>{{ $relance->resultat ?: '·' }}</td>
                                     <td class="num">
-                                        {{ $relance->montant_promis ? number_format((int) $relance->montant_promis, 0, ',', ' ') : '·' }}
+                                        {{ $relance->montant_promis ? montant_nombre(montant_de($relance->montant_promis)) : '·' }}
                                     </td>
                                     <td>{{ $relance->statut }}</td>
                                 </tr>
@@ -276,14 +276,14 @@ $dossier = computed(fn () => (new PortefeuilleDeRecouvrement($this->arrete, $thi
                                          n'a pas d'auteur ici, et lui en prêter un serait attribuer
                                          à quelqu'un un travail qu'il n'a pas fait. --}}
                                     <td>{{ $encaissement->code_auteur ?: ($encaissement->lot_import_id ? 'Import' : '·') }}</td>
-                                    <td class="num">{{ number_format((int) $encaissement->montant, 0, ',', ' ') }}</td>
+                                    <td class="num">{{ montant_nombre(montant_de($encaissement->montant)) }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
                         <tfoot>
                             <tr class="tot">
                                 <td colspan="5">TOTAL</td>
-                                <td class="num">{{ number_format((int) $d['encaissements']->sum('montant'), 0, ',', ' ') }}</td>
+                                <td class="num">{{ montant_nombre(montant_de($d['encaissements']->sum('montant'))) }}</td>
                             </tr>
                         </tfoot>
                     </table>

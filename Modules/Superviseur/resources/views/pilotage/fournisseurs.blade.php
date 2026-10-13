@@ -245,9 +245,9 @@ $kpis = computed(fn () => EtatDesFournisseurs::totaux($this->perimetre, $this->a
     // la dette d'un autre fournisseur. Voir EtatDesFournisseurs::totaux().
     // L'ancienneté se compte depuis la date de facture : c'est la seule date que toutes
     // les lignes portent, et une dette de plus de trois mois est un signal à elle seule.
-    'ancien' => (int) (clone $this->perimetre)->where('reste_a_payer', '>', 0)
+    'ancien' => montant_de((clone $this->perimetre)->where('reste_a_payer', '>', 0)
         ->whereDate('date_facture', '<', now()->subDays(90))
-        ->sum('reste_a_payer'),
+        ->sum('reste_a_payer')),
     'plusAncienne' => (clone $this->perimetre)->where('reste_a_payer', '>', 0)
         ->min('date_facture'),
     'fournisseurs' => (clone $this->perimetre)->distinct()->count('fournisseur'),
@@ -261,11 +261,11 @@ $kpis = computed(fn () => EtatDesFournisseurs::totaux($this->perimetre, $this->a
      */
     // Sans échéance ni règlement, la date de la facture fait foi (12/10) : aucune pièce
     // n'échappe à l'échu parce qu'une date manque.
-    'echu' => (int) (clone $this->perimetre)->where('reste_a_payer', '>', 0)
+    'echu' => montant_de((clone $this->perimetre)->where('reste_a_payer', '>', 0)
         ->where(fn ($q) => $q->whereDate('date_echeance', '<', now())
             ->orWhere(fn ($r) => $r->whereNull('date_echeance')->whereNull('date_reglement')
                 ->whereDate('date_facture', '<', now())))
-        ->sum('reste_a_payer'),
+        ->sum('reste_a_payer')),
     'avecEcheance' => (clone $this->perimetre)->where('reste_a_payer', '>', 0)
         ->whereNotNull('date_echeance')->count(),
 ]);
@@ -299,8 +299,8 @@ $principaux = computed(function () {
         ->groupBy('fournisseur')->get()->keyBy('fournisseur');
 
     return $dus->each(function ($ligne) use ($regles) {
-        $ligne->regle = (int) ($regles[$ligne->fournisseur]->regle ?? 0);
-        $ligne->engage = (int) ($regles[$ligne->fournisseur]->engage ?? 0);
+        $ligne->regle = montant_de($regles[$ligne->fournisseur]->regle ?? 0);
+        $ligne->engage = montant_de($regles[$ligne->fournisseur]->engage ?? 0);
     });
 });
 
@@ -375,8 +375,8 @@ $enregistrer = function () {
     ]);
 
     $entrepriseId = (int) auth()->user()->entreprise_id;
-    $montant = (int) $donnees['montant'];
-    $regle = (int) ($donnees['montantRegle'] ?: 0);
+    $montant = montant_de($donnees['montant']);
+    $regle = montant_de($donnees['montantRegle'] ?: 0);
 
     if ($regle > $montant) {
         $this->addError('montantRegle', 'Le réglé ne peut pas dépasser le montant de la facture.');
@@ -460,12 +460,12 @@ $enregistrer = function () {
         'numero_fiche' => $donnees['numeroFiche'] ?: null,
         'code_piece' => $donnees['codePiece'] ?: null,
         'vehicule' => $donnees['vehicule'] ?: null,
-        'montant_ht' => $donnees['montantHt'] !== '' ? (int) $donnees['montantHt'] : null,
-        'tva' => $donnees['tva'] !== '' ? (int) $donnees['tva'] : null,
-        'tva_2' => $donnees['tva2'] !== '' ? (int) $donnees['tva2'] : null,
-        'montant_refacture' => $donnees['montantRefacture'] !== '' ? (int) $donnees['montantRefacture'] : null,
-        'montant_net_achat' => $donnees['montantNetAchat'] !== '' ? (int) $donnees['montantNetAchat'] : null,
-        'montant_net_vente' => $donnees['montantNetVente'] !== '' ? (int) $donnees['montantNetVente'] : null,
+        'montant_ht' => $donnees['montantHt'] !== '' ? montant_de($donnees['montantHt']) : null,
+        'tva' => $donnees['tva'] !== '' ? montant_de($donnees['tva']) : null,
+        'tva_2' => $donnees['tva2'] !== '' ? montant_de($donnees['tva2']) : null,
+        'montant_refacture' => $donnees['montantRefacture'] !== '' ? montant_de($donnees['montantRefacture']) : null,
+        'montant_net_achat' => $donnees['montantNetAchat'] !== '' ? montant_de($donnees['montantNetAchat']) : null,
+        'montant_net_vente' => $donnees['montantNetVente'] !== '' ? montant_de($donnees['montantNetVente']) : null,
         'quantite_totale' => $donnees['quantiteTotale'] !== '' ? $donnees['quantiteTotale'] : null,
         'quantite_refacturee' => $donnees['quantiteRefacturee'] !== '' ? $donnees['quantiteRefacturee'] : null,
         'numero_facture_achat' => $donnees['numeroFactureAchat'] ?: null,
@@ -794,14 +794,14 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                 <td>{{ $f->fournisseur ?: '—' }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ $f->pieces }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
-                                    {{ ae((int) $f->regle) }}
+                                    {{ ae(montant_de($f->regle)) }}
                                     @if ($f->engage > 0)
                                         {{-- La part réglée dit d'un coup d'œil si le compte tourne
                                              ou s'il s'installe. --}}
                                         <div style="font-size:11px; color:#6B6E76;">{{ round($f->regle / $f->engage * 100) }} % de l'engagé</div>
                                     @endif
                                 </td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $f->du) }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae(montant_de($f->du)) }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
                                     {{ $this->kpis['reste'] > 0 ? round($f->du / $this->kpis['reste'] * 100) : 0 }} %
                                 </td>
@@ -816,7 +816,7 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
     <div class="carte">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
             <h3 style="font-size:15px; font-weight:700; margin:0;">
-                Factures reçues ({{ number_format($this->detail->total(), 0, ',', ' ') }})
+                Factures reçues ({{ montant_nombre($this->detail->total()) }})
             </h3>
 
             <div style="display:flex; gap:9px; flex-wrap:wrap; align-items:center;">
@@ -932,11 +932,11 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                     <div style="font-size:11px;">{{ $ligne->vehicule }}{{ $ligne->immatriculation ? ' · '.$ligne->immatriculation : '' }}</div>
                                 @endif
                             </td>
-                            <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $ligne->montant) }}</td>
-                            <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae((int) $ligne->montant_regle) }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae(montant_de($ligne->montant)) }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae(montant_de($ligne->montant_regle)) }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $ligne->reste_a_payer > 0 ? '#C8102E' : '#6B6E76' }};">
-                                {{ ae((int) $ligne->reste_a_payer) }}
+                                {{ ae(montant_de($ligne->reste_a_payer)) }}
                             </td>
                             <td class="colonne-collee" style="text-align:right;">
                                 <a href="{{ route('fournisseurs.piece', $ligne) }}" wire:navigate

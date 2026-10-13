@@ -229,7 +229,7 @@ class FormatDesImpayes extends Format
     {
         $numero = self::texte($ligne['numero'] ?? null, 60);
         $date = $this->dateDeLaFacture($ligne);
-        $montant = (int) round((float) self::montant($ligne['montant'] ?? null));
+        $montant = montant_de(self::montant($ligne['montant'] ?? null));
 
         $valeurs = [
             'site_id' => $rattachement['site_id'],
@@ -354,7 +354,7 @@ class FormatDesImpayes extends Format
     private function reporterLeReglement(Facture $facture, array $ligne, array $rattachement, ?int $lotId): bool
     {
         $regle = self::montant($ligne['regle'] ?? null);
-        $montant = $regle === null ? 0 : (int) round($regle);
+        $montant = $regle === null ? 0 : montant_de($regle);
 
         $ancien = Encaissement::withoutGlobalScopes()
             ->where('entreprise_id', $this->entrepriseId)
@@ -443,6 +443,10 @@ class FormatDesImpayes extends Format
 
         $numero = self::texte($ligne['numero'] ?? null, 60);
         $immatriculation = self::texte($ligne['immatriculation'] ?? null, 30);
+        // La CLÉ de la facture reste calculée sur le montant arrondi, comme avant le 13/10 : les
+        // lignes déjà en base ont été retrouvées sous cette forme, et un redépôt doit les retrouver
+        // encore (puis mettre à jour leurs centimes) plutôt que les doubler. Ce n'est pas un montant
+        // stocké : c'est une clé de recherche.
         $montant = (string) (int) round((float) self::montant($ligne['montant'] ?? null));
         $edition = $this->dateDeLaFacture($ligne);
 

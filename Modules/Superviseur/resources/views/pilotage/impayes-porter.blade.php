@@ -134,7 +134,7 @@ $factures = computed(function () {
             $f->n_facture ? 'N° '.$f->n_facture : null,
             $f->date ? \Illuminate\Support\Carbon::parse($f->date)->format('d/m/Y') : null,
             $f->immatriculation,
-            ae((int) $f->montant),
+            ae(montant_de($f->montant)),
         ]))])
         ->all();
 });
@@ -161,7 +161,7 @@ $semblables = computed(function () {
 
     return Facture::query()
         ->whereNotNull('exercice_impayes')
-        ->where('montant', (int) $facture->montant)
+        ->where('montant', montant_de($facture->montant))
         ->whereNotNull('immatriculation')
         ->get(['id', 'numero', 'n_facture', 'date', 'client', 'immatriculation', 'montant', 'exercice_impayes'])
         ->filter(fn (Facture $f) => EtatDesImpayes::clePont($f) === $cle)
@@ -184,9 +184,9 @@ $avance = computed(function () {
         return ['avance' => 0, 'reste' => 0];
     }
 
-    $avance = (int) ($facture->encaissements_sum_montant ?? 0);
+    $avance = montant_de($facture->encaissements_sum_montant ?? 0);
 
-    return ['avance' => $avance, 'reste' => max(0, (int) $facture->montant - $avance)];
+    return ['avance' => $avance, 'reste' => max(0, montant_de($facture->montant) - $avance)];
 });
 
 /** Les colonnes que la facture impose — mêmes règles que « Modifier ». */
@@ -411,7 +411,7 @@ $porter = function () {
         return;
     }
 
-    $regle = (int) ($donnees['pRegle'] ?? 0);
+    $regle = montant_de($donnees['pRegle'] ?? 0);
 
     $resultat = DB::transaction(function () use ($facture, $donnees, $regle) {
         $verrouillee = Facture::whereKey($facture->id)->lockForUpdate()->first();
@@ -421,7 +421,7 @@ $porter = function () {
             return ['factureId', "Cette facture vient d'être portée à l'état par quelqu'un d'autre."];
         }
 
-        $reste = max(0, (int) $verrouillee->montant - (int) $verrouillee->encaissements()->sum('montant'));
+        $reste = max(0, montant_de($verrouillee->montant) - montant_de($verrouillee->encaissements()->sum('montant')));
 
         if ($regle > $reste) {
             return ['pRegle', 'Le règlement dépasse le reste à payer ('.ae($reste).').'];
@@ -601,7 +601,7 @@ $porter = function () {
                      Le même composant qu'au recouvrement — voir `x-moyen-de-paiement`. Il
                      n'apparaît que lorsqu'un règlement est saisi : sans règlement, la facture
                      est simplement portée, et la question ne se pose pas. --}}
-                @if (trim((string) $pRegle) !== '' && (int) $pRegle !== 0)
+                @if (trim((string) $pRegle) !== '' && montant_de($pRegle) !== 0)
                     <x-moyen-de-paiement prefixe="p"
                         :support="$pSupport" :compte="$pCompte"
                         :mode="$pMode" :reference="$pReference"

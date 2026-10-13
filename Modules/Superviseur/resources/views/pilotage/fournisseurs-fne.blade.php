@@ -62,8 +62,8 @@ $kpi = computed(function () {
         'avoirs' => (int) $toutes->avoirs,
         'au_suivi' => (int) $toutes->au_suivi,
         'a_porter' => (int) $toutes->n - (int) $toutes->au_suivi,
-        'ttc' => (int) $toutes->ttc,
-        'ttc_a_porter' => (int) $toutes->ttc_a_porter,
+        'ttc' => montant_de($toutes->ttc),
+        'ttc_a_porter' => montant_de($toutes->ttc_a_porter),
         'suivi_sans_fne' => AchatsFne::suiviSansFne((int) auth()->user()->entreprise_id, (int) $this->exercice)->count(),
     ];
 });
@@ -310,8 +310,8 @@ $porter = function (int $id) {
                                 <td><a href="{{ route('fournisseurs.piece', $l->id) }}" wire:navigate>{{ $l->fournisseur }}</a></td>
                                 <td>{{ $l->numero_piece }}</td>
                                 <td>{{ $l->date_facture?->format('d/m/Y') }}</td>
-                                <td style="text-align:right;">{{ ae((int) $l->montant) }}</td>
-                                <td style="text-align:right;">{{ ae((int) $l->reste_a_payer) }}</td>
+                                <td style="text-align:right;">{{ ae(montant_de($l->montant)) }}</td>
+                                <td style="text-align:right;">{{ ae(montant_de($l->reste_a_payer)) }}</td>
                             </tr>
                         @empty
                             <x-table-vide :colspan="5" texte="Chaque ligne du suivi de cet exercice a sa facture FNE." />
@@ -333,13 +333,13 @@ $porter = function (int $id) {
                                 <td>{{ $f->reference }} @if ($f->est_avoir)<span style="color:#C8102E; font-weight:700;">avoir</span>@endif</td>
                                 <td>{{ $f->date_facture?->format('d/m/Y') ?? '—' }}</td>
                                 <td>{{ $f->emetteur_nom ?: '—' }}<div style="font-size:11px; color:#9A9DA5;">{{ $f->emetteur_ncc }}</div></td>
-                                <td style="text-align:right;">{{ ae((int) $f->montant_ht) }}</td>
-                                <td style="text-align:right;">{{ ae((int) $f->montant_tva) }}</td>
-                                <td style="text-align:right; font-weight:700;">{{ ae((int) $f->montant_ttc) }}</td>
+                                <td style="text-align:right;">{{ ae(montant_de($f->montant_ht)) }}</td>
+                                <td style="text-align:right;">{{ ae(montant_de($f->montant_tva)) }}</td>
+                                <td style="text-align:right; font-weight:700;">{{ ae(montant_de($f->montant_ttc)) }}</td>
                                 <td>
                                     @if ($f->pieceDuSuivi)
                                         <a href="{{ route('fournisseurs.piece', $f->pieceDuSuivi->id) }}" wire:navigate>{{ $f->pieceDuSuivi->numero_piece }}</a>
-                                        <div style="font-size:11px; color:#6B6E76;">reste {{ ae((int) $f->pieceDuSuivi->reste_a_payer) }}</div>
+                                        <div style="font-size:11px; color:#6B6E76;">reste {{ ae(montant_de($f->pieceDuSuivi->reste_a_payer)) }}</div>
                                     @elseif ($this->peutEcrire)
                                         <button type="button" wire:click="porter({{ $f->id }})" class="bouton">Porter au suivi</button>
                                     @else

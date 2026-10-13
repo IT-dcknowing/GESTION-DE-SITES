@@ -99,7 +99,7 @@ $ouvertes = computed(fn () => $this->toutes->filter(fn (Facture $f) => Recouvrem
 
 $totaux = computed(fn () => [
     'ttc' => $this->factures->sum('montant'),
-    'regle' => $this->factures->sum(fn (Facture $f) => (int) $f->montant - Recouvrement::reste($f)),
+    'regle' => $this->factures->sum(fn (Facture $f) => montant_de($f->montant) - Recouvrement::reste($f)),
     'reste' => $this->factures->sum(fn (Facture $f) => Recouvrement::reste($f)),
 ]);
 
@@ -268,9 +268,9 @@ $totaux = computed(fn () => [
                                 @endif
                                 <td>{{ $facture->vehicule }}</td>
                                 <td>{{ $facture->immatriculation }}</td>
-                                <td class="num">{{ number_format((int) $facture->montant, 0, ',', ' ') }}</td>
-                                <td class="num">{{ number_format((int) $facture->montant - $reste, 0, ',', ' ') }}</td>
-                                <td class="num"><b>{{ number_format($reste, 0, ',', ' ') }}</b></td>
+                                <td class="num">{{ montant_nombre(montant_de($facture->montant)) }}</td>
+                                <td class="num">{{ montant_nombre(montant_de($facture->montant) - $reste) }}</td>
+                                <td class="num"><b>{{ montant_nombre($reste) }}</b></td>
                                 <td>
                                     <span class="pill {{ $niveau['classe'] }}">{{ $niveau['libelle'] }}</span>
                                     @if ($age !== null && $reste >= Recouvrement::SEUIL_SOLDE)
@@ -294,9 +294,9 @@ $totaux = computed(fn () => [
                         @if ($this->factures->isNotEmpty())
                             <tr class="tot">
                                 <td colspan="{{ $this->estCourtier ? 7 : 6 }}">TOTAUX</td>
-                                <td class="num">{{ number_format($this->totaux['ttc'], 0, ',', ' ') }}</td>
-                                <td class="num">{{ number_format($this->totaux['regle'], 0, ',', ' ') }}</td>
-                                <td class="num">{{ number_format($this->totaux['reste'], 0, ',', ' ') }}</td>
+                                <td class="num">{{ montant_nombre($this->totaux['ttc']) }}</td>
+                                <td class="num">{{ montant_nombre($this->totaux['regle']) }}</td>
+                                <td class="num">{{ montant_nombre($this->totaux['reste']) }}</td>
                                 <td></td>
                             </tr>
                         @endif

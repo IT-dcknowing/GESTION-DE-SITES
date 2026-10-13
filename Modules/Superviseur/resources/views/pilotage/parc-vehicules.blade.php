@@ -214,10 +214,10 @@ $couleurStatut = fn (?string $statut) => match (true) {
     <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px;">
         <x-kpi-card label="Véhicules à l'atelier" :value="number_format($this->enAtelier, 0, ',', ' ')"
             sub="affaires non clôturées" accent />
-        <x-kpi-card label="Fiches au total" :value="number_format($this->total, 0, ',', ' ')"
+        <x-kpi-card label="Fiches au total" :value="montant_nombre($this->total)"
             :sub="'sur la période retenue'" />
         <x-kpi-card label="Travaux terminés"
-            :value="number_format($this->repartition->filter(fn ($n, $s) => str_starts_with((string) $s, 'TRAVAUX TERMINES'))->sum(), 0, ',', ' ')"
+            :value="montant_nombre($this->repartition->filter(fn ($n, $s) => str_starts_with((string) $s, 'TRAVAUX TERMINES'))->sum())"
             sub="véhicules livrés" bon />
         <x-kpi-card label="Sans atelier affecté" :value="number_format($this->sansAtelier, 0, ',', ' ')"
             sub="Abidjan a deux sites" :couleur="$this->sansAtelier > 0 ? '#C8102E' : null" />

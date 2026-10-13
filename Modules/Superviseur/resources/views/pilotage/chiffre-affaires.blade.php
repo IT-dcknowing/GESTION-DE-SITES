@@ -141,7 +141,7 @@ $requeteCharges = computed(function () {
         ->whereBetween('date', [$debut, $fin]);
 });
 
-$chargesPeriode = computed(fn () => (int) (clone $this->requeteCharges)->sum('montant'));
+$chargesPeriode = computed(fn () => montant_de((clone $this->requeteCharges)->sum('montant')));
 
 /*
  * Le CA selon les impayés — 12/10 : ce que l'état des impayés porte sans que le fichier du CA
@@ -151,13 +151,13 @@ $chargesPeriode = computed(fn () => (int) (clone $this->requeteCharges)->sum('mo
 $caSelonImpayes = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return (int) EtatDesImpayes::dansLePerimetre(
+    return montant_de(EtatDesImpayes::dansLePerimetre(
         Facture::query()->selonLesImpayesSeulement(), $this->idsSites, EtatDesImpayes::villesDesSites($this->idsSites),
     )
         ->whereBetween('date', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->commercialFiltre, fn ($q) => $q->where('commercial_id', $this->commercialFiltre))
-        ->sum('montant');
+        ->sum('montant'));
 });
 
 /*
@@ -208,12 +208,12 @@ $graphique = computed(function () {
         $dansLePoint = fn ($l) => substr((string) $l->jour, 0, 10) >= $debut && substr((string) $l->jour, 0, 10) <= $fin;
 
         $lignes = $factures->filter($dansLePoint);
-        $ca = (int) $lignes->sum('total');
+        $ca = montant_de($lignes->sum('total'));
 
         $labels[] = $point['label'];
-        $mecanique[] = (int) $lignes->where('activite', 'Mécanique')->sum('total');
-        $sinistre[] = (int) $lignes->where('activite', 'Sinistre')->sum('total');
-        $resultat[] = $ca - (int) $charges->filter($dansLePoint)->sum('total');
+        $mecanique[] = montant_de($lignes->where('activite', 'Mécanique')->sum('total'));
+        $sinistre[] = montant_de($lignes->where('activite', 'Sinistre')->sum('total'));
+        $resultat[] = montant_de($ca - montant_de($charges->filter($dansLePoint)->sum('total')));
     }
 
     return [
@@ -553,7 +553,7 @@ $comptesParOrigine = computed(function () {
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($ligne->montant) }}</td>
                             @php $reste = Recouvrement::reste($ligne); @endphp
                             <td style="text-align:right; font-variant-numeric:tabular-nums;">
-                                {{ ae((int) ($ligne->encaissements_sum_montant ?? 0)) }}
+                                {{ ae(montant_de($ligne->encaissements_sum_montant ?? 0)) }}
                             </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums;
                                        {{ $reste < Recouvrement::SEUIL_SOLDE ? 'color:#0E9F6E; font-weight:700;' : 'font-weight:700;' }}">

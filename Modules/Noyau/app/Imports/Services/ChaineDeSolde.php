@@ -71,15 +71,15 @@ class ChaineDeSolde
      * de −150 000 fait donc `- (-150 000)`, soit +150 000 : le solde remonte, ce qui est
      * exactement ce qu'une annulation doit faire.
      */
-    public static function mouvement(MouvementCaisse $ligne): int
+    public static function mouvement(MouvementCaisse $ligne): int|float
     {
         return $ligne->sens === MouvementCaisse::ENTREE
-            ? (int) $ligne->montant
-            : -(int) $ligne->montant;
+            ? montant_de($ligne->montant)
+            : -montant_de($ligne->montant);
     }
 
     /** « D » si la caisse tient de l'argent, « C » si le cumul est passé sous zéro. */
-    public static function sens(int $solde): string
+    public static function sens(int|float $solde): string
     {
         return $solde < 0 ? self::CREDIT : self::DEBIT;
     }
@@ -110,7 +110,7 @@ class ChaineDeSolde
 
         $premiere = $ordonnees->first();
         $solde = $premiere->solde_annonce !== null
-            ? (int) $premiere->solde_annonce
+            ? montant_de($premiere->solde_annonce)
             : self::mouvement($premiere);
 
         $soldes = [$premiere->getKey() => $solde];
@@ -157,10 +157,10 @@ class ChaineDeSolde
             ->takeUntil(fn (MouvementCaisse $ligne) => $ligne->is($arrivee))
             ->concat([$arrivee]);
 
-        $attendu = (int) $depart->solde_annonce
+        $attendu = montant_de($depart->solde_annonce)
             + $entreDeux->sum(fn (MouvementCaisse $ligne) => self::mouvement($ligne));
 
-        $annonce = (int) $arrivee->solde_annonce;
+        $annonce = montant_de($arrivee->solde_annonce);
 
         if ($annonce === $attendu) {
             return null;

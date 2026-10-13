@@ -122,7 +122,8 @@ class LeSuiviFournisseurEntreEnEntierTest extends TestCase
         // ne le dit pas », et les deux ne se lisent pas de la même façon.
         $this->assertNull($ligne->marge);
         // En revanche ce que San Pedro porte en propre est bien lu.
-        $this->assertSame(82_097, $ligne->montant_ht);
+        // Jamais arrondi (13/10) : le classeur donne 82096,627118644, on garde ses quatre premières décimales.
+        $this->assertSame(82096.6271, $ligne->montant_ht);
         $this->assertSame('FEB-0012', $ligne->numero_feb);
         $this->assertSame('OUI', $ligne->arrive_a_echeance);
     }

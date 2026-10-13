@@ -92,7 +92,7 @@ $requeteCa = computed(function () {
         ->whereBetween('date', [$debut, $fin]);
 });
 
-$caPeriode = computed(fn () => (int) (clone $this->requeteCa)->sum('montant'));
+$caPeriode = computed(fn () => montant_de((clone $this->requeteCa)->sum('montant')));
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ $origines = computed(function () {
         ->toBase()->first();
 
     return [
-        'total' => (int) ($ligne->montant ?? 0),
+        'total' => montant_de($ligne->montant ?? 0),
         'nombre' => (int) ($ligne->nombre ?? 0),
         'caisse' => (int) ($ligne->m_caisse ?? 0),
         'nCaisse' => (int) ($ligne->n_caisse ?? 0),
@@ -136,7 +136,7 @@ $origines = computed(function () {
         'nSaisies' => (int) ($ligne->n_saisie ?? 0),
         // Le module des factures fournisseurs FNE n'existe pas encore : rien n'en vient.
         'fne' => 0,
-        'nonNormalisees' => (int) ($ligne->montant ?? 0),
+        'nonNormalisees' => montant_de($ligne->montant ?? 0),
     ];
 });
 
@@ -152,12 +152,12 @@ $selonLaCaisse = computed(function () {
         ->selectRaw('count(*) as nombre, coalesce(sum(mouvements_caisse.montant), 0) as montant')
         ->toBase()->first();
 
-    return ['sorties' => (int) ($ligne->montant ?? 0), 'nombre' => (int) ($ligne->nombre ?? 0)];
+    return ['sorties' => montant_de($ligne->montant ?? 0), 'nombre' => (int) ($ligne->nombre ?? 0)];
 });
 
 $kpis = computed(function () {
     $lignes = (clone $this->requeteBase)->where('type_operation', 'Charges')->get();
-    $total = (int) $lignes->sum('montant');
+    $total = montant_de($lignes->sum('montant'));
 
     // Les lignes sont déjà en mémoire : on ventile ici plutôt que de relancer des
     // requêtes d'agrégat pour des chiffres qu'on a sous la main.
@@ -166,9 +166,9 @@ $kpis = computed(function () {
     return [
         'total' => $total,
         'totalVentile' => $ventileTotal,
-        'pieces' => (int) $lignes->where('libelle', 'Achats pièces')->sum('montant'),
+        'pieces' => montant_de($lignes->where('libelle', 'Achats pièces')->sum('montant')),
         'piecesVentile' => VentilationActivite::repartirCollection($lignes->where('libelle', 'Achats pièces')),
-        'salaires' => (int) $lignes->where('libelle', 'Salaires & personnel')->sum('montant'),
+        'salaires' => montant_de($lignes->where('libelle', 'Salaires & personnel')->sum('montant')),
         'salairesVentile' => VentilationActivite::repartirCollection($lignes->where('libelle', 'Salaires & personnel')),
         'resultat' => $this->caPeriode - $total,
         'resultatVentile' => VentilationActivite::difference(
@@ -218,7 +218,7 @@ $graphique = computed(function () {
         $labels[] = $point['label'];
 
         foreach ($natures as $nature => $couleur) {
-            $series[$nature][] = (int) $lignes->where('libelle', $nature)->sum('montant');
+            $series[$nature][] = montant_de($lignes->where('libelle', $nature)->sum('montant'));
         }
     }
 
@@ -346,7 +346,7 @@ $reprendreDeLaCaisse = function () {
                 'motif' => trim(implode(' — ', array_filter([$m->libelle, $m->motif]))) ?: null,
                 // Une caisse tient des espèces : le moyen n'est pas une question.
                 'moyen' => 'Espèces',
-                'montant' => (int) $m->montant,
+                'montant' => montant_de($m->montant),
                 'tiers' => $m->beneficiaire ?: null,
                 'reference_origine' => $m->numero_piece ?: null,
                 'observations' => 'Reprise du journal de caisse',
@@ -431,7 +431,7 @@ $detail = computed(fn () => FiltreLibre::appliquer(
                                 <td>{{ $sortie->libelle }}@if ($sortie->motif)<div style="font-size:11.5px; color:#6B6E76;">{{ $sortie->motif }}</div>@endif</td>
                                 <td style="color:#6B6E76;">{{ $sortie->beneficiaire ?: '—' }}</td>
                                 <td style="color:#6B6E76;">{{ $sortie->site?->nom ?? ($sortie->ville?->nom ? $sortie->ville->nom.' — atelier non précisé' : '—') }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae((int) $sortie->montant) }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae(montant_de($sortie->montant)) }}</td>
                             </tr>
                         @empty
                             <x-table-vide :colspan="7" texte="Aucune sortie de caisse à reprendre sur cette période." />

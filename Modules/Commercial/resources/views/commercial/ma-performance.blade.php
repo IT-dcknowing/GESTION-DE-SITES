@@ -54,10 +54,10 @@ $kpis = computed(function () {
         return null;
     }
     [$debut, $fin] = $this->plage;
-    $realisation = (int) $this->factures->sum('montant');
-    $realisationMecanique = (int) $this->factures->where('activite', 'Mécanique')->sum('montant');
-    $realisationSinistre = (int) $this->factures->where('activite', 'Sinistre')->sum('montant');
-    $encaisse = (int) $this->factures->sum('encaissements_sum_montant');
+    $realisation = montant_de($this->factures->sum('montant'));
+    $realisationMecanique = montant_de($this->factures->where('activite', 'Mécanique')->sum('montant'));
+    $realisationSinistre = montant_de($this->factures->where('activite', 'Sinistre')->sum('montant'));
+    $encaisse = montant_de($this->factures->sum('encaissements_sum_montant'));
     $objectifMecanique = (int) round(PeriodeCalculateur::objectifProrata((float) $this->commercial->objectif_mecanique, $debut, $fin));
     $objectifSinistre = (int) round(PeriodeCalculateur::objectifProrata((float) $this->commercial->objectif_sinistre, $debut, $fin));
     $objectif = match ($this->activiteFiltre) {
@@ -69,11 +69,11 @@ $kpis = computed(function () {
     // Le commercial couvrant toute la ville, sa contribution se mesure au CA de la ville
     // entière (ses deux sites), pas d'un seul site.
     $idsSitesVille = Site::where('ville_id', $this->commercial->ville_id)->pluck('id');
-    $caSite = (int) Facture::whereIn('site_id', $idsSitesVille)->whereBetween('date', [$debut, $fin])->sum('montant');
-    $caSiteMecanique = (int) Facture::whereIn('site_id', $idsSitesVille)->where('activite', 'Mécanique')->whereBetween('date', [$debut, $fin])->sum('montant');
-    $caSiteSinistre = (int) Facture::whereIn('site_id', $idsSitesVille)->where('activite', 'Sinistre')->whereBetween('date', [$debut, $fin])->sum('montant');
-    $encaisseMecanique = (int) $this->factures->where('activite', 'Mécanique')->sum('encaissements_sum_montant');
-    $encaisseSinistre = (int) $this->factures->where('activite', 'Sinistre')->sum('encaissements_sum_montant');
+    $caSite = montant_de(Facture::whereIn('site_id', $idsSitesVille)->whereBetween('date', [$debut, $fin])->sum('montant'));
+    $caSiteMecanique = montant_de(Facture::whereIn('site_id', $idsSitesVille)->where('activite', 'Mécanique')->whereBetween('date', [$debut, $fin])->sum('montant'));
+    $caSiteSinistre = montant_de(Facture::whereIn('site_id', $idsSitesVille)->where('activite', 'Sinistre')->whereBetween('date', [$debut, $fin])->sum('montant'));
+    $encaisseMecanique = montant_de($this->factures->where('activite', 'Mécanique')->sum('encaissements_sum_montant'));
+    $encaisseSinistre = montant_de($this->factures->where('activite', 'Sinistre')->sum('encaissements_sum_montant'));
 
     return [
         'objectif' => $objectif,

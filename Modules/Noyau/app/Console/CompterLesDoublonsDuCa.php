@@ -62,9 +62,9 @@ class CompterLesDoublonsDuCa extends Command
                 }
 
                 if ($f->est_etat_initial) {
-                    $creances[$cle][] = (int) $f->montant;
+                    $creances[$cle][] = montant_de($f->montant);
                 } else {
-                    $cattc[$cle][] = (int) $f->montant;
+                    $cattc[$cle][] = montant_de($f->montant);
                 }
             }
 
@@ -89,7 +89,7 @@ class CompterLesDoublonsDuCa extends Command
             $this->table(['Constat', 'Nombre'], [
                 ['Paires déjà reconnues (n_facture_cattc)', number_format($reconnues, 0, ',', ' ')],
                 ['Doublons probables (clé forte, un seul candidat)', number_format($probables, 0, ',', ' ')],
-                ['Montant compté deux fois au CA par ces doublons', number_format($montant, 0, ',', ' ').' F'],
+                ['Montant compté deux fois au CA par ces doublons', montant_nombre($montant).' F'],
                 ['Clés ambiguës (plusieurs candidats, on ne choisit pas)', number_format($ambigues, 0, ',', ' ')],
             ]);
         }

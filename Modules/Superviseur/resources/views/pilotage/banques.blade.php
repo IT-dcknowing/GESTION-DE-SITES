@@ -234,7 +234,7 @@ $repartition = computed(function () {
 
             $parBanque[$id] ??= ['nombre' => 0, 'montant' => 0, 'libelles' => []];
             $parBanque[$id]['nombre'] += (int) $ligne->nombre;
-            $parBanque[$id]['montant'] += (int) $ligne->montant;
+            $parBanque[$id]['montant'] += montant_de($ligne->montant);
             $parBanque[$id]['libelles'][] = (string) $ligne->libelle;
 
             continue;
@@ -243,7 +243,7 @@ $repartition = computed(function () {
         $nonRanges[] = [
             'libelle' => $ligne->libelle,
             'nombre' => (int) $ligne->nombre,
-            'montant' => (int) $ligne->montant,
+            'montant' => montant_de($ligne->montant),
             'raison' => $verdict['raison'],
             // La banque qui ressemble, s'il y en a une : « Affecter à » la présélectionne.
             'proposee' => $verdict['banque']?->id,
@@ -276,7 +276,7 @@ $parCompteDesigne = computed(function () {
     foreach ($groupes as $groupe) {
         $parCompte[(int) $groupe->compte] = [
             'nombre' => (int) $groupe->nombre,
-            'montant' => (int) $groupe->montant,
+            'montant' => montant_de($groupe->montant),
         ];
     }
 
@@ -293,7 +293,7 @@ $nonPrecise = computed(function () {
         ->selectRaw('count(*) as nombre, coalesce(sum(encaissements.montant), 0) as montant')
         ->first();
 
-    return ['nombre' => (int) ($ligne->nombre ?? 0), 'montant' => (int) ($ligne->montant ?? 0)];
+    return ['nombre' => (int) ($ligne->nombre ?? 0), 'montant' => montant_de($ligne->montant ?? 0)];
 });
 
 /**
@@ -324,7 +324,7 @@ $comptes = computed(function () {
 
         $comptes['b'.$banque->id] = [
             'libelle' => $banque->nom,
-            'montant' => (int) $ancien['montant'] + (int) $neuf['montant'],
+            'montant' => montant_de($ancien['montant']) + montant_de($neuf['montant']),
             'nombre' => $nombre,
             'sorte' => 'banque',
             // Une banque déclarée paraît même sans écriture : on la crée avant d'y encaisser.
@@ -341,7 +341,7 @@ $comptes = computed(function () {
         foreach ($mobiles as $portefeuille) {
             $part = $designes[$portefeuille->id] ?? ['nombre' => 0, 'montant' => 0];
             $nombre += (int) $part['nombre'];
-            $montant += (int) $part['montant'];
+            $montant += montant_de($part['montant']);
         }
 
         $comptes['mobile'] = [
@@ -469,7 +469,7 @@ $kpis = computed(function () {
         ->first();
 
     return [
-        'montant' => (int) ($ligne->montant ?? 0),
+        'montant' => montant_de($ligne->montant ?? 0),
         'nombre' => (int) ($ligne->nombre ?? 0),
         'clients' => (int) ($ligne->clients ?? 0),
     ];
@@ -515,11 +515,11 @@ $releveRegarde = computed(function () {
         ->filter(fn ($r) => in_array($r['banque']->id, $ids, true));
 
     return [
-        'credits' => (int) $releves->sum('credits'),
-        'debits' => (int) $releves->sum('debits'),
+        'credits' => montant_de($releves->sum('credits')),
+        'debits' => montant_de($releves->sum('debits')),
         'nombre' => (int) $releves->sum('nombre'),
         // Le solde n'existe que si au moins un relevé le dit ; zéro serait une affirmation.
-        'solde' => $releves->every(fn ($r) => $r['solde_fin'] === null) ? null : (int) $releves->sum('solde_fin'),
+        'solde' => $releves->every(fn ($r) => $r['solde_fin'] === null) ? null : montant_de($releves->sum('solde_fin')),
         'date' => $releves->pluck('date_solde')->filter()->max(),
     ];
 });
@@ -582,7 +582,7 @@ $facturesOuvertesParBanque = computed(function () {
         $id = $verdict['banque']->id;
         $parBanque[$id] ??= ['nombre' => 0, 'reste' => 0];
         $parBanque[$id]['nombre'] += (int) $groupe->nombre;
-        $parBanque[$id]['reste'] += (int) $groupe->reste;
+        $parBanque[$id]['reste'] += montant_de($groupe->reste);
     }
 
     return $parBanque;
@@ -1077,7 +1077,7 @@ $declarerLaBanque = function () {
     <div class="carte">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
             <h3 style="font-size:15px; font-weight:700; margin:0;">
-                Règlements ({{ number_format($this->total, 0, ',', ' ') }})
+                Règlements ({{ montant_nombre($this->total) }})
             </h3>
 
             <div style="display:flex; gap:9px; flex-wrap:wrap; align-items:center;">
@@ -1122,7 +1122,7 @@ $declarerLaBanque = function () {
                                 {{ $ligne->lot_import_id === null ? 'Saisi ici' : 'Importé' }}
                             </td>
                             <td class="colonne-collee" style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">
-                                {{ ae((int) $ligne->montant) }}
+                                {{ ae(montant_de($ligne->montant)) }}
                             </td>
                         </tr>
                     @empty

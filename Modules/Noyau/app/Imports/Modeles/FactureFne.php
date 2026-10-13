@@ -24,6 +24,8 @@ use Modules\Noyau\Commun\Concerns\AppartientAUneEntreprise;
 ])]
 class FactureFne extends Model
 {
+    use \App\Casts\CompareLesMontants;
+
     use AppartientAUneEntreprise;
 
     protected $table = 'factures_fne';
@@ -34,10 +36,10 @@ class FactureFne extends Model
             'date_facture' => 'date',
             'est_avoir' => 'boolean',
             'exercice' => 'integer',
-            'montant_ht' => 'integer',
-            'montant_tva' => 'integer',
-            'timbre' => 'integer',
-            'montant_ttc' => 'integer',
+            'montant_ht' => \App\Casts\Montant::class,
+            'montant_tva' => \App\Casts\Montant::class,
+            'timbre' => \App\Casts\Montant::class,
+            'montant_ttc' => \App\Casts\Montant::class,
             'contenu' => 'array',
         ];
     }

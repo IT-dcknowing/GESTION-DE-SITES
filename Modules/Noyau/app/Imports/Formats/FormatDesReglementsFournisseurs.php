@@ -80,7 +80,7 @@ class FormatDesReglementsFournisseurs extends Format
             'date_reglement' => self::date($ligne['date_reglement'] ?? null),
             'fournisseur' => self::texte($ligne['fournisseur'] ?? null, 160),
             'mode_reglement' => self::texte($ligne['mode_reglement'] ?? null, 80),
-            'montant' => (int) round((float) self::montant($ligne['montant'] ?? null)),
+            'montant' => montant_de(self::montant($ligne['montant'] ?? null)),
             'code_agent' => $rattachement['code'],
             'source_rattachement' => $rattachement['source'],
             'rattachement_presume' => $rattachement['presumee'],

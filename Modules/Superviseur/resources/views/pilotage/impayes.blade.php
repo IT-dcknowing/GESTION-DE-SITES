@@ -717,8 +717,8 @@ $enregistrer = function () {
     ]);
 
     $date = Carbon::parse($donnees['fDate']);
-    $montant = (int) $donnees['fMontant'];
-    $regle = (int) ($donnees['fRegle'] ?? 0);
+    $montant = montant_de($donnees['fMontant']);
+    $regle = montant_de($donnees['fRegle'] ?? 0);
     $immatriculation = mb_strtoupper(trim((string) ($donnees['fImmatriculation'] ?? '')));
 
     /*
@@ -794,7 +794,7 @@ $enregistrer = function () {
              * pourrait sinon faire passer le montant sous ce qui est déjà encaissé.
              */
             $facture = Facture::whereKey($ligne->id)->lockForUpdate()->first();
-            $encaisse = (int) $facture->encaissements()->sum('montant');
+            $encaisse = montant_de($facture->encaissements()->sum('montant'));
 
             if ($montant < $encaisse) {
                 return ['fMontant', 'Le montant ne peut pas descendre sous ce qui est déjà encaissé ('.ae($encaisse).').'];
@@ -981,7 +981,7 @@ $basculerPortage = function () {
                 <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Modifier la créance {{ $modif->numero }}</h3>
                 <p style="font-size:12.5px; color:#6B6E76; margin:0 0 12px; line-height:1.55;">
                     Origine : <strong>{{ EtatDesImpayes::origine($modif) }}</strong>.
-                    Déjà encaissé : <strong>{{ ae((int) ($modif->encaissements_sum_montant ?? 0)) }}</strong>.
+                    Déjà encaissé : <strong>{{ ae(montant_de($modif->encaissements_sum_montant ?? 0)) }}</strong>.
                     @if ($verrou !== [])
                         La date d'édition, le numéro, l'immatriculation et le montant sont
                         <strong>verrouillés</strong> : c'est par eux que l'import reconnaît cette ligne,
@@ -1035,7 +1035,7 @@ $basculerPortage = function () {
                     {{-- Par où le règlement est passé — le même composant que partout
                          ailleurs. Il ne paraît qu'avec un règlement saisi : sans règlement,
                          la créance est simplement posée. --}}
-                    @if (trim((string) $fRegle) !== '' && (int) $fRegle !== 0)
+                    @if (trim((string) $fRegle) !== '' && montant_de($fRegle) !== 0)
                         <x-moyen-de-paiement prefixe="f"
                             :support="$fSupport" :compte="$fCompte"
                             :mode="$fMode" :reference="$fReference"
@@ -1177,7 +1177,7 @@ $basculerPortage = function () {
                             <td>{{ $ligne->immatriculation ?? '—' }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae($ligne->montant) }}</td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
-                                {{ ae((int) ($ligne->encaissements_sum_montant ?? 0)) }}
+                                {{ ae(montant_de($ligne->encaissements_sum_montant ?? 0)) }}
                             </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $reste >= Recouvrement::SEUIL_SOLDE ? '#C8102E' : '#6B6E76' }};">

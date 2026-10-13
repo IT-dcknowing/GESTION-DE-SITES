@@ -142,7 +142,7 @@ $updatedStatut = fn () => $this->page = 1;
                             <td>{{ $relance->interlocuteur }}</td>
                             <td>{{ $relance->resultat }}</td>
                             <td class="num">
-                                {{ $relance->montant_promis ? number_format($relance->montant_promis, 0, ',', ' ') : '·' }}
+                                {{ $relance->montant_promis ? montant_nombre($relance->montant_promis) : '·' }}
                             </td>
                             <td>{{ $relance->responsable }}</td>
                             <td>{{ $relance->statut }}</td>

@@ -215,7 +215,7 @@ $mutations = computed(fn () => Reaffectation::where('entreprise_id', auth()->use
             @if ($this->devis['total'] > 0)
                 <div style="margin-top:7px;">
                     Aujourd'hui : <strong>{{ number_format($this->devis['rattaches'], 0, ',', ' ') }}</strong>
-                    devis rattachés sur <strong>{{ number_format($this->devis['total'], 0, ',', ' ') }}</strong>.
+                    devis rattachés sur <strong>{{ montant_nombre($this->devis['total']) }}</strong>.
                 </div>
             @endif
         </div>

@@ -384,7 +384,7 @@ $lien = function (array $changements = []): string {
                                 <span class="rec-sw" style="background:{{ $tranche['couleur'] }};"></span>
                                 {{ $tranche['libelle'] }}
                             </td>
-                            <td class="num">{{ number_format($tranche['montant'], 0, ',', ' ') }}</td>
+                            <td class="num">{{ montant_nombre($tranche['montant']) }}</td>
                             <td class="num">{{ number_format($tranche['part'] * 100, 1, ',', ' ') }} %</td>
                         </tr>
                     @endforeach
@@ -407,7 +407,7 @@ $lien = function (array $changements = []): string {
                 <div style="margin-bottom:10px;">
                     <div style="display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px;">
                         <span><span class="pill pN{{ $entree['niveau'] }}">{{ $entree['libelle'] }}</span></span>
-                        <span class="rec-chiffre">{{ number_format($entree['montant'], 0, ',', ' ') }}
+                        <span class="rec-chiffre">{{ montant_nombre($entree['montant']) }}
                             <span style="color:#6B6E76; font-weight:400;">· {{ $entree['tiers'] }} tiers</span></span>
                     </div>
                     <div style="height:9px; background:#EFEDE6; border-radius:5px; overflow:hidden;">
@@ -514,9 +514,9 @@ $lien = function (array $changements = []): string {
                             <td class="num">
                                 {{ $agent['niveau_max'] > 0 ? 'N'.$agent['niveau_max'] : '·' }}
                             </td>
-                            <td class="num">{{ $agent['promesses'] ? number_format($agent['promesses'], 0, ',', ' ') : '·' }}</td>
+                            <td class="num">{{ $agent['promesses'] ? montant_nombre($agent['promesses']) : '·' }}</td>
                             <td class="num">{{ $agent['encaissements'] }}</td>
-                            <td class="num">{{ $agent['encaisse'] ? number_format($agent['encaisse'], 0, ',', ' ') : '·' }}</td>
+                            <td class="num">{{ $agent['encaisse'] ? montant_nombre($agent['encaisse']) : '·' }}</td>
                             <td>{{ $agent['dernier_geste']?->format('d/m/Y') ?? 'aucun' }}</td>
                         </tr>
                     @empty
@@ -557,7 +557,7 @@ $lien = function (array $changements = []): string {
                     @forelse ($this->lignesDeLaPage as $ligne)
                         <tr>
                             <td><b>{{ $ligne['tiers'] }}</b></td>
-                            <td class="num">{{ number_format($ligne['reste'], 0, ',', ' ') }}</td>
+                            <td class="num">{{ montant_nombre($ligne['reste']) }}</td>
                             <td class="num">{{ $ligne['nombre'] }}</td>
                             <td class="num">
                                 @if ($ligne['depuis'] !== null)
@@ -590,9 +590,9 @@ $lien = function (array $changements = []): string {
                                     <span style="color:#6B6E76;">jamais</span>
                                 @endif
                             </td>
-                            <td class="num">{{ $ligne['promis'] ? number_format($ligne['promis'], 0, ',', ' ') : '·' }}</td>
+                            <td class="num">{{ $ligne['promis'] ? montant_nombre($ligne['promis']) : '·' }}</td>
                             <td class="num">
-                                {{ $ligne['encaisse'] ? number_format($ligne['encaisse'], 0, ',', ' ') : '·' }}
+                                {{ $ligne['encaisse'] ? montant_nombre($ligne['encaisse']) : '·' }}
                                 @if ($ligne['dernier_encaissement'])
                                     <div style="font-size:10.5px; color:#6B6E76; font-weight:400;">
                                         {{ $ligne['dernier_encaissement']->format('d/m/Y') }}
@@ -622,11 +622,11 @@ $lien = function (array $changements = []): string {
                     <tfoot>
                         <tr class="tot">
                             <td>TOTAL — {{ $this->lignes->count() }} tiers</td>
-                            <td class="num">{{ number_format($this->lignes->sum('reste'), 0, ',', ' ') }}</td>
+                            <td class="num">{{ montant_nombre($this->lignes->sum('reste')) }}</td>
                             <td class="num">{{ $this->lignes->sum('nombre') }}</td>
                             <td colspan="4"></td>
-                            <td class="num">{{ number_format($this->lignes->sum('promis'), 0, ',', ' ') }}</td>
-                            <td class="num">{{ number_format($this->lignes->sum('encaisse'), 0, ',', ' ') }}</td>
+                            <td class="num">{{ montant_nombre($this->lignes->sum('promis')) }}</td>
+                            <td class="num">{{ montant_nombre($this->lignes->sum('encaisse')) }}</td>
                             <td colspan="2"></td>
                         </tr>
                     </tfoot>

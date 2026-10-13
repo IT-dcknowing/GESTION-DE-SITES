@@ -105,7 +105,7 @@ class TelechargementController
         $corps = $lignes->map(fn (array $l) => [
             $l['tiers'],
             ...array_map('intval', array_values($l['tranches'])),
-            (int) $l['reste'],
+            montant_de($l['reste']),
             (int) $l['nombre'],
             $l['niveau']['libelle'] ?? '—',
         ])->values()->all();
@@ -116,7 +116,7 @@ class TelechargementController
 
         foreach ($lignes as $ligne) {
             foreach (array_values($ligne['tranches']) as $index => $montant) {
-                $totaux[$index] += (int) $montant;
+                $totaux[$index] += montant_de($montant);
             }
         }
 
@@ -140,18 +140,18 @@ class TelechargementController
             $lignes->map(fn (array $l) => [
                 $l['courtier'],
                 (int) $l['facture'],
-                (int) $l['regle'],
-                (int) $l['reste'],
+                montant_de($l['regle']),
+                montant_de($l['reste']),
                 (int) $l['ouvertes'],
                 (int) $l['assurances'],
                 $l['niveau']['libelle'] ?? '—',
             ])->values()->all(),
             [
                 'TOTAL',
-                (int) $lignes->sum('facture'),
-                (int) $lignes->sum('regle'),
-                (int) $lignes->sum('reste'),
-                (int) $lignes->sum('ouvertes'),
+                montant_de($lignes->sum('facture')),
+                montant_de($lignes->sum('regle')),
+                montant_de($lignes->sum('reste')),
+                montant_de($lignes->sum('ouvertes')),
                 '',
                 '',
             ],
@@ -171,19 +171,19 @@ class TelechargementController
                 implode(' · ', $l['roles']) ?: 'Déclaré',
                 (int) $l['factures'],
                 (int) $l['facture'],
-                (int) $l['regle'],
-                (int) $l['reste'],
+                montant_de($l['regle']),
+                montant_de($l['reste']),
                 (int) $l['ouvertes'],
                 $l['derniere']?->format('d/m/Y') ?? '—',
             ])->values()->all(),
             [
                 'TOTAL',
                 '',
-                (int) $lignes->sum('factures'),
-                (int) $lignes->sum('facture'),
-                (int) $lignes->sum('regle'),
-                (int) $lignes->sum('reste'),
-                (int) $lignes->sum('ouvertes'),
+                montant_de($lignes->sum('factures')),
+                montant_de($lignes->sum('facture')),
+                montant_de($lignes->sum('regle')),
+                montant_de($lignes->sum('reste')),
+                montant_de($lignes->sum('ouvertes')),
                 '',
             ],
             [],
@@ -205,11 +205,11 @@ class TelechargementController
                 (string) ($r->canal ?: '—'),
                 (string) ($r->interlocuteur ?: '—'),
                 (string) ($r->resultat ?: '—'),
-                (int) $r->montant_promis,
+                montant_de($r->montant_promis),
                 (string) ($r->responsable ?: '—'),
                 (string) $r->statut,
             ])->values()->all(),
-            ['TOTAL', '', '', '', '', '', '', (int) $lignes->sum('montant_promis'), '', ''],
+            ['TOTAL', '', '', '', '', '', '', montant_de($lignes->sum('montant_promis')), '', ''],
             [3 => self::TEINTES],
         ];
     }
@@ -232,10 +232,10 @@ class TelechargementController
                 (string) ($e->client ?: '—'),
                 (string) ($e->facture?->n_facture ?: '—'),
                 (string) ($e->mode ?: '—'),
-                (int) $e->montant,
+                montant_de($e->montant),
                 (string) ($e->reference_origine ?: '—'),
             ])->values()->all(),
-            ['TOTAL', '', '', '', (int) $lignes->sum('montant'), ''],
+            ['TOTAL', '', '', '', montant_de($lignes->sum('montant')), ''],
             [],
         ];
     }
@@ -261,7 +261,7 @@ class TelechargementController
             ],
             $lignes->map(fn (array $l) => [
                 $l['tiers'],
-                (int) $l['reste'],
+                montant_de($l['reste']),
                 (int) $l['nombre'],
                 $l['depuis'] !== null ? (int) $l['depuis'] : '—',
                 $l['plus_ancienne']?->format('d/m/Y') ?? '—',
@@ -269,18 +269,18 @@ class TelechargementController
                 $l['responsable'] ?: 'À confier',
                 $l['derniere_relance']?->format('d/m/Y') ?? 'jamais',
                 (int) $l['relances'],
-                (int) $l['promis'],
-                (int) $l['encaisse'],
+                montant_de($l['promis']),
+                montant_de($l['encaisse']),
                 $l['silence'] !== null ? (int) $l['silence'] : '—',
             ])->values()->all(),
             [
                 'TOTAL — '.$lignes->count().' tiers',
-                (int) $lignes->sum('reste'),
+                montant_de($lignes->sum('reste')),
                 (int) $lignes->sum('nombre'),
                 '', '', '', '', '',
-                (int) $lignes->sum('relances'),
-                (int) $lignes->sum('promis'),
-                (int) $lignes->sum('encaisse'),
+                montant_de($lignes->sum('relances')),
+                montant_de($lignes->sum('promis')),
+                montant_de($lignes->sum('encaisse')),
                 '',
             ],
             [5 => self::TEINTES],
@@ -330,7 +330,7 @@ class TelechargementController
         $corps = $factures->map(function (Facture $f) use ($arrete, &$regle, &$reste) {
             $du = Recouvrement::reste($f);
             $age = Recouvrement::anciennete($f, $arrete);
-            $regle += (int) $f->montant - $du;
+            $regle += montant_de($f->montant) - $du;
             $reste += $du;
 
             $pourLeCompte = trim((string) $f->depose_chez) !== ''
@@ -348,8 +348,8 @@ class TelechargementController
                 $pourLeCompte,
                 (string) ($f->vehicule ?: '—'),
                 (string) ($f->immatriculation ?: '—'),
-                (int) $f->montant,
-                (int) $f->montant - $du,
+                montant_de($f->montant),
+                montant_de($f->montant) - $du,
                 $du,
                 $du < Recouvrement::SEUIL_SOLDE ? 'Soldée' : ($age === null ? '—' : $age.' j'),
             ];
@@ -359,7 +359,7 @@ class TelechargementController
             ['Date de facturation', 'Date de dépôt', 'N° facture', 'N° sinistre', 'Client (assuré)', 'Pour le compte de',
                 'Véhicule', 'Immatriculation', 'Montant TTC', 'Réglé', 'Reste à payer', 'Ancienneté'],
             $corps,
-            ['TOTAL', '', '', '', '', '', '', '', (int) $factures->sum('montant'), $regle, $reste, ''],
+            ['TOTAL', '', '', '', '', '', '', '', montant_de($factures->sum('montant')), $regle, $reste, ''],
             [],
         ];
 

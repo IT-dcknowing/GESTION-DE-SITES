@@ -135,7 +135,7 @@ class FormatDesPiecesBancaires extends Format
             'type_piece' => $type,
             'modele_reglement' => self::texte($ligne['modele_reglement'] ?? null, 80),
             'beneficiaire' => self::texte($ligne['beneficiaire'] ?? null, 180),
-            'montant' => (int) round((float) self::montant($ligne['montant'] ?? null)),
+            'montant' => montant_de(self::montant($ligne['montant'] ?? null)),
             // Nul quand le type ne se lit pas : une pièce qu'on ne sait pas orienter doit se
             // voir, pas se deviner.
             'sens' => PieceBancaire::sensDuType($type),

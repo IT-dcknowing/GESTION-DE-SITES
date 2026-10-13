@@ -93,7 +93,7 @@ trait MontreLesColonnesDuFichier
         }
 
         if (in_array($cle, $this->colonnesEnFrancs(), true)) {
-            return ae((int) $valeur);
+            return ae(montant_de($valeur));
         }
 
         return (string) $valeur;

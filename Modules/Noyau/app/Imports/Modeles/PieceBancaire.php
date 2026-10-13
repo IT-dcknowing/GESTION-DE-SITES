@@ -36,6 +36,8 @@ use Modules\Noyau\Exploitation\Modeles\Banque;
 ])]
 class PieceBancaire extends Model
 {
+    use \App\Casts\CompareLesMontants;
+
     use AppartientAUneEntreprise;
     use PeutVenirDUnImport;
 
@@ -49,7 +51,7 @@ class PieceBancaire extends Model
     {
         return [
             'date_piece' => 'date',
-            'montant' => 'integer',
+            'montant' => \App\Casts\Montant::class,
             'rattachement_presume' => 'boolean',
         ];
     }

@@ -173,7 +173,7 @@ $updatedFiltresLibres = function () { $this->page = 1; };
         <div class="carte" style="padding:13px 15px;">
             <div style="font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#6B6E76; font-weight:700;">Facturé</div>
             <div style="font-family:'Barlow Condensed',sans-serif; font-size:27px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;">
-                {{ number_format($this->totaux['montant'], 0, ',', ' ') }}
+                {{ montant_nombre($this->totaux['montant']) }}
             </div>
             <div style="font-size:11.5px; color:#6B6E76;">F CFA</div>
         </div>
@@ -278,7 +278,7 @@ $updatedFiltresLibres = function () { $this->page = 1; };
                                 {{ $client['factures'] ?: '·' }}
                             </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:700;">
-                                {{ $client['montant'] ? number_format($client['montant'], 0, ',', ' ') : '·' }}
+                                {{ $client['montant'] ? montant_nombre($client['montant']) : '·' }}
                             </td>
                             <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">
                                 {{ $client['fiches'] ?: '·' }}

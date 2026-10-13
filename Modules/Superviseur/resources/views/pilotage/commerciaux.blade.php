@@ -88,7 +88,7 @@ $caMensuel = computed(function () {
     foreach ($lignes as $ligne) {
         $mois = $ligne->date->format('Y-m');
         $parCommercial[$ligne->commercial_id][$mois] ??= 0;
-        $parCommercial[$ligne->commercial_id][$mois] += (int) $ligne->montant;
+        $parCommercial[$ligne->commercial_id][$mois] += montant_de($ligne->montant);
     }
 
     return $parCommercial;
@@ -185,10 +185,10 @@ $classement = computed(function () {
             ->whereIn('site_id', $this->idsSites)
             ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
             ->whereBetween('date', [$debut, $fin])->get(['montant', 'activite']);
-        $realisation = (int) $lignesFactures->sum('montant');
+        $realisation = montant_de($lignesFactures->sum('montant'));
         $objectifProrata = (int) round(PeriodeCalculateur::objectifProrata((float) $commercial->objectif_mensuel, $debut, $fin));
         $ecart = $realisation - $objectifProrata;
-        $caVille = (int) ($caParVille[$commercial->ville_id] ?? 0);
+        $caVille = montant_de($caParVille[$commercial->ville_id] ?? 0);
 
         /*
          * La commission, mois par mois — jamais sur la période entière.
@@ -231,8 +231,8 @@ $classement = computed(function () {
             'objectifSinistre' => (int) round(PeriodeCalculateur::objectifProrata((float) $commercial->objectif_sinistre, $debut, $fin)),
             'objectifJournalier' => (int) round($commercial->objectif_mensuel / 30),
             'realisation' => $realisation,
-            'realisationMecanique' => (int) $lignesFactures->where('activite', 'Mécanique')->sum('montant'),
-            'realisationSinistre' => (int) $lignesFactures->where('activite', 'Sinistre')->sum('montant'),
+            'realisationMecanique' => montant_de($lignesFactures->where('activite', 'Mécanique')->sum('montant')),
+            'realisationSinistre' => montant_de($lignesFactures->where('activite', 'Sinistre')->sum('montant')),
             'ecart' => $ecart,
             'taux' => $objectifProrata > 0 ? $realisation / $objectifProrata : null,
             'contribution' => $caVille > 0 ? $realisation / $caVille : null,
@@ -336,7 +336,7 @@ $graphique = computed(fn () => [
                     {{-- Une commission à zéro se lit « il n'a rien vendu » ; il faut pouvoir
                          lire « on ne sait pas qui a vendu ». Le chiffre le dit. --}}
                     <b style="color:#B45309;">
-                        Sur {{ number_format($couverture['total'], 0, ',', ' ') }} facture(s) de la période,
+                        Sur {{ montant_nombre($couverture['total']) }} facture(s) de la période,
                         {{ number_format($couverture['attribuees'], 0, ',', ' ') }} seulement portent un commercial :
                         les autres ne sont comptées à personne.
                     </b>

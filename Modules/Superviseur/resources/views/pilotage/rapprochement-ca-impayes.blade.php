@@ -127,8 +127,8 @@ $indicateurs = computed(function () {
     $ca = $this->populations['ca'];
     $impayes = $this->populations['impayes'];
 
-    $totalCa = (int) $ca->sum('montant');
-    $totalImpayes = (int) $impayes->sum('montant');
+    $totalCa = montant_de($ca->sum('montant'));
+    $totalImpayes = montant_de($impayes->sum('montant'));
     $reste = $impayes->sum(fn (Facture $f) => Recouvrement::reste($f));
 
     return [
@@ -245,10 +245,10 @@ $parSite = computed(function () {
             $lignes[$nom] ??= ['site' => $nom, 'ca' => 0, 'lignesCa' => 0, 'impayes' => 0, 'lignesImpayes' => 0, 'reste' => 0];
 
             if ($cote === 'ca') {
-                $lignes[$nom]['ca'] += (int) $facture->montant;
+                $lignes[$nom]['ca'] += montant_de($facture->montant);
                 $lignes[$nom]['lignesCa']++;
             } else {
-                $lignes[$nom]['impayes'] += (int) $facture->montant;
+                $lignes[$nom]['impayes'] += montant_de($facture->montant);
                 $lignes[$nom]['lignesImpayes']++;
                 $lignes[$nom]['reste'] += Recouvrement::reste($facture);
             }

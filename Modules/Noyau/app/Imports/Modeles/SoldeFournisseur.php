@@ -28,6 +28,8 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 ])]
 class SoldeFournisseur extends Model
 {
+    use \App\Casts\CompareLesMontants;
+
     use AppartientAUneEntreprise, PeutVenirDUnImport;
 
     protected $table = 'soldes_fournisseur';
@@ -35,9 +37,9 @@ class SoldeFournisseur extends Model
     protected function casts(): array
     {
         return [
-            'debit' => 'integer',
-            'credit' => 'integer',
-            'solde' => 'integer',
+            'debit' => \App\Casts\Montant::class,
+            'credit' => \App\Casts\Montant::class,
+            'solde' => \App\Casts\Montant::class,
             'rattachement_presume' => 'boolean',
         ];
     }

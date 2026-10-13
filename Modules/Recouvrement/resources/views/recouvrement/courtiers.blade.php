@@ -94,7 +94,7 @@ $recoupe = computed(function () {
 
     $consolide = $this->filtre === ''
         ? $this->consolide->sum('reste')
-        : (int) ($ligne['reste'] ?? 0);
+        : montant_de($ligne['reste'] ?? 0);
 
     return ['detail' => $this->detailAffiche->sum('reste'), 'consolide' => $consolide];
 });
@@ -165,9 +165,9 @@ $horsCourtage = computed(fn () => $this->toutes
                                              en remontant. --}}
                                         <span class="chip" style="margin-left:6px;">ventilé ci-dessous</span>
                                     @endif</td>
-                                <td class="num">{{ number_format($ligne['facture'], 0, ',', ' ') }}</td>
-                                <td class="num">{{ number_format($ligne['regle'], 0, ',', ' ') }}</td>
-                                <td class="num"><b>{{ number_format($ligne['reste'], 0, ',', ' ') }}</b></td>
+                                <td class="num">{{ montant_nombre($ligne['facture']) }}</td>
+                                <td class="num">{{ montant_nombre($ligne['regle']) }}</td>
+                                <td class="num"><b>{{ montant_nombre($ligne['reste']) }}</b></td>
                                 <td class="num">{{ $ligne['ouvertes'] }}</td>
                                 <td class="num">{{ $ligne['assurances'] }}</td>
                                 <td><span class="pill {{ $ligne['niveau']['classe'] }}">{{ $ligne['niveau']['libelle'] }}</span></td>
@@ -206,9 +206,9 @@ $horsCourtage = computed(fn () => $this->toutes
 
                         <tr class="tot">
                             <td>TOTAL COURTAGE</td>
-                            <td class="num">{{ number_format($this->totaux['facture'], 0, ',', ' ') }}</td>
-                            <td class="num">{{ number_format($this->totaux['regle'], 0, ',', ' ') }}</td>
-                            <td class="num">{{ number_format($this->totaux['reste'], 0, ',', ' ') }}</td>
+                            <td class="num">{{ montant_nombre($this->totaux['facture']) }}</td>
+                            <td class="num">{{ montant_nombre($this->totaux['regle']) }}</td>
+                            <td class="num">{{ montant_nombre($this->totaux['reste']) }}</td>
                             <td class="num">{{ $this->totaux['ouvertes'] }}</td>
                             <td colspan="3"></td>
                         </tr>
@@ -284,8 +284,8 @@ $horsCourtage = computed(fn () => $this->toutes
                             <tr>
                                 <td><b>{{ $ligne['courtier'] }}</b></td>
                                 <td>{{ $ligne['assurance'] }}</td>
-                                <td class="num">{{ number_format($ligne['facture'], 0, ',', ' ') }}</td>
-                                <td class="num"><b>{{ number_format($ligne['reste'], 0, ',', ' ') }}</b></td>
+                                <td class="num">{{ montant_nombre($ligne['facture']) }}</td>
+                                <td class="num"><b>{{ montant_nombre($ligne['reste']) }}</b></td>
                                 <td class="num">{{ $ligne['ouvertes'] }}</td>
                                 <td class="num">{{ round($ligne['part'] * 100) }} %</td>
                             </tr>

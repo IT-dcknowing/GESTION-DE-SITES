@@ -558,13 +558,15 @@ class FormatDesFournisseurs extends Format
      * SQL de comparer des noyaux sans stocker une colonne de plus, et une colonne dérivée
      * qu'on oublierait de tenir à jour vaut moins qu'un calcul fait sur place.
      */
-    private function retrouver(?string $fournisseur, ?string $piece, $dateFacture, int $montant): ?FactureFournisseur
+    private function retrouver(?string $fournisseur, ?string $piece, $dateFacture, int|float $montant): ?FactureFournisseur
     {
         $candidates = FactureFournisseur::withoutGlobalScopes()
             ->where('entreprise_id', $this->entrepriseId)
             ->where('fournisseur', $fournisseur)
             ->where('date_facture', $dateFacture)
-            ->where('montant', $montant)
+            // À un demi-franc près : les lignes déjà en base ont été arrondies au franc par les dépôts d'avant
+            // le 13/10, et le redépôt doit les retrouver — pour mettre à jour leurs centimes, pas les doubler.
+            ->where(fn ($q) => self::aPeuPres($q, 'montant', $montant))
             ->get();
 
         if ($candidates->isEmpty()) {
@@ -605,18 +607,19 @@ class FormatDesFournisseurs extends Format
     }
 
     /**
-     * Un montant en francs, arrondi — ou null quand la cellule n'en porte pas.
+     * Un montant tel que donné — ou null quand la cellule n'en porte pas.
      *
-     * Le franc CFA n'a pas de centimes ; les décimales que portent certaines colonnes
-     * viennent des formules du tableur (« 82 096,627… » pour un montant hors taxe) et non
-     * d'une monnaie plus fine. Distinguer null de zéro compte : une colonne absente d'un
+     * **Jamais arrondi** (13/10) : on l'arrondissait ici au franc, au motif que le franc CFA n'a pas de
+     * centimes ; les classeurs en portent pourtant (« 82 096,627… » pour un hors-taxe), et le total de
+     * l'écran s'écartait de celui du classeur. La colonne garde quatre décimales.
+     * Distinguer null de zéro compte : une colonne absente d'un
      * des deux classeurs doit rester vide, pas s'afficher à zéro comme si elle avait été
      * renseignée.
      */
-    private static function entier(mixed $valeur): ?int
+    private static function entier(mixed $valeur): int|float|null
     {
         $montant = self::montant($valeur);
 
-        return $montant === null ? null : (int) round($montant);
+        return $montant === null ? null : montant_de($montant);
     }
 }

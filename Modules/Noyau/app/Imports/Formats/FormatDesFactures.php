@@ -211,7 +211,7 @@ class FormatDesFactures extends Format
                 (string) self::texte($ligne['marque'] ?? null, 60).' '.self::texte($ligne['modele'] ?? null, 60)
             ), 120),
             'immatriculation' => self::texte($ligne['immatriculation'] ?? null, 30),
-            'montant' => (int) round((float) self::montant($ligne['montant'] ?? null)),
+            'montant' => montant_de(self::montant($ligne['montant'] ?? null)),
             // La pièce dit ce qu'elle est, et pas seulement ce que son signe vaut aujourd'hui.
             'est_avoir' => (float) self::montant($ligne['montant'] ?? null) < 0,
             'activite' => $this->activite($ligne),

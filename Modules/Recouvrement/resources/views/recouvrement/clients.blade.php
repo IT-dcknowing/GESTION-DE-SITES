@@ -209,7 +209,7 @@ $updatedRole = function () { $this->page = 1; };
         </div>
         <div class="rec-kpi rouge">
             <div class="lab">Reste à payer</div>
-            <div class="val">{{ number_format($this->totaux['reste'], 0, ',', ' ') }}</div>
+            <div class="val">{{ montant_nombre($this->totaux['reste']) }}</div>
             <div class="sub">F CFA · {{ $this->totaux['ouvertes'] }} factures ouvertes</div>
         </div>
     </div>
@@ -297,9 +297,9 @@ $updatedRole = function () { $this->page = 1; };
                                 @endforelse
                             </td>
                             <td class="num">{{ $ligne['factures'] ?: '·' }}</td>
-                            <td class="num">{{ $ligne['facture'] ? number_format($ligne['facture'], 0, ',', ' ') : '·' }}</td>
-                            <td class="num">{{ $ligne['regle'] ? number_format($ligne['regle'], 0, ',', ' ') : '·' }}</td>
-                            <td class="num"><b>{{ $ligne['reste'] ? number_format($ligne['reste'], 0, ',', ' ') : '·' }}</b></td>
+                            <td class="num">{{ $ligne['facture'] ? montant_nombre($ligne['facture']) : '·' }}</td>
+                            <td class="num">{{ $ligne['regle'] ? montant_nombre($ligne['regle']) : '·' }}</td>
+                            <td class="num"><b>{{ $ligne['reste'] ? montant_nombre($ligne['reste']) : '·' }}</b></td>
                             <td class="num">{{ $ligne['ouvertes'] ?: '·' }}</td>
                             <td>
                                 @if ($ligne['ouvertes'] > 0)

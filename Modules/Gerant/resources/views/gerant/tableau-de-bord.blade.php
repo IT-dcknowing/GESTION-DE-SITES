@@ -134,12 +134,12 @@ $synthese = computed(function () {
      * dit, au lieu de manquer en silence. Le total est alors celui du CA, pas celui du tableau.
      */
     if ($this->voitToutLeCa) {
-        $complet = (int) Facture::query()->duChiffreDAffaires()
+        $complet = montant_de(Facture::query()->duChiffreDAffaires()
             ->whereBetween('date', $this->plage)
             ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
             ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))
-            ->sum('montant');
-        $ecart = $complet - (int) $lignes->sum('ca');
+            ->sum('montant'));
+        $ecart = montant_de($complet - montant_de($lignes->sum('ca')));
 
         if ($ecart !== 0) {
             $lignes->push([
@@ -178,7 +178,7 @@ $rejetsDuCa = computed(function () {
 
     return [
         'n' => $rejets->count(),
-        'montant' => (int) round($rejets->sum(fn ($r) => (float) (Format::montant($r->valeurs['montant'] ?? null) ?? 0))),
+        'montant' => montant_de($rejets->sum(fn ($r) => (float) (Format::montant($r->valeurs['montant'] ?? null) ?? 0))),
         'motifs' => $rejets->countBy('motif')->sortDesc()->all(),
         'fichier' => $lot->nom_fichier,
     ];
@@ -251,28 +251,28 @@ $kpis = computed(function () {
 
     // À côté du CA, jamais dedans : ce que l'état des impayés porte sans que le fichier du CA
     // ne l'ait retrouvé — 12/10, voir `Facture::scopeSelonLesImpayesSeulement`.
-    $caSelonImpayes = (int) EtatDesImpayes::dansLePerimetre(Facture::query()->selonLesImpayesSeulement(), $idsSites->all(), $this->idsVilles)
+    $caSelonImpayes = montant_de(EtatDesImpayes::dansLePerimetre(Facture::query()->selonLesImpayesSeulement(), $idsSites->all(), $this->idsVilles)
         ->whereBetween('date', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))
-        ->sum('montant');
+        ->sum('montant'));
     $charges = VentilationActivite::repartir($chargesQ);
     $sorties = VentilationActivite::repartir($sortiesQ);
     $encaisse = VentilationActivite::repartir($encaisseQ, 'montant', Encaissement::ACTIVITE_SQL);
 
     return [
-        'ca' => $this->synthese->sum('ca'),
+        'ca' => montant_de($this->synthese->sum('ca')),
         'caSelonImpayes' => $caSelonImpayes,
         'caMecanique' => $ca['mecanique'],
         'caSinistre' => $ca['sinistre'],
         'caNonVentile' => $ca['nonVentile'],
-        'charges' => $this->synthese->sum('charges'),
+        'charges' => montant_de($this->synthese->sum('charges')),
         'chargesVentilees' => $charges,
-        'resultat' => $this->synthese->sum('resultat'),
+        'resultat' => montant_de($this->synthese->sum('resultat')),
         'resultatVentile' => VentilationActivite::difference($ca, $charges),
-        'encaisse' => $this->synthese->sum('encaisse'),
+        'encaisse' => montant_de($this->synthese->sum('encaisse')),
         'encaisseVentile' => $encaisse,
-        'treso' => $this->synthese->sum('treso'),
+        'treso' => montant_de($this->synthese->sum('treso')),
         'tresoVentilee' => VentilationActivite::difference($encaisse, $sorties),
         // Taux de transformation des devis émis sur la période.
         'tauxTransfo' => TransformationDesDevis::taux($devisLus, $transformes),
@@ -379,7 +379,7 @@ $topCommerciaux = computed(function () {
         ->whereIn('ville_id', PerimetreSites::idsVillesRetenus(auth()->user(), $this->villeFiltre))
         ->with('ville')->get()
         ->map(function ($c) use ($debut, $fin) {
-            $realisation = (int) Facture::where('commercial_id', $c->id)->whereBetween('date', [$debut, $fin])->sum('montant');
+            $realisation = montant_de(Facture::where('commercial_id', $c->id)->whereBetween('date', [$debut, $fin])->sum('montant'));
             $objectif = (int) round(PeriodeCalculateur::objectifProrata((float) $c->objectif_mensuel, $debut, $fin));
 
             return [
@@ -606,9 +606,9 @@ $commentaires = computed(function () {
                     <tfoot>
                         <tr style="font-weight:800; border-top:2px solid #191B20;">
                             <td>Total</td>
-                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseDuCa->sum('ca')) }}</td>
-                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseDuCa->sum('charges')) }}</td>
-                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseDuCa->sum('resultat')) }}</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae(montant_de($this->syntheseDuCa->sum('ca'))) }}</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae(montant_de($this->syntheseDuCa->sum('charges'))) }}</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae(montant_de($this->syntheseDuCa->sum('resultat'))) }}</td>
                             <td>{{ $this->syntheseDuCa->sum('devisAttente') }}</td>
                             <td>{{ $this->syntheseDuCa->sum('sansFacture') }}</td>
                         </tr>
@@ -677,10 +677,10 @@ $commentaires = computed(function () {
                     <tfoot>
                         <tr style="font-weight:800; border-top:2px solid #191B20;">
                             <td>Total</td>
-                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseImpayes->sum('creances')) }}</td>
-                            <td style="font-variant-numeric:tabular-nums; color:#B45309;">{{ ae((int) $this->syntheseImpayes->sum('horsCa')) }}</td>
-                            <td style="font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae((int) $this->syntheseImpayes->sum('encaisse')) }}</td>
-                            <td style="font-variant-numeric:tabular-nums;">{{ ae((int) $this->syntheseImpayes->sum('reste')) }}</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae(montant_de($this->syntheseImpayes->sum('creances'))) }}</td>
+                            <td style="font-variant-numeric:tabular-nums; color:#B45309;">{{ ae(montant_de($this->syntheseImpayes->sum('horsCa'))) }}</td>
+                            <td style="font-variant-numeric:tabular-nums; color:#0E9F6E;">{{ ae(montant_de($this->syntheseImpayes->sum('encaisse'))) }}</td>
+                            <td style="font-variant-numeric:tabular-nums;">{{ ae(montant_de($this->syntheseImpayes->sum('reste'))) }}</td>
                         </tr>
                     </tfoot>
                 @endif

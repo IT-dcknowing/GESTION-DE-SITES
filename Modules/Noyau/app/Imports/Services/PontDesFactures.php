@@ -53,7 +53,12 @@ class PontDesFactures
     {
     }
 
-    /** La clé forte : date du jour, montant entier, plaque sans espaces ni tirets. */
+    /**
+     * La clé forte : date du jour, montant entier, plaque sans espaces ni tirets.
+     *
+     * Le montant est arrondi ICI, et seulement ici : c'est une clé de rapprochement entre deux fichiers
+     * (le CATTC et l'état des impayés) qui n'arrondissent pas de la même façon, pas un montant stocké.
+     */
     public static function cle(mixed $date, mixed $montant, ?string $plaque): ?string
     {
         $plaque = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', (string) $plaque));

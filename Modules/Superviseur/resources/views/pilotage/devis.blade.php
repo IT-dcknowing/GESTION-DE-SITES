@@ -120,8 +120,8 @@ $parCommercial = computed(function () {
             'commercial' => $commercial,
             'emis' => $siens->count(),
             'valides' => $valides->count(),
-            'montantValide' => (int) $valides->sum(fn ($d) => $suites[(int) $d->id] !== null
-                ? (int) ($montantsFactures[$suites[(int) $d->id]] ?? 0) : (int) $d->montant_valide),
+            'montantValide' => montant_de($valides->sum(fn ($d) => $suites[(int) $d->id] !== null
+                ? montant_de($montantsFactures[$suites[(int) $d->id]] ?? 0) : montant_de($d->montant_valide))),
             // Validés **ou facturés** — voir `TransformationDesDevis` (08/10).
             'taux' => TransformationDesDevis::taux($siens, $transformes),
         ];
@@ -161,14 +161,14 @@ $kpis = computed(function () {
         ->whereIn('id', array_values(array_filter($suites)))
         ->pluck('montant', 'id');
     $retenu = fn ($d) => $suites[(int) $d->id] !== null
-        ? (int) ($montantsFactures[$suites[(int) $d->id]] ?? 0)
-        : (int) $d->montant_valide;
+        ? montant_de($montantsFactures[$suites[(int) $d->id]] ?? 0)
+        : montant_de($d->montant_valide);
 
     $ecart = function ($groupe) use ($retenu) {
         $avecMontant = $groupe->filter(fn ($d) => $retenu($d) > 0);
 
         return $avecMontant->isEmpty() ? null
-            : $avecMontant->sum(fn ($d) => (int) $d->montant_devis - $retenu($d)) / $avecMontant->count();
+            : $avecMontant->sum(fn ($d) => montant_de($d->montant_devis) - $retenu($d)) / $avecMontant->count();
     };
 
     // La réception d'un devis importé : la date de sa fiche du parc, quand on la connaît.
@@ -195,13 +195,13 @@ $kpis = computed(function () {
     return [
         'emis' => $emis,
         'montantEmis' => $lignes->sum('montant_devis'),
-        'montantEmisMecanique' => (int) $lignes->where('activite', 'Mécanique')->sum('montant_devis'),
-        'montantEmisSinistre' => (int) $lignes->where('activite', 'Sinistre')->sum('montant_devis'),
+        'montantEmisMecanique' => montant_de($lignes->where('activite', 'Mécanique')->sum('montant_devis')),
+        'montantEmisSinistre' => montant_de($lignes->where('activite', 'Sinistre')->sum('montant_devis')),
         'valides' => $transformesL->count(),
         'validesALEcran' => $lignes->where('statut', 'Validé')->count(),
-        'montantValide' => (int) $transformesL->sum($retenu),
-        'montantValideMecanique' => (int) $transformesL->where('activite', 'Mécanique')->sum($retenu),
-        'montantValideSinistre' => (int) $transformesL->where('activite', 'Sinistre')->sum($retenu),
+        'montantValide' => montant_de($transformesL->sum($retenu)),
+        'montantValideMecanique' => montant_de($transformesL->where('activite', 'Mécanique')->sum($retenu)),
+        'montantValideSinistre' => montant_de($transformesL->where('activite', 'Sinistre')->sum($retenu)),
         'refuses' => $refusesL->count(),
         'refusesMecanique' => $refusesL->where('activite', 'Mécanique')->count(),
         'refusesSinistre' => $refusesL->where('activite', 'Sinistre')->count(),

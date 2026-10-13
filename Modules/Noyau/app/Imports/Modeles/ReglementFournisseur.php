@@ -26,6 +26,8 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 ])]
 class ReglementFournisseur extends Model
 {
+    use \App\Casts\CompareLesMontants;
+
     use AppartientAUneEntreprise, PeutVenirDUnImport;
 
     protected $table = 'reglements_fournisseur';
@@ -34,7 +36,7 @@ class ReglementFournisseur extends Model
     {
         return [
             'date_reglement' => 'date',
-            'montant' => 'integer',
+            'montant' => \App\Casts\Montant::class,
             'rattachement_presume' => 'boolean',
         ];
     }

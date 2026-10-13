@@ -86,7 +86,7 @@ $parMode = computed(function () {
 
     return $modes->map(fn (string $mode) => [
         'mode' => $mode,
-        'montant' => (int) ($reels[$mode] ?? collect())->sum('montant'),
+        'montant' => montant_de(($reels[$mode] ?? collect())->sum('montant')),
         'nombre' => ($reels[$mode] ?? collect())->count(),
     ])->sortByDesc('montant')->values();
 });
@@ -147,7 +147,7 @@ $updatedAu = fn () => $this->page = 1;
                                 <td><b>{{ $encaissement->client }}</b></td>
                                 <td>N° {{ $encaissement->facture?->n_facture ?? '—' }}</td>
                                 <td>{{ $encaissement->moyen }}</td>
-                                <td class="num"><b>{{ number_format((int) $encaissement->montant, 0, ',', ' ') }}</b></td>
+                                <td class="num"><b>{{ montant_nombre(montant_de($encaissement->montant)) }}</b></td>
                                 <td>{{ $encaissement->reference_origine }}</td>
                                 <td>{{ $this->auteurs[$encaissement->cree_par] ?? '—' }}</td>
                             </tr>
@@ -180,13 +180,13 @@ $updatedAu = fn () => $this->page = 1;
                     @foreach ($this->parMode as $ligne)
                         <tr>
                             <td>{{ $ligne['mode'] }}</td>
-                            <td class="num">{{ $ligne['montant'] ? number_format($ligne['montant'], 0, ',', ' ') : '·' }}</td>
+                            <td class="num">{{ $ligne['montant'] ? montant_nombre($ligne['montant']) : '·' }}</td>
                             <td class="num">{{ $ligne['nombre'] ?: '·' }}</td>
                         </tr>
                     @endforeach
                     <tr class="tot">
                         <td>TOTAL</td>
-                        <td class="num">{{ number_format((int) $this->encaissements->sum('montant'), 0, ',', ' ') }}</td>
+                        <td class="num">{{ montant_nombre(montant_de($this->encaissements->sum('montant'))) }}</td>
                         <td class="num">{{ $this->encaissements->count() }}</td>
                     </tr>
                 </tbody>

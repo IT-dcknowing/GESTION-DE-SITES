@@ -80,7 +80,7 @@ class AffectationDesCodes
             ->get()
             ->map(function (CodeAgent $agent) use ($villes, $sites, $mesures) {
                 $lignes = $mesures->get($agent->code, collect());
-                $total = (int) $lignes->sum('n');
+                $total = montant_de($lignes->sum('n'));
 
                 $repartition = [];
                 $dominante = null;

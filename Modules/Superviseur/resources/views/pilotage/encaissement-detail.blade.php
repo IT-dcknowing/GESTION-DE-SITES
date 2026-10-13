@@ -96,7 +96,7 @@ $historique = computed(fn () => $this->encaissement === null ? collect() : Activ
         @endphp
 
         <x-titre-ecran :titre="'Encaissement '.($e->numero ?: '#'.$e->id)"
-            :sous-titre="ae((int) $e->montant).' — '.($e->client ?: 'tiers non précisé').' — '.($e->date?->format('d/m/Y') ?? '')">
+            :sous-titre="ae(montant_de($e->montant)).' — '.($e->client ?: 'tiers non précisé').' — '.($e->date?->format('d/m/Y') ?? '')">
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <a href="{{ route('tresorerie') }}" wire:navigate class="bouton bouton-secondaire">← Trésorerie</a>
                 @if ($e->facture)
@@ -113,7 +113,7 @@ $historique = computed(fn () => $this->encaissement === null ? collect() : Activ
         </x-titre-ecran>
 
         <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
-            <x-kpi-card label="Montant encaissé" :value="ae((int) $e->montant)" :bon="true" />
+            <x-kpi-card label="Montant encaissé" :value="ae(montant_de($e->montant))" :bon="true" />
             <x-kpi-card label="Date de l'écriture" :value="$e->date?->format('d/m/Y') ?? '—'" />
             <x-kpi-card label="Moyen" :value="$e->moyen ?: '—'" :sub="$e->reference_origine ?: null" />
             {{-- D'où vient la ligne : c'est la première chose qu'on cherche quand un
@@ -131,7 +131,7 @@ $historique = computed(fn () => $this->encaissement === null ? collect() : Activ
                     <tr><td style="{{ $intitule }}">Type d'encaissement</td><td style="{{ $cellule }}">{{ $e->type ?: '—' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Moyen</td><td style="{{ $cellule }}">{{ $e->moyen ?: '—' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Montant</td>
-                        <td style="{{ $cellule }} font-weight:700; color:#0E9F6E;">{{ ae((int) $e->montant) }}</td></tr>
+                        <td style="{{ $cellule }} font-weight:700; color:#0E9F6E;">{{ ae(montant_de($e->montant)) }}</td></tr>
                     <tr><td style="{{ $intitule }}">Date</td><td style="{{ $cellule }}">{{ $e->date?->format('d/m/Y') ?? '—' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Référence d'origine</td><td style="{{ $cellule }}">{{ $e->reference_origine ?: '—' }}</td></tr>
                     <tr><td style="{{ $intitule }}">Motif</td><td style="{{ $cellule }}">{{ $e->motif ?: '—' }}</td></tr>
@@ -160,7 +160,7 @@ $historique = computed(fn () => $this->encaissement === null ? collect() : Activ
                         <tr><td style="{{ $intitule }}">Véhicule</td>
                             <td style="{{ $cellule }}">{{ $e->facture->immatriculation ?: ($e->facture->vehicule ?: '—') }}</td></tr>
                         <tr><td style="{{ $intitule }}">Montant de la facture</td>
-                            <td style="{{ $cellule }}">{{ ae((int) $e->facture->montant) }}</td></tr>
+                            <td style="{{ $cellule }}">{{ ae(montant_de($e->facture->montant)) }}</td></tr>
                         <tr><td style="{{ $intitule }}">Reste dû après ce règlement</td>
                             <td style="{{ $cellule }} font-weight:700; color:{{ $reste >= Recouvrement::SEUIL_SOLDE ? '#C8102E' : '#0E9F6E' }};">
                                 {{ ae($reste) }}
@@ -182,7 +182,7 @@ $historique = computed(fn () => $this->encaissement === null ? collect() : Activ
                                     {{ $e->reglement_global }}
                                 </a>
                                 <div style="font-size:11.5px; color:#6B6E76;">
-                                    une part d'un versement de {{ ae((int) $this->fratrie->sum('montant')) }}
+                                    une part d'un versement de {{ ae(montant_de($this->fratrie->sum('montant'))) }}
                                     sur {{ $this->fratrie->count() }} facture(s)
                                 </div>
                             @else
@@ -214,8 +214,8 @@ $historique = computed(fn () => $this->encaissement === null ? collect() : Activ
                 <h3 style="font-size:15px; font-weight:700; margin:0 0 6px;">Les autres parts du même versement</h3>
                 <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
                     Cette écriture n'est qu'une part : le client a versé
-                    <b>{{ ae((int) $this->fratrie->sum('montant')) }}</b> en une fois. La montrer seule
-                    laisserait croire qu'il n'a payé que {{ ae((int) $e->montant) }}.
+                    <b>{{ ae(montant_de($this->fratrie->sum('montant'))) }}</b> en une fois. La montrer seule
+                    laisserait croire qu'il n'a payé que {{ ae(montant_de($e->montant)) }}.
                 </p>
                 <div class="tableau-conteneur">
                     <table class="tableau">
@@ -231,7 +231,7 @@ $historique = computed(fn () => $this->encaissement === null ? collect() : Activ
                                             <span style="font-weight:400; color:#6B6E76; font-size:11.5px;">— celle-ci</span>
                                         @endif
                                     </td>
-                                    <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $part->montant) }}</td>
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae(montant_de($part->montant)) }}</td>
                                     <td style="text-align:right; font-variant-numeric:tabular-nums;">
                                         {{ $part->facture ? ae(Recouvrement::reste($part->facture)) : '—' }}
                                     </td>

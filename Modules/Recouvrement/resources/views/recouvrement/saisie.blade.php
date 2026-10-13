@@ -303,7 +303,7 @@ $encSelection = computed(fn () => $this->facturesDuTiersEncaissement->filter(
  */
 $encRepartition = computed(fn () => ReglementGlobal::repartir(
     $this->encSelection,
-    (int) ($this->encMontant ?: 0),
+    montant_de($this->encMontant ?: 0),
 ));
 
 $encTotalDu = computed(fn () => $this->encSelection->sum(fn (Facture $f) => Recouvrement::reste($f)));
@@ -437,7 +437,7 @@ $enregistrerEncaissement = function () {
         return;
     }
 
-    $montant = (int) $donnees['encMontant'];
+    $montant = montant_de($donnees['encMontant']);
     $idsChoisies = $choisies->pluck('id')->all();
 
     /*
@@ -666,7 +666,7 @@ $libelleDesFacturesRelancees = protect(function (): string {
          * pour quel reste, et les premiers numéros — et la liste complète part au journal
          * d'activité de la relance, où rien n'est tronqué.
          */
-        $total = (int) $cochees->sum(fn (Facture $f) => Recouvrement::reste($f));
+        $total = montant_de($cochees->sum(fn (Facture $f) => Recouvrement::reste($f)));
         $numeros = $cochees->map(fn (Facture $f) => (string) ($f->n_facture ?: $f->numero))->values();
         $tete = $cochees->count().' factures · reste '.Recouvrement::fr($total).' : N° ';
 
@@ -750,7 +750,7 @@ $enregistrerRelance = function () {
         'canal' => $donnees['relCanal'],
         'interlocuteur' => $donnees['relInterlocuteur'] ?: null,
         'resultat' => $donnees['relResultat'] ?: null,
-        'montant_promis' => (int) ($donnees['relPromis'] ?: 0),
+        'montant_promis' => montant_de($donnees['relPromis'] ?: 0),
         'statut' => $donnees['relStatut'],
     ]);
 
@@ -884,7 +884,7 @@ $creerFacture = function () {
         'vehicule' => $donnees['facVehicule'] ?: null,
         'immatriculation' => $donnees['facImmatriculation'] ?: null,
         'activite' => $donnees['facActivite'],
-        'montant' => (int) $donnees['facMontant'],
+        'montant' => montant_de($donnees['facMontant']),
         // Ce qu'on veut pouvoir relire six mois plus tard : pourquoi cette créance existe.
         'observations' => trim((string) ($donnees['facObservations'] ?? '')) ?: null,
         'cree_par' => auth()->id(),
@@ -897,7 +897,7 @@ $creerFacture = function () {
             'courtier' => $donnees['facCourtier'] ?: null,
             'depose_chez' => $donnees['facDeposeChez'] ?: null,
             'numero' => $numeroFacture,
-            'montant' => (int) $donnees['facMontant'],
+            'montant' => montant_de($donnees['facMontant']),
         ])
         ->log('Recouvrement — facture créée');
 
@@ -999,17 +999,17 @@ $annulerLeTiers = function () {
     <div class="rec-kpis">
         <div class="rec-kpi rouge">
             <div class="lab">Reste à payer</div>
-            <div class="val">{{ number_format($this->kpis['reste'], 0, ',', ' ') }}</div>
+            <div class="val">{{ montant_nombre($this->kpis['reste']) }}</div>
             <div class="sub">F CFA · {{ $this->kpis['ouvertes'] }} factures ouvertes</div>
         </div>
         <div class="rec-kpi">
             <div class="lab">Encaissé sur le mois</div>
-            <div class="val">{{ number_format($this->kpis['encaisse_mois'], 0, ',', ' ') }}</div>
+            <div class="val">{{ montant_nombre($this->kpis['encaisse_mois']) }}</div>
             <div class="sub">F CFA · toutes causes confondues</div>
         </div>
         <div class="rec-kpi">
             <div class="lab">Zone contentieuse N5</div>
-            <div class="val">{{ number_format($this->kpis['contentieux'], 0, ',', ' ') }}</div>
+            <div class="val">{{ montant_nombre($this->kpis['contentieux']) }}</div>
             <div class="sub">+90 jours · AUPSRVE</div>
         </div>
         <div class="rec-kpi">
@@ -1086,7 +1086,7 @@ $annulerLeTiers = function () {
                     $pourLeNavigateur = $this->facturesDuTiersEncaissement
                         ->sortBy([fn ($a, $b) => ($a->date?->timestamp ?? 0) <=> ($b->date?->timestamp ?? 0),
                                   fn ($a, $b) => $a->id <=> $b->id])
-                        ->map(fn ($f) => ['id' => $f->id, 'reste' => (int) Recouvrement::reste($f)])
+                        ->map(fn ($f) => ['id' => $f->id, 'reste' => montant_de(Recouvrement::reste($f))])
                         ->values();
                 @endphp
 
@@ -1193,7 +1193,7 @@ $annulerLeTiers = function () {
                             </thead>
                             <tbody>
                                 @foreach ($this->facturesDuTiersEncaissement as $facture)
-                                    @php $resteFacture = (int) Recouvrement::reste($facture); @endphp
+                                    @php $resteFacture = montant_de(Recouvrement::reste($facture)); @endphp
                                     <tr wire:key="enc-fac-{{ $facture->id }}"
                                         style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
                                         <td>
@@ -1212,9 +1212,9 @@ $annulerLeTiers = function () {
                                         <td style="color:#6B6E76;">
                                             {{ $facture->immatriculation ?: ($facture->vehicule ?: '—') }}
                                         </td>
-                                        <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $facture->montant) }}</td>
+                                        <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae(montant_de($facture->montant)) }}</td>
                                         <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
-                                            {{ ae((int) $facture->montant - $resteFacture) }}
+                                            {{ ae(montant_de($facture->montant) - $resteFacture) }}
                                         </td>
                                         <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($resteFacture) }}</td>
                                         {{-- Ce que ce versement lui donnerait, mis à jour à la frappe. --}}

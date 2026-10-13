@@ -106,12 +106,12 @@ $lignes = computed(function () {
 /** Ce que chaque mode de règlement pèse — la question qu'on pose à cette liste. */
 $parMode = computed(fn () => $this->lignes
     ->groupBy(fn ($l) => $l->mode_reglement ?: 'Non précisé')
-    ->map(fn ($groupe) => ['lignes' => $groupe->count(), 'montant' => (int) $groupe->sum('montant')])
+    ->map(fn ($groupe) => ['lignes' => $groupe->count(), 'montant' => montant_de($groupe->sum('montant'))])
     ->sortByDesc('montant'));
 
 $totaux = computed(fn () => [
     'lignes' => $this->lignes->count(),
-    'montant' => (int) $this->lignes->sum('montant'),
+    'montant' => montant_de($this->lignes->sum('montant')),
     'fournisseurs' => $this->lignes->pluck('fournisseur')->unique()->count(),
 ]);
 

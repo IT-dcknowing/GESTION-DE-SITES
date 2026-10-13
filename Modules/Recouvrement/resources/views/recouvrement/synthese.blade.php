@@ -37,7 +37,7 @@ state([
 ]);
 
 mount(function () {
-    $this->objectifHebdo = (int) auth()->user()->entreprise->objectif_recouvrement_hebdomadaire;
+    $this->objectifHebdo = montant_de(auth()->user()->entreprise->objectif_recouvrement_hebdomadaire);
 
     foreach ($this->periodes as $periode) {
         $this->commentaires[$periode['clef']] = CommentaireEcartRecouvrement::query()
@@ -109,7 +109,7 @@ $tranches = computed(function () {
  */
 $periodes = computed(function () {
     $jour = $this->arrete;
-    $hebdo = max(0, (int) $this->objectifHebdo);
+    $hebdo = max(0, montant_de($this->objectifHebdo));
     $joursOuvres = 6;
 
     return [
@@ -142,8 +142,8 @@ $periodes = computed(function () {
  * Celle-ci n'est qu'un calcul interne : protect() la garde hors de portée.
  */
 $encaisseEntre = protect(function (Carbon $debut, Carbon $fin): int {
-    return (int) Encaissement::whereBetween('date', [$debut->copy()->startOfDay(), $fin->copy()->endOfDay()])
-        ->sum('montant');
+    return montant_de(Encaissement::whereBetween('date', [$debut->copy()->startOfDay(), $fin->copy()->endOfDay()])
+        ->sum('montant'));
 });
 
 $enregistrerCommentaire = function (string $clef) {
@@ -194,13 +194,13 @@ $enregistrerObjectif = function () {
     ]);
 
     $entreprise = auth()->user()->entreprise;
-    $entreprise->update(['objectif_recouvrement_hebdomadaire' => (int) $this->objectifHebdo]);
+    $entreprise->update(['objectif_recouvrement_hebdomadaire' => montant_de($this->objectifHebdo)]);
 
     activity()->causedBy(auth()->user())
-        ->withProperties(['objectif_hebdomadaire' => (int) $this->objectifHebdo])
+        ->withProperties(['objectif_hebdomadaire' => montant_de($this->objectifHebdo)])
         ->log("Recouvrement — objectif hebdomadaire fixé");
 
-    $this->dispatch('annonce', texte: 'Objectif porté à '.Recouvrement::fr((int) $this->objectifHebdo).' par semaine.');
+    $this->dispatch('annonce', texte: 'Objectif porté à '.Recouvrement::fr(montant_de($this->objectifHebdo)).' par semaine.');
 };
 
 ?>
@@ -254,22 +254,22 @@ $enregistrerObjectif = function () {
     <div class="rec-kpis">
         <div class="rec-kpi rouge">
             <div class="lab">Reste à payer</div>
-            <div class="val">{{ number_format($this->kpis['reste'], 0, ',', ' ') }}</div>
+            <div class="val">{{ montant_nombre($this->kpis['reste']) }}</div>
             <div class="sub">F CFA · {{ $this->kpis['ouvertes'] }} factures · {{ $this->kpis['tiers'] }} tiers</div>
         </div>
         <div class="rec-kpi">
             <div class="lab">Encaissé sur le mois</div>
-            <div class="val">{{ number_format($this->kpis['encaisse_mois'], 0, ',', ' ') }}</div>
+            <div class="val">{{ montant_nombre($this->kpis['encaisse_mois']) }}</div>
             <div class="sub">F CFA</div>
         </div>
         <div class="rec-kpi">
             <div class="lab">Zone contentieuse N5</div>
-            <div class="val">{{ number_format($this->kpis['contentieux'], 0, ',', ' ') }}</div>
+            <div class="val">{{ montant_nombre($this->kpis['contentieux']) }}</div>
             <div class="sub">+90 jours · AUPSRVE</div>
         </div>
         <div class="rec-kpi">
             <div class="lab">Objectif hebdomadaire</div>
-            <div class="val">{{ number_format((int) $this->objectifHebdo, 0, ',', ' ') }}</div>
+            <div class="val">{{ montant_nombre(montant_de($this->objectifHebdo)) }}</div>
             <div class="sub">F CFA · fixé par la direction</div>
         </div>
     </div>
@@ -305,13 +305,13 @@ $enregistrerObjectif = function () {
                                     {{ Recouvrement::TRANCHES[$index]['libelle'] }}
                                 </td>
                                 <td class="num"><b>{{ round($montant / $total * 100) }} %</b></td>
-                                <td class="num">{{ number_format($montant, 0, ',', ' ') }}</td>
+                                <td class="num">{{ montant_nombre($montant) }}</td>
                             </tr>
                         @endforeach
                         <tr class="tot">
                             <td>TOTAL</td>
                             <td class="num">100 %</td>
-                            <td class="num">{{ number_format(array_sum($this->tranches), 0, ',', ' ') }}</td>
+                            <td class="num">{{ montant_nombre(array_sum($this->tranches)) }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -348,10 +348,10 @@ $enregistrerObjectif = function () {
                         @endphp
                         <tr>
                             <td>{{ $periode['libelle'] }}</td>
-                            <td class="num">{{ number_format($periode['realise'], 0, ',', ' ') }}</td>
-                            <td class="num">{{ number_format($periode['objectif'], 0, ',', ' ') }}</td>
+                            <td class="num">{{ montant_nombre($periode['realise']) }}</td>
+                            <td class="num">{{ montant_nombre($periode['objectif']) }}</td>
                             <td class="num {{ $ecart < 0 ? 'rec-neg' : 'rec-pos' }}">
-                                {{ $ecart < 0 ? '−' : '+' }}{{ number_format(abs($ecart), 0, ',', ' ') }}
+                                {{ $ecart < 0 ? '−' : '+' }}{{ montant_nombre(abs($ecart)) }}
                             </td>
                             <td class="num">{{ $part }} %</td>
                         </tr>
@@ -374,7 +374,7 @@ $enregistrerObjectif = function () {
             </table>
 
             <div class="rec-hint">
-                Objectif : {{ Recouvrement::fr((int) $this->objectifHebdo) }} par semaine · jour = hebdomadaire ÷ 6
+                Objectif : {{ Recouvrement::fr(montant_de($this->objectifHebdo)) }} par semaine · jour = hebdomadaire ÷ 6
                 jours ouvrés · mois = hebdomadaire × 52 ÷ 12. <b>En cours de période, l'écart se lit comme un
                 reste à réaliser</b>, non comme un manquement.
             </div>
@@ -412,7 +412,7 @@ $enregistrerObjectif = function () {
                         @forelse ($this->parTiers->take(15) as $ligne)
                             <tr>
                                 <td><b>{{ $ligne['tiers'] }}</b></td>
-                                <td class="num">{{ number_format($ligne['reste'], 0, ',', ' ') }}</td>
+                                <td class="num">{{ montant_nombre($ligne['reste']) }}</td>
                                 <td class="num">{{ $ligne['nombre'] }}</td>
                                 <td><span class="pill {{ $ligne['niveau']['classe'] }}">{{ $ligne['niveau']['libelle'] }}</span></td>
                                 <td class="no-print">

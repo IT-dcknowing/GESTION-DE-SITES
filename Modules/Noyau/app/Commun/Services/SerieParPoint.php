@@ -132,7 +132,7 @@ class SerieParPoint
                 default => $ligne->{$alias} ?? 0,
             };
 
-            $series[] = (int) $valeur;
+            $series[] = montant_de($valeur);
         }
 
         return $series;

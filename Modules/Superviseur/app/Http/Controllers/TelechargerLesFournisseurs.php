@@ -95,9 +95,9 @@ class TelechargerLesFournisseurs
             (string) ($p->imputation ?: '—'),
             (string) ($p->immatriculation ?: '—'),
             (string) ($p->ville?->nom ?: '—'),
-            (int) $p->montant,
-            (int) $p->montant_regle,
-            (int) $p->reste_a_payer,
+            montant_de($p->montant),
+            montant_de($p->montant_regle),
+            montant_de($p->reste_a_payer),
         ])->values()->all();
 
         $libelle = match ($etat) {
@@ -120,9 +120,9 @@ class TelechargerLesFournisseurs
         // Le total refait le corps, et ne se recalcule pas à part : un pied qui ne
         // correspond pas à ses lignes finit toujours par être celui qu'on croit.
         $total = ['TOTAL', '', '', '', '', '', '', '', '',
-            (int) $pieces->sum('montant'),
-            (int) $pieces->sum('montant_regle'),
-            (int) $pieces->sum('reste_a_payer')];
+            montant_de($pieces->sum('montant')),
+            montant_de($pieces->sum('montant_regle')),
+            montant_de($pieces->sum('reste_a_payer'))];
 
         $nom = 'Fournisseurs '.$annee.' au '.now()->format('d-m-Y');
 

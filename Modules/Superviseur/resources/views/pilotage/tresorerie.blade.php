@@ -160,9 +160,9 @@ $kpis = computed(function () {
      * banque ont désormais leur bloc, `$reels`, et la comparaison le sien. Rien n'a quitté
      * l'écran ; seule l'addition entre familles a disparu.
      */
-    $encaisse = (int) (clone $this->encaissementsQ)->sum('montant');
-    $decaisse = (int) (clone $this->chargesQ)->sum('montant');
-    $facture = (int) (clone $this->facturesQ)->sum('montant');
+    $encaisse = montant_de((clone $this->encaissementsQ)->sum('montant'));
+    $decaisse = montant_de((clone $this->chargesQ)->sum('montant'));
+    $facture = montant_de((clone $this->facturesQ)->sum('montant'));
 
     // Un encaissement ou un décaissement ne porte son activité que si celui qui l'a
     // saisi la connaissait : la part restante s'affiche « non ventilée » plutôt que
@@ -240,8 +240,8 @@ $journalTotaux = computed(function () {
         ->first();
 
     return [
-        'entrees' => (int) ($ligne->entrees ?? 0),
-        'sorties' => (int) ($ligne->sorties ?? 0),
+        'entrees' => montant_de($ligne->entrees ?? 0),
+        'sorties' => montant_de($ligne->sorties ?? 0),
         'nombre' => (int) ($ligne->nombre ?? 0),
     ];
 });
@@ -296,8 +296,8 @@ $parSupport = computed(function () {
         ->first();
 
     $journal = [
-        'entrees' => (int) ($brut->entrees ?? 0),
-        'sorties' => (int) ($brut->sorties ?? 0),
+        'entrees' => montant_de($brut->entrees ?? 0),
+        'sorties' => montant_de($brut->sorties ?? 0),
         'nombre' => (int) ($brut->nombre ?? 0),
     ];
 
@@ -344,16 +344,16 @@ $reels = computed(function () {
 
     return [
         'caisse' => [
-            'entrees' => (int) ($brut->entrees ?? 0),
-            'sorties' => (int) ($brut->sorties ?? 0),
+            'entrees' => montant_de($brut->entrees ?? 0),
+            'sorties' => montant_de($brut->sorties ?? 0),
             'nombre' => (int) ($brut->nombre ?? 0),
         ],
         'banques' => $releves,
         'banque' => [
-            'credits' => (int) $releves->sum('credits'),
-            'debits' => (int) $releves->sum('debits'),
+            'credits' => montant_de($releves->sum('credits')),
+            'debits' => montant_de($releves->sum('debits')),
             // La somme des soldes annoncés, compte par compte : un solde ne se recalcule pas.
-            'solde' => $releves->every(fn ($r) => $r['solde_fin'] === null) ? null : (int) $releves->sum('solde_fin'),
+            'solde' => $releves->every(fn ($r) => $r['solde_fin'] === null) ? null : montant_de($releves->sum('solde_fin')),
         ],
     ];
 });
@@ -373,9 +373,9 @@ $reglementsParCote = computed(function () {
         ->whereBetween('date', [$debut, $fin]);
 
     return [
-        'banque' => (int) SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::BANQUE)->sum('montant')
-            + (int) SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::INCONNU)->sum('montant'),
-        'caisse' => (int) SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::CAISSE)->sum('montant'),
+        'banque' => montant_de(SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::BANQUE)->sum('montant'))
+            + montant_de(SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::INCONNU)->sum('montant')),
+        'caisse' => montant_de(SupportDeReglement::appliquer($base(), 'encaissements', SupportDeReglement::CAISSE)->sum('montant')),
     ];
 });
 
@@ -391,7 +391,7 @@ $reglementsDuSupport = protect(function (array $supports) {
         ->with('facture:id,n_facture')
         ->get(['id', 'date', 'montant', 'client', 'moyen', 'facture_id', 'banque_id'])
         ->map(fn ($e) => (object) [
-            'id' => (int) $e->id, 'date' => $e->date, 'montant' => (int) $e->montant, 'client' => $e->client,
+            'id' => (int) $e->id, 'date' => $e->date, 'montant' => montant_de($e->montant), 'client' => $e->client,
             'moyen' => $e->moyen, 'support' => $support, 'facture_id' => $e->facture_id,
             'facture' => $e->facture?->n_facture,
         ]));
@@ -420,7 +420,7 @@ $rapprochements = computed(function () {
         ->with('banque:id,nom')
         ->get(['id', 'banque_id', 'date_operation', 'credit', 'libelle', 'contrepartie'])
         ->map(fn ($m) => (object) [
-            'id' => (int) $m->id, 'date' => $m->date_operation, 'montant' => (int) $m->credit,
+            'id' => (int) $m->id, 'date' => $m->date_operation, 'montant' => montant_de($m->credit),
             'libelle' => $m->libelle, 'contrepartie' => $m->contrepartie, 'ou' => $m->banque?->nom,
         ]);
 
@@ -432,7 +432,7 @@ $rapprochements = computed(function () {
         ])
         ->get(['mouvements_caisse.id', 'mouvements_caisse.date', 'mouvements_caisse.montant', 'mouvements_caisse.libelle'])
         ->map(fn ($m) => (object) [
-            'id' => (int) $m->id, 'date' => $m->date, 'montant' => (int) $m->montant,
+            'id' => (int) $m->id, 'date' => $m->date, 'montant' => montant_de($m->montant),
             'libelle' => $m->libelle, 'contrepartie' => null, 'ou' => 'Journal de caisse',
         ]);
 
@@ -453,9 +453,9 @@ $rapprochements = computed(function () {
 
         return [
             'lignes' => $lignes,
-            'identiques' => ['nombre' => $lignes->whereNotNull('operation')->count(), 'montant' => (int) $lignes->whereNotNull('operation')->sum('montant')],
-            'differents' => ['nombre' => $lignes->whereNull('operation')->count(), 'montant' => (int) $lignes->whereNull('operation')->sum('montant')],
-            'orphelines' => ['nombre' => $orphelines->count(), 'montant' => (int) $orphelines->sum('montant')],
+            'identiques' => ['nombre' => $lignes->whereNotNull('operation')->count(), 'montant' => montant_de($lignes->whereNotNull('operation')->sum('montant'))],
+            'differents' => ['nombre' => $lignes->whereNull('operation')->count(), 'montant' => montant_de($lignes->whereNull('operation')->sum('montant'))],
+            'orphelines' => ['nombre' => $orphelines->count(), 'montant' => montant_de($orphelines->sum('montant'))],
         ];
     };
 
@@ -679,7 +679,7 @@ $autres = computed(function () {
         foreach ($lignes as $ligne) {
             $cle = trim((string) $poste($ligne)) ?: 'Sans précision';
             $postes[$cle] ??= ['poste' => $cle, 'montant' => 0, 'lignes' => 0];
-            $postes[$cle]['montant'] += (int) $ligne->montant;
+            $postes[$cle]['montant'] += montant_de($ligne->montant);
             $postes[$cle]['lignes']++;
         }
 
@@ -708,8 +708,8 @@ $autres = computed(function () {
     return [
         'encaissements' => $ranger($encaissements, fn ($e) => $e->autres_tiers ?: ($e->client ?: $e->moyen)),
         'decaissements' => $ranger($decaissements, fn ($c) => $c->tiers ?: ($c->observations ?: $c->moyen)),
-        'totalEncaisse' => (int) $encaissements->sum('montant'),
-        'totalDecaisse' => (int) $decaissements->sum('montant'),
+        'totalEncaisse' => montant_de($encaissements->sum('montant')),
+        'totalDecaisse' => montant_de($decaissements->sum('montant')),
     ];
 });
 

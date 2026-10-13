@@ -165,9 +165,9 @@ final class PortefeuilleDeRecouvrement
 
                     // Ce qui a été promis et qui n'est pas encore rentré : l'engagement
                     // qu'on rappelle au téléphone, et le premier motif de rappel.
-                    'promis' => (int) $relances
+                    'promis' => montant_de($relances
                         ->where('statut', 'Promesse de règlement')
-                        ->sum('montant_promis'),
+                        ->sum('montant_promis')),
 
                     // Ce qui est réellement rentré sur la période regardée.
                     'encaisse' => $encaisse['montant'],
@@ -218,9 +218,9 @@ final class PortefeuilleDeRecouvrement
                     : ($compte->hasRole('gerant') ? 'Gérant' : 'Agent'),
                 'relances' => $siennes->count(),
                 'niveau_max' => (int) ($siennes->max('niveau') ?? 0),
-                'promesses' => (int) $siennes->where('statut', 'Promesse de règlement')->sum('montant_promis'),
+                'promesses' => montant_de($siennes->where('statut', 'Promesse de règlement')->sum('montant_promis')),
                 'encaissements' => $siens->count(),
-                'encaisse' => (int) $siens->sum('montant'),
+                'encaisse' => montant_de($siens->sum('montant')),
                 'tiers_suivis' => $siennes->pluck('tiers')->unique()->count(),
                 /*
                  * **Toujours une date, jamais une chaîne — ERR-H9PKK0 et suivants, 08/10.** Les
@@ -276,7 +276,7 @@ final class PortefeuilleDeRecouvrement
          */
         foreach ($lignes as $ligne) {
             foreach (($ligne['tranches'] ?? []) as $index => $montant) {
-                $montants[$index] = ($montants[$index] ?? 0) + (int) $montant;
+                $montants[$index] = ($montants[$index] ?? 0) + montant_de($montant);
             }
         }
 
@@ -342,7 +342,7 @@ final class PortefeuilleDeRecouvrement
             $clef = substr((string) $encaissement->date, 0, 7);
 
             if (isset($suite[$clef])) {
-                $suite[$clef]['encaisse'] += (int) $encaissement->montant;
+                $suite[$clef]['encaisse'] += montant_de($encaissement->montant);
             }
         }
 
@@ -370,17 +370,17 @@ final class PortefeuilleDeRecouvrement
      */
     public function reperes(Collection $lignes, ?Closure $retient = null): array
     {
-        $encaisse = (int) $this->reglementsRetenus($retient)->sum('montant');
+        $encaisse = montant_de($this->reglementsRetenus($retient)->sum('montant'));
 
         return [
-            'encours' => (int) $lignes->sum('reste'),
+            'encours' => montant_de($lignes->sum('reste')),
             'tiers' => $lignes->count(),
             'factures' => (int) $lignes->sum('nombre'),
             'encaisse' => $encaisse,
-            'promis' => (int) $lignes->sum('promis'),
+            'promis' => montant_de($lignes->sum('promis')),
             'a_confier' => $lignes->whereNull('responsable_id')->count(),
             'sans_geste' => $lignes->filter(fn (array $l) => ($l['silence'] ?? 0) > self::SILENCE_ALERTE)->count(),
-            'contentieux' => (int) $lignes->filter(fn (array $l) => ($l['niveau']['niveau'] ?? 0) >= 5)->sum('reste'),
+            'contentieux' => montant_de($lignes->filter(fn (array $l) => ($l['niveau']['niveau'] ?? 0) >= 5)->sum('reste')),
             // Les relances sont en mémoire depuis le constructeur : une requête de plus
             // pour les compter lirait deux fois la même chose.
             'relances' => $this->relancesRetenues($retient)->count(),
@@ -542,7 +542,7 @@ final class PortefeuilleDeRecouvrement
             }
 
             $agrege[$tiers] ??= ['montant' => 0, 'date' => null, 'auteur' => null];
-            $agrege[$tiers]['montant'] += (int) $encaissement->montant;
+            $agrege[$tiers]['montant'] += montant_de($encaissement->montant);
 
             // Les dates sont des chaînes ISO : leur ordre alphabétique *est* leur ordre
             // chronologique, et les comparer ainsi évite sept mille sept cents Carbon pour

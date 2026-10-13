@@ -236,7 +236,7 @@ class FormatDeLaCaisse extends Format
      * dernière cellule chiffrée de la rangée, et non la première, qui serait la mention
      * elle-même.
      */
-    private function soldeDOuverture(array $cellules): ?int
+    private function soldeDOuverture(array $cellules): int|float|null
     {
         $entier = implode(' ', array_map(
             fn ($valeur) => $valeur instanceof DateTimeImmutable ? '' : (string) $valeur,
@@ -251,7 +251,7 @@ class FormatDeLaCaisse extends Format
             $montant = self::montant($valeur);
 
             if ($montant !== null && preg_match('/[0-9]/', (string) $valeur) === 1) {
-                return (int) round($montant);
+                return montant_de($montant);
             }
         }
 
@@ -266,7 +266,7 @@ class FormatDeLaCaisse extends Format
      * dépôt qui la distingue de celle d'une autre ville. Lui inventer un nom que le fichier
      * ne porte pas serait ajouter une donnée là où il n'y en a pas.
      */
-    private function noterLOuverture(int $solde, Carbon $premierJour, string $feuille, array $ou, ?int $lotId): void
+    private function noterLOuverture(int|float $solde, Carbon $premierJour, string $feuille, array $ou, ?int $lotId): void
     {
         OuvertureCaisse::consigner(
             [
@@ -324,11 +324,11 @@ class FormatDeLaCaisse extends Format
         $sortie = self::montant($ligne['sortie'] ?? null);
 
         if ($entree !== null && abs($entree) > 0.009) {
-            return ['sens' => MouvementCaisse::ENTREE, 'montant' => (int) round(abs($entree))];
+            return ['sens' => MouvementCaisse::ENTREE, 'montant' => montant_de(abs($entree))];
         }
 
         if ($sortie !== null && abs($sortie) > 0.009) {
-            return ['sens' => MouvementCaisse::SORTIE, 'montant' => (int) round(abs($sortie))];
+            return ['sens' => MouvementCaisse::SORTIE, 'montant' => montant_de(abs($sortie))];
         }
 
         return null;
@@ -355,7 +355,7 @@ class FormatDeLaCaisse extends Format
             'sens' => $mouvement['sens'],
             'libelle' => $libelle,
             'montant' => $mouvement['montant'],
-            'solde_annonce' => ($s = self::montant($ligne['solde'] ?? null)) === null ? null : (int) round($s),
+            'solde_annonce' => ($s = self::montant($ligne['solde'] ?? null)) === null ? null : montant_de($s),
             'beneficiaire' => self::texte($ligne['beneficiaire'] ?? null, 160),
             'immatriculation' => self::texte($ligne['immatriculation'] ?? null, 40),
             'mois' => $date?->format('Y-m'),
@@ -371,7 +371,7 @@ class FormatDeLaCaisse extends Format
             ->where('entreprise_id', $this->entrepriseId)
             ->where('date', $date)
             ->where('sens', $mouvement['sens'])
-            ->where('montant', $mouvement['montant'])
+            ->where(fn ($q) => self::aPeuPres($q, 'montant', $mouvement['montant']))
             ->where('libelle', $libelle)
             ->first();
 

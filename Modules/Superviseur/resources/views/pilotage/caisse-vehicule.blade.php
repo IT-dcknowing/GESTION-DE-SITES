@@ -112,10 +112,10 @@ $totaux = computed(function () {
     $factures = $this->factures;
 
     return [
-        'entrees' => (int) $mouvements->where('sens', MouvementCaisse::ENTREE)->sum('montant'),
-        'sorties' => (int) $mouvements->where('sens', MouvementCaisse::SORTIE)->sum('montant'),
-        'facture' => (int) $factures->sum('montant'),
-        'reste' => (int) $factures->sum(fn (Facture $f) => Recouvrement::reste($f)),
+        'entrees' => montant_de($mouvements->where('sens', MouvementCaisse::ENTREE)->sum('montant')),
+        'sorties' => montant_de($mouvements->where('sens', MouvementCaisse::SORTIE)->sum('montant')),
+        'facture' => montant_de($factures->sum('montant')),
+        'reste' => montant_de($factures->sum(fn (Facture $f) => Recouvrement::reste($f))),
         'ouvertes' => $factures->filter(fn (Facture $f) => Recouvrement::reste($f) >= Recouvrement::SEUIL_SOLDE)->count(),
     ];
 });
@@ -269,7 +269,7 @@ $enregistrerLaNote = function () {
                                 <td>{{ $mouvement->ville?->nom ?: '—' }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                            color:{{ $mouvement->sens === MouvementCaisse::ENTREE ? '#0E9F6E' : '#C8102E' }};">
-                                    {{ ae((int) $mouvement->montant) }}
+                                    {{ ae(montant_de($mouvement->montant)) }}
                                 </td>
                             </tr>
                         @empty
@@ -308,9 +308,9 @@ $enregistrerLaNote = function () {
                                 {{-- Le payeur, et non le client : c'est à lui qu'on réclamera. --}}
                                 <td>{{ $facture->tiersPayant() }}</td>
                                 <td>{{ $facture->site?->nom ?: '—' }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $facture->montant) }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae(montant_de($facture->montant)) }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
-                                    {{ ae((int) ($facture->encaissements_sum_montant ?? 0)) }}
+                                    {{ ae(montant_de($facture->encaissements_sum_montant ?? 0)) }}
                                 </td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                            color:{{ $reste >= Recouvrement::SEUIL_SOLDE ? '#C8102E' : '#6B6E76' }};">

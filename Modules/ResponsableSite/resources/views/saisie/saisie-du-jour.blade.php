@@ -687,8 +687,8 @@ $validerDevis = function () {
             'client' => $ligne['client'],
             'activite' => $ligne['activite'],
             'statut' => $ligne['statut'],
-            'montant_devis' => (int) $ligne['montant_devis'],
-            'montant_valide' => $ligne['statut'] === 'Validé' && $ligne['montant_valide'] !== '' ? (int) $ligne['montant_valide'] : null,
+            'montant_devis' => montant_de($ligne['montant_devis']),
+            'montant_valide' => $ligne['statut'] === 'Validé' && $ligne['montant_valide'] !== '' ? montant_de($ligne['montant_valide']) : null,
             'observations' => $ligne['observations'] ?: null,
             'cree_par' => auth()->id(),
         ]);
@@ -801,7 +801,7 @@ $confirmerValidationDevis = function () {
         'montantValidation.min' => 'Un devis validé porte forcément un montant.',
     ], ['montantValidation' => 'montant validé']);
 
-    $devis->update(['statut' => 'Validé', 'montant_valide' => (int) $this->montantValidation]);
+    $devis->update(['statut' => 'Validé', 'montant_valide' => montant_de($this->montantValidation)]);
 
     $this->annulerValidationDevis();
     unset($this->devisDuJour, $this->devisEnAttente, $this->devisValidesNonFactures);
@@ -873,9 +873,9 @@ $ajouterDevisLibre = function () {
         'client' => $donnees['devLibreClient'],
         'activite' => $donnees['devLibreActivite'],
         'statut' => $donnees['devLibreStatut'],
-        'montant_devis' => (int) $donnees['devLibreMontant'],
+        'montant_devis' => montant_de($donnees['devLibreMontant']),
         'montant_valide' => $donnees['devLibreStatut'] === 'Validé'
-            ? (int) ($donnees['devLibreMontantValide'] !== '' && $donnees['devLibreMontantValide'] !== null ? $donnees['devLibreMontantValide'] : $donnees['devLibreMontant'])
+            ? montant_de($donnees['devLibreMontantValide'] !== '' && $donnees['devLibreMontantValide'] !== null ? $donnees['devLibreMontantValide'] : $donnees['devLibreMontant'])
             : null,
         'observations' => $donnees['devLibreObs'] ?: null,
         'cree_par' => auth()->id(),
@@ -957,7 +957,7 @@ $validerFactures = function () {
             'client' => $ligne['client'],
             'type' => $ligne['type'],
             'activite' => $ligne['activite'],
-            'montant' => (int) $ligne['montant'],
+            'montant' => montant_de($ligne['montant']),
             'observations' => $ligne['observations'] ?: null,
             'cree_par' => auth()->id(),
         ]);
@@ -1024,7 +1024,7 @@ $ajouterFactureLibre = function () {
         'client' => $donnees['facLibreClient'],
         'type' => $donnees['facLibreType'],
         'activite' => $donnees['facLibreActivite'],
-        'montant' => (int) $donnees['facLibreMontant'],
+        'montant' => montant_de($donnees['facLibreMontant']),
         'observations' => $donnees['facLibreObs'] ?: null,
         'cree_par' => auth()->id(),
     ]);
@@ -1053,7 +1053,7 @@ $ajouterEncaissement = function () {
         'encReference' => ['nullable', 'string', 'max:60'],
     ], [], ['encMontant' => 'montant', 'encFactureId' => 'facture']);
 
-    $montant = (int) $donnees['encMontant'];
+    $montant = montant_de($donnees['encMontant']);
     $factureId = null;
     $client = $donnees['encClient'] ?: null;
     $siteIdResolu = $this->site->id;
@@ -1144,7 +1144,7 @@ $ajouterCharge = function () {
         'activite' => $donnees['chgActivite'] ?: null,
         'libelle' => $donnees['chgLibelle'],
         'moyen' => $donnees['chgMoyen'],
-        'montant' => (int) $donnees['chgMontant'],
+        'montant' => montant_de($donnees['chgMontant']),
         'tiers' => $donnees['chgTiers'] ?: null,
         'reference_origine' => $donnees['chgReference'] ?: null,
         'observations' => $donnees['chgObs'] ?: null,
@@ -1958,7 +1958,7 @@ $ajouterCharge = function () {
 
         <x-carte-section titre="Atelier" icone="atelier" couleur="var(--th-ambre,#D97706)">
             <x-champ label="Véhicules restitués SANS facture (nb)" model="vehiculesSansFacture" type="number" width="260" live="true" />
-            @if ((int) $vehiculesSansFacture > 0)
+            @if (montant_de($vehiculesSansFacture) > 0)
                 <div style="margin-top:10px; background:#FDF2F4; border:1px solid #C8102E; color:#C8102E; border-radius:8px; padding:10px 14px; font-size:13.5px; display:flex; gap:8px; align-items:center;">
                     ⚠ Anomalie critique : signalement immédiat à la Direction.
                 </div>

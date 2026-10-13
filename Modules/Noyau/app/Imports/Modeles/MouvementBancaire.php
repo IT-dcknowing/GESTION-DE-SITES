@@ -22,6 +22,8 @@ use Modules\Noyau\Exploitation\Modeles\Banque;
 ])]
 class MouvementBancaire extends Model
 {
+    use \App\Casts\CompareLesMontants;
+
     use AppartientAUneEntreprise;
     use PeutVenirDUnImport;
 
@@ -35,9 +37,9 @@ class MouvementBancaire extends Model
     {
         return [
             'date_operation' => 'date',
-            'debit' => 'integer',
-            'credit' => 'integer',
-            'solde_annonce' => 'integer',
+            'debit' => \App\Casts\Montant::class,
+            'credit' => \App\Casts\Montant::class,
+            'solde_annonce' => \App\Casts\Montant::class,
             'rang' => 'integer',
         ];
     }
@@ -48,8 +50,8 @@ class MouvementBancaire extends Model
     }
 
     /** Le montant, sans son signe : le sens dit de quel côté il va. */
-    public function montant(): int
+    public function montant(): int|float
     {
-        return $this->sens === self::ENTREE ? (int) $this->credit : (int) $this->debit;
+        return $this->sens === self::ENTREE ? montant_de($this->credit) : montant_de($this->debit);
     }
 }

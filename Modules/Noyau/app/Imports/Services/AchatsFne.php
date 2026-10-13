@@ -167,7 +167,7 @@ final class AchatsFne
             $retenues = $parNumero->isNotEmpty() ? $parNumero : $candidates->filter(fn ($l) => $l->date_facture
                 && $facture->date_facture
                 && $l->date_facture->isSameDay($facture->date_facture)
-                && abs((int) $l->montant - (int) $facture->montant_ttc) <= 1);
+                && abs(montant_de($l->montant) - montant_de($facture->montant_ttc)) <= 1);
 
             if ($retenues->count() === 1) {
                 $ligne = $retenues->first();
@@ -198,11 +198,11 @@ final class AchatsFne
                 'numero_piece' => $facture->reference,
                 'nature_piece' => $facture->est_avoir ? 'Avoir FNE' : 'Facture FNE',
                 'date_facture' => $facture->date_facture,
-                'montant' => (int) $facture->montant_ttc,
-                'montant_ht' => (int) $facture->montant_ht,
-                'tva' => (int) $facture->montant_tva,
+                'montant' => montant_de($facture->montant_ttc),
+                'montant_ht' => montant_de($facture->montant_ht),
+                'tva' => montant_de($facture->montant_tva),
                 'montant_regle' => 0,
-                'reste_a_payer' => (int) $facture->montant_ttc,
+                'reste_a_payer' => montant_de($facture->montant_ttc),
                 'mode_reglement' => $facture->moyen_paiement,
                 'observations' => 'Portée depuis la FNE (NCC '.($facture->emetteur_ncc ?: '—').').',
                 'source_rattachement' => 'fne',
@@ -222,21 +222,21 @@ final class AchatsFne
      * Règle une facture du suivi, et garde le lettrage : le règlement désigne la facture qu'il
      * solde. Le réglé et le reste de la pièce suivent — le reste se déduit, il ne se saisit pas.
      */
-    public static function regler(FactureFournisseur $piece, int $montant, string $date, ?string $mode, User $par): ReglementFournisseur
+    public static function regler(FactureFournisseur $piece, int|float $montant, string $date, ?string $mode, User $par): ReglementFournisseur
     {
         if ($montant === 0) {
             throw new RuntimeException('Un règlement de zéro ne règle rien.');
         }
 
         // Un avoir se « règle » en négatif : on récupère l'argent, on ne le verse pas.
-        if (abs($montant) > abs((int) $piece->reste_a_payer) || ($montant > 0) !== ((int) $piece->reste_a_payer > 0)) {
-            throw new RuntimeException('Le montant dépasse ce qui reste dû sur cette pièce ('.number_format((int) $piece->reste_a_payer, 0, ',', ' ').' F).');
+        if (abs($montant) > abs(montant_de($piece->reste_a_payer)) || ($montant > 0) !== (montant_de($piece->reste_a_payer) > 0)) {
+            throw new RuntimeException('Le montant dépasse ce qui reste dû sur cette pièce ('.montant_nombre(montant_de($piece->reste_a_payer)).' F).');
         }
 
         return DB::transaction(function () use ($piece, $montant, $date, $mode, $par) {
             $piece->forceFill([
-                'montant_regle' => (int) $piece->montant_regle + $montant,
-                'reste_a_payer' => (int) $piece->reste_a_payer - $montant,
+                'montant_regle' => montant_de($piece->montant_regle) + $montant,
+                'reste_a_payer' => montant_de($piece->reste_a_payer) - $montant,
                 'date_reglement' => $date,
                 'mode_reglement' => $mode ?: $piece->mode_reglement,
             ])->save();
@@ -292,7 +292,7 @@ final class AchatsFne
             || (float) ($brute['totalAfterTaxes'] ?? 0) < 0;
 
         // Un avoir porte des montants négatifs, quel que soit le signe que le portail lui donne.
-        $signe = fn ($v) => $estAvoir ? -abs((int) round((float) $v)) : (int) round((float) $v);
+        $signe = fn ($v) => $estAvoir ? -abs(montant_de($v)) : montant_de($v);
         $date = self::date($brute['date'] ?? ($brute['createdAt'] ?? null));
         $emetteur = is_array($brute['company'] ?? null) ? $brute['company'] : [];
 
@@ -314,7 +314,7 @@ final class AchatsFne
             'emetteur_nom' => self::texte($emetteur['name'] ?? null, 200),
             'montant_ht' => $signe($brute['totalBeforeTaxes'] ?? 0),
             'montant_tva' => $signe($brute['totalTaxes'] ?? 0),
-            'timbre' => (int) round((float) ($brute['fiscalStamp'] ?? 0)),
+            'timbre' => montant_de($brute['fiscalStamp'] ?? 0),
             'montant_ttc' => $signe($brute['totalAfterTaxes'] ?? ($brute['totalDue'] ?? 0)),
             'moyen_paiement' => self::texte($brute['paymentMethod'] ?? null, 60),
             'contenu' => $contenu,

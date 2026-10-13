@@ -76,12 +76,12 @@ $lignes = computed(function () {
     FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
 
     $lignes = $requete->orderByDesc('solde')->get()->map(function ($ligne) {
-        $recalcule = (int) $ligne->credit - (int) $ligne->debit;
+        $recalcule = montant_de($ligne->credit) - montant_de($ligne->debit);
 
         return [
             'ligne' => $ligne,
             'recalcule' => $recalcule,
-            'ecart' => (int) $ligne->solde - $recalcule,
+            'ecart' => montant_de($ligne->solde) - $recalcule,
         ];
     });
 
@@ -94,10 +94,10 @@ $lignes = computed(function () {
 
 $totaux = computed(fn () => [
     'fournisseurs' => $this->lignes->count(),
-    'debit' => (int) $this->lignes->sum(fn ($l) => $l['ligne']->debit),
-    'credit' => (int) $this->lignes->sum(fn ($l) => $l['ligne']->credit),
-    'solde' => (int) $this->lignes->sum(fn ($l) => $l['ligne']->solde),
-    'recalcule' => (int) $this->lignes->sum(fn ($l) => $l['recalcule']),
+    'debit' => montant_de($this->lignes->sum(fn ($l) => $l['ligne']->debit)),
+    'credit' => montant_de($this->lignes->sum(fn ($l) => $l['ligne']->credit)),
+    'solde' => montant_de($this->lignes->sum(fn ($l) => $l['ligne']->solde)),
+    'recalcule' => montant_de($this->lignes->sum(fn ($l) => $l['recalcule'])),
     'enEcart' => $this->lignes->filter(fn ($l) => $l['ecart'] !== 0)->count(),
 ]);
 

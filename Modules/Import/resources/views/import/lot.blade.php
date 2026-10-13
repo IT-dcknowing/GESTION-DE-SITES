@@ -217,7 +217,7 @@ $apercuAnnulation = computed(fn () => $this->leLot->etat === 'termine'
                                 Annuler cet import
                             </a>
                             <span style="font-size:12px; color:#6B6E76; max-width:420px; line-height:1.5;">
-                                Retirerait <strong>{{ number_format($ap['total'], 0, ',', ' ') }}</strong> ligne(s)
+                                Retirerait <strong>{{ montant_nombre($ap['total']) }}</strong> ligne(s)
                                 de la base.
                                 @if ($ap['retenues'] > 0)
                                     {{ number_format($ap['retenues'], 0, ',', ' ') }} seraient gardées : elles ont été
@@ -263,7 +263,7 @@ $apercuAnnulation = computed(fn () => $this->leLot->etat === 'termine'
                             <div class="imp-actions">
                                 <button type="submit" class="imp-btn r"
                                         data-confirmer-titre="Annuler cet import"
-                                        data-confirmer="{{ number_format($ap['total'], 0, ',', ' ') }} ligne(s) vont être retirées de la base."
+                                        data-confirmer="{{ montant_nombre($ap['total']) }} ligne(s) vont être retirées de la base."
                                         data-confirmer-detail="Les lignes créées par cet import repartent. Celles qu'il n'a fait que mettre à jour, ou qui ont été retouchées depuis, restent : leur valeur d'avant n'a jamais été conservée."
                                         data-confirmer-libelle="Annuler l'import"
                                         data-confirmer-ton="alerte">

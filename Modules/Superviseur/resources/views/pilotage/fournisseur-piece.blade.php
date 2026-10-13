@@ -105,7 +105,7 @@ $ouvrirReglement = function () {
     }
 
     // Prérempli de ce qui reste dû, à la date du jour : le cas courant est le solde.
-    $this->reglerMontant = (string) (int) $this->piece->reste_a_payer;
+    $this->reglerMontant = (string) montant_de($this->piece->reste_a_payer);
     $this->reglerDate = now()->toDateString();
     $this->reglerMode = (string) $this->piece->mode_reglement;
     $this->enReglement = true;
@@ -129,7 +129,7 @@ $regler = function () {
     ], [], ['reglerMontant' => 'montant', 'reglerDate' => 'date', 'reglerMode' => 'mode']);
 
     try {
-        $reglement = AchatsFne::regler($p, (int) $donnees['reglerMontant'], $donnees['reglerDate'], $donnees['reglerMode'] ?: null, auth()->user());
+        $reglement = AchatsFne::regler($p, montant_de($donnees['reglerMontant']), $donnees['reglerDate'], $donnees['reglerMode'] ?: null, auth()->user());
     } catch (\RuntimeException $e) {
         $this->addError('reglerMontant', $e->getMessage());
 
@@ -153,8 +153,8 @@ $modifier = function () {
     $this->dateFacture = $p->date_facture?->format('Y-m-d') ?? '';
     $this->dateEcheance = $p->date_echeance?->format('Y-m-d') ?? '';
     $this->dateReglement = $p->date_reglement?->format('Y-m-d') ?? '';
-    $this->montant = (string) (int) $p->montant;
-    $this->montantRegle = (string) (int) $p->montant_regle;
+    $this->montant = (string) montant_de($p->montant);
+    $this->montantRegle = (string) montant_de($p->montant_regle);
     $this->modeReglement = (string) $p->mode_reglement;
     $this->imputation = (string) $p->imputation;
     $this->immatriculation = (string) $p->immatriculation;
@@ -210,13 +210,13 @@ $enregistrer = function () {
     $donnees = $this->validate($regles);
 
     $montant = in_array('montant', $verrouilles, true)
-        ? (int) $p->montant
-        : (int) $donnees['montant'];
+        ? montant_de($p->montant)
+        : montant_de($donnees['montant']);
 
     // Un règlement supérieur au montant dû est refusé à la frappe : dans le classeur,
     // 29 lignes le font, et le trop-perçu vient en déduction du total — il masque donc la
     // dette d'autres fournisseurs.
-    if ((int) $donnees['montantRegle'] > $montant) {
+    if (montant_de($donnees['montantRegle']) > $montant) {
         $this->addError('montantRegle', 'Le réglé ne peut pas dépasser le montant de la facture.');
 
         return;
@@ -226,10 +226,10 @@ $enregistrer = function () {
         'nature_piece' => $donnees['naturePiece'] ?: null,
         'date_echeance' => $donnees['dateEcheance'] ?: null,
         'date_reglement' => $donnees['dateReglement'] ?: null,
-        'montant_regle' => (int) $donnees['montantRegle'],
+        'montant_regle' => montant_de($donnees['montantRegle']),
         // Le reste n'est pas saisi : il se déduit, comme partout ailleurs. Une colonne
         // qu'on peut contredire à la main finit toujours par l'être.
-        'reste_a_payer' => $montant - (int) $donnees['montantRegle'],
+        'reste_a_payer' => $montant - montant_de($donnees['montantRegle']),
         'mode_reglement' => $donnees['modeReglement'] ?: null,
         'imputation' => $donnees['imputation'] ?: null,
         'immatriculation' => $donnees['immatriculation'] ?: null,
@@ -279,14 +279,14 @@ $enregistrer = function () {
         @php
             $p = $this->piece;
             $jours = $p->date_facture ? NombreDeJours::entre($p->date_facture, now()) : null;
-            $reste = (int) $p->reste_a_payer;
+            $reste = montant_de($p->reste_a_payer);
         @endphp
 
         <x-titre-ecran :titre="$p->fournisseur ?: 'Pièce fournisseur'"
             :sous-titre="'Pièce '.($p->numero_piece ?: '—').' — '.EtatDesFournisseurs::origine($p)">
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
                 <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Retour au suivi</a>
-                @if ($this->peutEcrire && ! $enReglement && (int) $p->reste_a_payer !== 0)
+                @if ($this->peutEcrire && ! $enReglement && montant_de($p->reste_a_payer) !== 0)
                     <button type="button" wire:click="ouvrirReglement" class="bouton">Régler</button>
                 @endif
                 @if ($this->peutEcrire && ! $enModification)
@@ -302,8 +302,8 @@ $enregistrer = function () {
         @endif
 
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
-            <x-kpi-card label="Montant de la facture" :value="ae((int) $p->montant)" />
-            <x-kpi-card label="Déjà réglé" :value="ae((int) $p->montant_regle)" couleur="#0E9F6E" />
+            <x-kpi-card label="Montant de la facture" :value="ae(montant_de($p->montant))" />
+            <x-kpi-card label="Déjà réglé" :value="ae(montant_de($p->montant_regle))" couleur="#0E9F6E" />
             <x-kpi-card label="Reste à payer" :value="ae($reste)"
                 :couleur="$reste > 0 ? '#C8102E' : '#6B6E76'"
                 :sub="$reste > 0 ? 'Dette ouverte' : 'Pièce soldée'" />
@@ -385,7 +385,7 @@ $enregistrer = function () {
                 <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
                     Le règlement est enregistré et <b>lettré</b> à cette pièce ; le réglé et le reste suivent.
                     Un paiement partiel se saisit pour son montant, le suivant viendra solder.
-                    @if ((int) $p->reste_a_payer < 0) Pour un avoir, le montant est négatif : c'est l'argent récupéré. @endif
+                    @if (montant_de($p->reste_a_payer) < 0) Pour un avoir, le montant est négatif : c'est l'argent récupéré. @endif
                 </p>
                 <form wire:submit="regler">
                     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px;">
@@ -408,7 +408,7 @@ $enregistrer = function () {
                     <p style="margin:0 0 10px; font-size:13px; color:#4B4E55;">
                         Confirmée par la FNE : <b>{{ $this->fne->reference }}</b>
                         du {{ $this->fne->date_facture?->format('d/m/Y') ?? '—' }},
-                        {{ ae((int) $this->fne->montant_ttc) }} TTC{{ $this->fne->est_avoir ? ' — avoir' : '' }}.
+                        {{ ae(montant_de($this->fne->montant_ttc)) }} TTC{{ $this->fne->est_avoir ? ' — avoir' : '' }}.
                     </p>
                 @endif
                 @if ($this->reglements->isNotEmpty())
@@ -421,7 +421,7 @@ $enregistrer = function () {
                                         <td>{{ $r->code_reglement }}</td>
                                         <td>{{ $r->date_reglement?->format('d/m/Y') }}</td>
                                         <td>{{ $r->mode_reglement ?: '—' }}</td>
-                                        <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae((int) $r->montant) }}</td>
+                                        <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae(montant_de($r->montant)) }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
