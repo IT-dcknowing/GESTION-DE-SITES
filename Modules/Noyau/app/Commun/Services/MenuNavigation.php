@@ -283,6 +283,7 @@ class MenuNavigation
         // proposé qu'au gérant, comme l'écran lui-même.
         if ($utilisateur->hasRole('gerant')) {
             $general[] = ['label' => 'Barème de commission', 'route' => 'bareme-commission'];
+            $general[] = ['label' => "Objectifs mensuels de l'entreprise", 'route' => 'objectifs-mensuels'];
         }
 
         /*

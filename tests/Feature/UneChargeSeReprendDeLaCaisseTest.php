@@ -139,7 +139,7 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
         $this->assertSame(0, $origines['fne']);
         $this->assertSame(45_000, $origines['nonNormalisees']);
         $this->assertSame(545_000, $ecran->instance()->selonLaCaisse['sorties']);
-        $ecran->assertSee('Charges venant des factures fournisseurs FNE');
+        $ecran->assertSee('Achats normalisés — factures fournisseurs FNE');
     }
 
     // ------------------------------------------------------------------ le décor

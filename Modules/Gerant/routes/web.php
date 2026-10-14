@@ -25,6 +25,9 @@ Route::middleware(['auth', 'role:gerant'])->group(function () {
      * à la fin du mois — d'où le gérant seul, ici comme dans le menu.
      */
     Volt::route('/parametres/bareme-commission', 'gerant.bareme-commission')->name('bareme-commission');
+    // Les objectifs mensuels de l'entreprise (14/10) : des tranches, une période, une portée.
+    // Le gérant seul les fixe, comme le barème ; le tableau de bord les lit.
+    Volt::route('/parametres/objectifs', 'gerant.objectifs-mensuels')->name('objectifs-mensuels');
     // La mutation d'un employé passe par un vrai POST : elle change ce qu'une personne
     // voit et où elle saisit, et ne doit pas pouvoir échouer sans le dire.
     Route::post('/parametres/reaffecter', [ReaffectationController::class, 'store'])->name('reaffecter');

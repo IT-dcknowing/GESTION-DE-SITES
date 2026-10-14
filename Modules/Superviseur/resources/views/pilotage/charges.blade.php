@@ -150,10 +150,33 @@ $origines = computed(function () {
         'importees' => montant_de($ligne->m_import ?? 0),
         'saisies' => montant_de($ligne->m_saisie ?? 0),
         'nSaisies' => (int) ($ligne->n_saisie ?? 0),
-        // Le module des factures fournisseurs FNE n'existe pas encore : rien n'en vient.
         'fne' => 0,
         'nonNormalisees' => montant_de($ligne->montant ?? 0),
     ];
+});
+
+/**
+ * Les achats normalisés FNE de la période — 14/10. Le module existe depuis le 12/10 (relevé du
+ * portail, `factures_fne`) ; la carte disait encore « à venir ». Ce sont les factures et avoirs que
+ * des fournisseurs ont certifiés au NCC de l'entreprise : **toute l'entreprise**, le portail ne
+ * dit pas la ville. Ils se lisent à côté des charges, jamais additionnés : une facture d'achat
+ * n'est une charge que lorsqu'on la règle ou qu'on la saisit.
+ */
+$achatsFne = computed(function () {
+    if (! \App\Support\SchemaDisponible::table('factures_fne')) {
+        return null;
+    }
+
+    [$debut, $fin] = $this->plage;
+
+    $ligne = \Modules\Noyau\Imports\Modeles\FactureFne::withoutGlobalScopes()
+        ->where('entreprise_id', auth()->user()->entreprise_id)
+        ->whereBetween('date_facture', [$debut, $fin])
+        ->selectRaw('count(*) as nombre, coalesce(sum(montant_ttc), 0) as ttc')
+        ->selectRaw('coalesce(sum(case when facture_fournisseur_id is not null then 1 else 0 end), 0) as portees')
+        ->toBase()->first();
+
+    return ['ttc' => montant_de($ligne->ttc ?? 0), 'nombre' => (int) ($ligne->nombre ?? 0), 'portees' => (int) ($ligne->portees ?? 0)];
 });
 
 /** Ce que dit le journal de caisse sur la période : ses sorties, et ce qui en a été repris. */
@@ -548,10 +571,15 @@ $detail = computed(fn () => FiltreLibre::appliquer(
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
             <x-kpi-card label="Charges venant de la caisse" :value="ae($o['caisse'])"
                 sub="{{ number_format($o['nCaisse'], 0, ',', ' ') }} sortie(s) du journal reprise(s)" couleur="#B45309" />
-            <x-kpi-card label="Charges venant des factures fournisseurs FNE" :value="ae($o['fne'])"
-                sub="Module FNE à venir : les achats normalisés y entreront d'eux-mêmes" />
+            @php $f = $this->achatsFne; @endphp
+            <a href="{{ route('fournisseurs.fne') }}" style="all:unset; display:block; cursor:pointer;" title="Ouvrir Fournisseurs › Factures FNE">
+                <x-kpi-card label="Achats normalisés — factures fournisseurs FNE" :value="$f === null ? '—' : ae($f['ttc'])"
+                    sub="{{ $f === null ? 'Module FNE pas encore migré sur ce serveur' : ($f['nombre'] > 0
+                        ? number_format($f['nombre'], 0, ',', ' ').' pièce(s) relevée(s) au portail · '.number_format($f['portees'], 0, ',', ' ').' portée(s) au suivi — toute l\'entreprise, à côté des charges'
+                        : 'Aucune pièce relevée sur la période — le relevé attend les accès au portail') }}" />
+            </a>
             <x-kpi-card label="Charges non normalisées" :value="ae($o['nonNormalisees'])"
-                sub="Sans facture FNE — aujourd'hui, toutes les charges" couleur="#C8102E" />
+                sub="Charges enregistrées sans facture FNE rattachée — aujourd'hui, toutes" couleur="#C8102E" />
             <x-kpi-card label="Saisies dans l'application" :value="ae($o['saisies'])"
                 sub="{{ number_format($o['nSaisies'], 0, ',', ' ') }} décaissement(s){{ $o['importees'] > 0 ? ' · importées '.ae($o['importees']) : '' }}" />
             {{-- Cliquable — 14/10 : le détail par catégorie se déplie dessous. --}}

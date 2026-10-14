@@ -34,6 +34,7 @@ class NomDEcran
         'mot-de-passe.modifier' => 'Mot de passe',
         'ma-performance' => 'Ma performance',
         'mes-prospections' => 'Mes prospections',
+        'objectifs-mensuels' => "Objectifs mensuels de l'entreprise",
         'affichage-general' => 'Affichage général des prospections',
         'mes-notes' => 'Mes notes',
         'correspondances' => 'Correspondances',

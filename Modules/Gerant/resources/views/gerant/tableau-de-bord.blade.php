@@ -371,6 +371,31 @@ $alertes = computed(function () {
     return collect($alertes)->sortBy(fn ($a) => $ordre[$a['niveau']])->values();
 });
 
+/**
+ * L'objectif mensuel de l'entreprise sur la période regardée — 14/10.
+ *
+ * Les tranches viennent de « Objectifs mensuels de l'entreprise » ; `ObjectifsDeLEntreprise` dit
+ * lequel s'applique à chaque jour de la période et le ramène au prorata des jours. Le réalisé est le
+ * CA de la carte du haut, sur le même périmètre : on compare ce qui se compare.
+ */
+$objectifDeLEntreprise = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    $objectif = (new \Modules\Noyau\Exploitation\Services\ObjectifsDeLEntreprise((int) auth()->user()->entreprise_id))->pourLaPeriode(
+        \Illuminate\Support\Carbon::parse($debut), \Illuminate\Support\Carbon::parse($fin),
+        $this->villeFiltre !== '' && $this->villeFiltre !== null ? (int) $this->villeFiltre : null,
+        $this->activiteFiltre ?: null,
+        PerimetreSites::idsVillesRetenus(auth()->user(), ''),
+    );
+
+    $realise = $this->kpis['ca'];
+
+    return $objectif + [
+        'realise' => $realise,
+        'atteintes' => count(array_filter($objectif['tranches'], fn ($t) => $realise >= $t['montant'])),
+    ];
+});
+
 /** Classement des commerciaux du groupe par taux de réalisation de leur objectif au prorata. */
 $topCommerciaux = computed(function () {
     [$debut, $fin] = $this->plage;
@@ -466,6 +491,38 @@ $commentaires = computed(function () {
         <x-kpi-card label="Véhicules sans facture — {{ $this->libellePerimetre }}" :value="$this->kpis['sansFacture']"
             :sub="$this->kpis['sansFacture'] > 0 ? 'Anomalie à signaler à la Direction' : 'Aucune anomalie'"
             :accent="$this->kpis['sansFacture'] > 0" :bon="$this->kpis['sansFacture'] === 0" />
+    </div>
+
+    {{-- ─────────────── l'objectif mensuel de l'entreprise — 14/10 --}}
+    @php $obj = $this->objectifDeLEntreprise; @endphp
+    <div class="carte" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0;">Objectif de l'entreprise — {{ $this->libellePerimetre }}</h3>
+            <a href="{{ route('objectifs-mensuels') }}" class="bouton bouton-secondaire" style="padding:6px 12px;">Configurer les objectifs</a>
+        </div>
+        @if ($obj['tranches'] === [])
+            <p style="margin:0; font-size:13px; color:#6B6E76;">Aucun objectif établi pour cette période et cette portée.</p>
+        @else
+            <p style="margin:0 0 10px; font-size:12.5px; color:#6B6E76;">
+                Selon {{ $obj['objectifs']->map(fn ($o) => '« '.$o->libelle.' »')->implode(', ') }} — montants mensuels ramenés à la période.
+                Réalisé : <b>{{ ae($obj['realise']) }}</b> · {{ $obj['atteintes'] }} tranche(s) sur {{ count($obj['tranches']) }} atteinte(s).
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
+                @foreach ($obj['tranches'] as $t)
+                    @php $taux = $t['montant'] > 0 ? $obj['realise'] / $t['montant'] : null; $atteinte = $obj['realise'] >= $t['montant']; @endphp
+                    <div style="border:1px solid var(--th-ligne,#E2E0D8); border-radius:10px; padding:10px 12px; {{ $atteinte ? 'background:#ECFDF5;' : '' }}">
+                        <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:#4B4E55;">{{ $t['libelle'] }}</div>
+                        <div style="font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;">{{ ae($t['montant']) }}</div>
+                        <div style="height:6px; background:#E5E7EB; border-radius:3px; margin:6px 0; overflow:hidden;">
+                            <div style="height:6px; width:{{ min(100, max(0, ($taux ?? 0) * 100)) }}%; background:{{ $atteinte ? '#0E9F6E' : '#D97706' }};"></div>
+                        </div>
+                        <div style="font-size:12px; color:{{ $atteinte ? '#0E9F6E' : '#6B6E76' }}; font-weight:600;">
+                            {{ an($taux) }} — {{ $atteinte ? 'atteinte ✔' : 'reste '.ae(montant_de($t['montant'] - $obj['realise'])) }}
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @endif
     </div>
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:16px; margin-bottom:20px;">
