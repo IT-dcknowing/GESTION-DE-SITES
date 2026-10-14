@@ -50,6 +50,8 @@ class MenuNavigation
             return self::construire([
                 ['label' => 'Ma performance individuelle', 'route' => 'ma-performance'],
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
+                // Les prospections de toute l'équipe (14/10) : pour ne pas refaire celles d'un collègue.
+                ['label' => 'Affichage général', 'route' => 'affichage-general'],
                 // En tête et non sous « Paramètres » : c'est là qu'il réclame ses factures,
                 // donc son chiffre et sa commission.
                 ['label' => 'Correspondances', 'route' => 'correspondances'],
@@ -75,6 +77,7 @@ class MenuNavigation
             return self::construire([
                 ['label' => 'Saisie du jour', 'route' => 'saisie-du-jour'],
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
+                ['label' => 'Affichage général', 'route' => 'affichage-general'],
                 ['label' => 'Correspondances', 'route' => 'correspondances'],
                 ['label' => 'Mon équipe', 'groupe' => [
                     ['label' => 'Commerciaux', 'route' => 'commerciaux'],
@@ -226,6 +229,7 @@ class MenuNavigation
             'label' => 'Indicateurs',
             'groupe' => [
                 ['label' => 'Prospects', 'route' => 'prospects'],
+                ['label' => 'Affichage général des prospections', 'route' => 'affichage-general'],
                 ['label' => 'Devis', 'route' => 'devis'],
                 // Entre les deux, l'écran qui les relie : une prospection sans devis et un
                 // devis sans commercial sont le même trou, vu de ses deux bords.

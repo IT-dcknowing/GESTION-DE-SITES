@@ -36,3 +36,12 @@ Route::middleware(['auth', 'role:commercial|responsable_commercial'])->group(fun
     Volt::route('/mes-prospections', 'commercial.mes-prospections')->name('mes-prospections');
     Volt::route('/mes-notes', 'commercial.mes-notes')->name('mes-notes');
 });
+
+/*
+ * L'affichage général des prospections — 14/10 : toute l'équipe voit les prospections de tous,
+ * pour se motiver et ne pas refaire une démarche qu'un collègue a déjà faite. Ouvert à tous ceux
+ * qui vendent et au gérant ; aucune écriture, et ni observations ni commentaires n'y paraissent.
+ */
+Route::middleware(['auth', 'role:gerant|'.RolesCommerciaux::pourMiddleware()])->group(function () {
+    Volt::route('/affichage-general', 'commercial.affichage-general')->name('affichage-general');
+});
