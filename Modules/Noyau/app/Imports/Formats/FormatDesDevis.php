@@ -171,17 +171,26 @@ class FormatDesDevis extends Format
             $valeurs['commercial_id'] = $commercialId;
         }
 
+        // Un devis de la base ne sert qu'une fois par dépôt (14/10) : le même numéro répété dans
+        // le fichier est mis de côté comme doublon, au lieu de réécrire le premier.
         $existant = isset($this->numerosConnus[$numero])
-            ? Devis::withoutGlobalScopes()
+            ? $this->premiereLibre(Devis::withoutGlobalScopes()
                 ->where('entreprise_id', $this->entrepriseId)
-                ->where('numero', $numero)
-                ->first()
+                ->where(fn ($q) => self::avecSesVariantes($q, 'numero', $numero))
+                ->orderBy('id')
+                ->get()
+                ->filter(fn (Devis $d) => self::estUneVariante($d->numero, $numero)))
             : null;
+
+        if ($existant === null && $this->repetition() !== null) {
+            return self::DOUBLON;
+        }
 
         if ($existant === null) {
             $cree = Devis::withoutGlobalScopes()->create($valeurs + [
                 'entreprise_id' => $this->entrepriseId,
-                'numero' => mb_substr($numero, 0, 20),
+                'numero' => $this->variante(mb_substr($numero, 0, 20), 20, fn (string $candidat) => Devis::withoutGlobalScopes()
+                    ->where('entreprise_id', $this->entrepriseId)->where('numero', $candidat)->exists()),
                 // Le fichier ne dit pas si le devis a été validé ou refusé : il liste les
                 // proformas émises, un point c'est tout. « En attente » est donc la seule
                 // valeur honnête à l'entrée — l'inventer validé gonflerait le taux de
@@ -191,6 +200,7 @@ class FormatDesDevis extends Format
             ]);
 
             $this->numerosConnus[$numero] = true;
+            $this->tenir($cree);
 
             /*
              * **La prospection qui l'annonçait le récupère, sans qu'on clique.**

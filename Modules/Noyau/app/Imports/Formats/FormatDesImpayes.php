@@ -285,10 +285,15 @@ class FormatDesImpayes extends Format
             'type' => 'FNE',
         ];
 
-        $existante = Facture::withoutGlobalScopes()
+        // La clé et celles des créances intégrées sous elle (« IM-…#2 ») ; chacune ne sert qu'une
+        // fois par dépôt — une ligne identique répétée est un doublon, voir `Format::DOUBLON`.
+        $cle = $this->cleDeLaLigne($ligne);
+        $existante = $this->premiereLibre(Facture::withoutGlobalScopes()
             ->where('entreprise_id', $this->entrepriseId)
-            ->where('numero', $this->cleDeLaLigne($ligne))
-            ->first();
+            ->where(fn ($q) => self::avecSesVariantes($q, 'numero', $cle))
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (Facture $f) => self::estUneVariante($f->numero, $cle)));
 
         /*
          * Pas encore à l'état : la facture est peut-être déjà là, venue du CATTC sous son
@@ -298,26 +303,31 @@ class FormatDesImpayes extends Format
          * `numero`, qui est ce que le dépôt suivant de l'état cherchera. Voir
          * `PontDesFactures` — 07/10.
          */
-        if ($existante === null) {
+        if ($existante === null && $this->repetition() !== null) {
+            return self::DOUBLON;
+        }
+
+        if ($existante === null && ! $this->enIntegration) {
             $this->pont ??= new PontDesFactures($this->entrepriseId);
             $id = $this->pont->factureUnique(PontDesFactures::cle($date, $montant, $valeurs['immatriculation']));
 
             if ($id !== null) {
-                $existante = Facture::withoutGlobalScopes()->find($id);
-                $existante->numero = $this->cleDeLaLigne($ligne);
+                $existante = $this->tenir(Facture::withoutGlobalScopes()->find($id));
+                $existante->numero = $cle;
                 $existante->n_facture_cattc = $existante->n_facture;
             }
         }
 
         if ($existante === null) {
-            $existante = Facture::withoutGlobalScopes()->create($valeurs + [
+            $existante = $this->tenir(Facture::withoutGlobalScopes()->create($valeurs + [
                 'entreprise_id' => $this->entrepriseId,
                 // Écrit en toutes lettres plutôt que laissé vide ou rempli d'une clé
                 // technique : la ligne s'affiche alors telle qu'elle est — une créance
                 // réelle dont le numéro manque — et se corrige à vue.
                 'n_facture' => $numero ?? 'SANS NUMÉRO',
-                'numero' => $this->cleDeLaLigne($ligne),
-            ]);
+                'numero' => $this->variante($cle, 20, fn (string $candidat) => Facture::withoutGlobalScopes()
+                    ->where('entreprise_id', $this->entrepriseId)->where('numero', $candidat)->exists()),
+            ]));
 
             $this->reporterLeReglement($existante, $ligne, $rattachement, $lotId);
 

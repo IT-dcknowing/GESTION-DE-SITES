@@ -373,7 +373,17 @@ class FormatDuJournalDeCaisse extends Format
         $courant = null;
 
         $resultat->lues++;
-        $resultat->compter($ecrire ? $this->ecrireLeMouvement($mouvement, $lotId) : 'ignore');
+        $issue = $ecrire ? $this->ecrireLeMouvement($mouvement, $lotId) : 'ignore';
+
+        if ($issue === self::DOUBLON) {
+            // Le solde et la page dépendent du tirage, pas du mouvement : ils n'entrent pas dans
+            // l'empreinte, sans quoi un état réimprimé recopierait le doublon au lieu de le retrouver.
+            $this->consignerLeDoublon(null, $mouvement, ['ville_id' => $mouvement['ville_id'], 'site_id' => $mouvement['site_id']],
+                $lotId, 'Page '.$mouvement['page'], $this->decrireLeDoublon($mouvement),
+                array_diff_key($mouvement, ['page' => true, 'solde_annonce' => true]));
+        }
+
+        $resultat->compter($issue);
 
         if ($surAvancee !== null) {
             $surAvancee($resultat->lues);
@@ -403,6 +413,24 @@ class FormatDuJournalDeCaisse extends Format
      * quand même, et se distingue par le reste — comme le classeur tenu à la main
      * d'Abidjan, qui n'a jamais eu de numéro.
      */
+    /** « Intégrer » : la ligne gardée est le mouvement déjà assemblé, prêt à écrire. */
+    protected function ecrireUneLigne(array $ligne, array $rattachement, ?int $lotId, ?string $feuille): string
+    {
+        return $this->ecrireLeMouvement($ligne, $lotId);
+    }
+
+    protected function decrireLeDoublon(array $ligne): array
+    {
+        $libelle = implode(' · ', array_values(array_unique(array_filter((array) ($ligne['detail'] ?? [])))));
+
+        return [
+            'reference' => $ligne['numero_piece'] ?? null,
+            'date' => $ligne['date'] ?? null,
+            'libelle' => self::texte(trim($libelle) !== '' ? $libelle : ($ligne['motif'] ?? null), 255),
+            'montant' => ($ligne['sens'] ?? null) === MouvementCaisse::SORTIE ? -$ligne['montant'] : $ligne['montant'],
+        ];
+    }
+
     private function ecrireLeMouvement(array $mouvement, ?int $lotId): string
     {
         $detail = array_values(array_unique(array_filter($mouvement['detail'])));
@@ -419,20 +447,33 @@ class FormatDuJournalDeCaisse extends Format
             'lot_import_id' => $lotId,
         ];
 
-        $existant = MouvementCaisse::withoutGlobalScopes()
-            ->where('entreprise_id', $this->entrepriseId)
-            ->where('caisse', $mouvement['caisse'])
-            ->where('date', $mouvement['date'])
-            ->where('sens', $mouvement['sens'])
-            ->where(fn ($q) => self::aPeuPres($q, 'montant', $mouvement['montant']))
-            ->where('libelle', $valeurs['libelle'])
-            ->where(fn ($q) => $this->memeValeur($q, 'numero_piece', $mouvement['numero_piece']))
-            ->where(fn ($q) => $this->memeValeur($q, 'motif', $mouvement['motif']))
-            ->where(fn ($q) => $this->memeValeur($q, 'beneficiaire', $mouvement['beneficiaire']))
-            ->first();
+        // Chaque mouvement de la base ne sert qu'une fois par dépôt (14/10) : un mouvement répété
+        // à l'identique est mis de côté comme doublon au lieu de réécrire le premier.
+        $exact = fn (MouvementCaisse $m) => abs((float) $m->montant - (float) $mouvement['montant']) < 0.00005;
+
+        $existant = $this->premiereLibre(
+            MouvementCaisse::withoutGlobalScopes()
+                ->where('entreprise_id', $this->entrepriseId)
+                ->where('caisse', $mouvement['caisse'])
+                ->where('date', $mouvement['date'])
+                ->where('sens', $mouvement['sens'])
+                ->where(fn ($q) => self::aPeuPres($q, 'montant', $mouvement['montant']))
+                ->where('libelle', $valeurs['libelle'])
+                ->where(fn ($q) => $this->memeValeur($q, 'numero_piece', $mouvement['numero_piece']))
+                ->where(fn ($q) => $this->memeValeur($q, 'motif', $mouvement['motif']))
+                ->where(fn ($q) => $this->memeValeur($q, 'beneficiaire', $mouvement['beneficiaire']))
+                ->orderBy('id')
+                ->get()
+                ->sortBy(fn (MouvementCaisse $m) => $exact($m) ? 0 : 1),
+            $exact,
+        );
+
+        if ($existant === null && $this->repetition() !== null) {
+            return self::DOUBLON;
+        }
 
         if ($existant === null) {
-            MouvementCaisse::withoutGlobalScopes()->create($valeurs);
+            $this->tenir(MouvementCaisse::withoutGlobalScopes()->create($valeurs));
 
             return 'cree';
         }

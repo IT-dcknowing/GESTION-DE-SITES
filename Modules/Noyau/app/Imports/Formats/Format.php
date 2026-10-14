@@ -3,11 +3,13 @@
 namespace Modules\Noyau\Imports\Formats;
 
 use DateTimeImmutable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Modules\Noyau\Imports\Lecteurs\Lecteur;
 use Modules\Noyau\Imports\Lecteurs\LecteurXlsx;
 use Modules\Noyau\Imports\Modeles\CodeAgent;
 use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
+use Modules\Noyau\Imports\Modeles\DoublonImport;
 use Modules\Noyau\Imports\Services\Rattachement;
 
 /**
@@ -185,7 +187,13 @@ abstract class Format
             $this->villeDuDepotCourante = $villeDuDepot;
             $this->apresRattachement($ou, $villeDuDepot, $resultat);
 
-            $resultat->compter($ecrire ? $this->ecrire($ligne, $ou, $lotId) : 'ignore');
+            $issue = $ecrire ? $this->ecrire($ligne, $ou, $lotId) : 'ignore';
+
+            if ($issue === self::DOUBLON) {
+                $this->consignerLeDoublon($numero, $ligne, $ou, $lotId, $resultat->feuille, $this->decrireLeDoublon($ligne));
+            }
+
+            $resultat->compter($issue);
 
             if ($surAvancee !== null) {
                 $surAvancee($resultat->lues);
@@ -200,15 +208,293 @@ abstract class Format
     }
 
     /**
-     * `colonne` égale à `$montant` à un demi-franc près.
+     * `colonne` égale à `$montant` — ou à ce montant arrondi au franc, pour une ligne d'avant le 13/10.
      *
      * Les lignes écrites avant le 13/10 ont leur montant arrondi au franc ; celles d'après le gardent
-     * tel que donné. Pour retrouver la même ligne dans les deux cas, on compare à ±0,5 F — jamais deux
-     * montants distincts d'une même pièce ne sont si proches.
+     * tel que donné. On comparait à ±0,5 F, ce qui retrouvait les deux mais **fusionnait aussi deux
+     * montants distincts** : 1 000,20 et 1 000,60 le même jour, sous le même libellé, devenaient une
+     * seule ligne — un doublon écarté par arrondi, revu le 14/10. On ne retrouve plus que le montant
+     * exact (aux quatre décimales de la colonne) ou son arrondi au franc, qui est la forme exacte de
+     * la ligne d'avant. L'arrondi n'est ici qu'une clé de recherche, jamais un montant écrit.
      */
     protected static function aPeuPres($requete, string $colonne, int|float $montant): void
     {
-        $requete->whereBetween($colonne, [$montant - 0.5001, $montant + 0.5001]);
+        $requete->where(fn ($q) => $q
+            ->whereBetween($colonne, [$montant - 0.00005, $montant + 0.00005])
+            ->orWhere($colonne, round($montant)));
+    }
+
+    // ------------------------------------------------------------------ doublons — 14/10
+
+    /**
+     * L'issue d'une ligne qui répète, dans le même fichier, une ligne déjà écrite.
+     *
+     * **Ce qui se passait avant.** Chaque format retrouvait la ligne en base par sa clé — numéro de
+     * facture, ligne entière d'un mouvement de caisse — et la mettait à jour. Une ligne répétée
+     * dans le même fichier retrouvait donc **celle que le même dépôt venait d'écrire**, et la
+     * réécrivait : elle disparaissait, son montant avec. Mesuré sur le CA du 12/10 : 10 000 F, le
+     * doublon FA -8730. Pour la caisse, le commentaire de l'import le disait lui-même — « deux
+     * dépenses de 5 000 F le même jour pour le même motif sont possibles et légitimes » — et la
+     * clé les fusionnait quand même.
+     *
+     * **La règle d'aujourd'hui** : une ligne de la base ne sert qu'une fois par dépôt (comme dans
+     * `PontDesFactures`). La retrouver une seconde fois, c'est être une répétition : la ligne est
+     * gardée dans `doublons_import`, montrée à l'écran à côté de celle qui a été retenue, et ne
+     * compte dans aucun total tant que personne ne l'a intégrée. Un redépôt du même fichier ne
+     * change rien : chaque ligne y retrouve la sienne, une intégrée comprise.
+     */
+    public const DOUBLON = 'doublon';
+
+    /** @var array<string, true> les lignes de la base déjà retrouvées par ce parcours : « table#id » */
+    private array $tenues = [];
+
+    /** La ligne déjà retenue que la ligne en cours répète, quand c'en est une. */
+    private ?Model $repetee = null;
+
+    /** Vrai pendant « Intégrer » : la ligne s'écrit à part entière, quoi qu'elle répète. */
+    protected bool $enIntegration = false;
+
+    /** Ce que la dernière écriture a créé ou retrouvé — `integrer()` en rend l'identifiant. */
+    protected ?Model $derniereTenue = null;
+
+    /** @var array<string, int> combien de fois la même ligne a déjà été mise de côté dans ce parcours */
+    private array $empreintesVues = [];
+
+    private ?bool $doublonsGardes = null;
+
+    /**
+     * La première ligne de la base, parmi celles qui répondent à la clé, que ce dépôt n'a pas
+     * encore retrouvée — ou null.
+     *
+     * Quand toutes sont déjà prises, la ligne en cours en répète une : `repetition()` la nomme.
+     * `$memeLigne` dit, au besoin, si une ligne prise est bien la même (la caisse compare le
+     * montant exact : sa clé retrouve aussi l'arrondi d'une ligne d'avant le 13/10, qui n'est pas
+     * une répétition d'une ligne de ce fichier).
+     *
+     * Tant que la table des doublons n'est pas migrée, l'ancienne règle s'applique : la première
+     * ligne trouvée, prise ou non — mieux vaut un doublon réécrit comme avant qu'un doublon perdu.
+     *
+     * @param  iterable<Model|null>  $candidats  dans l'ordre où les préférer
+     */
+    protected function premiereLibre(iterable $candidats, ?\Closure $memeLigne = null): ?Model
+    {
+        $this->repetee = null;
+
+        if ($this->enIntegration) {
+            return null;
+        }
+
+        foreach ($candidats as $candidat) {
+            if ($candidat === null) {
+                continue;
+            }
+
+            if (! isset($this->tenues[self::marque($candidat)]) || ! $this->doublonsGardes()) {
+                return $this->tenir($candidat);
+            }
+
+            if ($memeLigne === null || $memeLigne($candidat)) {
+                $this->repetee ??= $candidat;
+            }
+        }
+
+        return null;
+    }
+
+    /** Marque une ligne de la base comme retrouvée (ou créée) par ce dépôt. */
+    protected function tenir(Model $ligne): Model
+    {
+        $this->tenues[self::marque($ligne)] = true;
+        $this->derniereTenue = $ligne;
+
+        return $ligne;
+    }
+
+    /** La ligne déjà retenue que la ligne en cours répète — null si elle n'en répète aucune. */
+    protected function repetition(): ?Model
+    {
+        return $this->enIntegration || ! $this->doublonsGardes() ? null : $this->repetee;
+    }
+
+    /**
+     * La clé d'une ligne intégrée, quand sa table veut une clé unique : « FA -8730#2 ».
+     *
+     * Hors intégration, la clé reste celle du fichier. Le suffixe se voit à l'écran, et c'est voulu :
+     * la ligne dit qu'elle est la seconde de ce numéro. `avecSesVariantes()` la retrouve au dépôt suivant.
+     *
+     * @param  \Closure(string): bool  $existe
+     */
+    protected function variante(string $valeur, int $longueur, \Closure $existe): string
+    {
+        if (! $this->enIntegration) {
+            return $valeur;
+        }
+
+        for ($rang = 2; ; $rang++) {
+            $suffixe = '#'.$rang;
+            $candidate = mb_substr($valeur, 0, $longueur - strlen($suffixe)).$suffixe;
+
+            if (! $existe($candidate)) {
+                return $candidate;
+            }
+        }
+    }
+
+    /** La clé, et celles des lignes intégrées sous elle (« clé#2 », « clé#3 »…). */
+    protected static function avecSesVariantes($requete, string $colonne, string $valeur): void
+    {
+        $requete->where(fn ($q) => $q->where($colonne, $valeur)->orWhere($colonne, 'like', $valeur.'#%'));
+    }
+
+    /** Vrai quand `$trouvee` est la clé ou l'une de ses variantes — le LIKE ci-dessus, relu sans joker. */
+    protected static function estUneVariante(?string $trouvee, string $valeur): bool
+    {
+        return $trouvee === $valeur || (bool) preg_match('/^'.preg_quote($valeur, '/').'#\d+$/u', (string) $trouvee);
+    }
+
+    /**
+     * Écrit à part entière une ligne mise de côté comme doublon, et rend ce qui a été créé.
+     *
+     * C'est le même `ecrire()` que celui du dépôt : la ligne entre exactement comme elle serait
+     * entrée si elle n'avait répété personne — mêmes colonnes, même rattachement.
+     */
+    public function integrer(array $ligne, array $rattachement, ?int $lotId, ?string $feuille = null, ?int $villeDuDepot = null): ?Model
+    {
+        $this->enIntegration = true;
+        $this->derniereTenue = null;
+        $this->villeDuDepotCourante = $villeDuDepot;
+
+        try {
+            $issue = $this->ecrireUneLigne($ligne, $rattachement, $lotId, $feuille);
+        } finally {
+            $this->enIntegration = false;
+        }
+
+        return $issue === 'cree' ? $this->derniereTenue : null;
+    }
+
+    /** Le point d'entrée d'`integrer()` ; les formats qui écrivent autrement que par `ecrire()` le redéfinissent. */
+    protected function ecrireUneLigne(array $ligne, array $rattachement, ?int $lotId, ?string $feuille): string
+    {
+        return $this->ecrire($ligne, $rattachement, $lotId);
+    }
+
+    /**
+     * Ce que l'écran montre d'un doublon : sa référence, sa date, son libellé, son montant.
+     *
+     * Lu sur les colonnes que les formats partagent ; un format dont la ligne ne ressemble à
+     * aucune autre (le journal de caisse) le redéfinit.
+     *
+     * @return array{reference: ?string, date: ?\DateTimeInterface, libelle: ?string, montant: int|float|null}
+     */
+    protected function decrireLeDoublon(array $ligne): array
+    {
+        $premier = function (array $cles, \Closure $lire) use ($ligne) {
+            foreach ($cles as $cle) {
+                if (array_key_exists($cle, $ligne) && ($valeur = $lire($ligne[$cle])) !== null) {
+                    return $valeur;
+                }
+            }
+
+            return null;
+        };
+
+        $montant = $premier(['montant', 'credit', 'debit', 'solde'], fn ($v) => self::montant($v));
+
+        return [
+            'reference' => $premier(['numero', 'numero_piece', 'code_reglement', 'code_piece', 'fiche'], fn ($v) => self::texte($v, 120)),
+            'date' => $premier(['date', 'date_facture', 'date_piece', 'date_reglement', 'date_operation'], fn ($v) => self::date($v)),
+            'libelle' => $premier(['client', 'libelle', 'fournisseur', 'beneficiaire', 'assureur'], fn ($v) => self::texte($v, 255)),
+            'montant' => $montant === null ? null : montant_de($montant),
+        ];
+    }
+
+    /**
+     * Garde la ligne mise de côté, avec de quoi la montrer et la réintégrer.
+     *
+     * L'empreinte est celle des valeurs de la ligne : redéposer le même fichier retrouve la même
+     * ligne et la met à jour au lieu de la recopier. Trois lignes identiques donnent deux doublons,
+     * distingués par leur rang. Une décision déjà prise (« intégrée ») n'est jamais touchée.
+     *
+     * @param  array{reference: ?string, date: ?\DateTimeInterface, libelle: ?string, montant: int|float|null}  $description
+     */
+    protected function consignerLeDoublon(?int $numeroLigne, array $ligne, array $rattachement, ?int $lotId, ?string $feuille, array $description, ?array $pourLEmpreinte = null): void
+    {
+        if (! $this->doublonsGardes()) {
+            return;
+        }
+
+        $serialisee = self::serialiser($ligne);
+        $base = hash('sha256', static::cle().'|'.json_encode(self::serialiser($pourLEmpreinte ?? $ligne), JSON_UNESCAPED_UNICODE));
+        $rang = $this->empreintesVues[$base] = ($this->empreintesVues[$base] ?? 0) + 1;
+
+        DoublonImport::query()->updateOrCreate(
+            [
+                'entreprise_id' => $this->entrepriseId,
+                'format' => static::cle(),
+                'empreinte' => hash('sha256', $base.'#'.$rang),
+            ],
+            [
+                'lot_import_id' => $lotId,
+                'numero_ligne' => $numeroLigne,
+                'feuille' => $feuille === null ? null : mb_substr($feuille, 0, 60),
+                'reference' => $description['reference'] === null ? null : mb_substr($description['reference'], 0, 120),
+                'date' => $description['date'],
+                'libelle' => $description['libelle'] === null ? null : mb_substr($description['libelle'], 0, 255),
+                'montant' => $description['montant'],
+                'ville_id' => $rattachement['ville_id'] ?? null,
+                'site_id' => $rattachement['site_id'] ?? null,
+                'retenue_table' => $this->repetee?->getTable(),
+                'retenue_id' => $this->repetee?->getKey(),
+                'ligne' => $serialisee,
+                'rattachement' => $rattachement,
+            ],
+        );
+    }
+
+    /** Les valeurs d'une ligne, dates comprises, sous une forme qu'on peut écrire en JSON et relire. */
+    public static function serialiser(array $ligne): array
+    {
+        $rendu = [];
+
+        foreach ($ligne as $cle => $valeur) {
+            $rendu[$cle] = match (true) {
+                $valeur instanceof \DateTimeImmutable => ['@date' => $valeur->format('Y-m-d H:i:s'), '@classe' => 'immuable'],
+                $valeur instanceof \DateTimeInterface => ['@date' => $valeur->format('Y-m-d H:i:s'), '@classe' => 'carbon'],
+                is_array($valeur) => self::serialiser($valeur),
+                default => $valeur,
+            };
+        }
+
+        return $rendu;
+    }
+
+    /** L'inverse de `serialiser()` : la ligne telle que le lecteur l'avait rendue. */
+    public static function deserialiser(array $ligne): array
+    {
+        $rendu = [];
+
+        foreach ($ligne as $cle => $valeur) {
+            if (is_array($valeur) && isset($valeur['@date'])) {
+                $rendu[$cle] = ($valeur['@classe'] ?? '') === 'immuable'
+                    ? new \DateTimeImmutable($valeur['@date'])
+                    : Carbon::parse($valeur['@date']);
+            } else {
+                $rendu[$cle] = is_array($valeur) ? self::deserialiser($valeur) : $valeur;
+            }
+        }
+
+        return $rendu;
+    }
+
+    private function doublonsGardes(): bool
+    {
+        return $this->doublonsGardes ??= \App\Support\SchemaDisponible::table('doublons_import');
+    }
+
+    private static function marque(Model $ligne): string
+    {
+        return $ligne->getTable().'#'.$ligne->getKey();
     }
 
     /** La ville déclarée au dépôt, pour la ligne en cours — les formats qui en ont besoin dans `ecrire()`. */

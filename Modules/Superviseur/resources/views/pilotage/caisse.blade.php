@@ -983,6 +983,11 @@ $mouvements = computed(function () {
         </div>
     @endif
 
+    {{-- Les lignes du fichier mises de côté comme doublons à l'import, et le bouton qui les intègre — 14/10. --}}
+    <livewire:commun.doublons-d-import :formats="['caisse', 'journal-caisse']" :ids-sites="\Modules\Noyau\Entreprises\Modeles\Site::withoutGlobalScopes()->whereIn('ville_id', $this->idsVilles)->pluck('id')->map(fn ($id) => (int) $id)->all()" :ids-villes="$this->idsVilles"
+        :debut="$this->plage[0]->toDateString()" :fin="$this->plage[1]->toDateString()"
+        :wire:key="'doublons-caisse-'.md5(json_encode([$this->idsVilles, $this->plage[0]->toDateString(), $this->plage[1]->toDateString()]))" />
+
     {{-- ─────────────────────────────── les indicateurs, qui suivent la vue
 
          **Trois jeux, et non un jeu dont on masquerait des cartes.** Le solde d'avant la

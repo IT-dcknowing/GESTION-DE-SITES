@@ -10,7 +10,7 @@ use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
-use function Livewire\Volt\{computed, mount, protect, state};
+use function Livewire\Volt\{computed, mount, on, protect, state};
 
 state([
     'periode' => 'calendrier',
@@ -128,6 +128,9 @@ $requeteBase = computed(function () {
 
     return $q;
 });
+
+// Une ligne intégrée depuis les doublons compte aussitôt : la page relit ses totaux — 14/10.
+on(['doublon-integre' => function () {}]);
 
 $commerciaux = computed(fn () => Commercial::where('est_spontane', false)
     ->whereIn('ville_id', PerimetreSites::idsVillesRetenus(auth()->user(), $this->villeFiltre))->orderBy('nom')->get());
@@ -412,6 +415,13 @@ $comptesParOrigine = computed(function () {
             :sinistre="$ventile ? ae($this->kpis['resultatVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['resultatVentile']['nonVentile'] ? ae($this->kpis['resultatVentile']['nonVentile']) : null" />
     </div>
+
+    {{-- Les lignes du fichier du CA mises de côté comme doublons, et le montant du fichier — 14/10. --}}
+    <livewire:commun.doublons-d-import :formats="['factures']" :ids-sites="$this->idsSites"
+        :ids-villes="\Modules\Noyau\Exploitation\Services\EtatDesImpayes::villesDesSites($this->idsSites)"
+        :debut="$this->plage[0]->toDateString()" :fin="$this->plage[1]->toDateString()"
+        :retenu="$this->kpis['total']" libelle-retenu="CA retenu"
+        :wire:key="'doublons-ca-'.md5(json_encode([$this->idsSites, $this->plage[0]->toDateString(), $this->plage[1]->toDateString(), $this->kpis['total']]))" />
 
     <div style="margin-bottom:20px;">
         <x-chart-card titre="CA par activité" id="ca-hebdo"

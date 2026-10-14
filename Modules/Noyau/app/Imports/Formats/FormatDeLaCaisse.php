@@ -217,7 +217,13 @@ class FormatDeLaCaisse extends Format
 
             $premierJour ??= self::date($ligne['date'] ?? null);
 
-            $resultat->compter($ecrire ? $this->ecrireLeMouvement($ligne, $ou, $lotId, $feuille) : 'ignore');
+            $issue = $ecrire ? $this->ecrireLeMouvement($ligne, $ou, $lotId, $feuille) : 'ignore';
+
+            if ($issue === self::DOUBLON) {
+                $this->consignerLeDoublon($numero, $ligne, $ou, $lotId, $feuille, $this->decrireLeDoublon($ligne));
+            }
+
+            $resultat->compter($issue);
 
             if ($surAvancee !== null) {
                 $surAvancee($resultat->lues);
@@ -340,6 +346,26 @@ class FormatDeLaCaisse extends Format
         return $this->ecrireLeMouvement($ligne, $rattachement, $lotId, null);
     }
 
+    /** « Intégrer » repasse par l'écriture d'un mouvement, qui connaît la feuille. */
+    protected function ecrireUneLigne(array $ligne, array $rattachement, ?int $lotId, ?string $feuille): string
+    {
+        return $this->ecrireLeMouvement($ligne, $rattachement, $lotId, $feuille);
+    }
+
+    /** Un mouvement de caisse se montre par son sens : une sortie s'affiche en négatif. */
+    protected function decrireLeDoublon(array $ligne): array
+    {
+        $mouvement = $this->montantDuMouvement($ligne);
+
+        return [
+            'reference' => null,
+            'date' => self::date($ligne['date'] ?? null),
+            'libelle' => self::texte($ligne['libelle'] ?? null, 255),
+            'montant' => $mouvement === null ? null
+                : ($mouvement['sens'] === MouvementCaisse::SORTIE ? -$mouvement['montant'] : $mouvement['montant']),
+        ];
+    }
+
     private function ecrireLeMouvement(array $ligne, array $rattachement, ?int $lotId, ?string $feuille): string
     {
         $mouvement = $this->montantDuMouvement($ligne);
@@ -367,16 +393,31 @@ class FormatDeLaCaisse extends Format
         // ligne entière — date, sens, montant, libellé — ce qui protège du redépôt du même
         // fichier sans interdire deux mouvements réellement identiques dans deux mois
         // différents.
-        $existant = MouvementCaisse::withoutGlobalScopes()
-            ->where('entreprise_id', $this->entrepriseId)
-            ->where('date', $date)
-            ->where('sens', $mouvement['sens'])
-            ->where(fn ($q) => self::aPeuPres($q, 'montant', $mouvement['montant']))
-            ->where('libelle', $libelle)
-            ->first();
+        //
+        // **Et chaque ligne de la base ne sert qu'une fois par dépôt (14/10).** La clé retrouvait
+        // la première dépense de 5 000 F pour la seconde, et la réécrivait : la seconde
+        // disparaissait du total. Elle est désormais mise de côté comme doublon, montrée, et
+        // s'intègre d'un bouton si elle est réelle — voir `Format::DOUBLON`.
+        $existant = $this->premiereLibre(
+            MouvementCaisse::withoutGlobalScopes()
+                ->where('entreprise_id', $this->entrepriseId)
+                ->where('date', $date)
+                ->where('sens', $mouvement['sens'])
+                ->where(fn ($q) => self::aPeuPres($q, 'montant', $mouvement['montant']))
+                ->where('libelle', $libelle)
+                ->orderBy('id')
+                ->get()
+                // Le montant exact d'abord : l'arrondi au franc ne sert qu'à retrouver une ligne d'avant le 13/10.
+                ->sortBy(fn (MouvementCaisse $m) => abs((float) $m->montant - (float) $mouvement['montant']) < 0.00005 ? 0 : 1),
+            fn (MouvementCaisse $m) => abs((float) $m->montant - (float) $mouvement['montant']) < 0.00005,
+        );
+
+        if ($existant === null && $this->repetition() !== null) {
+            return self::DOUBLON;
+        }
 
         if ($existant === null) {
-            MouvementCaisse::withoutGlobalScopes()->create($valeurs);
+            $this->tenir(MouvementCaisse::withoutGlobalScopes()->create($valeurs));
 
             return 'cree';
         }

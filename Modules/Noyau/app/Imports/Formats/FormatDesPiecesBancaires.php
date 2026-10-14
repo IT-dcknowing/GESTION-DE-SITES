@@ -144,9 +144,17 @@ class FormatDesPiecesBancaires extends Format
             'rattachement_presume' => $rattachement['presumee'],
         ];
 
-        $existant = PieceBancaire::where('banque_id', $banqueId)
-            ->where('code_piece', $code)
-            ->first();
+        // Une pièce de la base ne sert qu'une fois par dépôt (14/10) : le même code répété est mis
+        // de côté comme doublon. Sans code, la pièce ne se retrouve pas — elle entre, comme avant.
+        $existant = $code === null ? null : $this->premiereLibre(PieceBancaire::where('banque_id', $banqueId)
+            ->where(fn ($q) => self::avecSesVariantes($q, 'code_piece', $code))
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (PieceBancaire $p) => self::estUneVariante($p->code_piece, $code)));
+
+        if ($existant === null && $this->repetition() !== null) {
+            return self::DOUBLON;
+        }
 
         if ($existant) {
             $existant->fill($valeurs)->save();
@@ -154,11 +162,12 @@ class FormatDesPiecesBancaires extends Format
             return 'maj';
         }
 
-        PieceBancaire::create($valeurs + [
+        $this->tenir(PieceBancaire::create($valeurs + [
             'entreprise_id' => $this->entrepriseId,
             'banque_id' => $banqueId,
-            'code_piece' => $code,
-        ]);
+            'code_piece' => $code === null ? null : $this->variante($code, 60, fn (string $candidat) => PieceBancaire::where('banque_id', $banqueId)
+                ->where('code_piece', $candidat)->exists()),
+        ]));
 
         return 'cree';
     }

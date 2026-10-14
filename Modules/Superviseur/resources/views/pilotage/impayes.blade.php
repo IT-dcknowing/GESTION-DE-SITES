@@ -1062,6 +1062,11 @@ $basculerPortage = function () {
         <livewire:pilotage.impayes-porter :facture="$porterFacture" :wire:key="'porter-'.($porterFacture ?? 'neuf')" />
     @endif
 
+    {{-- Les lignes du fichier mises de côté comme doublons à l'import, et le bouton qui les intègre — 14/10. --}}
+    <livewire:commun.doublons-d-import :formats="['impayes']" :ids-sites="$this->idsSites" :ids-villes="\Modules\Noyau\Exploitation\Services\EtatDesImpayes::villesDesSites($this->idsSites)"
+        :debut="$this->annee.'-01-01'" :fin="$this->annee.'-12-31'"
+        :wire:key="'doublons-impayes-'.md5(json_encode([$this->idsSites, $this->annee.'-01-01', $this->annee.'-12-31']))" />
+
     {{-- Les totaux. Le reste se somme ligne à ligne, à plancher zéro : c'est précisément ce
          que le classeur ne faisait pas, et ses 4 446 771 F de trop-perçu venaient en
          déduction de la dette des autres. --}}

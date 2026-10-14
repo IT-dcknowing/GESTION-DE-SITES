@@ -235,11 +235,18 @@ class FormatDesFactures extends Format
             'modele' => self::texte($ligne['modele'] ?? null, 60),
         ];
 
+        /*
+         * Une facture de la base ne sert qu'une fois par dépôt (14/10) : la même ligne répétée
+         * dans le fichier ne réécrit plus celle d'avant, elle est mise de côté comme doublon —
+         * voir `Format::DOUBLON`. Une facture intégrée sous le même numéro (`numero` « FA -8730#2 »,
+         * `n_facture` inchangé) se retrouve ici comme la seconde du numéro.
+         */
         $existante = isset($this->numerosConnus[$numero])
-            ? Facture::withoutGlobalScopes()
+            ? $this->premiereLibre(Facture::withoutGlobalScopes()
                 ->where('entreprise_id', $this->entrepriseId)
                 ->where('n_facture', $numero)
-                ->first()
+                ->orderBy('id')
+                ->get())
             : null;
 
         /*
@@ -247,7 +254,7 @@ class FormatDesFactures extends Format
          * sous un autre numéro. D'abord par un dépôt précédent qui l'a reconnue, puis par la
          * clé forte. Voir `PontDesFactures` — 07/10.
          */
-        if ($existante === null && $numero !== null) {
+        if ($existante === null && $this->repetition() === null && $numero !== null && ! $this->enIntegration) {
             $this->numerosRetrouves ??= array_fill_keys(
                 Facture::withoutGlobalScopes()
                     ->where('entreprise_id', $this->entrepriseId)
@@ -257,15 +264,20 @@ class FormatDesFactures extends Format
             );
 
             if (isset($this->numerosRetrouves[$numero])) {
-                $existante = Facture::withoutGlobalScopes()
+                $existante = $this->premiereLibre(Facture::withoutGlobalScopes()
                     ->where('entreprise_id', $this->entrepriseId)
                     ->where('n_facture_cattc', $numero)
-                    ->first();
+                    ->orderBy('id')
+                    ->get());
             } else {
                 $this->pont ??= new PontDesFactures($this->entrepriseId);
                 $id = $this->pont->creanceUnique(PontDesFactures::cle($valeurs['date'], $valeurs['montant'], $valeurs['immatriculation']));
-                $existante = $id === null ? null : Facture::withoutGlobalScopes()->find($id);
+                $existante = $id === null ? null : $this->tenir(Facture::withoutGlobalScopes()->find($id));
             }
+        }
+
+        if ($existante === null && $this->repetition() !== null) {
+            return self::DOUBLON;
         }
 
         if ($existante !== null && $existante->est_etat_initial) {
@@ -273,13 +285,15 @@ class FormatDesFactures extends Format
         }
 
         if ($existante === null) {
-            Facture::withoutGlobalScopes()->create($valeurs + [
+            $this->tenir(Facture::withoutGlobalScopes()->create($valeurs + [
                 'entreprise_id' => $this->entrepriseId,
                 'n_facture' => $numero,
                 // Le numéro interne suit la même valeur : la facture n'est pas née ici, elle
-                // est née dans le logiciel d'atelier, et c'est son numéro qui fait foi.
-                'numero' => mb_substr($numero, 0, 20),
-            ]);
+                // est née dans le logiciel d'atelier, et c'est son numéro qui fait foi. Une
+                // facture intégrée depuis les doublons prend « FA -8730#2 » : la colonne est unique.
+                'numero' => $this->variante(mb_substr($numero, 0, 20), 20, fn (string $candidat) => Facture::withoutGlobalScopes()
+                    ->where('entreprise_id', $this->entrepriseId)->where('numero', $candidat)->exists()),
+            ]));
 
             $this->numerosConnus[$numero] = true;
 

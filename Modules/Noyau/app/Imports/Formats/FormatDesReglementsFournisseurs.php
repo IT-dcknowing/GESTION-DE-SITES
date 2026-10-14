@@ -86,9 +86,17 @@ class FormatDesReglementsFournisseurs extends Format
             'rattachement_presume' => $rattachement['presumee'],
         ];
 
-        $existant = ReglementFournisseur::where('entreprise_id', $this->entrepriseId)
-            ->where('code_reglement', $code)
-            ->first();
+        // Un règlement de la base ne sert qu'une fois par dépôt (14/10) : le même code répété est
+        // mis de côté comme doublon au lieu de réécrire le premier.
+        $existant = $this->premiereLibre(ReglementFournisseur::where('entreprise_id', $this->entrepriseId)
+            ->where(fn ($q) => self::avecSesVariantes($q, 'code_reglement', (string) $code))
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (ReglementFournisseur $r) => self::estUneVariante($r->code_reglement, (string) $code)));
+
+        if ($existant === null && $this->repetition() !== null) {
+            return self::DOUBLON;
+        }
 
         if ($existant) {
             $existant->fill($valeurs)->save();
@@ -96,10 +104,11 @@ class FormatDesReglementsFournisseurs extends Format
             return 'maj';
         }
 
-        ReglementFournisseur::create($valeurs + [
+        $this->tenir(ReglementFournisseur::create($valeurs + [
             'entreprise_id' => $this->entrepriseId,
-            'code_reglement' => $code,
-        ]);
+            'code_reglement' => $this->variante((string) $code, 60, fn (string $candidat) => ReglementFournisseur::where('entreprise_id', $this->entrepriseId)
+                ->where('code_reglement', $candidat)->exists()),
+        ]));
 
         return 'cree';
     }

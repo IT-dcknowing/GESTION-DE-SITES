@@ -740,6 +740,11 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
         </div>
     @endif
 
+    {{-- Les lignes du fichier mises de côté comme doublons à l'import, et le bouton qui les intègre — 14/10. --}}
+    <livewire:commun.doublons-d-import :formats="['fournisseurs', 'reglements-fournisseurs']" :ids-sites="\Modules\Noyau\Entreprises\Modeles\Site::withoutGlobalScopes()->whereIn('ville_id', $this->idsVilles)->pluck('id')->map(fn ($id) => (int) $id)->all()" :ids-villes="$this->idsVilles"
+        :debut="null" :fin="null"
+        :wire:key="'doublons-fournisseurs-'.md5(json_encode([$this->idsVilles, null, null]))" />
+
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Reste à payer — {{ $this->libellePerimetre }}" :value="ae($this->kpis['reste'])"
             couleur="#C8102E" :sub="$this->kpis['ouvertes'].' facture(s) ouverte(s) · '.$this->kpis['fournisseurs'].' fournisseur(s)'

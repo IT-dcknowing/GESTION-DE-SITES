@@ -510,8 +510,21 @@ class FormatDesFournisseurs extends Format
 
         $existante = $this->retrouver($fournisseur, $piece, $dateFacture, $montant);
 
+        if ($existante === null && $this->repetition() !== null) {
+            return self::DOUBLON;
+        }
+
         if ($existante === null) {
-            FactureFournisseur::withoutGlobalScopes()->create($valeurs);
+            // Une pièce intégrée depuis les doublons prend « n°#2 » : la ligne est unique sur
+            // fournisseur, numéro, date et montant (`frs_ligne_unique`).
+            if ($piece !== null) {
+                $valeurs['numero_piece'] = $this->variante($piece, 60, fn (string $candidat) => FactureFournisseur::withoutGlobalScopes()
+                    ->where('entreprise_id', $this->entrepriseId)->where('fournisseur', $fournisseur)
+                    ->where('numero_piece', $candidat)->where('date_facture', $dateFacture)
+                    ->where(fn ($q) => self::aPeuPres($q, 'montant', $montant))->exists());
+            }
+
+            $this->tenir(FactureFournisseur::withoutGlobalScopes()->create($valeurs));
 
             return 'cree';
         }
@@ -569,21 +582,27 @@ class FormatDesFournisseurs extends Format
             ->where(fn ($q) => self::aPeuPres($q, 'montant', $montant))
             ->get();
 
-        if ($candidates->isEmpty()) {
-            return null;
-        }
+        // Le montant exact d'abord : l'arrondi au franc ne sert qu'à retrouver une ligne d'avant le 13/10.
+        $exact = fn (FactureFournisseur $f) => abs((float) $f->montant - (float) $montant) < 0.00005;
+        $candidates = $candidates->sortBy(fn (FactureFournisseur $f) => [$exact($f) ? 0 : 1, $f->id])->values();
 
         // Sans numéro de pièce, la ligne sans numéro est la sienne : lui attribuer une
         // ligne numérotée reviendrait à écraser une pièce identifiée par une qui ne l'est
         // pas.
         if ($piece === null || trim($piece) === '') {
-            return $candidates->first(fn (FactureFournisseur $f) => trim((string) $f->numero_piece) === '');
+            return $this->premiereLibre($candidates->filter(fn (FactureFournisseur $f) => trim((string) $f->numero_piece) === ''), $exact);
         }
 
-        return $candidates->first(fn (FactureFournisseur $f) => NumeroDePiece::memePiece($piece, $f->numero_piece))
+        // Chaque ligne de la base ne sert qu'une fois par dépôt (14/10) : la même pièce répétée
+        // dans le classeur est mise de côté comme doublon. « n°#2 » est la pièce intégrée sous ce numéro.
+        $memes = $candidates->filter(fn (FactureFournisseur $f) => NumeroDePiece::memePiece($piece, $f->numero_piece)
+            || NumeroDePiece::memePiece($piece, preg_replace('/#\d+$/', '', (string) $f->numero_piece)));
+
+        return $this->premiereLibre($memes->isNotEmpty()
+            ? $memes
             // Le littéral reste un repli : une pièce dont le noyau serait vide — un numéro
             // fait de séparateurs seuls — doit tout de même se retrouver elle-même.
-            ?? $candidates->first(fn (FactureFournisseur $f) => (string) $f->numero_piece === $piece);
+            : $candidates->filter(fn (FactureFournisseur $f) => self::estUneVariante($f->numero_piece, $piece)), $exact);
     }
 
     /**

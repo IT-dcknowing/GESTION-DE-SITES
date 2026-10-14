@@ -338,6 +338,11 @@ $traitants = computed(fn () => QuiAAgi::pour($this->detail->forPage($this->pageD
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
         :commerciaux="$this->commerciaux" :commercial-filtre="$commercialFiltre" />
 
+    {{-- Les lignes du fichier mises de côté comme doublons à l'import, et le bouton qui les intègre — 14/10. --}}
+    <livewire:commun.doublons-d-import :formats="['devis']" :ids-sites="$this->idsSites" :ids-villes="\Modules\Noyau\Exploitation\Services\EtatDesImpayes::villesDesSites($this->idsSites)"
+        :debut="$this->plage[0]->toDateString()" :fin="$this->plage[1]->toDateString()"
+        :wire:key="'doublons-devis-'.md5(json_encode([$this->idsSites, $this->plage[0]->toDateString(), $this->plage[1]->toDateString()]))" />
+
     <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Devis émis — {{ $this->libellePerimetre }}" :value="$this->kpis['emis']" :sub="ae($this->kpis['montantEmis'])"
             :mecanique="$activiteFiltre ? null : ae($this->kpis['montantEmisMecanique'])" :sinistre="$activiteFiltre ? null : ae($this->kpis['montantEmisSinistre'])" />

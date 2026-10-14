@@ -117,6 +117,16 @@ class AnnulationDUnLot
                     ->delete();
             }
 
+            // Les doublons que ce dépôt avait mis de côté partent avec lui, tant que personne ne
+            // les a intégrés : une ligne intégrée est une décision, et une ligne des tables ci-dessus.
+            if (\App\Support\SchemaDisponible::table('doublons_import')) {
+                DB::table('doublons_import')
+                    ->where('entreprise_id', $this->entrepriseId)
+                    ->where('lot_import_id', $lot->id)
+                    ->where('statut', 'ecarte')
+                    ->delete();
+            }
+
             $lot->forceFill([
                 'etat' => 'annule',
                 'message' => sprintf(

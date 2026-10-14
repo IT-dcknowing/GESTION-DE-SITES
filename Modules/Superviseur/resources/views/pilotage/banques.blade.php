@@ -936,6 +936,11 @@ $declarerLaBanque = function () {
         @endif
     </div>
 
+    {{-- Les lignes du fichier mises de côté comme doublons à l'import, et le bouton qui les intègre — 14/10. --}}
+    <livewire:commun.doublons-d-import :formats="['releve-banque', 'banque']" :ids-sites="$this->idsSites" :ids-villes="\Modules\Noyau\Exploitation\Services\EtatDesImpayes::villesDesSites($this->idsSites)"
+        :debut="$this->plage[0]->toDateString()" :fin="$this->plage[1]->toDateString()"
+        :wire:key="'doublons-banques-'.md5(json_encode([$this->idsSites, $this->plage[0]->toDateString(), $this->plage[1]->toDateString()]))" />
+
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Encaissé — {{ $this->compteChoisi['libelle'] ?? 'tous les comptes' }}"
             :value="ae($this->kpis['montant'])" couleur="#0E9F6E" :sub="$this->libellePerimetre" />

@@ -224,8 +224,19 @@ class FormatDuReleveBancaire extends Format
             'rang' => ++$this->rang,
         ];
 
-        $existant = MouvementBancaire::withoutGlobalScopes()
-            ->where('banque_id', $banqueId)->where('cle', $cle)->first();
+        // Une opération de la base ne sert qu'une fois par dépôt (14/10) : la même ligne répétée
+        // dans le relevé est mise de côté comme doublon au lieu de réécrire la première. Une
+        // opération intégrée porte la clé « …#2 » (la colonne est unique par compte).
+        $existant = $this->premiereLibre(MouvementBancaire::withoutGlobalScopes()
+            ->where('banque_id', $banqueId)
+            ->where(fn ($q) => self::avecSesVariantes($q, 'cle', $cle))
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (MouvementBancaire $m) => self::estUneVariante($m->cle, $cle)));
+
+        if ($existant === null && $this->repetition() !== null) {
+            return self::DOUBLON;
+        }
 
         if ($existant !== null) {
             $existant->fill($valeurs)->save();
@@ -234,11 +245,12 @@ class FormatDuReleveBancaire extends Format
             return 'maj';
         }
 
-        $this->derniere = MouvementBancaire::withoutGlobalScopes()->create($valeurs + [
+        $this->derniere = $this->tenir(MouvementBancaire::withoutGlobalScopes()->create($valeurs + [
             'entreprise_id' => $this->entrepriseId,
             'banque_id' => $banqueId,
-            'cle' => $cle,
-        ]);
+            'cle' => $this->variante($cle, 64, fn (string $candidat) => MouvementBancaire::withoutGlobalScopes()
+                ->where('banque_id', $banqueId)->where('cle', $candidat)->exists()),
+        ]));
 
         return 'cree';
     }
