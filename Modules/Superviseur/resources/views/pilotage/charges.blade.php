@@ -47,6 +47,20 @@ state([
     'pageReprise' => 1,
 ]);
 
+/*
+ * **Les charges selon la caisse — 14/10.** « Il n'y a aucun détail, la carte n'est même pas
+ * cliquable, et on n'a pas de tableau. Au tableau, un bouton "Charges selon la caisse" qui montre
+ * les lignes ; la carte cliquée donne le détail par catégorie, en se basant sur le libellé. »
+ * Tout se lit dans le journal de caisse, sans rien écrire : les catégories viennent de
+ * `CategorieDeSortie`, et une sortie ne devient une charge que reprise.
+ */
+state([
+    'categoriesOuvertes' => false,
+    'vueTableau' => 'charges',
+    'categorieCaisse' => '',
+    'pageCaisse' => 1,
+]);
+
 mount(function () {
     $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
     $this->dateFin ??= now()->format('Y-m-d');
@@ -57,6 +71,7 @@ $updatedSemaineFiltre = function () { $this->jourFiltre = ''; };
 /** Changer de ville rend caduc le lieu choisi dans la précédente. */
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; };
 $updatedRepriseRecherche = function () { $this->pageReprise = 1; };
+$updatedCategorieCaisse = function () { $this->pageCaisse = 1; };
 
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin, $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null
@@ -129,10 +144,11 @@ $origines = computed(function () {
     return [
         'total' => montant_de($ligne->montant ?? 0),
         'nombre' => (int) ($ligne->nombre ?? 0),
-        'caisse' => (int) ($ligne->m_caisse ?? 0),
+        // Des montants : lus sans couper leurs centimes (piège 17) — ils passaient par `(int)`.
+        'caisse' => montant_de($ligne->m_caisse ?? 0),
         'nCaisse' => (int) ($ligne->n_caisse ?? 0),
-        'importees' => (int) ($ligne->m_import ?? 0),
-        'saisies' => (int) ($ligne->m_saisie ?? 0),
+        'importees' => montant_de($ligne->m_import ?? 0),
+        'saisies' => montant_de($ligne->m_saisie ?? 0),
         'nSaisies' => (int) ($ligne->n_saisie ?? 0),
         // Le module des factures fournisseurs FNE n'existe pas encore : rien n'en vient.
         'fne' => 0,
@@ -154,6 +170,84 @@ $selonLaCaisse = computed(function () {
 
     return ['sorties' => montant_de($ligne->montant ?? 0), 'nombre' => (int) ($ligne->nombre ?? 0)];
 });
+
+/**
+ * Les sorties du journal de la période et du périmètre, chacune avec sa catégorie — lues seulement
+ * quand on les regarde (carte ouverte ou tableau « selon la caisse »).
+ *
+ * La catégorie se calcule en PHP : c'est une lecture de texte (`CategorieDeSortie`), que SQL ne sait
+ * pas faire sans dupliquer la règle. Le volume est celui d'une période — 1 656 sorties sur l'exercice
+ * 2026 à la capture du 14/10 —, et seules les colonnes utiles sont lues.
+ */
+$sortiesClassees = computed(function () {
+    if (! $this->categoriesOuvertes && $this->vueTableau !== 'caisse') {
+        return collect();
+    }
+
+    [$debut, $fin] = $this->plage;
+    $reprise = \App\Support\SchemaDisponible::colonne('charges', 'mouvement_caisse_id');
+
+    return PerimetreDeTresorerie::mouvementsDeCaisse(
+        MouvementCaisse::query(), $this->idsSites, EtatDesImpayes::villesDesSites($this->idsSites),
+    )
+        ->where('mouvements_caisse.sens', MouvementCaisse::SORTIE)
+        ->whereBetween('mouvements_caisse.date', [$debut, $fin])
+        ->with(['site:id,nom', 'ville:id,nom'])
+        ->select(['mouvements_caisse.id', 'mouvements_caisse.date', 'mouvements_caisse.libelle', 'mouvements_caisse.motif',
+            'mouvements_caisse.beneficiaire', 'mouvements_caisse.numero_piece', 'mouvements_caisse.montant',
+            'mouvements_caisse.site_id', 'mouvements_caisse.ville_id'])
+        ->when($reprise, fn ($q) => $q->selectSub(fn ($sous) => $sous->from('charges')->selectRaw('count(*)')
+            ->whereColumn('charges.mouvement_caisse_id', 'mouvements_caisse.id'), 'reprises'))
+        ->orderByDesc('mouvements_caisse.date')->orderByDesc('mouvements_caisse.id')
+        ->get()
+        ->each(fn (MouvementCaisse $m) => $m->setAttribute('categorie',
+            \Modules\Noyau\Exploitation\Services\CategorieDeSortie::de($m->libelle, $m->motif, $m->beneficiaire)));
+});
+
+/** Le détail de la carte : par catégorie, combien, pour quel montant, et ce qui en est déjà repris. */
+$categoriesDeCaisse = computed(function () {
+    $sorties = $this->sortiesClassees;
+    $total = montant_de($sorties->sum('montant'));
+
+    return $sorties->groupBy('categorie')
+        ->map(fn ($lignes, $categorie) => [
+            'categorie' => $categorie,
+            'nombre' => $lignes->count(),
+            'montant' => montant_de($lignes->sum('montant')),
+            'part' => $total > 0 ? $lignes->sum('montant') / $total : null,
+            'repris' => montant_de($lignes->filter(fn ($m) => (int) ($m->reprises ?? 0) > 0)->sum('montant')),
+            'charge' => \Modules\Noyau\Exploitation\Services\CategorieDeSortie::estUneCharge($categorie),
+            // Les libellés qui pèsent le plus : ce qu'on vérifie d'un coup d'œil avant de reprendre.
+            'libelles' => $lignes->groupBy(fn ($m) => trim((string) $m->libelle))
+                ->map(fn ($g) => montant_de($g->sum('montant')))->sortDesc()->take(3)->all(),
+        ])
+        ->sortByDesc('montant')
+        ->values();
+});
+
+$sortiesAffichees = computed(fn () => $this->categorieCaisse === ''
+    ? $this->sortiesClassees
+    : $this->sortiesClassees->where('categorie', $this->categorieCaisse)->values());
+
+$ouvrirLesCategories = function () {
+    $this->categoriesOuvertes = ! $this->categoriesOuvertes;
+};
+
+/** Montrer au tableau les lignes de la caisse — d'une catégorie, ou toutes. */
+$voirLaCaisse = function (string $categorie = '') {
+    $this->vueTableau = 'caisse';
+    $this->categorieCaisse = in_array($categorie, \Modules\Noyau\Exploitation\Services\CategorieDeSortie::toutes(), true) ? $categorie : '';
+    $this->pageCaisse = 1;
+};
+
+/** Le rang dans `CategorieDeSortie::toutes()` plutôt que le nom : un nombre passe sans échappement. */
+$voirLaCategorie = function (int $rang) {
+    $this->voirLaCaisse(\Modules\Noyau\Exploitation\Services\CategorieDeSortie::toutes()[$rang] ?? '');
+};
+
+$voirLesCharges = function () {
+    $this->vueTableau = 'charges';
+};
 
 $kpis = computed(function () {
     $lignes = (clone $this->requeteBase)->where('type_operation', 'Charges')->get();
@@ -460,9 +554,50 @@ $detail = computed(fn () => FiltreLibre::appliquer(
                 sub="Sans facture FNE — aujourd'hui, toutes les charges" couleur="#C8102E" />
             <x-kpi-card label="Saisies dans l'application" :value="ae($o['saisies'])"
                 sub="{{ number_format($o['nSaisies'], 0, ',', ' ') }} décaissement(s){{ $o['importees'] > 0 ? ' · importées '.ae($o['importees']) : '' }}" />
-            <x-kpi-card label="Selon la caisse — sorties du journal" :value="$c['nombre'] > 0 ? ae($c['sorties']) : '—'"
-                sub="{{ $c['nombre'] > 0 ? number_format($c['nombre'], 0, ',', ' ').' sortie(s) · toutes ne sont pas des charges' : 'Aucun journal de caisse sur la période' }}" />
+            {{-- Cliquable — 14/10 : le détail par catégorie se déplie dessous. --}}
+            <button type="button" wire:click="ouvrirLesCategories" title="Voir le détail par catégorie"
+                style="all:unset; display:block; cursor:pointer; border-radius:10px; {{ $categoriesOuvertes ? 'outline:2px solid #B45309;' : '' }}">
+                <x-kpi-card label="Selon la caisse — sorties du journal" :value="$c['nombre'] > 0 ? ae($c['sorties']) : '—'"
+                    sub="{{ $c['nombre'] > 0 ? number_format($c['nombre'], 0, ',', ' ').' sortie(s) · toutes ne sont pas des charges — '.($categoriesOuvertes ? 'masquer le détail ▲' : 'détail par catégorie ▼') : 'Aucun journal de caisse sur la période' }}" />
+            </button>
         </div>
+
+        @if ($categoriesOuvertes)
+            <div style="margin-top:14px;">
+                <h4 style="font-size:13.5px; font-weight:700; margin:0 0 4px;">Sorties de caisse par catégorie</h4>
+                <p style="margin:0 0 10px; font-size:12px; color:#6B6E76; line-height:1.5;">
+                    La catégorie se lit dans le motif du journal, sinon dans le libellé, sinon dans le
+                    bénéficiaire. Cliquer une catégorie montre ses lignes dans le tableau du bas.
+                    « Versements & transferts » ne sont pas des charges : l'argent change de poche.
+                </p>
+                <div class="tableau-conteneur">
+                    <table class="tableau">
+                        <thead>
+                            <tr>
+                                <th>Catégorie</th><th style="text-align:right;">Sorties</th><th style="text-align:right;">Montant</th>
+                                <th style="text-align:right;">Part</th><th style="text-align:right;">Déjà reprises en charges</th><th>Libellés qui pèsent le plus</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($this->categoriesDeCaisse as $cat)
+                                <tr wire:click="voirLaCategorie({{ array_search($cat['categorie'], \Modules\Noyau\Exploitation\Services\CategorieDeSortie::toutes(), true) }})" style="cursor:pointer; border-bottom:1px solid var(--th-ligne,#E2E0D8); {{ $cat['charge'] ? '' : 'color:#6B6E76;' }}">
+                                    <td style="font-weight:700;">{{ $cat['categorie'] }}</td>
+                                    <td style="text-align:right;">{{ number_format($cat['nombre'], 0, ',', ' ') }}</td>
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap;">{{ ae($cat['montant']) }}</td>
+                                    <td style="text-align:right;">{{ an($cat['part']) }}</td>
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $cat['repris'] > 0 ? ae($cat['repris']) : '—' }}</td>
+                                    <td style="font-size:11.5px; color:#6B6E76;">
+                                        @foreach ($cat['libelles'] as $lib => $m)<div>{{ \Illuminate\Support\Str::limit($lib ?: '—', 60) }} · {{ ae($m) }}</div>@endforeach
+                                    </td>
+                                </tr>
+                            @empty
+                                <x-table-vide :colspan="6" texte="Aucune sortie de caisse sur cette période." />
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
     </div>
 
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
@@ -491,7 +626,58 @@ $detail = computed(fn () => FiltreLibre::appliquer(
     </div>
 
     <div class="carte">
-        <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Détail des opérations ({{ $this->detail->count() }})</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0;">
+                @if ($vueTableau === 'caisse')
+                    Charges selon la caisse — sorties du journal ({{ number_format($this->sortiesAffichees->count(), 0, ',', ' ') }} · {{ ae(montant_de($this->sortiesAffichees->sum('montant'))) }})
+                @else
+                    Détail des opérations ({{ $this->detail->count() }})
+                @endif
+            </h3>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" wire:click="voirLesCharges" class="bouton {{ $vueTableau === 'charges' ? '' : 'bouton-secondaire' }}" style="padding:7px 12px;">Charges enregistrées</button>
+                <button type="button" wire:click="voirLaCaisse" class="bouton {{ $vueTableau === 'caisse' ? '' : 'bouton-secondaire' }}" style="padding:7px 12px;">Charges selon la caisse</button>
+            </div>
+        </div>
+
+        @if ($vueTableau === 'caisse')
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                <select wire:model.live="categorieCaisse" class="champ" style="width:auto;">
+                    <option value="">Toutes les catégories</option>
+                    @foreach (\Modules\Noyau\Exploitation\Services\CategorieDeSortie::toutes() as $cat)
+                        <option value="{{ $cat }}">{{ $cat }}</option>
+                    @endforeach
+                </select>
+                <span style="font-size:12px; color:#6B6E76;">Lues dans le journal de caisse, jamais additionnées aux charges : une sortie ne devient une charge que reprise (« Reprendre des sorties de caisse »).</span>
+            </div>
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>N° pièce</th><th>Libellé</th><th>Bénéficiaire</th><th>Lieu</th><th>Catégorie</th>
+                            <th style="text-align:right;">Montant</th><th>En charge ?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($this->sortiesAffichees->forPage($pageCaisse, 15) as $sortie)
+                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                <td style="white-space:nowrap;">{{ $sortie->date?->format('d/m/Y') }}</td>
+                                <td>{{ $sortie->numero_piece ?: '—' }}</td>
+                                <td>{{ $sortie->libelle }}@if ($sortie->motif)<div style="font-size:11.5px; color:#6B6E76;">{{ $sortie->motif }}</div>@endif</td>
+                                <td style="color:#6B6E76;">{{ $sortie->beneficiaire ?: '—' }}</td>
+                                <td style="color:#6B6E76;">{{ $sortie->site?->nom ?? ($sortie->ville?->nom ? $sortie->ville->nom.' — atelier non précisé' : '—') }}</td>
+                                <td style="font-size:12px;">{{ $sortie->categorie }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap;">{{ ae(montant_de($sortie->montant)) }}</td>
+                                <td style="font-size:11.5px; color:{{ (int) ($sortie->reprises ?? 0) > 0 ? '#B45309' : '#6B6E76' }};">{{ (int) ($sortie->reprises ?? 0) > 0 ? 'Reprise' : '—' }}</td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="8" texte="Aucune sortie de caisse sur cette période." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <x-pagination :page="$pageCaisse" :total="$this->sortiesAffichees->count()" prop="pageCaisse" :par-page="15" />
+        @else
         <div class="tableau-conteneur">
             <table class="tableau">
                 <thead>
@@ -532,5 +718,6 @@ $detail = computed(fn () => FiltreLibre::appliquer(
             </table>
         </div>
         <x-pagination :page="$pageDetail" :total="$this->detail->count()" prop="pageDetail" />
+        @endif
     </div>
 </div>
