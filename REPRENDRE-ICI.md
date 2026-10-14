@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 7 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 14 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -50,11 +50,34 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 12 octobre 2026
+## 3. Où l'on en est — 14 octobre 2026
 
-**Branche courante :** `main`, à jour avec `origin/main`. `claude/friendly-archimedes-nisgxa`
-a été poussée puis **fusionnée dans `main` le 07/10**, et `main` poussé. `correspondances-factures`
-(05/10) et `tresorerie-caisse-et-banques` sont déjà dans `main`.
+**Branche du 14/10 :** `claude/arrondis-doublons-charges-k1upa9`, poussée puis fusionnée dans
+`main`. Deux migrations additives (tables neuves) : `git pull` puis `php artisan app:deployer`.
+
+### Fait le 14/10 — doublons, charges selon la caisse, prospections, objectifs
+
+- **Doublons d'import.** Une ligne répétée dans un même fichier **réécrivait** la première (c'est
+  l'écart de 10 000 F du CA : FA -8730 deux fois). Désormais une ligne de la base ne sert qu'une
+  fois par dépôt : la répétition est gardée dans `doublons_import`, et chaque page concernée (CA,
+  impayés, devis, caisse, banques, fournisseurs) montre **Importé / Retenu / Écarté / Intégré**,
+  le tableau « Voir les doublons » (ligne écartée ↔ ligne retenue) et le bouton **Intégrer**.
+  Plus aucune fusion de deux montants proches (l'ancien ±0,5 F). Détail : ETAT-DES-LIEUX § 6, ligne 42.
+- **Charges** : la carte « Selon la caisse » s'ouvre sur les **catégories** (lues dans le libellé) ;
+  le tableau a son bouton **« Charges selon la caisse »** ; la carte FNE lit enfin les achats relevés.
+- **Affichage général des prospections** (`/affichage-general`) : tout le monde voit tout, avec
+  « déjà prospecté ? ».
+- **Objectifs mensuels de l'entreprise** par tranches et période (Général › Objectifs mensuels),
+  carte au tableau de bord du gérant.
+
+**Tests (14/10, conteneur cloud) :** 1 209, **1 196 au vert** ; les 13 échecs sont ceux d'avant le
+changement, à l'identique (9 faute du dossier `PLAN/`, 4 faute de `.env` : locale, `APP_URL`). 16 tests
+neufs : doublons (6), charges selon la caisse (2), affichage général (3), objectifs (5).
+
+### Avant — 12 octobre 2026
+
+`claude/friendly-archimedes-nisgxa` a été poussée puis **fusionnée dans `main` le 07/10**, et
+`main` poussé. `correspondances-factures` (05/10) et `tresorerie-caisse-et-banques` sont déjà dans `main`.
 
 ### Fait le 07/10 — l'accueil du gérant
 
@@ -165,6 +188,10 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 39 | Relevé FNE automatique (horaire 7 h–19 h, complet 2 h 30) + bouton Actualiser ; scraper à compte unique | ✅ 13/10 — **à armer sur le serveur** (§ 4, point 15) ; accès `2197588Q` reçus, adresse de production du portail à fournir |
 | 40 | Fournisseurs : facture d'une autre ville → rangée à la ville qui a commandé, mention « reçue par » | ✅ 13/10 |
 | 41 | **Aucun arrondi de montant** : colonnes décimales, centimes gardés de l'import à l'écran | ✅ 13/10 — **migration à passer, puis redéposer les fichiers** (§ 4, point 16) |
+| 42 | **Doublons d'import** gardés, montrés (KPI + tableau), intégrables d'un bouton ; plus de fusion à ±0,5 F | ✅ 14/10 — migration `2026_10_14_000001` (§ 4, point 17) |
+| 43 | **Charges selon la caisse** : carte cliquable → catégories ; bouton au tableau ; carte FNE branchée | ✅ 14/10 |
+| 44 | **Affichage général des prospections** | ✅ 14/10 |
+| 45 | **Objectifs mensuels de l'entreprise** par tranches et période | ✅ 14/10 — migration `2026_10_14_000002` ; **à saisir par le gérant** (§ 4, point 17) |
 
 ### Au propriétaire, et qui bloque la suite
 
@@ -256,6 +283,14 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     à ±0,5 F près pour celles qui n'ont pas de numéro — et met leurs montants à jour : rien ne se double. Après le
     redépôt du CA, le total de l'écran doit être celui du classeur (1 867 767 452,25 sur le fichier du 12/10).
 
+17. **Le 14/10** : `git pull` puis **`php artisan app:deployer`** (deux tables neuves :
+    `doublons_import`, `objectifs_entreprise` + `tranches_objectif` ; rien d'autre n'est lu ni écrit).
+    Ensuite : (a) **redéposer le fichier du CA** — FA -8730 apparaîtra dans « Doublons à l'import »
+    sur la page Chiffre d'affaires ; si c'est bien deux factures, **Intégrer** : le total devient celui
+    du fichier ; (b) **Général › Objectifs mensuels de l'entreprise** : saisir les tranches établies
+    et leur période ; (c) le relevé FNE attend toujours **l'adresse du portail de production et le
+    mot de passe** dans `SCRAPER-PORTAIL-FNE/.env` (point 15).
+
 ### En attente d'un accord, pas d'un travail
 
 - **Correspondances — quatre choix faits sans confirmation**, chacun réversible en une ligne :
@@ -300,6 +335,10 @@ solde. Deux hypothèses, aucune vérifiable en local :
 
 - deux classeurs déposés se superposent sur la période ;
 - un même dépôt a été lu deux fois.
+
+**Depuis le 14/10**, une ligne répétée **dans un même classeur** n'est plus fusionnée : elle paraît
+dans « Doublons à l'import » sur `/caisse`. Deux classeurs qui se recouvrent, eux, se reconnaissent
+toujours ligne à ligne (chaque ligne du second retrouve la sienne) : ce bloc ne les montre pas.
 
 ⚠️ **Piège dans lequel je suis tombé** : la base locale ne contient **que**
 `CAISSE DU 01012026 AU 16032026.xlsx`, le classeur **tenu à la main**. Les écarts par feuillet
@@ -392,6 +431,8 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | **Ne jamais arrondir un montant** (13/10, règle du propriétaire : « tel que donné ») | Les colonnes d'argent sont des `decimal(18,4)`. **Jamais `(int)`, `round()`, `number_format(…, 0)` ni `intdiv` sur un montant ou un total** : `montant_de()` pour lire (entier si entier, flottant sinon — MySQL rend les décimaux et leurs `sum()` **en chaînes**), `ae()` / `montant_nombre()` pour écrire, la cast `App\Casts\Montant` + le trait `CompareLesMontants` sur les modèles. Un type `int` sur un paramètre d'argent est un arrondi caché. Seules exceptions voulues : les **clés de rapprochement** (`PontDesFactures`, banque ↔ règlement, clé du relevé bancaire, clé synthétique des impayés) qui restent calculées au franc pour retrouver les lignes d'avant ; les commissions et objectifs (calculés, jamais importés) ; les pourcentages |
 | **La table `factures` mêle les ventes et les créances** (12/10) | Tout KPI de chiffre d'affaires passe par `Facture::scopeDuChiffreDAffaires()` ; une créance de l'état non retrouvée au CATTC n'est pas une vente |
 | **Une méthode d'import peut exister sans être appelée** (`siteConnuDe`, 12/10) | Vérifier que la cascade de rattachement la lit (`dossierExistant()`) — un test qui appelle la méthode seule ne le prouve pas |
+| **Une ligne de la base ne sert qu'une fois par dépôt** (14/10) | Un import qui « retrouve » sa ligne doit passer par `Format::premiereLibre()` (et `tenir()` ce qu'il crée) : un `->first()` nu réécrit la ligne précédente quand le fichier se répète, et l'argent disparaît sans trace. Une clé unique d'une ligne intégrée porte `#2` (`variante()`), retrouvée par `avecSesVariantes()` |
+| **Un composant Livewire posé dans une page** (14/10) | Pas de propriétés `reactive()` (« Cannot mutate reactive prop ») : la page le pose avec un `wire:key` fait de ses filtres, il se remonte. Un test de la page ne rend pas l'enfant : `assertSeeLivewire`, puis tester le composant seul |
 | **Un devis importé est toujours « En attente »**, un règlement importé n'a pas d'activité | Ne jamais compter « Validé » seul : passer par `TransformationDesDevis` ; ventiler un règlement par `Encaissement::ACTIVITE_SQL` (celle de sa facture) |
 
 ---
