@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 14 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 15 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -54,6 +54,24 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 **Branche du 14/10 :** `claude/arrondis-doublons-charges-k1upa9`, poussée puis fusionnée dans
 `main`. Deux migrations additives (tables neuves) : `git pull` puis `php artisan app:deployer`.
+
+### Fait le 15/10 — doublons revus, objectifs par accès, rattrapage
+
+- **Doublons, règle précisée par le propriétaire** : au premier import **rien n'est écarté** — la
+  ligne répétée est importée et comptée, puis listée « supposée doublon à preuve du contraire »
+  avec sa **raison** (même n°, même date, même montant… ou ce qui diffère) ; trois boutons : garder
+  la première, garder la seconde, garder les deux. La ligne retirée ne revient pas au dépôt
+  suivant ; redéposer le même fichier ne réimporte rien. Migration `2026_10_15_000001`.
+- **Accès et objectifs** : à la création d'un accès (gérant/responsables et Super admin), la case
+  « concerné par les objectifs » puis tous ou ceux cochés ; **Super admin › Accès › Rattrapage**
+  pour les accès d'avant. Ma performance montre les objectifs du mois qui concernent l'accès.
+  Migration `2026_10_15_000002`.
+- **Page d'erreur** : plus de « config/assistance.php » affiché à l'utilisateur (consigne déplacée
+  dans `MISE-A-JOUR-SERVEUR.md`).
+- **`node -v` en ligne** : raccourci cPanel cassé (`~/bin/node` → `nodevenv/…/18` absent) ; réparation
+  dans `SCRAPER-PORTAIL-FNE/CONSIGNES.md`.
+- **Plan à part** : `PLANS-SPECIAUX/PLAN-SPECIAL-14-15-OCTOBRE-2026.xlsx` — demande du propriétaire :
+  ne pas mélanger ce plan au plan général ; même modèle (statut à liste, couleurs, dates).
 
 ### Fait le 14/10 — doublons, charges selon la caisse, prospections, objectifs
 
@@ -291,6 +309,11 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     et leur période ; (c) le relevé FNE attend toujours **l'adresse du portail de production et le
     mot de passe** dans `SCRAPER-PORTAIL-FNE/.env` (point 15).
 
+18. **Le 15/10** : `git pull` puis `php artisan app:deployer` (migrations `2026_10_15_000001` et
+    `000002`, colonnes nullables et une table neuve). Puis **Super admin › Accès › Rattrapage** :
+    dire pour chaque accès d'avant s'il est concerné par les objectifs. Pour le relevé FNE :
+    réparer `node` (CONSIGNES.md, section « nodevenv »).
+
 ### En attente d'un accord, pas d'un travail
 
 - **Correspondances — quatre choix faits sans confirmation**, chacun réversible en une ligne :
@@ -431,7 +454,7 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | **Ne jamais arrondir un montant** (13/10, règle du propriétaire : « tel que donné ») | Les colonnes d'argent sont des `decimal(18,4)`. **Jamais `(int)`, `round()`, `number_format(…, 0)` ni `intdiv` sur un montant ou un total** : `montant_de()` pour lire (entier si entier, flottant sinon — MySQL rend les décimaux et leurs `sum()` **en chaînes**), `ae()` / `montant_nombre()` pour écrire, la cast `App\Casts\Montant` + le trait `CompareLesMontants` sur les modèles. Un type `int` sur un paramètre d'argent est un arrondi caché. Seules exceptions voulues : les **clés de rapprochement** (`PontDesFactures`, banque ↔ règlement, clé du relevé bancaire, clé synthétique des impayés) qui restent calculées au franc pour retrouver les lignes d'avant ; les commissions et objectifs (calculés, jamais importés) ; les pourcentages |
 | **La table `factures` mêle les ventes et les créances** (12/10) | Tout KPI de chiffre d'affaires passe par `Facture::scopeDuChiffreDAffaires()` ; une créance de l'état non retrouvée au CATTC n'est pas une vente |
 | **Une méthode d'import peut exister sans être appelée** (`siteConnuDe`, 12/10) | Vérifier que la cascade de rattachement la lit (`dossierExistant()`) — un test qui appelle la méthode seule ne le prouve pas |
-| **Une ligne de la base ne sert qu'une fois par dépôt** (14/10) | Un import qui « retrouve » sa ligne doit passer par `Format::premiereLibre()` (et `tenir()` ce qu'il crée) : un `->first()` nu réécrit la ligne précédente quand le fichier se répète, et l'argent disparaît sans trace. Une clé unique d'une ligne intégrée porte `#2` (`variante()`), retrouvée par `avecSesVariantes()` |
+| **Une ligne de la base ne sert qu'une fois par dépôt** (14/10, revu 15/10) | Un import qui « retrouve » sa ligne doit passer par `Format::premiereLibre()` (et `tenir()` ce qu'il crée) : un `->first()` nu réécrit la ligne précédente quand le fichier se répète, et l'argent disparaît sans trace. `ecrire()` rend `DOUBLON` ; `traiterLeDoublon()` l'écrit quand même (clé unique suffixée `#2` par `variante()`, retrouvée par `avecSesVariantes()`) et la consigne à trancher — sauf décision passée de la retirer |
 | **Un composant Livewire posé dans une page** (14/10) | Pas de propriétés `reactive()` (« Cannot mutate reactive prop ») : la page le pose avec un `wire:key` fait de ses filtres, il se remonte. Un test de la page ne rend pas l'enfant : `assertSeeLivewire`, puis tester le composant seul |
 | **Un devis importé est toujours « En attente »**, un règlement importé n'a pas d'activité | Ne jamais compter « Validé » seul : passer par `TransformationDesDevis` ; ventiler un règlement par `Encaissement::ACTIVITE_SQL` (celle de sa facture) |
 

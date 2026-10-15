@@ -191,10 +191,13 @@
                 {{-- Renseignées nulle part : on renvoie au responsable de l'application
                      plutôt que d'afficher un numéro inventé. Un numéro faux sur une page
                      d'erreur fait perdre un appel au moment où il compte le plus. --}}
+                {{-- 15/10 : la phrase disait aussi « voir config/assistance.php ». C'est une
+                     consigne pour qui administre le serveur, pas pour qui est bloqué devant
+                     l'écran : il lisait « config » sans savoir quoi en faire. La consigne est
+                     dans config/assistance.php et dans MISE-A-JOUR-SERVEUR.md. --}}
                 <p style="margin:0; font-size:14px;">
-                    Adressez-vous au <b>responsable de l'application</b> de votre entreprise.
-                    <span class="gris">(Les coordonnées de l'assistance se renseignent dans la
-                    configuration du serveur — voir <code>config/assistance.php</code>.)</span>
+                    Adressez-vous au <b>responsable de l'application</b> de votre entreprise,
+                    en lui donnant la référence de l'incident si l'écran en affiche une.
                 </p>
             @endif
         </div>

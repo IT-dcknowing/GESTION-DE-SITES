@@ -15,7 +15,8 @@ rapprochée du suivi fournisseurs ou « à porter » — voir Fournisseurs › *
 ## À faire, dans l'ordre
 
 1. **Vérifier que Node existe sur le serveur** (cPanel › Terminal ou SSH) : `node -v` — il en faut
-   la version 18 ou plus. S'il n'y en est pas, voir le point « Sans Node sur le serveur » plus bas.
+   la version 18 ou plus. Si la commande répète « nodevenv/…/activate: No such file or directory »,
+   voir le point qui porte ce titre plus bas ; s'il n'y a pas de Node du tout, « Sans Node sur le serveur ».
 2. `cd SCRAPER-PORTAIL-FNE && npm install` (installe Playwright ; puis `npx playwright install chromium`
    si le navigateur n'est pas déjà présent).
 3. `cp .env.exemple .env` puis remplir **quatre lignes** :
@@ -42,6 +43,48 @@ Chaque passage est une **connexion avec le mot de passe de l'entreprise sur le p
 dimanche : 24 connexions par jour n'apporteraient pas une facture de plus, et multiplieraient le
 risque d'un blocage du compte. Le rythme horaire aux heures ouvrées donne des données à moins d'une
 heure ; le bouton couvre l'urgence. Les heures se règlent (`FNE_HEURE_DEBUT`, `FNE_HEURE_FIN`).
+
+## Si `node -v` répète « nodevenv/SCRAPER-PORTAIL-FNE/18/bin/activate: No such file or directory » (15/10)
+
+C'est ce qu'a affiché le serveur le 15/10. **Ce n'est pas Node qui manque : c'est un raccourci cassé.**
+`~/bin/node` est un petit script que cPanel (« Setup Node.js App ») a posé pour une application nommée
+`SCRAPER-PORTAIL-FNE` en Node 18. Il commence par charger l'environnement de cette application
+(`~/nodevenv/SCRAPER-PORTAIL-FNE/18/bin/activate`) — qui n'existe pas, ou plus — puis rappelle `node`,
+c'est-à-dire **lui-même** : d'où la même ligne répétée.
+
+Réparer, sans rien installer (le Node de l'hébergeur est déjà là, sous `/opt/alt`) :
+
+```bash
+# 1. Mettre de côté les raccourcis cassés (on ne supprime rien)
+mv ~/bin/node ~/bin/node.casse
+[ -e ~/bin/npm ] && mv ~/bin/npm ~/bin/npm.casse
+[ -e ~/bin/npx ] && mv ~/bin/npx ~/bin/npx.casse
+
+# 2. Voir quelles versions l'hébergeur fournit, et prendre la plus récente (20 ou 18)
+ls -d /opt/alt/alt-nodejs*/root/usr/bin/node
+
+# 3. Vérifier — remplacer 20 par le numéro trouvé à l'étape 2
+/opt/alt/alt-nodejs20/root/usr/bin/node -v
+
+# 4. Installer le scraper avec ce Node-là
+cd ~/<dossier-du-site>/SCRAPER-PORTAIL-FNE
+/opt/alt/alt-nodejs20/root/usr/bin/npm install
+PATH=/opt/alt/alt-nodejs20/root/usr/bin:$PATH npx playwright install chromium
+```
+
+Puis, dans le `.env` **de l'application** : `FNE_NODE=/opt/alt/alt-nodejs20/root/usr/bin/node` (chemin
+complet : le cron n'a pas le PATH du terminal), et `php artisan app:deployer`. L'essai à la main de
+l'étape 4 se fait avec le même chemin : `/opt/alt/alt-nodejs20/root/usr/bin/node achats.js`.
+
+Si `ls -d /opt/alt/alt-nodejs*` ne rend rien : dans cPanel › **Setup Node.js App**, **créer**
+l'application (version 18 ou 20, *Application root* = le dossier `SCRAPER-PORTAIL-FNE`, *startup file*
+= `app.js` — un fichier qui n'existe pas suffit, ce n'est pas un site), puis copier la commande
+`source …/activate` que cPanel affiche en haut de la page et la lancer avant `node -v`.
+
+**À savoir avant d'insister** : le scraper ouvre un vrai navigateur (Chromium). Sur un hébergement
+mutualisé, il arrive qu'il refuse de démarrer faute de bibliothèques système (message « error while
+loading shared libraries », ou « Host system is missing dependencies »). Ce n'est pas réparable sans
+accès administrateur : passer alors au point suivant — le relevé se lance depuis un PC.
 
 ## Sans Node sur le serveur
 

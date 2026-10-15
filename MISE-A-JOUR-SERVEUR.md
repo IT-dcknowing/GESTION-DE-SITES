@@ -718,3 +718,18 @@ pas ce que les gens ont saisi depuis.
 
 Pour l'adresse du super administrateur, relancer la commande du point 4 avec l'ancienne
 adresse en `--email` et `--compte=it.dcknowing@gmail.com`.
+
+---
+
+## Les coordonnées de l'assistance sur les pages d'erreur (15/10)
+
+Une page d'erreur dit à qui s'adresser. Tant que rien n'est renseigné, elle dit seulement
+« Adressez-vous au responsable de l'application ». Pour qu'elle donne un courriel et des
+numéros, ajouter au `.env` du serveur puis relancer `php artisan app:deployer` (la
+configuration est en cache) :
+
+```
+ASSISTANCE_COURRIEL="support@exemple.ci"
+ASSISTANCE_TELEPHONES="+225 07 00 00 00 00, +225 01 00 00 00 00"
+ASSISTANCE_HORAIRES="du lundi au samedi, 8 h – 18 h"
+```
