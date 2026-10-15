@@ -42,6 +42,10 @@ state([
     'objectifGlobal' => Commercial::OBJECTIF_MENSUEL_DEFAUT,
     'pourcentageMecanique' => (int) (Commercial::PART_MECANIQUE_DEFAUT * 100),
     'confirmation' => null,
+    // Concerné par les objectifs de l'entreprise — 15/10 (`AccesAuxObjectifs`).
+    'concerneObjectifs' => false,
+    'objectifsTous' => '1',
+    'objectifsChoisis' => [],
 
     // Renseigne quand on reprend un acces existant ; null a la creation.
     'modifieId' => null,
@@ -371,6 +375,9 @@ $enregistrer = function (\Modules\Noyau\Entreprises\Actions\ModifierAcces $actio
         .($changements ? ' ('.collect($changements)->map(fn ($v, $k) => "$k : $v")->implode(' · ').')' : '');
 };
 
+/** Les objectifs de l'entreprise, à cocher pour le nouvel accès. */
+$optionsObjectifs = computed(fn () => \Modules\Noyau\Exploitation\Services\AccesAuxObjectifs::options((int) $this->entrepriseId));
+
 $creer = function (CreerAcces $action) {
     $regles = [
         'entrepriseId' => ['required', 'exists:entreprises,id'],
@@ -411,7 +418,14 @@ $creer = function (CreerAcces $action) {
 
     $entreprise = Entreprise::findOrFail($donnees['entrepriseId']);
 
-    $action->executer($entreprise, $this->roleActif, [
+    // Concerné, mais aucun objectif coché : refusé avant de créer le compte, pas après.
+    if ($this->concerneObjectifs && (string) $this->objectifsTous === '0' && $this->optionsObjectifs !== [] && $this->objectifsChoisis === []) {
+        $this->addError('objectifsChoisis', 'Cochez au moins un objectif, ou « tous les objectifs ».');
+
+        return;
+    }
+
+    $compte = $action->executer($entreprise, $this->roleActif, [
         'nom' => $donnees['nom'],
         'email' => $donnees['email'],
         'mot_de_passe' => $donnees['motDePasse'],
@@ -422,6 +436,14 @@ $creer = function (CreerAcces $action) {
         'est_actif' => $this->ouverture === 'actif',
         'code_agent' => $donnees['codeAgent'] ?? null,
     ]);
+
+    \Modules\Noyau\Exploitation\Services\AccesAuxObjectifs::enregistrer(
+        $compte, (bool) $this->concerneObjectifs, (string) $this->objectifsTous !== '0' || $this->optionsObjectifs === [],
+        (array) $this->objectifsChoisis, auth()->id(),
+    );
+    $this->concerneObjectifs = false;
+    $this->objectifsTous = '1';
+    $this->objectifsChoisis = [];
 
     $this->reset(['nom', 'email', 'motDePasse', 'siteChoix', 'villeChoix', 'codeAgent']);
     $this->objectifGlobal = Commercial::OBJECTIF_MENSUEL_DEFAUT;
@@ -615,6 +637,11 @@ $creer = function (CreerAcces $action) {
                     <span>Sinistre : <b>{{ ae($this->objectifSinistre) }}</b> ({{ 100 - (int) $pourcentageMecanique }}%)</span>
                     <span>Équivalent annuel : <b>{{ ae($this->objectifAnnuel) }}</b></span>
                 </div>
+            @endif
+
+            @if (! $this->enModification)
+                {{-- Concerné par les objectifs de l'entreprise — 15/10. --}}
+                <x-objectifs-de-l-acces :options="$this->optionsObjectifs" :concerne="$concerneObjectifs" :tous="(string) $objectifsTous !== '0'" />
             @endif
 
             <button type="submit" wire:loading.attr="disabled"

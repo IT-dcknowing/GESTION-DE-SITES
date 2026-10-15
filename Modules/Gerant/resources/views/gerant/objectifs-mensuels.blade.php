@@ -45,6 +45,28 @@ $objectifs = computed(fn () => ! $this->disponible ? collect() : ObjectifEntrepr
 
 $villes = computed(fn () => Ville::query()->orderBy('nom')->pluck('nom', 'id')->all());
 
+/**
+ * Combien d'accès chaque objectif concerne — 15/10 (case cochée à la création d'un accès, ou au
+ * rattrapage du Super admin). « Tous les objectifs » compte pour chacun.
+ */
+$concernes = computed(function () {
+    if (! \Modules\Noyau\Exploitation\Services\AccesAuxObjectifs::disponible()) {
+        return null;
+    }
+
+    $lignes = DB::table('objectifs_des_acces')->where('entreprise_id', auth()->user()->entreprise_id)->where('concerne', true)->get();
+    $tous = $lignes->where('tous', true)->count();
+    $par = [];
+
+    foreach ($lignes->where('tous', false) as $ligne) {
+        foreach ((array) json_decode((string) $ligne->objectifs, true) as $id) {
+            $par[(int) $id] = ($par[(int) $id] ?? 0) + 1;
+        }
+    }
+
+    return ['tous' => $tous, 'par' => $par];
+});
+
 $vider = function () {
     $this->editionId = null;
     $this->libelle = '';
@@ -192,7 +214,8 @@ $supprimer = function (int $id) {
         <div class="carte" style="margin-bottom:16px;">
             <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">{{ $editionId ? 'Modifier l\'objectif' : 'Nouvel objectif' }}</h3>
             <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
-                Les montants sont <b>mensuels</b>. Sur une période plus courte qu'un mois, le tableau de bord compte
+                Qui est concerné se coche à la création de chaque accès (et, pour les accès d'avant, au
+                rattrapage du Super admin). Les montants sont <b>mensuels</b>. Sur une période plus courte qu'un mois, le tableau de bord compte
                 chaque jour pour sa part du mois. Deux objectifs de même portée ne peuvent pas se recouvrir :
                 pour changer de tranches au 1<sup>er</sup> juillet, terminez le premier au 30 juin.
             </p>
@@ -238,7 +261,7 @@ $supprimer = function (int $id) {
             <div class="tableau-conteneur">
                 <table class="tableau">
                     <thead>
-                        <tr><th>Libellé</th><th>Période</th><th>Portée</th><th>Tranches mensuelles</th><th>État</th><th></th></tr>
+                        <tr><th>Libellé</th><th>Période</th><th>Portée</th><th>Tranches mensuelles</th><th>Accès concernés</th><th>État</th><th></th></tr>
                     </thead>
                     <tbody>
                         @forelse ($this->objectifs as $o)
@@ -249,6 +272,7 @@ $supprimer = function (int $id) {
                                 <td style="font-size:12.5px;">
                                     @foreach ($o->tranches as $t)<div>{{ $t->libelle }} : <b>{{ ae($t->montant) }}</b></div>@endforeach
                                 </td>
+                                <td style="text-align:right;">{{ $this->concernes === null ? '—' : $this->concernes['tous'] + ($this->concernes['par'][$o->id] ?? 0) }}</td>
                                 <td style="font-size:12px; font-weight:700; color:{{ $o->etat() === 'En cours' ? '#0E9F6E' : '#6B6E76' }};">{{ $o->etat() }}</td>
                                 <td style="white-space:nowrap;">
                                     <button type="button" wire:click="modifier({{ $o->id }})" class="bouton bouton-secondaire" style="padding:6px 10px;">Modifier</button>
@@ -260,7 +284,7 @@ $supprimer = function (int $id) {
                                 </td>
                             </tr>
                         @empty
-                            <x-table-vide :colspan="6" texte="Aucun objectif établi pour l'instant." />
+                            <x-table-vide :colspan="7" texte="Aucun objectif établi pour l'instant." />
                         @endforelse
                     </tbody>
                 </table>

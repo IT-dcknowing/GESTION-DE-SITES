@@ -100,9 +100,37 @@ $kpis = computed(function () {
     ];
 });
 
+/**
+ * Les objectifs de l'entreprise qui concernent cet accès — 15/10 : coché à la création de l'accès,
+ * ou au rattrapage du Super admin. Le mois en cours, la portée de chaque objectif.
+ */
+$objectifsDeLEntreprise = computed(fn () => \Modules\Noyau\Exploitation\Services\AccesAuxObjectifs::disponible()
+    ? \Modules\Noyau\Exploitation\Services\AccesAuxObjectifs::suiviDuMois(auth()->user()) : []);
+
 ?>
 
 <div>
+    @if ($this->objectifsDeLEntreprise !== [])
+        <div class="carte" style="margin-bottom:16px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 8px;">Les objectifs de l'entreprise qui vous concernent — {{ ucfirst(now()->locale('fr')->translatedFormat('F Y')) }}</h3>
+            @foreach ($this->objectifsDeLEntreprise as $suivi)
+                <div style="margin-bottom:10px;">
+                    <div style="font-size:13px; color:#4B4E55; margin-bottom:6px;"><b>{{ $suivi['objectif']->libelle }}</b> — {{ $suivi['objectif']->portee() }} · réalisé depuis le 1er : <b>{{ ae($suivi['realise']) }}</b></div>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px;">
+                        @foreach ($suivi['tranches'] as $t)
+                            @php $atteinte = $suivi['realise'] >= $t['montant']; $taux = $t['montant'] > 0 ? $suivi['realise'] / $t['montant'] : null; @endphp
+                            <div style="border:1px solid var(--th-ligne,#E2E0D8); border-radius:10px; padding:8px 10px; {{ $atteinte ? 'background:#ECFDF5;' : '' }}">
+                                <div style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:#4B4E55;">{{ $t['libelle'] }}</div>
+                                <div style="font-weight:800; font-variant-numeric:tabular-nums;">{{ ae($t['montant']) }}</div>
+                                <div style="font-size:12px; color:{{ $atteinte ? '#0E9F6E' : '#6B6E76' }};">{{ an($taux) }} — {{ $atteinte ? 'atteinte ✔' : 'reste '.ae(montant_de($t['montant'] - $suivi['realise'])) }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    @endif
+
     @if (! $this->commercial)
         <x-a-venir titre="Aucune fiche commerciale associée" description="Contactez votre responsable de site." />
     @else

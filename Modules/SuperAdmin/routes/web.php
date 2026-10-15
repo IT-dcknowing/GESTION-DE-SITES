@@ -22,6 +22,9 @@ Route::middleware(['auth', 'role:super_admin'])
         Volt::route('/entreprises/{entreprise}', 'superadmin.entreprises-detail')->name('entreprises.show')->middleware('habilitation:entreprises');
         Volt::route('/acces', 'superadmin.acces-liste')->name('acces.index')->middleware('habilitation:acces');
         Volt::route('/acces/creer', 'superadmin.acces-creer')->name('acces.creer')->middleware('habilitation:acces');
+        // Rattrapage (15/10) : ce que les accès créés avant une nouveauté n'ont jamais renseigné —
+        // pour l'instant, s'ils sont concernés par les objectifs de l'entreprise.
+        Volt::route('/acces/rattrapage', 'superadmin.acces-rattrapage')->name('acces.rattrapage')->middleware('habilitation:acces');
         // Même écran que la création : les champs sont les mêmes, et corriger un accès
         // dans une ligne de tableau donnait un formulaire à l'étroit, illisible dès que
         // l'adresse dépassait la largeur de la colonne.

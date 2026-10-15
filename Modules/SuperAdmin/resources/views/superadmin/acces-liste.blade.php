@@ -427,6 +427,12 @@ $journaliser = function (User $utilisateur, string $action) {
                 + Créer un accès
             </a>
 
+            {{-- Ce que les accès d'avant une nouveauté n'ont jamais renseigné — 15/10. --}}
+            <a href="{{ route('super-admin.acces.rattrapage', $entrepriseFiltre ? ['entreprise' => $entrepriseFiltre] : []) }}" wire:navigate
+               style="display:inline-block; border:1px solid #B45309; color:#B45309; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14.5px; text-decoration:none; background:#fff;">
+                Rattrapage
+            </a>
+
             {{-- Le téléchargement n'est pas une action Livewire : il lui faut une vraie
                  réponse HTTP, donc un lien ordinaire — et surtout pas wire:navigate,
                  qui chargerait le PDF en arrière-plan sans jamais l'ouvrir. --}}
