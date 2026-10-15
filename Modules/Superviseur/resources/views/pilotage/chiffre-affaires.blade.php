@@ -420,7 +420,7 @@ $comptesParOrigine = computed(function () {
     <livewire:commun.doublons-d-import :formats="['factures']" :ids-sites="$this->idsSites"
         :ids-villes="\Modules\Noyau\Exploitation\Services\EtatDesImpayes::villesDesSites($this->idsSites)"
         :debut="$this->plage[0]->toDateString()" :fin="$this->plage[1]->toDateString()"
-        :retenu="$this->kpis['total']" libelle-retenu="CA retenu"
+        :retenu="$this->kpis['total']" libelle-retenu="CA importé"
         :wire:key="'doublons-ca-'.md5(json_encode([$this->idsSites, $this->plage[0]->toDateString(), $this->plage[1]->toDateString(), $this->kpis['total']]))" />
 
     <div style="margin-bottom:20px;">

@@ -378,8 +378,8 @@ class FormatDuJournalDeCaisse extends Format
         if ($issue === self::DOUBLON) {
             // Le solde et la page dépendent du tirage, pas du mouvement : ils n'entrent pas dans
             // l'empreinte, sans quoi un état réimprimé recopierait le doublon au lieu de le retrouver.
-            $this->consignerLeDoublon(null, $mouvement, ['ville_id' => $mouvement['ville_id'], 'site_id' => $mouvement['site_id']],
-                $lotId, 'Page '.$mouvement['page'], $this->decrireLeDoublon($mouvement),
+            $issue = $this->traiterLeDoublon(null, $mouvement, ['ville_id' => $mouvement['ville_id'], 'site_id' => $mouvement['site_id']],
+                $lotId, 'Page '.$mouvement['page'], $this->decrireLeDoublon($mouvement), $resultat,
                 array_diff_key($mouvement, ['page' => true, 'solde_annonce' => true]));
         }
 

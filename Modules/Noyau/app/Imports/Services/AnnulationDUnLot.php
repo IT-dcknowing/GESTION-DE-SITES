@@ -123,7 +123,7 @@ class AnnulationDUnLot
                 DB::table('doublons_import')
                     ->where('entreprise_id', $this->entrepriseId)
                     ->where('lot_import_id', $lot->id)
-                    ->where('statut', 'ecarte')
+                    ->whereIn('statut', ['ecarte', 'a_trancher'])
                     ->delete();
             }
 

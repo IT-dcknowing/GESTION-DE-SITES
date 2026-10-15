@@ -220,7 +220,7 @@ class FormatDeLaCaisse extends Format
             $issue = $ecrire ? $this->ecrireLeMouvement($ligne, $ou, $lotId, $feuille) : 'ignore';
 
             if ($issue === self::DOUBLON) {
-                $this->consignerLeDoublon($numero, $ligne, $ou, $lotId, $feuille, $this->decrireLeDoublon($ligne));
+                $issue = $this->traiterLeDoublon($numero, $ligne, $ou, $lotId, $feuille, $this->decrireLeDoublon($ligne), $resultat);
             }
 
             $resultat->compter($issue);
@@ -396,8 +396,8 @@ class FormatDeLaCaisse extends Format
         //
         // **Et chaque ligne de la base ne sert qu'une fois par dépôt (14/10).** La clé retrouvait
         // la première dépense de 5 000 F pour la seconde, et la réécrivait : la seconde
-        // disparaissait du total. Elle est désormais mise de côté comme doublon, montrée, et
-        // s'intègre d'un bouton si elle est réelle — voir `Format::DOUBLON`.
+        // disparaissait du total. Elle est désormais écrite elle aussi et montrée comme doublon
+        // supposé, à trancher d'un bouton — voir `Format::DOUBLON`.
         $existant = $this->premiereLibre(
             MouvementCaisse::withoutGlobalScopes()
                 ->where('entreprise_id', $this->entrepriseId)

@@ -6,8 +6,8 @@ namespace Modules\Noyau\Imports\Formats;
  * Ce qu'un import a fait, ligne par ligne, en un seul objet.
  *
  * Les compteurs se lisent ensemble et doivent toujours se recouper : lues = créées +
- * mises à jour + ignorées + rejetées + doublons. Un import qui ne boucle pas cache quelque
- * chose, et un test le vérifie plutôt que de croire les chiffres sur parole.
+ * mises à jour + ignorées + rejetées. Un import qui ne boucle pas cache quelque chose, et un
+ * test le vérifie plutôt que de croire les chiffres sur parole.
  *
  * Les rejets sont conservés en mémoire dans une limite volontaire. Un fichier entièrement
  * décalé — mauvaise feuille, mauvais export — rejetterait ses neuf mille lignes, et écrire
@@ -29,9 +29,9 @@ class Resultat
     public int $rejetees = 0;
 
     /**
-     * Lignes qui répètent, dans le même fichier, une ligne déjà écrite — 14/10. Elles ne sont
-     * plus perdues : gardées dans `doublons_import`, montrées à l'écran, intégrables. Voir
-     * `Format::DOUBLON`.
+     * Lignes qui répètent, dans le même fichier, une ligne déjà écrite — 14/10. Elles sont
+     * écrites comme les autres (comptées dans créées ou inchangées) et, en plus, montrées comme
+     * doublons supposés à trancher (15/10). Hors de l'invariant : ce n'est pas une issue de plus.
      */
     public int $doublons = 0;
 
@@ -69,7 +69,6 @@ class Resultat
         match ($issue) {
             'cree' => $this->creees++,
             'maj' => $this->majs++,
-            Format::DOUBLON => $this->doublons++,
             default => $this->ignorees++,
         };
     }
@@ -87,7 +86,7 @@ class Resultat
     /** Vrai quand les compteurs se recoupent — l'invariant du module. */
     public function coherent(): bool
     {
-        return $this->lues === $this->creees + $this->majs + $this->ignorees + $this->rejetees + $this->doublons;
+        return $this->lues === $this->creees + $this->majs + $this->ignorees + $this->rejetees;
     }
 
     /** Une phrase pour l'écran, sans jargon. */
@@ -112,8 +111,8 @@ class Resultat
         }
 
         if ($this->doublons > 0) {
-            $morceaux[] = $this->doublons.' mise'.($this->doublons > 1 ? 's' : '').' de côté comme doublon'
-                .($this->doublons > 1 ? 's' : '').' (à voir et intégrer sur la page des données)';
+            $morceaux[] = 'dont '.$this->doublons.' supposée'.($this->doublons > 1 ? 's' : '').' doublon'
+                .($this->doublons > 1 ? 's' : '').' (importée'.($this->doublons > 1 ? 's' : '').', à trancher sur la page des données)';
         }
 
         if ($morceaux === []) {

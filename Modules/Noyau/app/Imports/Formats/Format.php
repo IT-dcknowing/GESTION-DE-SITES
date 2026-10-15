@@ -190,7 +190,7 @@ abstract class Format
             $issue = $ecrire ? $this->ecrire($ligne, $ou, $lotId) : 'ignore';
 
             if ($issue === self::DOUBLON) {
-                $this->consignerLeDoublon($numero, $ligne, $ou, $lotId, $resultat->feuille, $this->decrireLeDoublon($ligne));
+                $issue = $this->traiterLeDoublon($numero, $ligne, $ou, $lotId, $resultat->feuille, $this->decrireLeDoublon($ligne), $resultat);
             }
 
             $resultat->compter($issue);
@@ -238,10 +238,15 @@ abstract class Format
      * clé les fusionnait quand même.
      *
      * **La règle d'aujourd'hui** : une ligne de la base ne sert qu'une fois par dépôt (comme dans
-     * `PontDesFactures`). La retrouver une seconde fois, c'est être une répétition : la ligne est
-     * gardée dans `doublons_import`, montrée à l'écran à côté de celle qui a été retenue, et ne
-     * compte dans aucun total tant que personne ne l'a intégrée. Un redépôt du même fichier ne
-     * change rien : chaque ligne y retrouve la sienne, une intégrée comprise.
+     * `PontDesFactures`). La retrouver une seconde fois, c'est être une répétition. `ecrire()` rend
+     * alors `DOUBLON` sans rien écrire, et `traiterLeDoublon()` décide :
+     *
+     * - **au premier import, rien n'est écarté** (propriétaire, 15/10) : la ligne est écrite à part
+     *   entière — elle compte —, et consignée comme **doublon supposé** dans `doublons_import`, avec
+     *   la raison (« même n°, même date, même montant… ») ; l'écran demande de choisir laquelle
+     *   garder, ou les deux ;
+     * - **au redépôt**, chaque ligne retrouve la sienne : rien ne se double ; une ligne qu'on a
+     *   retirée par décision ne revient pas (`doublons_import.statut = retire`).
      */
     public const DOUBLON = 'doublon';
 
@@ -410,6 +415,102 @@ abstract class Format
     }
 
     /**
+     * Une ligne qui en répète une autre du même fichier : écrite quand même, et consignée comme
+     * doublon supposé — sauf si une décision passée l'a retirée.
+     *
+     * @param  array{reference: ?string, date: ?\DateTimeInterface, libelle: ?string, montant: int|float|null}  $description
+     */
+    protected function traiterLeDoublon(?int $numeroLigne, array $ligne, array $rattachement, ?int $lotId, ?string $feuille, array $description, Resultat $resultat, ?array $pourLEmpreinte = null): string
+    {
+        if (! $this->doublonsGardes()) {
+            return 'ignore';
+        }
+
+        $retenue = $this->repetee;
+        $empreinte = $this->empreinteDuDoublon($ligne, $pourLEmpreinte);
+
+        $deja = DoublonImport::query()
+            ->where('entreprise_id', $this->entrepriseId)
+            ->where('format', static::cle())
+            ->where('empreinte', $empreinte)
+            ->first();
+
+        // Tranché : l'une des deux a été retirée. La ligne du fichier ne la fait pas revenir.
+        if ($deja?->statut === DoublonImport::RETIRE) {
+            return 'ignore';
+        }
+
+        $this->enIntegration = true;
+        $this->derniereTenue = null;
+
+        try {
+            $issue = $this->ecrireUneLigne($ligne, $rattachement, $lotId, $feuille);
+        } finally {
+            $this->enIntegration = false;
+        }
+
+        $this->repetee = $retenue;
+        $this->consignerLeDoublon($numeroLigne, $ligne, $rattachement, $lotId, $feuille, $description, $pourLEmpreinte,
+            $empreinte, $issue === 'cree' ? $this->derniereTenue : null);
+        $resultat->doublons++;
+
+        return $issue;
+    }
+
+    /** L'empreinte d'une ligne répétée : ses valeurs, et son rang parmi les lignes identiques du fichier. */
+    private function empreinteDuDoublon(array $ligne, ?array $pourLEmpreinte): string
+    {
+        $base = hash('sha256', static::cle().'|'.json_encode(self::serialiser($pourLEmpreinte ?? $ligne), JSON_UNESCAPED_UNICODE));
+        $rang = $this->empreintesVues[$base] = ($this->empreintesVues[$base] ?? 0) + 1;
+
+        return hash('sha256', $base.'#'.$rang);
+    }
+
+    /**
+     * Pourquoi deux lignes sont supposées être la même : ce qu'elles ont en commun, et ce qui les
+     * distingue. C'est la colonne « Pourquoi » du tableau — la preuve du contraire se cherche là.
+     *
+     * @param  array{reference: ?string, date: ?\DateTimeInterface, libelle: ?string, montant: int|float|null}  $description
+     */
+    private function raisonDuDoublon(array $description, ?Model $retenue): string
+    {
+        $colonnes = \Modules\Noyau\Imports\Services\DoublonsDImport::COLONNES_RETENUES[$retenue?->getTable()] ?? null;
+
+        if ($retenue === null || $colonnes === null) {
+            return 'Même clé de pièce qu\'une ligne déjà lue dans ce fichier.';
+        }
+
+        [$cReference, $cDate, $cLibelle, $cMontant] = $colonnes;
+        $memes = [];
+        $differents = [];
+
+        $comparer = function (string $quoi, $ici, $la, \Closure $dire) use (&$memes, &$differents) {
+            if ($ici === null && $la === null) {
+                return;
+            }
+
+            if ($ici !== null && $la !== null && $ici === $la) {
+                $memes[] = 'même '.$quoi.' '.$dire($ici);
+            } else {
+                $differents[] = $quoi.' différent : '.($ici === null ? '—' : $dire($ici)).' / '.($la === null ? '—' : $dire($la));
+            }
+        };
+
+        $texte = fn ($v) => $v === null || trim((string) $v) === '' ? null : mb_strtoupper(trim((string) $v));
+        $jour = fn ($v) => $v === null ? null : Carbon::parse($v)->toDateString();
+        $argent = fn ($v) => $v === null ? null : (string) montant_de(abs((float) $v));
+
+        $comparer('n°', $texte($description['reference']), $texte($retenue->getAttribute($cReference)), fn ($v) => '« '.$v.' »');
+        $comparer('date', $jour($description['date']), $jour($retenue->getAttribute($cDate)), fn ($v) => Carbon::parse($v)->format('d/m/Y'));
+        $comparer('montant', $argent($description['montant']), $argent($retenue->getAttribute($cMontant)), fn ($v) => ae($v));
+        $comparer('libellé', $texte($description['libelle']), $texte($retenue->getAttribute($cLibelle)), fn ($v) => '« '.mb_strimwidth($v, 0, 60, '…').' »');
+
+        return 'Supposé doublon à preuve du contraire — '
+            .($memes === [] ? 'même clé de pièce' : implode(', ', $memes))
+            .($differents === [] ? '.' : ' ; mais '.implode(', ', $differents).'.');
+    }
+
+    /**
      * Garde la ligne mise de côté, avec de quoi la montrer et la réintégrer.
      *
      * L'empreinte est celle des valeurs de la ligne : redéposer le même fichier retrouve la même
@@ -418,23 +519,34 @@ abstract class Format
      *
      * @param  array{reference: ?string, date: ?\DateTimeInterface, libelle: ?string, montant: int|float|null}  $description
      */
-    protected function consignerLeDoublon(?int $numeroLigne, array $ligne, array $rattachement, ?int $lotId, ?string $feuille, array $description, ?array $pourLEmpreinte = null): void
+    protected function consignerLeDoublon(?int $numeroLigne, array $ligne, array $rattachement, ?int $lotId, ?string $feuille, array $description, ?array $pourLEmpreinte, string $empreinte, ?Model $ecrite): void
     {
-        if (! $this->doublonsGardes()) {
-            return;
+        $serialisee = self::serialiser($ligne);
+
+        $existant = DoublonImport::query()->where('entreprise_id', $this->entrepriseId)
+            ->where('format', static::cle())->where('empreinte', $empreinte)->first();
+
+        $decision = [];
+
+        // Neuf, ou resté « écarté » d'avant le 15/10 alors qu'il vient d'être écrit : à trancher.
+        if ($existant === null || ($existant->statut === DoublonImport::ECARTE && $ecrite !== null)) {
+            $decision = ['statut' => DoublonImport::A_TRANCHER];
         }
 
-        $serialisee = self::serialiser($ligne);
-        $base = hash('sha256', static::cle().'|'.json_encode(self::serialiser($pourLEmpreinte ?? $ligne), JSON_UNESCAPED_UNICODE));
-        $rang = $this->empreintesVues[$base] = ($this->empreintesVues[$base] ?? 0) + 1;
+        if ($ecrite !== null) {
+            $decision['integre_id'] = $ecrite->getKey();
+        }
+
+        $raison = \App\Support\SchemaDisponible::colonne('doublons_import', 'raison')
+            ? ['raison' => $this->raisonDuDoublon($description, $this->repetee)] : [];
 
         DoublonImport::query()->updateOrCreate(
             [
                 'entreprise_id' => $this->entrepriseId,
                 'format' => static::cle(),
-                'empreinte' => hash('sha256', $base.'#'.$rang),
+                'empreinte' => $empreinte,
             ],
-            [
+            $decision + $raison + [
                 'lot_import_id' => $lotId,
                 'numero_ligne' => $numeroLigne,
                 'feuille' => $feuille === null ? null : mb_substr($feuille, 0, 60),

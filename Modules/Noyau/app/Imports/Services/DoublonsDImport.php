@@ -73,24 +73,34 @@ class DoublonsDImport
     }
 
     /**
-     * Combien, et pour quel montant : ce qui attend une décision, ce qui a été intégré.
+     * Combien, et pour quel montant : ce qui attend une décision, ce qui a été tranché.
      *
-     * @return array{ecartes: int, montantEcarte: int|float, integres: int, montantIntegre: int|float}
+     * `montantATrancher` est **déjà dans le total de la page** (la ligne est écrite) : c'est ce
+     * qu'il faudrait en retirer si ce sont bien des doublons. `montantEcarte` (lignes d'avant le
+     * 15/10, mises de côté sans être écrites) n'y est pas.
+     *
+     * @return array{aTrancher: int, montantATrancher: int|float, ecartes: int, montantEcarte: int|float, tranches: int, retires: int, montantRetire: int|float}
      */
     public static function totaux(Builder $requete): array
     {
         $ligne = (clone $requete)->reorder()
+            ->selectRaw("coalesce(sum(case when statut = 'a_trancher' then 1 else 0 end), 0) as n_attente")
+            ->selectRaw("coalesce(sum(case when statut = 'a_trancher' then montant else 0 end), 0) as m_attente")
             ->selectRaw("coalesce(sum(case when statut = 'ecarte' then 1 else 0 end), 0) as n_ecartes")
             ->selectRaw("coalesce(sum(case when statut = 'ecarte' then montant else 0 end), 0) as m_ecartes")
-            ->selectRaw("coalesce(sum(case when statut = 'integre' then 1 else 0 end), 0) as n_integres")
-            ->selectRaw("coalesce(sum(case when statut = 'integre' then montant else 0 end), 0) as m_integres")
+            ->selectRaw("coalesce(sum(case when statut in ('garde', 'retire', 'integre') then 1 else 0 end), 0) as n_tranches")
+            ->selectRaw("coalesce(sum(case when statut = 'retire' then 1 else 0 end), 0) as n_retires")
+            ->selectRaw("coalesce(sum(case when statut = 'retire' then montant else 0 end), 0) as m_retires")
             ->toBase()->first();
 
         return [
+            'aTrancher' => (int) ($ligne->n_attente ?? 0),
+            'montantATrancher' => montant_de($ligne->m_attente ?? 0),
             'ecartes' => (int) ($ligne->n_ecartes ?? 0),
             'montantEcarte' => montant_de($ligne->m_ecartes ?? 0),
-            'integres' => (int) ($ligne->n_integres ?? 0),
-            'montantIntegre' => montant_de($ligne->m_integres ?? 0),
+            'tranches' => (int) ($ligne->n_tranches ?? 0),
+            'retires' => (int) ($ligne->n_retires ?? 0),
+            'montantRetire' => montant_de($ligne->m_retires ?? 0),
         ];
     }
 
@@ -162,7 +172,7 @@ class DoublonsDImport
             }
 
             if (! $doublon->estEcarte()) {
-                throw new RuntimeException('Ce doublon a déjà été intégré.');
+                throw new RuntimeException('Ce doublon a déjà été tranché.');
             }
 
             $classe = Registre::classe($doublon->format);
@@ -195,6 +205,133 @@ class DoublonsDImport
 
             return $doublon;
         });
+    }
+
+    /** Les trois réponses à « supposé doublon » : garder la première, garder la seconde, garder les deux. */
+    public const GARDER_LA_PREMIERE = 'garder_la_premiere';
+
+    public const GARDER_LA_SECONDE = 'garder_la_seconde';
+
+    public const GARDER_LES_DEUX = 'garder_les_deux';
+
+    /** @var array<string, class-string<\Illuminate\Database\Eloquent\Model>> la table d'une ligne, et son modèle */
+    private const MODELES = [
+        'factures' => \Modules\Noyau\Exploitation\Modeles\Facture::class,
+        'devis' => \Modules\Noyau\Exploitation\Modeles\Devis::class,
+        'mouvements_caisse' => \Modules\Noyau\Imports\Modeles\MouvementCaisse::class,
+        'mouvements_bancaires' => \Modules\Noyau\Imports\Modeles\MouvementBancaire::class,
+        'pieces_bancaires' => \Modules\Noyau\Imports\Modeles\PieceBancaire::class,
+        'reglements_fournisseur' => \Modules\Noyau\Imports\Modeles\ReglementFournisseur::class,
+        'factures_fournisseurs' => \Modules\Noyau\Imports\Modeles\FactureFournisseur::class,
+    ];
+
+    /**
+     * Tranche un doublon supposé — 15/10 : « on demande de choisir à travers un bouton et de retirer
+     * l'autre ».
+     *
+     * - garder la première (celle lue d'abord) : la seconde est supprimée ;
+     * - garder la seconde : la première est supprimée ;
+     * - garder les deux : ce n'étaient pas des doublons, rien n'est supprimé.
+     *
+     * Relu en base sous l'entreprise du lecteur : un identifiant venu du navigateur ne suffit pas à
+     * supprimer de l'argent. Une ligne déjà utilisée ailleurs (un règlement saisi sur la facture,
+     * une charge reprise d'un mouvement de caisse) n'est pas supprimée : le refus le dit. La
+     * décision reste écrite — au dépôt suivant, la ligne retirée ne revient pas.
+     *
+     * Une ligne d'avant le 15/10 (mise de côté sans être écrite) se tranche aussi : « garder les
+     * deux » l'écrit, « garder la première » la laisse dehors.
+     */
+    public function trancher(int $doublonId, string $decision, User $par): DoublonImport
+    {
+        if (! self::peutIntegrer($par)) {
+            throw new RuntimeException('Trancher un doublon est réservé au gérant et au responsable de ville.');
+        }
+
+        if (! in_array($decision, [self::GARDER_LA_PREMIERE, self::GARDER_LA_SECONDE, self::GARDER_LES_DEUX], true)) {
+            throw new RuntimeException('Décision inconnue.');
+        }
+
+        $doublon = DoublonImport::query()->where('entreprise_id', $this->entrepriseId)->whereKey($doublonId)->first();
+
+        if ($doublon === null) {
+            throw new RuntimeException('Ce doublon est introuvable.');
+        }
+
+        if (! in_array($doublon->statut, DoublonImport::EN_ATTENTE, true)) {
+            throw new RuntimeException('Ce doublon a déjà été tranché.');
+        }
+
+        if ($doublon->estEcarte()) {
+            if ($decision === self::GARDER_LA_SECONDE) {
+                throw new RuntimeException("Cette ligne n'a jamais été écrite : gardez la première, ou les deux.");
+            }
+
+            if ($decision === self::GARDER_LES_DEUX) {
+                $doublon = $this->integrer($doublon->id, $par);
+            }
+
+            return $this->noter($doublon, $decision === self::GARDER_LES_DEUX ? DoublonImport::GARDE : DoublonImport::RETIRE, $decision, $par);
+        }
+
+        return DB::transaction(function () use ($doublon, $decision, $par) {
+            if ($decision === self::GARDER_LA_PREMIERE) {
+                $this->retirerLaLigne($doublon->retenue_table, $doublon->integre_id);
+            } elseif ($decision === self::GARDER_LA_SECONDE) {
+                $this->retirerLaLigne($doublon->retenue_table, $doublon->retenue_id);
+            }
+
+            return $this->noter($doublon, $decision === self::GARDER_LES_DEUX ? DoublonImport::GARDE : DoublonImport::RETIRE, $decision, $par);
+        });
+    }
+
+    private function noter(DoublonImport $doublon, string $statut, string $decision, User $par): DoublonImport
+    {
+        $doublon->forceFill(['statut' => $statut] + (SchemaDisponible::colonne('doublons_import', 'decision')
+            ? ['decision' => $decision, 'decide_par' => $par->id, 'decide_le' => now()] : []))->save();
+
+        return $doublon;
+    }
+
+    /** Supprime une ligne écrite par l'import — jamais une ligne sur laquelle on a travaillé depuis. */
+    private function retirerLaLigne(?string $table, $id): void
+    {
+        $classe = self::MODELES[$table] ?? null;
+
+        if ($classe === null || $id === null) {
+            throw new RuntimeException('Cette ligne ne se retire pas d\'ici.');
+        }
+
+        $ligne = $classe::withoutGlobalScopes()->where('entreprise_id', $this->entrepriseId)->find($id);
+
+        // Déjà partie (annulation du dépôt, suppression à la main) : il n'y a plus rien à retirer.
+        if ($ligne === null) {
+            return;
+        }
+
+        if ($table === 'factures') {
+            // Le règlement que l'import avait reporté sur cette ligne part avec elle ; un règlement
+            // saisi à la main, non : c'est un travail fait sur cette facture-là.
+            if (DB::table('encaissements')->where('facture_id', $id)->whereNull('lot_import_id')->exists()) {
+                throw new RuntimeException('Cette facture porte un règlement saisi à la main : gardez-la, ou retirez d\'abord le règlement.');
+            }
+
+            DB::table('encaissements')->where('facture_id', $id)->whereNotNull('lot_import_id')->delete();
+        }
+
+        if ($table === 'mouvements_caisse' && SchemaDisponible::colonne('charges', 'mouvement_caisse_id')
+            && DB::table('charges')->where('mouvement_caisse_id', $id)->exists()) {
+            throw new RuntimeException('Ce mouvement a été repris en charge : gardez-le, ou retirez d\'abord la charge.');
+        }
+
+        if ($table === 'factures_fournisseurs' && DB::table('reglements_fournisseur')->where('facture_fournisseur_id', $id)->exists()) {
+            throw new RuntimeException('Cette pièce porte un règlement : gardez-la, ou retirez d\'abord le règlement.');
+        }
+
+        try {
+            $ligne->delete();
+        } catch (\Illuminate\Database\QueryException) {
+            throw new RuntimeException('Cette ligne est utilisée ailleurs dans l\'application : elle ne se retire pas d\'ici.');
+        }
     }
 
     /** Les formats dont un écran montre les doublons — tous ceux qui en écartent. */
