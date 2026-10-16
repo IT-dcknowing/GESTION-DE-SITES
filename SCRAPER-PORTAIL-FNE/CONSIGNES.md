@@ -86,6 +86,19 @@ mutualisé, il arrive qu'il refuse de démarrer faute de bibliothèques système
 loading shared libraries », ou « Host system is missing dependencies »). Ce n'est pas réparable sans
 accès administrateur : passer alors au point suivant — le relevé se lance depuis un PC.
 
+## Si Chromium s'arrête : « error while loading shared libraries » (16/10)
+
+Constaté le 16/10 sur l'hébergement (`libatk-bridge-2.0.so.0`). `npx playwright install-deps` ne
+marche pas : il faut être administrateur. À la place, depuis le dossier `SCRAPER-PORTAIL-FNE` :
+
+```bash
+bash bibliotheques-chromium.sh
+```
+
+Le script télécharge les bibliothèques depuis les dépôts du serveur, les pose dans `~/fne-libs` (rien
+n'est installé dans le système) et vérifie. S'il finit par « C'EST BON », copier la ligne `FNE_LIBS=…`
+qu'il affiche dans `SCRAPER-PORTAIL-FNE/.env`, puis relancer le relevé. Sinon, envoyer tout le texte.
+
 ## Sans Node sur le serveur
 
 Faire tourner le relevé sur un poste (Windows ou autre) qui a Node, avec les mêmes étapes 2 à 4, puis

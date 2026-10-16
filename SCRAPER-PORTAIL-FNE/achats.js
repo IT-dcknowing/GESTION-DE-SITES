@@ -217,6 +217,27 @@ function extraireLesEnregistrements(valeur, profondeur = 0) {
   return meilleur;
 }
 
+/**
+ * L'environnement du navigateur, avec les bibliothèques posées à la main — 16/10.
+ *
+ * Constat du 16/10 sur l'hébergement mutualisé : Chromium s'arrête au lancement, « error while
+ * loading shared libraries: libatk-bridge-2.0.so.0 ». Il manque des bibliothèques système, et
+ * l'on n'a pas les droits pour les installer (`playwright install-deps` → `spawn su EACCES`).
+ * `bibliotheques-chromium.sh` les dépose dans un dossier de l'utilisateur ; `FNE_LIBS` (dans le
+ * .env du scraper) en donne le chemin, et on l'ajoute ici au chemin de recherche du navigateur.
+ * Écrit dans le .env, il vaut aussi pour les relevés lancés par le planificateur.
+ */
+function environnementDuNavigateur() {
+  const env = { ...process.env };
+  const libs = String(process.env.FNE_LIBS || '').trim();
+
+  if (libs) {
+    env.LD_LIBRARY_PATH = [libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
+  }
+
+  return env;
+}
+
 /* ------------------------------ La navigation ----------------------------- */
 
 /**
@@ -654,6 +675,7 @@ async function passage() {
     const navigateur = await chromium.launch({
       headless: process.env.FNE_HEADLESS !== 'false',
       args: ['--no-sandbox', '--single-process', '--no-zygote'],
+      env: environnementDuNavigateur(),
     });
 
     try {
