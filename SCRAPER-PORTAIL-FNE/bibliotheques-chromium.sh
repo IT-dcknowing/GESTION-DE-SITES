@@ -11,21 +11,34 @@
 # Usage, depuis le dossier SCRAPER-PORTAIL-FNE :   bash bibliotheques-chromium.sh
 
 set -u
+shopt -s nullglob
 DEST="$HOME/fne-libs"
 RPMS="$DEST/rpm"
 CHEMIN_LIBS="$DEST/usr/lib64:$DEST/lib64:$DEST/usr/lib:$DEST/lib"
 mkdir -p "$RPMS"
 
 echo "== Système"
-grep -E '^(NAME|VERSION)=' /etc/os-release 2>/dev/null
+cat /etc/redhat-release 2>/dev/null || grep -E '^(NAME|VERSION)=' /etc/os-release 2>/dev/null || echo "   (non lisible ici)"
 
+echo "== Outils"
+for outil in ldd dnf yumdownloader rpm2cpio cpio; do
+  printf '   %-14s %s\n' "$outil" "$(command -v "$outil" || echo 'ABSENT')"
+done
+
+# Une simple liste par motif, sans `< <(…)` : l'hébergement (CageFS) n'a pas /dev/fd, et la
+# première version du script échouait là sans le dire — puis concluait « C'EST BON » sur une
+# liste vide (16/10). Désormais, pas de navigateur trouvé = arrêt.
 echo "== Navigateurs installés par Playwright"
-mapfile -t BINAIRES < <(ls -d "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell \
-                             "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux64/chrome 2>/dev/null)
+BINAIRES=( "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
+           "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux64/chrome )
 if [ ${#BINAIRES[@]} -eq 0 ]; then
-  echo "Aucun. Lancez d'abord : npx playwright install chromium"; exit 1
+  echo "   Aucun trouvé. Lancez d'abord : npx playwright install chromium"; exit 1
 fi
 printf '   %s\n' "${BINAIRES[@]}"
+
+if ! command -v ldd >/dev/null 2>&1; then
+  echo "   ldd est absent : impossible de vérifier. Envoyez ce texte."; exit 3
+fi
 
 manquantes() {
   for b in "${BINAIRES[@]}"; do
@@ -56,7 +69,9 @@ libwayland-server libwayland-client libxshmfence avahi-libs gnutls libepoxy"
   fi
   if [ $OK -eq 0 ] && ! ls "$RPMS"/*.rpm >/dev/null 2>&1; then
     echo "   Impossible de télécharger les paquets ici (ni dnf download, ni yumdownloader)."
-    echo "   Envoyez ce texte, et le contenu de $RPMS/*.log s'il existe."
+    echo "   L'hébergement ne permet pas de poser ces bibliothèques soi-même : voir CONSIGNES.md,"
+    echo "   « Si le script ne suffit pas » (demande à l'hébergeur, ou relevé depuis un PC)."
+    cat "$RPMS"/*.log 2>/dev/null | tail -5
     exit 2
   fi
 

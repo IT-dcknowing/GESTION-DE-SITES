@@ -99,6 +99,17 @@ Le script télécharge les bibliothèques depuis les dépôts du serveur, les po
 n'est installé dans le système) et vérifie. S'il finit par « C'EST BON », copier la ligne `FNE_LIBS=…`
 qu'il affiche dans `SCRAPER-PORTAIL-FNE/.env`, puis relancer le relevé. Sinon, envoyer tout le texte.
 
+## Si le script ne suffit pas
+
+Sur un hébergement mutualisé (CageFS), le téléchargement des paquets est souvent impossible. Deux
+issues, au choix :
+
+1. **Demander à l'hébergeur** (ticket) : « Merci d'installer sur le serveur web41 les bibliothèques
+   système nécessaires à Chromium headless (Playwright) : atk, at-spi2-atk, at-spi2-core, cups-libs,
+   libxkbcommon, libXcomposite, libXdamage, libXrandr, mesa-libgbm, pango, cairo, alsa-lib, nss, nspr.
+   Le message actuel est : libatk-bridge-2.0.so.0: cannot open shared object file. »
+2. **Relever depuis un PC** (point suivant), et déposer le fichier à Fournisseurs › Factures FNE.
+
 ## Sans Node sur le serveur
 
 Faire tourner le relevé sur un poste (Windows ou autre) qui a Node, avec les mêmes étapes 2 à 4, puis
