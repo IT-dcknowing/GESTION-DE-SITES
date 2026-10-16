@@ -1,5 +1,7 @@
 # Le relevé des achats FNE — ce qu'il fait, et ce que vous avez à faire
 
+> Le guide complet, du début à la mise en production : **[GUIDE-COMPLET.md](GUIDE-COMPLET.md)** (16/10).
+
 ## Ce qu'il fait — et seulement cela
 
 Un script Node (`achats.js`, repris de Selflow) ouvre **une session sur le portail FNE avec le compte
