@@ -99,6 +99,16 @@ Le script télécharge les bibliothèques depuis les dépôts du serveur, les po
 n'est installé dans le système) et vérifie. S'il finit par « C'EST BON », copier la ligne `FNE_LIBS=…`
 qu'il affiche dans `SCRAPER-PORTAIL-FNE/.env`, puis relancer le relevé. Sinon, envoyer tout le texte.
 
+## Sur le serveur de DC-KNOWING (web41) : les bibliothèques de Selflow (16/10)
+
+Les trois bibliothèques qui manquaient à Chromium (`libatk-bridge-2.0.so.0`, `libatspi.so.0`,
+`libxkbcommon.so.0`) sont déjà posées pour Selflow dans `~/local-libs/usr/lib64`. Il suffit d'ajouter
+dans `SCRAPER-PORTAIL-FNE/.env` :
+
+```
+FNE_LIBS=/home/cp2255957p00/local-libs/usr/lib64:/home/cp2255957p00/local-libs/lib64
+```
+
 ## Si le script ne suffit pas
 
 Sur un hébergement mutualisé (CageFS), le téléchargement des paquets est souvent impossible. Deux
