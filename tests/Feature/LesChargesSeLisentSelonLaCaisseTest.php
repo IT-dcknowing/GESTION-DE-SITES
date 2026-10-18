@@ -87,7 +87,7 @@ class LesChargesSeLisentSelonLaCaisseTest extends TestCase
             ->assertSee('ACHAT FILTRE A HUILE');
         $this->assertSame(['ACHAT FILTRE A HUILE'], $ecran->instance()->sortiesAffichees->pluck('libelle')->all());
 
-        $ecran->call('voirLesCharges')->assertSee('Détail des opérations');
+        $ecran->call('voirLesCharges')->assertSee('Toutes les charges');
     }
 
     private function sortie(string $libelle, int|float $montant): MouvementCaisse

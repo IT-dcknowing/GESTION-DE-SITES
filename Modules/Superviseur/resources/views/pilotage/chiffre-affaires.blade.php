@@ -144,7 +144,16 @@ $requeteCharges = computed(function () {
         ->whereBetween('date', [$debut, $fin]);
 });
 
-$chargesPeriode = computed(fn () => montant_de((clone $this->requeteCharges)->sum('montant')));
+// Les fournisseurs sont des charges (18/10) : pièces du suivi et FNE pas encore au suivi, une fois.
+$chargesFournisseurs = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::totalPour(
+        (int) auth()->user()->entreprise_id, $this->idsSites, $debut, $fin, $this->activiteFiltre ?: null,
+    );
+});
+
+$chargesPeriode = computed(fn () => montant_de((clone $this->requeteCharges)->sum('montant') + $this->chargesFournisseurs));
 
 /*
  * Le CA selon les impayés — 12/10 : ce que l'état des impayés porte sans que le fichier du CA
@@ -176,6 +185,8 @@ $kpis = computed(function () {
     $caVentile = VentilationActivite::repartir($this->requeteBase);
     $ca = $caVentile['mecanique'] + $caVentile['sinistre'] + $caVentile['nonVentile'];
     $chargesVentilees = VentilationActivite::repartir($this->requeteCharges);
+    // Sans activité, les fournisseurs vont à « Autres » — comme sur la page Charges.
+    $chargesVentilees['nonVentile'] = montant_de(($chargesVentilees['nonVentile'] ?? 0) + $this->chargesFournisseurs);
 
     return [
         'total' => $ca,
@@ -406,6 +417,7 @@ $comptesParOrigine = computed(function () {
         <x-kpi-card label="CA selon les impayés" :value="ae($this->caSelonImpayes)" couleur="#B45309"
             sub="Créances de l'état non retrouvées dans le fichier du CA — à côté, jamais additionné" />
         <x-kpi-card label="Charges — {{ $this->libellePerimetre }}" :value="ae($this->chargesPeriode)"
+            :sub="$this->chargesFournisseurs != 0 ? 'Dont fournisseurs '.ae($this->chargesFournisseurs) : null"
             :mecanique="$ventile ? ae($this->kpis['chargesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['chargesVentilees']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['chargesVentilees']['nonVentile'] ? ae($this->kpis['chargesVentilees']['nonVentile']) : null" />

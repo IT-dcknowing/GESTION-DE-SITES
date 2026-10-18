@@ -29,6 +29,10 @@ state([
      * sérialise pas lisiblement dans une URL, pour un gain nul.
      */
     'filtresLibres' => [],
+    // Le tableau de toutes les charges (18/10) : provenance, genre, recherche.
+    'provenanceFiltre' => '',
+    'typeFiltre' => '',
+    'rechercheCharges' => '',
 ]);
 
 /*
@@ -72,6 +76,9 @@ $updatedSemaineFiltre = function () { $this->jourFiltre = ''; };
 $updatedVilleFiltre = function () { $this->siteFiltre = ''; };
 $updatedRepriseRecherche = function () { $this->pageReprise = 1; };
 $updatedCategorieCaisse = function () { $this->pageCaisse = 1; };
+$updatedProvenanceFiltre = function () { $this->pageDetail = 1; };
+$updatedTypeFiltre = function () { $this->pageDetail = 1; };
+$updatedRechercheCharges = function () { $this->pageDetail = 1; };
 
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin, $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null
@@ -128,6 +135,27 @@ $caPeriode = computed(fn () => montant_de((clone $this->requeteCa)->sum('montant
  * filtre de période, comme partout.
  * ─────────────────────────────────────────────────────────────────────────────────────────
  */
+/*
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ * **Les fournisseurs sont des charges — 18/10.** « Le fournisseur est aussi une charge : la page
+ * Charges doit être le tableau de bord de toutes les charges, comme la trésorerie. » Les pièces du
+ * suivi fournisseurs et les factures FNE pas encore au suivi entrent dans les totaux, une fois
+ * chacune — voir `ChargesFournisseurs`. Sans activité, elles s'écartent d'un filtre Mécanique /
+ * Sinistre, comme toute charge dont on ne sait pas l'activité.
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ */
+$chargesFournisseurs = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return new \Modules\Noyau\Exploitation\Services\ChargesFournisseurs(
+        (int) auth()->user()->entreprise_id, $this->idsSites, EtatDesImpayes::villesDesSites($this->idsSites), $debut, $fin,
+    );
+});
+
+$fournisseurs = computed(fn () => $this->activiteFiltre
+    ? ['total' => 0, 'suivi' => 0, 'nSuivi' => 0, 'fne' => 0, 'nFne' => 0, 'normalisees' => 0, 'importees' => 0, 'saisies' => 0]
+    : $this->chargesFournisseurs->totaux());
+
 $origines = computed(function () {
     $colonne = \App\Support\SchemaDisponible::colonne('charges', 'mouvement_caisse_id');
 
@@ -141,42 +169,24 @@ $origines = computed(function () {
             ->selectRaw('coalesce(sum(case when mouvement_caisse_id is null and lot_import_id is null then 1 else 0 end), 0) as n_saisie'))
         ->toBase()->first();
 
+    $f = $this->fournisseurs;
+    $total = montant_de(montant_de($ligne->montant ?? 0) + $f['total']);
+
     return [
-        'total' => montant_de($ligne->montant ?? 0),
+        'total' => $total,
         'nombre' => (int) ($ligne->nombre ?? 0),
         // Des montants : lus sans couper leurs centimes (piège 17) — ils passaient par `(int)`.
         'caisse' => montant_de($ligne->m_caisse ?? 0),
         'nCaisse' => (int) ($ligne->n_caisse ?? 0),
-        'importees' => montant_de($ligne->m_import ?? 0),
-        'saisies' => montant_de($ligne->m_saisie ?? 0),
+        // Les fournisseurs s'ajoutent à chaque origine (18/10) : importés du classeur, saisis à
+        // l'écran, ou venus de la FNE (portés, rapprochés, ou pas encore au suivi).
+        'importees' => montant_de(montant_de($ligne->m_import ?? 0) + $f['importees']),
+        'saisies' => montant_de(montant_de($ligne->m_saisie ?? 0) + $f['saisies']),
         'nSaisies' => (int) ($ligne->n_saisie ?? 0),
-        'fne' => 0,
-        'nonNormalisees' => montant_de($ligne->montant ?? 0),
+        'fne' => $f['normalisees'],
+        'nFne' => $f['nFne'],
+        'nonNormalisees' => montant_de($total - $f['normalisees']),
     ];
-});
-
-/**
- * Les achats normalisés FNE de la période — 14/10. Le module existe depuis le 12/10 (relevé du
- * portail, `factures_fne`) ; la carte disait encore « à venir ». Ce sont les factures et avoirs que
- * des fournisseurs ont certifiés au NCC de l'entreprise : **toute l'entreprise**, le portail ne
- * dit pas la ville. Ils se lisent à côté des charges, jamais additionnés : une facture d'achat
- * n'est une charge que lorsqu'on la règle ou qu'on la saisit.
- */
-$achatsFne = computed(function () {
-    if (! \App\Support\SchemaDisponible::table('factures_fne')) {
-        return null;
-    }
-
-    [$debut, $fin] = $this->plage;
-
-    $ligne = \Modules\Noyau\Imports\Modeles\FactureFne::withoutGlobalScopes()
-        ->where('entreprise_id', auth()->user()->entreprise_id)
-        ->whereBetween('date_facture', [$debut, $fin])
-        ->selectRaw('count(*) as nombre, coalesce(sum(montant_ttc), 0) as ttc')
-        ->selectRaw('coalesce(sum(case when facture_fournisseur_id is not null then 1 else 0 end), 0) as portees')
-        ->toBase()->first();
-
-    return ['ttc' => montant_de($ligne->ttc ?? 0), 'nombre' => (int) ($ligne->nombre ?? 0), 'portees' => (int) ($ligne->portees ?? 0)];
 });
 
 /** Ce que dit le journal de caisse sur la période : ses sorties, et ce qui en a été repris. */
@@ -280,8 +290,14 @@ $kpis = computed(function () {
     // requêtes d'agrégat pour des chiffres qu'on a sous la main.
     $ventileTotal = VentilationActivite::repartirCollection($lignes);
 
+    // Les fournisseurs n'ont pas d'activité : ils vont à « Autres » de la ventilation.
+    $fournisseurs = $this->fournisseurs['total'];
+    $total = montant_de($total + $fournisseurs);
+    $ventileTotal['nonVentile'] = montant_de(($ventileTotal['nonVentile'] ?? 0) + $fournisseurs);
+
     return [
         'total' => $total,
+        'fournisseurs' => $fournisseurs,
         'totalVentile' => $ventileTotal,
         'pieces' => montant_de($lignes->where('libelle', 'Achats pièces')->sum('montant')),
         'piecesVentile' => VentilationActivite::repartirCollection($lignes->where('libelle', 'Achats pièces')),
@@ -321,6 +337,11 @@ $graphique = computed(function () {
         ->whereBetween('date', [$bornes->min(), $bornes->max()])
         ->get();
 
+    // Les fournisseurs (18/10) : pièces du suivi et FNE pas encore au suivi, à leur date de facture.
+    $achats = $this->activiteFiltre ? collect() : $this->chargesFournisseurs->suivi()
+        ->get(['factures_fournisseurs.date_facture as date', 'factures_fournisseurs.montant as montant'])
+        ->concat($this->chargesFournisseurs->fneSeules()?->get(['factures_fne.date_facture as date', 'factures_fne.montant_ttc as montant']) ?? []);
+
     foreach ($points as $point) {
         // Les dates sont comparées au jour, comme `whereBetween` le faisait.
         $debutDuPoint = $point['debut']->toDateString();
@@ -337,7 +358,15 @@ $graphique = computed(function () {
         foreach ($natures as $nature => $couleur) {
             $series[$nature][] = montant_de($lignes->where('libelle', $nature)->sum('montant'));
         }
+
+        $series['Fournisseurs'][] = montant_de($achats->filter(function ($a) use ($debutDuPoint, $finDuPoint) {
+            $jour = substr((string) $a->date, 0, 10);
+
+            return $jour >= $debutDuPoint && $jour <= $finDuPoint;
+        })->sum('montant'));
     }
+
+    $natures['Fournisseurs'] = '#7C3AED';
 
     return [
         'labels' => $labels,
@@ -474,17 +503,57 @@ $reprendreDeLaCaisse = function () {
 
     $nombre = $sorties->count();
     $this->repriseChoix = [];
-    unset($this->sortiesDeCaisse, $this->nombreSortiesDeCaisse, $this->pageSortiesDeCaisse, $this->detail, $this->kpis, $this->graphique);
+    unset($this->sortiesDeCaisse, $this->nombreSortiesDeCaisse, $this->pageSortiesDeCaisse, $this->toutesLesCharges, $this->nombreCharges, $this->montantCharges, $this->pageCharges, $this->origines, $this->kpis, $this->graphique);
 
     $this->dispatch('annonce', ton: 'succes',
         texte: $nombre.' sortie(s) de caisse reprise(s) en charges — colonne Origine « Caisse ».');
 };
 
-$detail = computed(fn () => FiltreLibre::appliquer(
-    (clone $this->requeteBase)->with('site'),
-    $this->colonnesFiltrables,
-    (array) $this->filtresLibres,
-)->latest('date')->latest('id')->get());
+/*
+ * **Le tableau de toutes les charges — 18/10.** « Le tableau du bas doit montrer toutes les charges,
+ * fournisseur ou autre, avec un filtre sur la provenance. » Les charges diverses, les pièces du suivi
+ * fournisseurs et les factures FNE pas encore au suivi, en une seule requête (`ChargesFournisseurs::
+ * toutes`) paginée en base : le suivi compte des milliers de pièces, les charger pour en montrer dix
+ * ne tiendrait pas.
+ *
+ * Les « autres filtres » visent les colonnes des charges ; ceux qui ont un sens pour une pièce
+ * fournisseur (libellé = nature, tiers, référence, montant) s'appliquent aussi au tableau entier.
+ */
+$toutesLesCharges = computed(function () {
+    $autres = FiltreLibre::appliquer((clone $this->requeteBase)->reorder(), $this->colonnesFiltrables, (array) $this->filtresLibres)->toBase();
+
+    $requete = $this->activiteFiltre
+        // Un filtre d'activité écarte les fournisseurs (sans activité), comme dans les totaux.
+        ? $this->chargesFournisseurs->toutes($autres, $this->provenanceFiltre, 'charges', $this->rechercheCharges)
+        : $this->chargesFournisseurs->toutes($autres, $this->provenanceFiltre, $this->typeFiltre, $this->rechercheCharges);
+
+    $communs = ['charges.libelle' => 'nature', 'charges.tiers' => 'tiers', 'charges.reference_origine' => 'reference', 'charges.montant' => 'montant'];
+    $retenus = [];
+    foreach ($communs as $colonne => $alias) {
+        $valeur = $this->filtresLibres[FiltreLibre::alias($colonne)] ?? null;
+        if (is_array($valeur)) {
+            $retenus[$alias] = $valeur;
+        }
+    }
+
+    return FiltreLibre::appliquer($requete, collect($communs)->mapWithKeys(fn ($alias, $colonne) => [$alias => $this->colonnesFiltrables[$colonne]])->all(), $retenus);
+});
+
+$nombreCharges = computed(fn () => (clone $this->toutesLesCharges)->count());
+
+$montantCharges = computed(fn () => montant_de((clone $this->toutesLesCharges)->sum('montant')));
+
+$pageCharges = computed(function () {
+    $lignes = (clone $this->toutesLesCharges)->orderByDesc('date')->orderByDesc('id')->forPage($this->pageDetail, 15)->get();
+
+    // Les noms des lieux, lus une fois pour la page.
+    $sites = \Modules\Noyau\Entreprises\Modeles\Site::query()->whereIn('id', $lignes->pluck('site_id')->filter()->unique())->pluck('nom', 'id');
+    $villes = \Modules\Noyau\Entreprises\Modeles\Ville::query()->whereIn('id', $lignes->pluck('ville_id')->filter()->unique())->pluck('nom', 'id');
+
+    return $lignes->each(function ($l) use ($sites, $villes) {
+        $l->lieu = $l->site_id ? ($sites[$l->site_id] ?? '—') : ($l->ville_id ? ($villes[$l->ville_id] ?? '—').' — atelier non précisé' : 'Toute l\'entreprise');
+    });
+});
 
 ?>
 
@@ -571,17 +640,18 @@ $detail = computed(fn () => FiltreLibre::appliquer(
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
             <x-kpi-card label="Charges venant de la caisse" :value="ae($o['caisse'])"
                 sub="{{ number_format($o['nCaisse'], 0, ',', ' ') }} sortie(s) du journal reprise(s)" couleur="#B45309" />
-            @php $f = $this->achatsFne; @endphp
-            <a href="{{ route('fournisseurs.fne') }}" style="all:unset; display:block; cursor:pointer;" title="Ouvrir Fournisseurs › Factures FNE">
-                <x-kpi-card label="Achats normalisés — factures fournisseurs FNE" :value="$f === null ? '—' : ae($f['ttc'])"
-                    sub="{{ $f === null ? 'Module FNE pas encore migré sur ce serveur' : ($f['nombre'] > 0
-                        ? number_format($f['nombre'], 0, ',', ' ').' pièce(s) relevée(s) au portail · '.number_format($f['portees'], 0, ',', ' ').' portée(s) au suivi — toute l\'entreprise, à côté des charges'
-                        : 'Aucune pièce relevée sur la période — le relevé attend les accès au portail') }}" />
+            {{-- Les fournisseurs sont des charges (18/10) : la FNE compte les pièces normalisées —
+                 portées ou rapprochées au suivi, et celles pas encore au suivi. --}}
+            <a href="{{ route('fournisseurs.fne') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir Fournisseurs › Factures FNE">
+                <x-kpi-card label="Venant de la FNE — achats normalisés" :value="ae($o['fne'])"
+                    sub="{{ $o['nFne'] > 0 ? number_format($o['nFne'], 0, ',', ' ').' facture(s) FNE pas encore au suivi, comptées une fois' : 'Toutes les factures FNE de la période sont au suivi' }} — voir les factures ›" couleur="#7C3AED" />
             </a>
             <x-kpi-card label="Charges non normalisées" :value="ae($o['nonNormalisees'])"
-                sub="Charges enregistrées sans facture FNE rattachée — aujourd'hui, toutes" couleur="#C8102E" />
+                sub="Charges et pièces fournisseurs sans facture FNE rattachée" couleur="#C8102E" />
+            <x-kpi-card label="Importées (fichiers)" :value="ae($o['importees'])"
+                sub="Charges et suivi fournisseurs venus d'un classeur" />
             <x-kpi-card label="Saisies dans l'application" :value="ae($o['saisies'])"
-                sub="{{ number_format($o['nSaisies'], 0, ',', ' ') }} décaissement(s){{ $o['importees'] > 0 ? ' · importées '.ae($o['importees']) : '' }}" />
+                sub="{{ number_format($o['nSaisies'], 0, ',', ' ') }} décaissement(s) et les pièces fournisseurs saisies à l'écran" />
             {{-- Cliquable — 14/10 : le détail par catégorie se déplie dessous. --}}
             <button type="button" wire:click="ouvrirLesCategories" title="Voir le détail par catégorie"
                 style="all:unset; display:block; cursor:pointer; border-radius:10px; {{ $categoriesOuvertes ? 'outline:2px solid #B45309;' : '' }}">
@@ -628,9 +698,9 @@ $detail = computed(fn () => FiltreLibre::appliquer(
         @endif
     </div>
 
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;">
-        @php $ventile = ! $activiteFiltre; @endphp
-        <x-kpi-card label="Total charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" sub="Hors transferts et décaissements DG"
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:16px;">
+        @php $ventile = ! $activiteFiltre; $fo = $this->fournisseurs; @endphp
+        <x-kpi-card label="Total charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" sub="Fournisseurs compris — hors transferts et décaissements DG"
             :mecanique="$ventile ? ae($this->kpis['totalVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['totalVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['totalVentile']['nonVentile'] ? ae($this->kpis['totalVentile']['nonVentile']) : null" />
@@ -642,6 +712,11 @@ $detail = computed(fn () => FiltreLibre::appliquer(
             :mecanique="$ventile ? ae($this->kpis['salairesVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['salairesVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['salairesVentile']['nonVentile'] ? ae($this->kpis['salairesVentile']['nonVentile']) : null" />
+        {{-- « Un bouton Charge fournisseur mène à la page Fournisseurs, qui les détaille » — 18/10. --}}
+        <a href="{{ route('fournisseurs') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir la page Fournisseurs">
+            <x-kpi-card label="Charges fournisseurs" :value="ae($this->kpis['fournisseurs'])" couleur="#7C3AED"
+                sub="{{ $activiteFiltre ? 'Sans activité : écartées par le filtre' : number_format($fo['nSuivi'], 0, ',', ' ').' pièce(s) au suivi'.($fo['nFne'] > 0 ? ' + '.number_format($fo['nFne'], 0, ',', ' ').' FNE pas encore au suivi' : '').' — détail ›' }}" />
+        </a>
         <x-kpi-card label="Résultat net — {{ $this->libellePerimetre }}" :value="ae($this->kpis['resultat'])" :couleur="$this->kpis['resultat'] >= 0 ? '#0E9F6E' : '#C8102E'" sub="CA facturé − charges"
             :mecanique="$ventile ? ae($this->kpis['resultatVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['resultatVentile']['sinistre']) : null"
@@ -659,12 +734,13 @@ $detail = computed(fn () => FiltreLibre::appliquer(
                 @if ($vueTableau === 'caisse')
                     Charges selon la caisse — sorties du journal ({{ number_format($this->sortiesAffichees->count(), 0, ',', ' ') }} · {{ ae(montant_de($this->sortiesAffichees->sum('montant'))) }})
                 @else
-                    Détail des opérations ({{ $this->detail->count() }})
+                    Toutes les charges ({{ number_format($this->nombreCharges, 0, ',', ' ') }} · {{ ae($this->montantCharges) }})
                 @endif
             </h3>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <button type="button" wire:click="voirLesCharges" class="bouton {{ $vueTableau === 'charges' ? '' : 'bouton-secondaire' }}" style="padding:7px 12px;">Charges enregistrées</button>
+                <button type="button" wire:click="voirLesCharges" class="bouton {{ $vueTableau === 'charges' ? '' : 'bouton-secondaire' }}" style="padding:7px 12px;">Toutes les charges</button>
                 <button type="button" wire:click="voirLaCaisse" class="bouton {{ $vueTableau === 'caisse' ? '' : 'bouton-secondaire' }}" style="padding:7px 12px;">Charges selon la caisse</button>
+                <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire" style="padding:7px 12px;">Charges fournisseurs ›</a>
             </div>
         </div>
 
@@ -706,46 +782,60 @@ $detail = computed(fn () => FiltreLibre::appliquer(
             </div>
             <x-pagination :page="$pageCaisse" :total="$this->sortiesAffichees->count()" prop="pageCaisse" :par-page="15" />
         @else
-        <div class="tableau-conteneur">
-            <table class="tableau">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Type d'opération</th>
-                        <th>Libellé d'opération</th>
-                        <th>Moyens</th>
-                        <th>Tiers</th>
-                        @if (count($this->idsSites) > 1)
-                            <th>Site</th>
-                        @endif
-                        <th>Montant</th>
-                        {{-- Demandée le 07/10 : d'où vient la ligne — saisie, import, ou reprise de la caisse. --}}
-                        <th>Origine</th>
-                        <th>Observations</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse ($this->detail->forPage($pageDetail, 10) as $ligne)
-                        <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                            <td>{{ $ligne->date->format('d/m/Y') }}</td>
-                            <td>{{ $ligne->type_operation }}</td>
-                            <td>{{ $ligne->libelle }}</td>
-                            <td>{{ $ligne->moyen }}</td>
-                            <td style="color:#6B6E76;">{{ $ligne->tiers ?? '—' }}</td>
-                            @if (count($this->idsSites) > 1)
-                                <td>{{ $ligne->site->nom }}</td>
-                            @endif
-                            <td style="font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($ligne->montant) }}</td>
-                            <td style="font-size:11.5px; color:{{ $ligne->origine() === 'Caisse' ? '#B45309' : '#6B6E76' }}; font-weight:{{ $ligne->origine() === 'Caisse' ? '700' : '400' }};">{{ $ligne->origine() }}</td>
-                            <td style="color:#6B6E76;">{{ $ligne->observations ?? '—' }}</td>
+            @php $provenances = \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::PROVENANCES; @endphp
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                <select wire:model.live="provenanceFiltre" class="champ" style="width:auto;" aria-label="Provenance">
+                    <option value="">Toutes les provenances</option>
+                    @foreach ($provenances as $cle => $libelle)
+                        <option value="{{ $cle }}">{{ $libelle }}</option>
+                    @endforeach
+                </select>
+                <select wire:model.live="typeFiltre" class="champ" style="width:auto;" aria-label="Genre">
+                    <option value="">Charges diverses et fournisseurs</option>
+                    @foreach (\Modules\Noyau\Exploitation\Services\ChargesFournisseurs::TYPES as $cle => $libelle)
+                        <option value="{{ $cle }}">{{ $libelle }} seulement</option>
+                    @endforeach
+                </select>
+                <input type="search" wire:model.live.debounce.400ms="rechercheCharges" class="champ" style="width:220px;" placeholder="Tiers, référence, libellé…" aria-label="Rechercher">
+            </div>
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Genre</th><th>Libellé / nature</th><th>Tiers</th><th>Référence</th><th>Lieu</th>
+                            <th style="text-align:right;">Montant</th>
+                            {{-- D'où vient la ligne : caisse, fichier, saisie, FNE (07/10, élargi le 18/10). --}}
+                            <th>Provenance</th><th></th>
                         </tr>
-                    @empty
-                        <x-table-vide :colspan="count($this->idsSites) > 1 ? 9 : 8" texte="Aucune charge enregistrée sur cette période." />
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-        <x-pagination :page="$pageDetail" :total="$this->detail->count()" prop="pageDetail" />
+                    </thead>
+                    <tbody>
+                        @forelse ($this->pageCharges as $ligne)
+                            <tr wire:key="charge-{{ $ligne->source }}-{{ $ligne->id }}" style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                <td style="white-space:nowrap;">{{ \Illuminate\Support\Carbon::parse($ligne->date)->format('d/m/Y') }}</td>
+                                <td>{{ $ligne->type_op }}</td>
+                                <td>{{ $ligne->nature }}@if ($ligne->observations)<div style="font-size:11.5px; color:#6B6E76;">{{ \Illuminate\Support\Str::limit($ligne->observations, 70) }}</div>@endif</td>
+                                <td style="color:#6B6E76;">{{ $ligne->tiers ?: '—' }}</td>
+                                <td style="font-size:12px;">{{ $ligne->reference ?: '—' }}</td>
+                                <td style="color:#6B6E76; font-size:12px;">{{ $ligne->lieu }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap;">{{ ae(montant_de($ligne->montant)) }}</td>
+                                <td style="font-size:11.5px; white-space:nowrap; color:{{ match ($ligne->provenance) { 'caisse' => '#B45309', 'fne' => '#7C3AED', default => '#6B6E76' } }}; font-weight:{{ in_array($ligne->provenance, ['caisse', 'fne'], true) ? '700' : '400' }};">
+                                    {{ $provenances[$ligne->provenance] ?? $ligne->provenance }}@if ($ligne->provenance !== 'fne' && (int) $ligne->normalisee === 1)<div style="color:#7C3AED;">facture FNE rattachée</div>@endif
+                                </td>
+                                <td style="white-space:nowrap;">
+                                    @if ($ligne->source === 'fournisseur')
+                                        <a href="{{ route('fournisseurs.piece', $ligne->id) }}" wire:navigate style="font-size:12px;">Voir</a>
+                                    @elseif ($ligne->source === 'fne')
+                                        <a href="{{ route('fournisseurs.fne.detail', $ligne->id) }}" wire:navigate style="font-size:12px;">Voir</a>
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="9" texte="Aucune charge sur cette période avec ces filtres." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <x-pagination :page="$pageDetail" :total="$this->nombreCharges" prop="pageDetail" :par-page="15" />
         @endif
     </div>
 </div>

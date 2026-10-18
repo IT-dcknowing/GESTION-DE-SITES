@@ -68,15 +68,24 @@ $kpi = computed(function () {
     ];
 });
 
-$lignes = computed(function () {
-    return $this->base()
-        ->when($this->filtre === 'a_porter', fn ($q) => $q->whereNull('facture_fournisseur_id'))
-        ->when($this->filtre === 'au_suivi', fn ($q) => $q->whereNotNull('facture_fournisseur_id'))
-        ->when($this->filtre === 'avoirs', fn ($q) => $q->where('est_avoir', true))
-        ->with('pieceDuSuivi:id,numero_piece,reste_a_payer')
-        ->orderByDesc('date_facture')->orderByDesc('id')
-        ->get();
-});
+/*
+ * Paginée en base, et sans la colonne `contenu` (18/10) : 2 728 factures relevées le 16/10, chacune
+ * avec sa pièce entière en JSON. Les lire toutes à chaque clic pour en montrer vingt-cinq coûtait
+ * plus que l'écran ne rapporte ; le détail se lit sur la page « Voir ».
+ */
+$filtrees = protect(fn () => $this->base()
+    ->when($this->filtre === 'a_porter', fn ($q) => $q->whereNull('facture_fournisseur_id'))
+    ->when($this->filtre === 'au_suivi', fn ($q) => $q->whereNotNull('facture_fournisseur_id'))
+    ->when($this->filtre === 'avoirs', fn ($q) => $q->where('est_avoir', true)));
+
+$nombreLignes = computed(fn () => $this->filtrees()->count());
+
+$lignes = computed(fn () => $this->filtrees()
+    ->select(['id', 'reference', 'est_avoir', 'date_facture', 'emetteur_nom', 'emetteur_ncc', 'montant_ht', 'montant_tva', 'montant_ttc', 'facture_fournisseur_id'])
+    ->with('pieceDuSuivi:id,numero_piece,reste_a_payer')
+    ->orderByDesc('date_facture')->orderByDesc('id')
+    ->forPage($this->page, 25)
+    ->get());
 
 $suiviSansFne = computed(fn () => $this->filtre !== 'suivi_sans_fne' ? collect()
     : AchatsFne::suiviSansFne((int) auth()->user()->entreprise_id, (int) $this->exercice)
@@ -106,7 +115,7 @@ $deposer = function () {
     }
 
     $this->fichier = null;
-    unset($this->kpi, $this->lignes, $this->releves, $this->exercices);
+    unset($this->kpi, $this->lignes, $this->nombreLignes, $this->releves, $this->exercices);
 };
 
 /**
@@ -124,7 +133,9 @@ $actualiser = function () {
     $this->messageActualisation = null;
 
     if (! LanceurDeReleveFne::actif()) {
-        $this->messageActualisation = "Le relevé automatique n'est pas activé sur ce serveur (FNE_SCRAPER_ACTIF). Déposez le fichier du scraper à la main ci-dessous.";
+        $this->messageActualisation = "Le relevé n'est pas encore réglé sur ce serveur : il manque le fichier SCRAPER-PORTAIL-FNE/.env "
+            ."(adresse du portail, NCC, mot de passe) — voir SCRAPER-PORTAIL-FNE/GUIDE-COMPLET.md. En attendant, un fichier de relevé "
+            ."peut se déposer à la main en bas de page.";
 
         return;
     }
@@ -171,7 +182,7 @@ $verifier = function () {
         $this->bilan = $bilan;
         $this->attenteDepuis = null;
         LanceurDeReleveFne::deverrouiller();
-        unset($this->kpi, $this->lignes, $this->releves, $this->exercices);
+        unset($this->kpi, $this->lignes, $this->nombreLignes, $this->releves, $this->exercices);
 
         return;
     }
@@ -189,24 +200,21 @@ $rapprocher = function () {
     }
 
     $n = AchatsFne::rapprocher((int) auth()->user()->entreprise_id);
-    unset($this->kpi, $this->lignes);
+    unset($this->kpi, $this->lignes, $this->nombreLignes);
     $this->dispatch('annonce', texte: $n === 0 ? 'Aucune nouvelle correspondance au suivi.' : "{$n} facture(s) rapprochée(s) du suivi.", ton: 'succes');
 };
 
+/**
+ * « Porter » — 18/10 : « porter ne veut pas dire réglé ; il doit faire apparaître les informations
+ * dans le formulaire du suivi des fournisseurs, sur la page des fournisseurs ». On y va, formulaire
+ * ouvert et rempli de la facture ; c'est l'enregistrement là-bas qui crée la ligne et la relie.
+ */
 $porter = function (int $id) {
     if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
         abort(403);
     }
 
-    $facture = FactureFne::query()->find($id);
-
-    if ($facture === null || $facture->facture_fournisseur_id !== null) {
-        return;
-    }
-
-    $piece = AchatsFne::porter($facture, auth()->user());
-    unset($this->kpi, $this->lignes);
-    $this->dispatch('annonce', texte: 'Portée au suivi : '.$piece->numero_piece.'.', ton: 'succes');
+    $this->redirectRoute('fournisseurs', ['porter' => $id], navigate: true);
 };
 
 ?>
@@ -251,9 +259,27 @@ $porter = function (int $id) {
             sub="Non normalisées, ou pas encore relevées" :couleur="$this->kpi['suivi_sans_fne'] > 0 ? '#D97706' : '#6B6E76'" />
     </div>
 
+    <div class="carte" style="margin-bottom:16px; border-left:3px solid {{ \Modules\Noyau\Imports\Services\LanceurDeReleveFne::actif() ? '#0E9F6E' : '#D97706' }};">
+        <p style="margin:0; font-size:13px;">
+            @if (\Modules\Noyau\Imports\Services\LanceurDeReleveFne::actif())
+                <b>Relevé automatique en service</b> : le système va chercher les nouvelles factures sur le portail toutes les heures
+                de {{ config('fne.heure_debut') }} à {{ config('fne.heure_fin') }} (lundi → samedi), et tout l'historique à {{ config('fne.heure_complet') }}.
+                « Actualiser depuis la FNE » le fait tout de suite, en arrière-plan.
+            @else
+                <b>Relevé pas encore réglé sur ce serveur</b> : il manque <code>SCRAPER-PORTAIL-FNE/.env</code> (voir le guide). Les factures déjà relevées restent ici.
+            @endif
+            @if ($this->releves->isNotEmpty())
+                <span style="color:#6B6E76;">Dernier relevé : {{ $this->releves->first()->created_at?->format('d/m/Y H:i') }} ({{ $this->releves->first()->factures }} factures).</span>
+            @endif
+        </p>
+    </div>
+
     @if ($this->peutEcrire)
-        <div class="carte" style="margin-bottom:16px;">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 6px;">Déposer un relevé</h3>
+        {{-- Le dépôt d'un fichier n'est plus le chemin : le relevé se fait seul (18/10). Gardé replié,
+             en secours — un relevé fait sur un PC quand le serveur ne peut pas lancer le navigateur. --}}
+        <details class="carte" style="margin-bottom:16px;">
+            <summary style="cursor:pointer; font-size:13px; font-weight:700; color:#6B6E76;">Secours : déposer à la main un fichier de relevé</summary>
+            <h3 style="font-size:15px; font-weight:700; margin:10px 0 6px;">Déposer un relevé</h3>
             <p style="margin:0 0 10px; font-size:12.5px; color:#6B6E76;">
                 Le fichier JSON qu'écrit le scraper (<code>node achats.js</code>). Un relevé déjà lu n'entre pas deux fois ;
                 une facture déjà connue est mise à jour sans perdre son lien au suivi.
@@ -273,11 +299,6 @@ $porter = function (int $id) {
                     @endif
                 </p>
             @endif
-            <p style="margin:10px 0 0; font-size:12px; color:#6B6E76;">
-                Relevé automatique : toutes les heures de {{ config('fne.heure_debut') }} à {{ config('fne.heure_fin') }}, du lundi au samedi,
-                et l'historique entier à {{ config('fne.heure_complet') }}.
-                {{ \Modules\Noyau\Imports\Services\LanceurDeReleveFne::actif() ? '' : 'Il n\'est pas encore activé sur ce serveur.' }}
-            </p>
             @if ($this->releves->isNotEmpty())
                 <p style="margin:10px 0 0; font-size:12px; color:#9A9DA5;">
                     Derniers relevés :
@@ -286,7 +307,7 @@ $porter = function (int $id) {
                     @endforeach
                 </p>
             @endif
-        </div>
+        </details>
     @endif
 
     <div class="carte">
@@ -325,10 +346,10 @@ $porter = function (int $id) {
                 <table class="tableau">
                     <thead>
                         <tr><th>N° FNE</th><th>Date</th><th>Émetteur</th><th style="text-align:right;">HT</th>
-                            <th style="text-align:right;">TVA</th><th style="text-align:right;">TTC</th><th>Au suivi</th></tr>
+                            <th style="text-align:right;">TVA</th><th style="text-align:right;">TTC</th><th>Au suivi</th><th></th></tr>
                     </thead>
                     <tbody>
-                        @forelse ($this->lignes->forPage($page, 25) as $f)
+                        @forelse ($this->lignes as $f)
                             <tr wire:key="fne-{{ $f->id }}">
                                 <td>{{ $f->reference }} @if ($f->est_avoir)<span style="color:#C8102E; font-weight:700;">avoir</span>@endif</td>
                                 <td>{{ $f->date_facture?->format('d/m/Y') ?? '—' }}</td>
@@ -341,19 +362,21 @@ $porter = function (int $id) {
                                         <a href="{{ route('fournisseurs.piece', $f->pieceDuSuivi->id) }}" wire:navigate>{{ $f->pieceDuSuivi->numero_piece }}</a>
                                         <div style="font-size:11px; color:#6B6E76;">reste {{ ae(montant_de($f->pieceDuSuivi->reste_a_payer)) }}</div>
                                     @elseif ($this->peutEcrire)
-                                        <button type="button" wire:click="porter({{ $f->id }})" class="bouton">Porter au suivi</button>
+                                        <a href="{{ route('fournisseurs', ['porter' => $f->id]) }}" wire:navigate class="bouton">Porter au suivi</a>
                                     @else
                                         <span style="color:#C8102E;">absente du suivi</span>
                                     @endif
                                 </td>
+                                {{-- Le détail de la pièce, ligne à ligne : de quoi passer l'écriture comptable (18/10). --}}
+                                <td><a href="{{ route('fournisseurs.fne.detail', $f->id) }}" wire:navigate class="bouton bouton-secondaire" style="padding:5px 10px;">Voir</a></td>
                             </tr>
                         @empty
-                            <x-table-vide :colspan="7" texte="Aucune facture FNE pour cet exercice." />
+                            <x-table-vide :colspan="8" texte="Aucune facture FNE pour cet exercice." />
                         @endforelse
                     </tbody>
                 </table>
             </div>
-            <x-pagination :page="$page" :total="$this->lignes->count()" prop="page" :par-page="25" />
+            <x-pagination :page="$page" :total="$this->nombreLignes" prop="page" :par-page="25" />
         @endif
     </div>
 </div>

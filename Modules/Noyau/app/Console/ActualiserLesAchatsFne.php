@@ -24,7 +24,7 @@ class ActualiserLesAchatsFne extends Command
     public function handle(): int
     {
         if (! LanceurDeReleveFne::actif()) {
-            $this->warn('Le relevé automatique est éteint (FNE_SCRAPER_ACTIF=false) : rien lancé.');
+            $this->warn('Le relevé automatique est éteint (pas de SCRAPER-PORTAIL-FNE/.env, ou FNE_SCRAPER_ACTIF=false) : rien lancé.');
 
             return self::SUCCESS;
         }

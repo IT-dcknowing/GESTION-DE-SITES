@@ -185,23 +185,26 @@ Elle doit dire : `2197588Q_….json : N factures (N nouvelles, dont A avoirs), R
   ```
 
 **Où les voir ensuite :**
-- **Fournisseurs › Factures FNE** : toutes les pièces, par exercice, avec « Porter au suivi ».
-- **Charges** : la carte « Achats normalisés — factures fournisseurs FNE » montre la **période
-  choisie en haut de la page** (par défaut, l'année en cours). Les pièces de 2023–2025 n'y paraissent
-  qu'en choisissant ces années.
-- Les factures FNE **ne s'ajoutent pas** au total des charges : une facture d'achat n'est une charge
-  que lorsqu'on la règle ou qu'on la saisit. Elles sont **à côté**, pour comparer.
+- **Fournisseurs › Factures FNE** : toutes les pièces, par exercice ; **Voir** ouvre le détail
+  d'une facture (en-tête, lignes, taxes) ; **Porter** ouvre le formulaire du suivi fournisseurs
+  prérempli.
+- **Charges** (depuis le 18/10) : les fournisseurs **sont des charges**. Une pièce du suivi compte
+  une fois ; une facture FNE compte tant qu'elle n'est pas au suivi, puis par sa ligne du suivi.
+  La carte « Venant de la FNE » et le tableau du bas (filtre « Provenance ») suivent la **période
+  choisie en haut de la page** (par défaut, l'année en cours).
 
 ---
 
 ## 6. Rendre le relevé automatique
 
-**Dans le `.env` de l'application** (`<SITE>/.env`), ajouter :
+**Depuis le 18/10, rien à écrire dans le `.env` de l'application** : le relevé automatique
+s'allume dès que `SCRAPER-PORTAIL-FNE/.env` existe, et `node` est cherché tout seul dans
+`/opt/alt/alt-nodejs*/root/usr/bin/node`. Pour forcer l'un ou l'autre, ces lignes restent possibles :
 ```
-FNE_SCRAPER_ACTIF=true
+FNE_SCRAPER_ACTIF=true      # false pour l'éteindre (ex. gestion-dev, § 7 étape 9)
 FNE_NODE=/opt/alt/alt-nodejs24/root/usr/bin/node
 ```
-Puis :
+Après le `git pull` (et après toute modification du `.env`) :
 ```bash
 cd <SITE>
 php artisan app:deployer
@@ -239,7 +242,7 @@ Réglages facultatifs du `.env` de l'application : `FNE_HEURE_DEBUT=07:00`, `FNE
 5. **Essai** (§ 4, étape 6) depuis le dossier de production.
 6. **NCC** : vérifier dans **Paramètres** (gérant) que la fiche de l'entreprise porte `2197588Q`.
 7. **Ranger** : `php artisan fne:releve-achats` (§ 5), puis regarder **Fournisseurs › Factures FNE**.
-8. **Automatique** (§ 6) : les deux lignes dans le `.env` de production, `php artisan app:deployer`.
+8. **Automatique** (§ 6) : rien à écrire, le `.env` du scraper suffit ; `php artisan app:deployer`.
 9. **Désactiver le relevé automatique sur `gestion-dev`** (`FNE_SCRAPER_ACTIF=false` dans son `.env`,
    puis `app:deployer`) : deux sites qui se connectent chaque heure avec le même mot de passe,
    c'est deux fois plus de connexions sur le portail de l'État pour rien.
@@ -250,7 +253,10 @@ Réglages facultatifs du `.env` de l'application : `FNE_HEURE_DEBUT=07:00`, `FNE
 
 1. **Fournisseurs › Factures FNE** : les pièces arrivées. « Rapprochée » = déjà retrouvée dans le
    suivi fournisseurs (même fournisseur, même n° de pièce, sinon même date et même montant).
-2. Une pièce **« à porter »** : **Porter au suivi** → elle devient une dette au suivi fournisseurs.
+2. Une pièce **« à porter »** : **Porter** → le formulaire du suivi fournisseurs s'ouvre
+   **prérempli** ; on complète (atelier, ville, échéance…) et on enregistre. Porter n'est pas régler :
+   la pièce devient une dette, reste à payer = TTC. Une ligne importée qui porte le n° FNE (n° de
+   pièce, observations…) est rapprochée toute seule.
 3. À l'échéance : sur la page de la pièce, **Régler** → le règlement est lettré à la facture.
 4. Les KPI de l'écran disent les différences : FNE absentes du suivi, suivi sans FNE.
 

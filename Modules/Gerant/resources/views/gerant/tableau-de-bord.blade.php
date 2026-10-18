@@ -257,6 +257,11 @@ $kpis = computed(function () {
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))
         ->sum('montant'));
     $charges = VentilationActivite::repartir($chargesQ);
+    // Les fournisseurs (18/10) sont dans les charges de la synthèse, sans activité : à « Autres »,
+    // pour que mécanique + sinistre + autres refassent le total affiché.
+    $charges['nonVentile'] = montant_de(($charges['nonVentile'] ?? 0) + \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::totalPour(
+        (int) auth()->user()->entreprise_id, $idsSites->all(), $debut, $fin, $this->activiteFiltre ?: null,
+    ));
     $sorties = VentilationActivite::repartir($sortiesQ);
     $encaisse = VentilationActivite::repartir($encaisseQ, 'montant', Encaissement::ACTIVITE_SQL);
 

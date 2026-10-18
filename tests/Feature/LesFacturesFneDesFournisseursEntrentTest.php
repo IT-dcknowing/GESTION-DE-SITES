@@ -161,8 +161,9 @@ class LesFacturesFneDesFournisseursEntrentTest extends TestCase
     public function test_la_page_montre_les_differences_dans_les_deux_sens(): void
     {
         $this->ligne('Autre fournisseur', 'X-1', '2026-02-01', 5000);
+        $gerant = $this->compte('gerant');
 
-        Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs-fne')
+        Volt::actingAs($gerant)->test('pilotage.fournisseurs-fne')
             ->set('fichier', UploadedFile::fake()->createWithContent('achats.json', $this->releve()))
             ->call('deposer')
             ->assertHasNoErrors()
@@ -170,9 +171,28 @@ class LesFacturesFneDesFournisseursEntrentTest extends TestCase
             ->assertSet('kpi.n', 2)
             ->assertSet('kpi.avoirs', 1)
             ->assertSet('kpi.a_porter', 2)
-            ->assertSet('kpi.suivi_sans_fne', 1)
-            ->call('porter', FactureFne::withoutGlobalScopes()->where('reference', '2626A0000002')->value('id'))
-            ->assertSet('kpi.a_porter', 1);
+            ->assertSet('kpi.suivi_sans_fne', 1);
+
+        // « Porter » (18/10) : on va au formulaire du suivi, rempli de la facture ; rien n'est écrit ici.
+        $id = FactureFne::withoutGlobalScopes()->where('reference', '2626A0000002')->value('id');
+        Volt::actingAs($gerant)->test('pilotage.fournisseurs-fne')
+            ->call('porter', $id)
+            ->assertRedirect(route('fournisseurs', ['porter' => $id]));
+        $this->assertNull(FactureFne::withoutGlobalScopes()->find($id)->facture_fournisseur_id);
+
+        // Le formulaire prérempli s'enregistre : la ligne entre au suivi, liée, sans être réglée.
+        \Livewire\Livewire::withQueryParams(['porter' => $id])->actingAs($gerant)->test('pilotage.fournisseurs')
+            ->assertSet('porterFne', $id)
+            ->assertSet('numeroPiece', '2626A0000002')
+            ->assertSet('formulaireOuvert', true)
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        $fne = FactureFne::withoutGlobalScopes()->find($id);
+        $this->assertNotNull($fne->facture_fournisseur_id);
+        $piece = $fne->pieceDuSuivi;
+        $this->assertSame('fne', $piece->source_rattachement);
+        $this->assertSame(montant_de($fne->montant_ttc), $piece->reste_a_payer, 'Porter ne règle rien.');
     }
 
     public function test_le_reglement_se_saisit_depuis_la_piece(): void
@@ -217,7 +237,7 @@ class LesFacturesFneDesFournisseursEntrentTest extends TestCase
         Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs-fne')
             ->call('actualiser')
             ->assertSet('attenteDepuis', null)
-            ->assertSee('pas activé');
+            ->assertSee('pas encore réglé');
     }
 
     public function test_actualiser_refuse_proprement_quand_node_est_introuvable(): void

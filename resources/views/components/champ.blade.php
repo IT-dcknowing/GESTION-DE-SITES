@@ -54,6 +54,9 @@
                  portait un caractère invisible (12/10). Voir `x-nettoyer-courriels`. --}}
             <input type="{{ $type === 'email' ? 'text' : $type }}" {{ $wire }}="{{ $model }}" placeholder="{{ $placeholder }}" class="champ"
                 @if ($type === 'email') inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" @endif
+                {{-- Un nombre accepte ses décimales (18/10, piège 17) : sans `step="any"`, le navigateur
+                     refusait 82 096,62 ou un avoir FNE porté au suivi. --}}
+                @if ($type === 'number') step="any" @endif
                 @if ($liste) list="{{ $liste }}" @endif @if ($disabled) disabled @endif>
         @endif
         @if ($aide)

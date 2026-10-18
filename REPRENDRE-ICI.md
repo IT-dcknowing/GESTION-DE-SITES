@@ -50,10 +50,33 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 14 octobre 2026
+## 3. Où l'on en est — 18 octobre 2026
 
 **Branche du 14/10 :** `claude/arrondis-doublons-charges-k1upa9`, poussée puis fusionnée dans
 `main`. Deux migrations additives (tables neuves) : `git pull` puis `php artisan app:deployer`.
+
+### Fait le 16-18/10 — le relevé FNE en ligne, les fournisseurs dans les charges
+
+- **Le relevé FNE tourne sur gestion-dev** (2 728 pièces, 2 570 en 2026) : Chromium démarre avec les
+  bibliothèques déjà posées pour Selflow (`FNE_LIBS=~/local-libs/usr/lib64`). Guide de bout en bout :
+  `SCRAPER-PORTAIL-FNE/GUIDE-COMPLET.md`.
+- **Relevé automatique allumé d'office** dès que `SCRAPER-PORTAIL-FNE/.env` existe (`config/fne.php`) ;
+  `node` cherché dans `/opt/alt/alt-nodejs*/` si `FNE_NODE` est vide. Le bouton Actualiser lance le
+  relevé en arrière-plan et les factures se déversent seules ; le dépôt à la main n'est plus qu'un
+  secours replié.
+- **Bouton Voir** sur chaque facture FNE (`/fournisseurs/fne/{id}`) : en-tête, **lignes de la facture**
+  (désignation, quantité, prix, remise, taxes), toutes les données de la pièce — pour passer les
+  écritures.
+- **Porter ≠ régler** : Porter ouvre le formulaire du suivi fournisseurs **prérempli** (`?porter=id`) ;
+  on complète et on enregistre, la pièce est liée (`source_rattachement = 'fne'`).
+- **Rapprochement par le n° FNE** écrit dans une ligne importée (n° de pièce, observations…),
+  avant celui par date et montant (`AchatsFne::rapprocherParLeNumeroFne`).
+- **Les fournisseurs sont des charges** (`ChargesFournisseurs`) : page Charges = tableau de bord de
+  toutes les charges (carte « Charges fournisseurs » → page Fournisseurs, origines FNE / importées /
+  saisies, série Fournisseurs au graphique) ; **tableau unique** de toutes les charges, filtre de
+  provenance (FNE, importée, saisie, caisse), genre, recherche, paginé en base. Totaux repris au CA,
+  à l'accueil du gérant et à la synthèse par atelier. Une pièce du suivi compte une fois ; une
+  facture FNE seulement tant qu'elle n'est pas au suivi.
 
 ### Fait le 15/10 — doublons revus, objectifs par accès, rattrapage
 
@@ -332,6 +355,10 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 
 ### Côté code, prêt à prendre
 
+- **Comptabilité › tableau de bord** et **Trésorerie** ne comptent pas encore les fournisseurs :
+  ce sont des décaissements, et une facture fournisseur n'est décaissée qu'au règlement — à
+  décider avec le propriétaire avant d'y toucher.
+
 - ~~Tableau de bord du gérant : six agrégats par atelier~~ — **fait le 07/10** (§ 3). Reste
   à **remesurer sur la base locale** : les 48 → 23 viennent de la base de test, le « 30 » du
   02/10 de la base locale, et les deux ne se comparent pas.
@@ -348,7 +375,15 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 
 ---
 
-## 5. Les deux questions ouvertes, et ce qu'on sait déjà
+## 5. Les questions ouvertes, et ce qu'on sait déjà
+
+### 0. Une facture fournisseur payée en espèces et reprise de la caisse — 18/10
+
+Depuis que les fournisseurs entrent dans les charges, une pièce du suivi **et** la sortie de caisse
+qui la paie, reprise en charge, compteraient deux fois. Rien ne relie aujourd'hui une sortie de
+caisse à la pièce qu'elle règle ; le tableau de toutes les charges les montre côte à côte (filtre
+« Reprise de la caisse »). À trancher : reprendre en charge seulement ce qui n'est pas fournisseur,
+ou relier la sortie à la pièce.
 
 ### 1. L'écart de 652 917 F sur `/caisse` en ligne — non expliqué
 

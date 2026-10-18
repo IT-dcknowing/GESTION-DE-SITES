@@ -147,6 +147,9 @@ final class AchatsFne
         $prises = FactureFne::withoutGlobalScopes()->where('entreprise_id', $entrepriseId)
             ->whereNotNull('facture_fournisseur_id')->pluck('facture_fournisseur_id')->flip();
 
+        $faites = self::rapprocherParLeNumeroFne($entrepriseId, $seules, $prises);
+        $seules = $seules->whereNull('facture_fournisseur_id');
+
         // Les lignes du suivi des mêmes fournisseurs, lues une fois, en colonnes légères.
         $noms = $seules->map(fn ($f) => FormeComparable::nom($f->emetteur_nom))->filter()->unique();
         $lignes = FactureFournisseur::withoutGlobalScopes()->where('entreprise_id', $entrepriseId)
@@ -154,8 +157,6 @@ final class AchatsFne
             ->reject(fn ($l) => isset($prises[$l->id]))
             ->filter(fn ($l) => $noms->contains(FormeComparable::nom($l->fournisseur)))
             ->groupBy(fn ($l) => FormeComparable::nom($l->fournisseur));
-
-        $faites = 0;
 
         foreach ($seules as $facture) {
             $candidates = ($lignes[FormeComparable::nom($facture->emetteur_nom)] ?? collect())
@@ -178,6 +179,85 @@ final class AchatsFne
         }
 
         return $faites;
+    }
+
+    /** Les colonnes du suivi où l'on a vu, ou pourrait voir, le n° FNE recopié à la main. */
+    private const COLONNES_OU_CHERCHER_LE_NUMERO_FNE = [
+        'numero_piece', 'numero_facture_achat', 'code_piece', 'numero_bc', 'numero_feb', 'numero_facture_vente',
+        'numero_facture_client', 'observations', 'observations_facturation', 'commentaires', 'imputation', 'actions_a_mener',
+    ];
+
+    /**
+     * **La correspondance par le n° FNE écrit dans le classeur — 18/10.** « Le système doit faire
+     * une correspondance entre les importés et ceux venant de la FNE, car les numéros de la FNE se
+     * trouvent sur certains importés. » La première règle exigeait le **même fournisseur** (au nom
+     * réduit) : or le portail donne la raison sociale (« SOCIETE IVOIRIENNE DE PIECES SARL ») là où
+     * le classeur écrit « SIPA » — aucun rapprochement ne se faisait (0 sur 2 570 le 16/10).
+     *
+     * Le n° FNE, lui, est unique sur toute la plateforme : le retrouver, entier, dans une case d'une
+     * ligne du suivi suffit, quel que soit le nom du fournisseur. On le cherche mot à mot (lettres et
+     * chiffres, au moins 8 caractères) dans les colonnes de numéros et de remarques. **Une seule
+     * ligne doit le porter** : deux lignes qui citent le même n°, c'est une question, pas une réponse.
+     *
+     * @param  \Illuminate\Support\Collection<int, FactureFne>  $seules
+     * @param  \Illuminate\Support\Collection<int|string, mixed>  $prises  modifiée au passage
+     */
+    private static function rapprocherParLeNumeroFne(int $entrepriseId, $seules, &$prises): int
+    {
+        $parNumero = $seules->keyBy(fn (FactureFne $f) => self::motDuNumero($f->reference))->forget('');
+
+        if ($parNumero->isEmpty()) {
+            return 0;
+        }
+
+        $porteurs = [];
+
+        FactureFournisseur::withoutGlobalScopes()->where('entreprise_id', $entrepriseId)
+            ->select(['id', ...self::COLONNES_OU_CHERCHER_LE_NUMERO_FNE])
+            ->chunkById(1000, function ($lignes) use (&$porteurs, $parNumero, $prises) {
+                foreach ($lignes as $ligne) {
+                    if (isset($prises[$ligne->id])) {
+                        continue;
+                    }
+
+                    $texte = implode(' ', array_map(fn ($c) => (string) $ligne->{$c}, self::COLONNES_OU_CHERCHER_LE_NUMERO_FNE));
+                    $mots = preg_split('/[^A-Z0-9]+/', mb_strtoupper($texte), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                    $mots[] = self::motDuNumero($texte);
+
+                    foreach (array_unique($mots) as $mot) {
+                        if (strlen($mot) >= 8 && $parNumero->has($mot)) {
+                            $porteurs[$mot][$ligne->id] = true;
+                        }
+                    }
+                }
+            });
+
+        $faites = 0;
+
+        foreach ($porteurs as $mot => $lignes) {
+            if (count($lignes) !== 1) {
+                continue;
+            }
+
+            $ligneId = (int) array_key_first($lignes);
+            $facture = $parNumero[$mot];
+
+            if (isset($prises[$ligneId]) || $facture->facture_fournisseur_id !== null) {
+                continue;
+            }
+
+            $facture->forceFill(['facture_fournisseur_id' => $ligneId])->save();
+            $prises[$ligneId] = true;
+            $faites++;
+        }
+
+        return $faites;
+    }
+
+    /** Un n° réduit à ses lettres et chiffres, en majuscules : « 2626-A 000 002 » → « 2626A000002 ». */
+    private static function motDuNumero(?string $numero): string
+    {
+        return (string) preg_replace('/[^A-Z0-9]/', '', mb_strtoupper((string) $numero));
     }
 
     /**

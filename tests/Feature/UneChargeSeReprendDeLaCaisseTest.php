@@ -73,7 +73,7 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
         $ecran->set('repriseChoix', [(string) $sortie->id])->call('reprendreDeLaCaisse');
         $this->assertSame(1, Charge::withoutGlobalScopes()->count());
 
-        $ecran->assertSee('Origine');
+        $ecran->assertSee('Provenance')->assertSee('Reprise de la caisse');
     }
 
     public function test_une_sortie_sans_atelier_demande_ou_la_ranger(): void
@@ -139,7 +139,7 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
         $this->assertSame(0, $origines['fne']);
         $this->assertSame(45_000, $origines['nonNormalisees']);
         $this->assertSame(545_000, $ecran->instance()->selonLaCaisse['sorties']);
-        $ecran->assertSee('Achats normalisés — factures fournisseurs FNE');
+        $ecran->assertSee('Venant de la FNE — achats normalisés');
     }
 
     // ------------------------------------------------------------------ le décor

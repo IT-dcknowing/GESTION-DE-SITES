@@ -120,6 +120,9 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // Les achats relevés au portail FNE (12/10) : chaque pièce émise par un tiers, avoirs
     // compris, dans son exercice ; rapprochée du suivi dans les deux sens, ou portée au suivi.
     Volt::route('/fournisseurs/fne', 'pilotage.fournisseurs-fne')->name('fournisseurs.fne');
+    // Le détail d'une facture FNE — ses lignes, ses taxes, tout ce que le portail en dit : de quoi
+    // passer l'écriture comptable (18/10).
+    Volt::route('/fournisseurs/fne/{facture}', 'pilotage.fournisseur-fne-detail')->name('fournisseurs.fne.detail')->whereNumber('facture');
     /*
      * Les deux exports du logiciel comptable ont leur page, à côté du suivi tenu à la main.
      *

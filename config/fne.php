@@ -14,10 +14,25 @@
 | journal. On l'allume quand `node achats.js` a réussi une fois à la main.
 */
 return [
-    'actif' => filter_var(env('FNE_SCRAPER_ACTIF', false), FILTER_VALIDATE_BOOL),
+    /*
+     * **Allumé dès que le scraper est réglé — 18/10.** « Le système doit lancer directement le
+     * relevé, sans déposer de fichier, comme Selflow. » Sans `FNE_SCRAPER_ACTIF` dans le .env, le
+     * relevé s'allume de lui-même quand `SCRAPER-PORTAIL-FNE/.env` existe (adresse, NCC, mot de
+     * passe) : c'est la preuve qu'on l'a réglé. `FNE_SCRAPER_ACTIF=false` l'éteint toujours.
+     */
+    'actif' => filter_var(env('FNE_SCRAPER_ACTIF', is_file(base_path('SCRAPER-PORTAIL-FNE/.env'))), FILTER_VALIDATE_BOOL),
 
-    // Chemin absolu de préférence : le cron d'un hébergeur n'a pas le PATH d'un terminal.
-    'node' => env('FNE_NODE', 'node'),
+    /*
+     * Chemin absolu de préférence : le cron d'un hébergeur n'a pas le PATH d'un terminal. Sans
+     * `FNE_NODE`, on prend le Node le plus récent de l'hébergeur (`/opt/alt/alt-nodejsNN`, CloudLinux)
+     * — constat du 16/10 : le `node` du compte était un raccourci cPanel cassé.
+     */
+    'node' => env('FNE_NODE', (function () {
+        $trouves = glob('/opt/alt/alt-nodejs*/root/usr/bin/node') ?: [];
+        natsort($trouves);
+
+        return $trouves === [] ? 'node' : (string) end($trouves);
+    })()),
 
     'script' => env('FNE_SCRAPER_SCRIPT', base_path('SCRAPER-PORTAIL-FNE/achats.js')),
 

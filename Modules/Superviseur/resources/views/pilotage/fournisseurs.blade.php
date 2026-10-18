@@ -136,10 +136,46 @@ state([
    devant un tableau qu'on venait consulter. */
 state(['precisionsOuvertes' => false]);
 
+/*
+ * La facture FNE qu'on est en train de porter au suivi — 18/10 : « le bouton Porter doit faire
+ * apparaître les informations dans le formulaire du suivi, sur cette page ». Elle préremplit le
+ * formulaire ; c'est l'enregistrement qui crée la ligne et la relie à la FNE. Rien n'est réglé.
+ */
+state(['porterFne' => null]);
+// L'adresse `?porter=<id>` que donne le bouton « Porter au suivi » de la page des factures FNE.
+state(['porter' => null])->url(except: null);
+
 mount(function () {
     $this->exercice ??= EtatDesFournisseurs::exerciceOuvert(auth()->user()->entreprise_id);
     $this->dateFacture = $this->dateFacture ?: now()->format('Y-m-d');
     $this->villeSaisie = $this->villeSaisie ?: (string) (auth()->user()->ville_id ?? '');
+
+    $aPorter = (int) ($this->porter ?? 0);
+    $this->porter = null;
+
+    if ($aPorter > 0 && EtatDesFournisseurs::peutEcrire(auth()->user()) && \App\Support\SchemaDisponible::table('factures_fne')) {
+        $fne = \Modules\Noyau\Imports\Modeles\FactureFne::query()->whereNull('facture_fournisseur_id')->find($aPorter);
+
+        if ($fne !== null) {
+            $this->porterFne = $fne->id;
+            $this->formulaireOuvert = true;
+            $this->precisionsOuvertes = true;
+            $this->fournisseur = (string) mb_substr($fne->emetteur_nom ?: 'Fournisseur NCC '.$fne->emetteur_ncc, 0, 200);
+            $this->numeroPiece = (string) mb_substr((string) $fne->reference, 0, 60);
+            $this->naturePiece = $fne->est_avoir ? 'Avoir FNE' : 'Facture FNE';
+            $this->dateFacture = $fne->date_facture?->format('Y-m-d') ?? $this->dateFacture;
+            $this->montant = (string) montant_de($fne->montant_ttc);
+            $this->montantHt = (string) montant_de($fne->montant_ht);
+            $this->tva = (string) montant_de($fne->montant_tva);
+            $this->modeReglement = (string) ($fne->moyen_paiement ?? '');
+            $this->numeroFactureAchat = (string) mb_substr((string) $fne->reference, 0, 60);
+            $this->observations = 'Portée depuis la FNE (NCC '.($fne->emetteur_ncc ?: '—').').';
+
+            if ($fne->date_facture) {
+                $this->exercice = $fne->date_facture->year;
+            }
+        }
+    }
 });
 
 $updatedExercice = function () { $this->pageDetail = 1; };
@@ -331,8 +367,10 @@ $enregistrer = function () {
         'naturePiece' => ['nullable', 'string', 'max:60'],
         'dateFacture' => ['required', 'date'],
         'dateEcheance' => ['nullable', 'date', 'after_or_equal:dateFacture'],
-        'montant' => ['required', 'integer', 'min:1'],
-        'montantRegle' => ['nullable', 'integer', 'min:0'],
+        // Tels que donnés (piège 17) : des centimes, et un avoir en négatif — une facture FNE portée
+        // en a souvent. Seul zéro est refusé : une pièce de zéro ne doit rien.
+        'montant' => ['required', 'numeric', 'not_in:0'],
+        'montantRegle' => ['nullable', 'numeric'],
         'modeReglement' => ['nullable', 'string', 'max:200'],
         'imputation' => ['nullable', 'string', 'max:120'],
         'immatriculation' => ['nullable', 'string', 'max:40'],
@@ -355,12 +393,12 @@ $enregistrer = function () {
         'numeroFiche' => ['nullable', 'string', 'max:40'],
         'codePiece' => ['nullable', 'string', 'max:60'],
         'vehicule' => ['nullable', 'string', 'max:120'],
-        'montantHt' => ['nullable', 'integer'],
-        'tva' => ['nullable', 'integer'],
-        'tva2' => ['nullable', 'integer'],
-        'montantRefacture' => ['nullable', 'integer'],
-        'montantNetAchat' => ['nullable', 'integer'],
-        'montantNetVente' => ['nullable', 'integer'],
+        'montantHt' => ['nullable', 'numeric'],
+        'tva' => ['nullable', 'numeric'],
+        'tva2' => ['nullable', 'numeric'],
+        'montantRefacture' => ['nullable', 'numeric'],
+        'montantNetAchat' => ['nullable', 'numeric'],
+        'montantNetVente' => ['nullable', 'numeric'],
         'quantiteTotale' => ['nullable', 'numeric', 'min:0'],
         'quantiteRefacturee' => ['nullable', 'numeric', 'min:0'],
         'numeroFactureAchat' => ['nullable', 'string', 'max:60'],
@@ -378,11 +416,15 @@ $enregistrer = function () {
     $montant = montant_de($donnees['montant']);
     $regle = montant_de($donnees['montantRegle'] ?: 0);
 
-    if ($regle > $montant) {
+    if (abs($regle) > abs($montant) || ($regle != 0 && ($regle > 0) !== ($montant > 0))) {
         $this->addError('montantRegle', 'Le réglé ne peut pas dépasser le montant de la facture.');
 
         return;
     }
+
+    // La facture FNE portée : relue sous l'entreprise, et seulement si personne ne l'a portée entre-temps.
+    $fne = $this->porterFne === null ? null : \Modules\Noyau\Imports\Modeles\FactureFne::query()
+        ->whereNull('facture_fournisseur_id')->find((int) $this->porterFne);
 
     // La ville doit être une des siennes : celle qui arrive du formulaire ne prouve rien.
     $villeId = in_array((int) $donnees['villeSaisie'], $this->idsVilles, true)
@@ -443,7 +485,7 @@ $enregistrer = function () {
         'imputation' => $donnees['imputation'] ?: null,
         'immatriculation' => $donnees['immatriculation'] ?: null,
         'observations' => $donnees['observations'] ?: null,
-        'source_rattachement' => 'saisie',
+        'source_rattachement' => $fne !== null ? 'fne' : 'saisie',
         'site_id' => $siteId,
 
         /* Les précisions du classeur, telles quelles. Une chaîne vide devient null : une
@@ -478,7 +520,13 @@ $enregistrer = function () {
     ]);
 
     activity()->performedOn($piece)->causedBy(auth()->user())
-        ->log('Pièce fournisseur saisie à la main');
+        ->log($fne !== null ? 'Facture FNE portée au suivi' : 'Pièce fournisseur saisie à la main');
+
+    // Le lien qui fait que la facture ne compte qu'une fois : par la ligne du suivi.
+    if ($fne !== null) {
+        $fne->forceFill(['facture_fournisseur_id' => $piece->id])->save();
+        $this->porterFne = null;
+    }
 
     // Vidés par affectation : `reset()` les remettrait à null, et la pièce suivante se
     // verrait réclamer une date qu'on croirait avoir laissée.
@@ -608,7 +656,14 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
     @if ($this->peutEcrire)
         <div x-show="$wire.formulaireOuvert" @if (! $formulaireOuvert) style="display:none;" @endif>
             <div class="carte" style="margin-bottom:16px;">
-                <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Ajouter une facture fournisseur</h3>
+                <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">{{ $porterFne ? 'Porter au suivi une facture FNE' : 'Ajouter une facture fournisseur' }}</h3>
+                @if ($porterFne)
+                    <p style="margin:0 0 8px; padding:8px 10px; background:#EFF6FF; border-radius:8px; font-size:12.5px; color:#1E3A8A;">
+                        Les champs viennent de la facture FNE. Vérifiez-les, précisez la ville et l'atelier, puis enregistrez :
+                        la ligne entre au suivi comme une dette (rien n'est réglé) et reste liée à sa facture FNE.
+                        <a href="{{ route('fournisseurs.fne.detail', $porterFne) }}" wire:navigate>Voir la facture</a>
+                    </p>
+                @endif
                 <p style="margin:0 0 14px; font-size:12.5px; color:#6B6E76;">
                     Pour une facture reçue entre deux dépôts. Le n° de pièce est celui du fournisseur ;
                     laissé vide, un numéro est attribué. Le reste à payer se déduit du montant et du réglé.
