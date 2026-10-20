@@ -34,6 +34,8 @@ state([
     'pageSynthese' => 1,
     'pageAlertes' => 1,
     'pageCommentaires' => [],
+    // Le mois des objectifs (AAAA-MM) — 20/10 : « c'est par mois qu'on vérifie ».
+    'moisObjectifs' => '',
 ]);
 
 mount(function () {
@@ -236,10 +238,6 @@ $kpis = computed(function () {
     // sous « Non ventilé » plutôt que d'être réparti au jugé — les trois lignes refont
     // ainsi toujours le total exact. Les véhicules sans facture, eux, relèvent du lieu
     // entier et ne se ventilent pas du tout.
-    $chargesQ = Charge::whereIn('site_id', $idsSites)->where('type_operation', 'Charges')
-        ->whereBetween('date', [$debut, $fin])
-        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre));
-
     $sortiesQ = Charge::whereIn('site_id', $idsSites)->whereBetween('date', [$debut, $fin])
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre));
 
@@ -256,12 +254,9 @@ $kpis = computed(function () {
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))
         ->sum('montant'));
-    $charges = VentilationActivite::repartir($chargesQ);
-    // Les fournisseurs (18/10) sont dans les charges de la synthèse, sans activité : à « Autres »,
-    // pour que mécanique + sinistre + autres refassent le total affiché.
-    $charges['nonVentile'] = montant_de(($charges['nonVentile'] ?? 0) + \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::totalPour(
-        (int) auth()->user()->entreprise_id, $idsSites->all(), $debut, $fin, $this->activiteFiltre ?: null,
-    ));
+    // Les charges : sorties de caisse et charges saisies (`ChargesDeLaPeriode`, 20/10) — la caisse,
+    // sans activité, va à « Autres », pour que mécanique + sinistre + autres refassent le total.
+    $charges = \Modules\Noyau\Exploitation\Services\ChargesDeLaPeriode::pourLesSites($idsSites->all(), $debut, $fin, (string) $this->activiteFiltre)->totaux()['ventile'];
     $sorties = VentilationActivite::repartir($sortiesQ);
     $encaisse = VentilationActivite::repartir($encaisseQ, 'montant', Encaissement::ACTIVITE_SQL);
 
@@ -377,29 +372,31 @@ $alertes = computed(function () {
 });
 
 /**
- * L'objectif mensuel de l'entreprise sur la période regardée — 14/10.
+ * Les objectifs du mois, employé par employé — 20/10.
  *
- * Les tranches viennent de « Objectifs mensuels de l'entreprise » ; `ObjectifsDeLEntreprise` dit
- * lequel s'applique à chaque jour de la période et le ramène au prorata des jours. Le réalisé est le
- * CA de la carte du haut, sur le même périmètre : on compare ce qui se compare.
+ * « L'objectif n'est pas réellement pour l'entreprise mais pour les employés concernés, et c'est
+ * par mois qu'on vérifie. » La carte montrait le CA de toute l'entreprise face aux tranches,
+ * ramenées à la période. Elle montre maintenant, pour le mois choisi, chaque accès concerné
+ * (création d'accès ou rattrapage du Super admin), son objectif, ce qu'il a réalisé lui-même et
+ * les tranches atteintes — `AccesAuxObjectifs::suiviDesConcernes`.
  */
-$objectifDeLEntreprise = computed(function () {
-    [$debut, $fin] = $this->plage;
+$moisDesObjectifs = computed(fn () => preg_match('/^\d{4}-\d{2}$/', (string) $this->moisObjectifs)
+    ? \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $this->moisObjectifs.'-01')->startOfDay()
+    : now()->startOfMonth());
 
-    $objectif = (new \Modules\Noyau\Exploitation\Services\ObjectifsDeLEntreprise((int) auth()->user()->entreprise_id))->pourLaPeriode(
-        \Illuminate\Support\Carbon::parse($debut), \Illuminate\Support\Carbon::parse($fin),
-        $this->villeFiltre !== '' && $this->villeFiltre !== null ? (int) $this->villeFiltre : null,
-        $this->activiteFiltre ?: null,
-        PerimetreSites::idsVillesRetenus(auth()->user(), ''),
-    );
+$objectifsDuMois = computed(fn () => \Modules\Noyau\Exploitation\Services\AccesAuxObjectifs::suiviDesConcernes(
+    (int) auth()->user()->entreprise_id,
+    $this->moisDesObjectifs,
+    PerimetreSites::idsVillesRetenus(auth()->user(), $this->villeFiltre),
+));
 
-    $realise = $this->kpis['ca'];
+/** Les douze derniers mois, pour le choix du mois. */
+$moisPossibles = computed(fn () => collect(range(0, 11))
+    ->mapWithKeys(function ($i) {
+        $m = now()->startOfMonth()->subMonths($i);
 
-    return $objectif + [
-        'realise' => $realise,
-        'atteintes' => count(array_filter($objectif['tranches'], fn ($t) => $realise >= $t['montant'])),
-    ];
-});
+        return [$m->format('Y-m') => ucfirst($m->locale('fr')->translatedFormat('F Y'))];
+    })->all());
 
 /** Classement des commerciaux du groupe par taux de réalisation de leur objectif au prorata. */
 $topCommerciaux = computed(function () {
@@ -410,7 +407,8 @@ $topCommerciaux = computed(function () {
         ->with('ville')->get()
         ->map(function ($c) use ($debut, $fin) {
             $realisation = montant_de(Facture::where('commercial_id', $c->id)->whereBetween('date', [$debut, $fin])->sum('montant'));
-            $objectif = (int) round(PeriodeCalculateur::objectifProrata((float) $c->objectif_mensuel, $debut, $fin));
+            // Un montant : jamais arrondi (piège 17).
+            $objectif = montant_de(PeriodeCalculateur::objectifProrata((float) $c->objectif_mensuel, $debut, $fin));
 
             return [
                 'commercial' => $c,
@@ -460,7 +458,9 @@ $commentaires = computed(function () {
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
         :commerciaux="$this->commerciaux" :commercial-filtre="$commercialFiltre" />
 
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); gap:10px; margin-bottom:16px;">
+    {{-- 250 px au moins par carte — 20/10 : à 165 px, les montants à dix chiffres débordaient
+         (« 726 564 942,7696 F ») ; les cartes de trop passent à la ligne suivante. --}}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:10px; margin-bottom:16px;">
         {{-- Le détail par activité n'a plus de sens dès qu'on a filtré sur l'une d'elles :
              il répéterait le total. On le masque alors sur toutes les cartes à la fois. --}}
         @php $ventile = ! $activiteFiltre; @endphp
@@ -498,34 +498,69 @@ $commentaires = computed(function () {
             :accent="$this->kpis['sansFacture'] > 0" :bon="$this->kpis['sansFacture'] === 0" />
     </div>
 
-    {{-- ─────────────── l'objectif mensuel de l'entreprise — 14/10 --}}
-    @php $obj = $this->objectifDeLEntreprise; @endphp
+    {{-- ─────────────── les objectifs du mois, par employé concerné — 20/10 --}}
     <div class="carte" style="margin-bottom:16px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
-            <h3 style="font-size:15px; font-weight:700; margin:0;">Objectif de l'entreprise — {{ $this->libellePerimetre }}</h3>
-            <a href="{{ route('objectifs-mensuels') }}" class="bouton bouton-secondaire" style="padding:6px 12px;">Configurer les objectifs</a>
+            <h3 style="font-size:15px; font-weight:700; margin:0;">Objectifs du mois — employés concernés</h3>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <select wire:model.live="moisObjectifs" class="champ" style="width:auto;" aria-label="Mois">
+                    <option value="">{{ ucfirst(now()->locale('fr')->translatedFormat('F Y')) }} (en cours)</option>
+                    @foreach (array_slice($this->moisPossibles, 1, null, true) as $cle => $libelle)
+                        <option value="{{ $cle }}">{{ $libelle }}</option>
+                    @endforeach
+                </select>
+                <a href="{{ route('objectifs-mensuels') }}" class="bouton bouton-secondaire" style="padding:6px 12px;">Configurer les objectifs</a>
+            </div>
         </div>
-        @if ($obj['tranches'] === [])
-            <p style="margin:0; font-size:13px; color:#6B6E76;">Aucun objectif établi pour cette période et cette portée.</p>
+        @if ($this->objectifsDuMois->isEmpty())
+            <p style="margin:0; font-size:13px; color:#6B6E76;">
+                Aucun employé concerné par un objectif ce mois-ci. On le dit à la création de l'accès, ou au
+                rattrapage du Super admin pour les accès d'avant.
+            </p>
         @else
             <p style="margin:0 0 10px; font-size:12.5px; color:#6B6E76;">
-                Selon {{ $obj['objectifs']->map(fn ($o) => '« '.$o->libelle.' »')->implode(', ') }} — montants mensuels ramenés à la période.
-                Réalisé : <b>{{ ae($obj['realise']) }}</b> · {{ $obj['atteintes'] }} tranche(s) sur {{ count($obj['tranches']) }} atteinte(s).
+                Le réalisé est celui de l'employé lui-même : ses factures s'il est commercial, sinon le CA de
+                son atelier ou de sa ville — du 1er au dernier jour du mois (à aujourd'hui pour le mois en cours).
             </p>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
-                @foreach ($obj['tranches'] as $t)
-                    @php $taux = $t['montant'] > 0 ? $obj['realise'] / $t['montant'] : null; $atteinte = $obj['realise'] >= $t['montant']; @endphp
-                    <div style="border:1px solid var(--th-ligne,#E2E0D8); border-radius:10px; padding:10px 12px; {{ $atteinte ? 'background:#ECFDF5;' : '' }}">
-                        <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:#4B4E55;">{{ $t['libelle'] }}</div>
-                        <div style="font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;">{{ ae($t['montant']) }}</div>
-                        <div style="height:6px; background:#E5E7EB; border-radius:3px; margin:6px 0; overflow:hidden;">
-                            <div style="height:6px; width:{{ min(100, max(0, ($taux ?? 0) * 100)) }}%; background:{{ $atteinte ? '#0E9F6E' : '#D97706' }};"></div>
-                        </div>
-                        <div style="font-size:12px; color:{{ $atteinte ? '#0E9F6E' : '#6B6E76' }}; font-weight:600;">
-                            {{ an($taux) }} — {{ $atteinte ? 'atteinte ✔' : 'reste '.ae(montant_de($t['montant'] - $obj['realise'])) }}
-                        </div>
-                    </div>
-                @endforeach
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Employé</th><th>Objectif</th><th style="text-align:right;">Réalisé du mois</th>
+                            <th>Tranches</th><th>Avancement</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($this->objectifsDuMois as $l)
+                            @php
+                                $plafond = collect($l['tranches'])->max('montant') ?: 0;
+                                $suivante = collect($l['tranches'])->first(fn ($t) => $l['realise'] < $t['montant']);
+                                $taux = $plafond > 0 ? $l['realise'] / $plafond : null;
+                            @endphp
+                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8); vertical-align:top;">
+                                <td><b>{{ $l['acces']->name }}</b><div style="font-size:11.5px; color:#6B6E76;">{{ $l['portee'] }}</div></td>
+                                <td>{{ $l['objectif']->libelle }}@if ($l['objectif']->activite)<div style="font-size:11.5px; color:#6B6E76;">{{ $l['objectif']->activite }}</div>@endif</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap;">{{ ae($l['realise']) }}</td>
+                                <td style="font-size:12px;">
+                                    @foreach ($l['tranches'] as $t)
+                                        <div style="white-space:nowrap; color:{{ $l['realise'] >= $t['montant'] ? '#0E9F6E' : '#4B4E55' }};">
+                                            {{ $l['realise'] >= $t['montant'] ? '✔' : '○' }} {{ $t['libelle'] }} · {{ ae($t['montant']) }}
+                                        </div>
+                                    @endforeach
+                                </td>
+                                <td style="min-width:180px;">
+                                    <div style="height:6px; background:#E5E7EB; border-radius:3px; margin:4px 0; overflow:hidden;">
+                                        <div style="height:6px; width:{{ min(100, max(0, ($taux ?? 0) * 100)) }}%; background:{{ $suivante === null ? '#0E9F6E' : '#D97706' }};"></div>
+                                    </div>
+                                    <div style="font-size:12px; color:{{ $suivante === null ? '#0E9F6E' : '#6B6E76' }}; font-weight:600;">
+                                        {{ $l['atteintes'] }} / {{ count($l['tranches']) }} tranche(s)
+                                        @if ($suivante) — reste {{ ae(montant_de($suivante['montant'] - $l['realise'])) }} pour « {{ $suivante['libelle'] }} » @else — toutes atteintes ✔ @endif
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
         @endif
     </div>

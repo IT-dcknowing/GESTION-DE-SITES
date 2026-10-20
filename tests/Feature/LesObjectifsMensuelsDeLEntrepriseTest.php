@@ -116,18 +116,39 @@ class LesObjectifsMensuelsDeLEntrepriseTest extends TestCase
         $this->assertSame([1_000_000, 3_000_000], $objectif->tranches->pluck('montant')->all());
 
         $site = Site::create(['entreprise_id' => $this->e->id, 'ville_id' => $this->abidjan->id, 'code' => 'A1', 'nom' => 'Abidjan — Site 1', 'est_actif' => true]);
+
+        // 20/10 : l'objectif est celui des employés concernés, vérifié par mois, sur ce qu'ils
+        // réalisent eux-mêmes — ici un commercial et ses factures, un autre sans facture.
+        $awa = $this->compte('commercial', 'awa@alpha.test');
+        $koffi = $this->compte('commercial', 'koffi@alpha.test');
+        $commercial = \Modules\Noyau\Exploitation\Modeles\Commercial::create([
+            'entreprise_id' => $this->e->id, 'ville_id' => $this->abidjan->id, 'user_id' => $awa->id, 'numero' => 'C-1', 'nom' => 'Awa',
+        ]);
+        \Modules\Noyau\Exploitation\Modeles\Commercial::create([
+            'entreprise_id' => $this->e->id, 'ville_id' => $this->abidjan->id, 'user_id' => $koffi->id, 'numero' => 'C-2', 'nom' => 'Koffi',
+        ]);
+        \Modules\Noyau\Exploitation\Services\AccesAuxObjectifs::enregistrer($awa, true, true, [], null);
+        \Modules\Noyau\Exploitation\Services\AccesAuxObjectifs::enregistrer($koffi, true, true, [], null);
+
         Facture::withoutGlobalScopes()->create([
             'entreprise_id' => $this->e->id, 'site_id' => $site->id, 'ville_id' => $this->abidjan->id, 'numero' => 'F-1', 'n_facture' => 'FA -1',
             'date' => now()->startOfMonth()->toDateString(), 'client' => 'X', 'activite' => 'Mécanique', 'montant' => 2_000_000,
+            'commercial_id' => $commercial->id,
         ]);
 
         $ecran = Volt::actingAs($gerant)->test('gerant.tableau-de-bord')
             ->set('periode', 'calendrier')
+            ->assertSee('Objectifs du mois')
             ->assertSee('Configurer les objectifs');
 
-        $obj = $ecran->instance()->objectifDeLEntreprise;
-        $this->assertNotSame([], $obj['tranches']);
-        $this->assertSame(2_000_000, $obj['realise']);
+        $suivi = $ecran->instance()->objectifsDuMois->keyBy(fn ($l) => $l['acces']->email);
+        $this->assertSame(2_000_000, $suivi['awa@alpha.test']['realise']);
+        $this->assertSame(1, $suivi['awa@alpha.test']['atteintes'], 'Seuil atteint, objectif pas encore.');
+        $this->assertSame(0, $suivi['koffi@alpha.test']['realise'], 'Chacun son réalisé, et non le CA de l\'entreprise.');
+
+        // Un mois passé se choisit : rien n'y a été facturé.
+        $ecran->set('moisObjectifs', now()->subMonth()->format('Y-m'));
+        $this->assertSame(0, $ecran->instance()->objectifsDuMois->sum('realise'));
     }
 
     public function test_seul_le_gerant_ouvre_la_page(): void

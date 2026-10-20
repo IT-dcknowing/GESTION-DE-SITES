@@ -23,6 +23,8 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
     'facture_fournisseur_id', 'saisi_par',
     'date_reglement', 'code_reglement', 'fournisseur', 'mode_reglement', 'montant',
     'code_agent', 'source_rattachement', 'rattachement_presume',
+    // La sortie de caisse qui paie ce règlement — 20/10.
+    'mouvement_caisse_id',
 ])]
 class ReglementFournisseur extends Model
 {

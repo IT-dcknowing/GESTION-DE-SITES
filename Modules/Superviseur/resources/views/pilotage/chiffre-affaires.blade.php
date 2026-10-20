@@ -135,25 +135,21 @@ on(['doublon-integre' => function () {}]);
 $commerciaux = computed(fn () => Commercial::where('est_spontane', false)
     ->whereIn('ville_id', PerimetreSites::idsVillesRetenus(auth()->user(), $this->villeFiltre))->orderBy('nom')->get());
 
-$requeteCharges = computed(function () {
+/*
+ * Les charges de la période — la règle écrite une fois (`ChargesDeLaPeriode`, 20/10) : toutes les
+ * sorties du journal de caisse et les charges saisies qui n'en viennent pas. Le suivi fournisseurs
+ * n'en est plus : c'est une dette, suivie à part — une facture réglée en espèces compte par sa
+ * sortie de caisse, une fois.
+ */
+$charges = computed(function () {
     [$debut, $fin] = $this->plage;
 
-    return Charge::where('type_operation', 'Charges')
-        ->whereIn('site_id', $this->idsSites)
-        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
-        ->whereBetween('date', [$debut, $fin]);
+    return \Modules\Noyau\Exploitation\Services\ChargesDeLaPeriode::pourLesSites($this->idsSites, $debut, $fin, (string) $this->activiteFiltre);
 });
 
-// Les fournisseurs sont des charges (18/10) : pièces du suivi et FNE pas encore au suivi, une fois.
-$chargesFournisseurs = computed(function () {
-    [$debut, $fin] = $this->plage;
+$totauxCharges = computed(fn () => $this->charges->totaux());
 
-    return \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::totalPour(
-        (int) auth()->user()->entreprise_id, $this->idsSites, $debut, $fin, $this->activiteFiltre ?: null,
-    );
-});
-
-$chargesPeriode = computed(fn () => montant_de((clone $this->requeteCharges)->sum('montant') + $this->chargesFournisseurs));
+$chargesPeriode = computed(fn () => $this->totauxCharges['total']);
 
 /*
  * Le CA selon les impayés — 12/10 : ce que l'état des impayés porte sans que le fichier du CA
@@ -184,16 +180,15 @@ $kpis = computed(function () {
     // saisie la connaissait. Le résultat net hérite donc du « non ventilé » des charges.
     $caVentile = VentilationActivite::repartir($this->requeteBase);
     $ca = $caVentile['mecanique'] + $caVentile['sinistre'] + $caVentile['nonVentile'];
-    $chargesVentilees = VentilationActivite::repartir($this->requeteCharges);
-    // Sans activité, les fournisseurs vont à « Autres » — comme sur la page Charges.
-    $chargesVentilees['nonVentile'] = montant_de(($chargesVentilees['nonVentile'] ?? 0) + $this->chargesFournisseurs);
+    // La caisse ne dit pas l'activité : ses sorties vont à « Autres » — comme sur la page Charges.
+    $chargesVentilees = $this->totauxCharges['ventile'];
 
     return [
         'total' => $ca,
         'mecanique' => $caVentile['mecanique'],
         'sinistre' => $caVentile['sinistre'],
         'chargesVentilees' => $chargesVentilees,
-        'resultat' => $ca - $this->chargesPeriode,
+        'resultat' => montant_de($ca - $this->chargesPeriode),
         'resultatVentile' => VentilationActivite::difference($caVentile, $chargesVentilees),
     ];
 });
@@ -212,9 +207,8 @@ $graphique = computed(function () {
     $factures = (clone $this->requeteBase)->reorder()->toBase()
         ->selectRaw('date as jour, activite, sum(montant) as total')
         ->groupBy('date', 'activite')->get();
-    $charges = (clone $this->requeteCharges)->reorder()->toBase()
-        ->selectRaw('date as jour, sum(montant) as total')
-        ->groupBy('date')->get();
+    // Les charges, saisies et sorties de caisse, lues une fois avec leur date.
+    $charges = $this->charges->lignes()->map(fn ($l) => (object) ['jour' => $l->date, 'total' => $l->montant]);
 
     foreach ($points as $point) {
         $debut = $point['debut']->toDateString();
@@ -417,7 +411,7 @@ $comptesParOrigine = computed(function () {
         <x-kpi-card label="CA selon les impayés" :value="ae($this->caSelonImpayes)" couleur="#B45309"
             sub="Créances de l'état non retrouvées dans le fichier du CA — à côté, jamais additionné" />
         <x-kpi-card label="Charges — {{ $this->libellePerimetre }}" :value="ae($this->chargesPeriode)"
-            :sub="$this->chargesFournisseurs != 0 ? 'Dont fournisseurs '.ae($this->chargesFournisseurs) : null"
+            :sub="$this->totauxCharges['caisse'] != 0 ? 'Dont sorties de caisse '.ae($this->totauxCharges['caisse']) : null"
             :mecanique="$ventile ? ae($this->kpis['chargesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['chargesVentilees']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['chargesVentilees']['nonVentile'] ? ae($this->kpis['chargesVentilees']['nonVentile']) : null" />

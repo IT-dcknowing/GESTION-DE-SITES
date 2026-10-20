@@ -268,6 +268,8 @@ class LaSyntheseParAtelierCoutCinqRequetesTest extends TestCase
 
         $sites = $this->sitesRetenus();
         $plage = $this->plage();
+        // La lecture du schéma (colonne de reprise) se fait une fois par processus : pas un agrégat.
+        \App\Support\SchemaDisponible::colonne('charges', 'mouvement_caisse_id');
 
         DB::enableQueryLog();
         $lignes = SyntheseParAtelier::calculer($sites, ...$plage, idsVilles: $idsVilles);
@@ -291,8 +293,8 @@ class LaSyntheseParAtelierCoutCinqRequetesTest extends TestCase
         // Cinq requêtes, plus trois pour relire le lieu des lignes sans atelier ni ville par le code
         // de leur fiche (LieuDesFiches) — et seulement quand il y en a. Toujours indépendant du
         // nombre d'ateliers.
-        // Neuf depuis le 18/10 : les charges fournisseurs, une requête (suivi par lieu + FNE seules).
-        $this->assertSame(9, $requetes, 'Cinq agrégats, trois de plus pour les lignes sans lieu, un pour les fournisseurs.');
+        // Neuf depuis le 20/10 : les charges par lieu (saisies + sorties de caisse), une requête.
+        $this->assertSame(9, $requetes, 'Cinq agrégats, trois de plus pour les lignes sans lieu, un pour les charges par lieu.');
     }
 
     public function test_sans_les_villes_rien_ne_change(): void

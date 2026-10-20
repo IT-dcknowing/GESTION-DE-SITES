@@ -135,6 +135,22 @@ $chargesQ = computed(function () {
         ->whereBetween('date', [$debut, $fin]);
 });
 
+/*
+ * **La trésorerie réelle — 20/10.** « Le graphique n'apparaît pas, et ce ne doit pas être
+ * uniquement les saisies mais aussi l'importé : toute la tréso importée. » Journal de caisse,
+ * relevés bancaires, et ce qui est saisi ici sans être déjà dans l'un d'eux — voir
+ * `TresorerieReelle`, qui dit pourquoi rien n'y compte deux fois.
+ */
+$tresorerie = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return new \Modules\Noyau\Exploitation\Services\TresorerieReelle(
+        $this->idsSites, $this->idsVilles, $debut, $fin, (string) $this->activiteFiltre, (string) $this->supportFiltre,
+    );
+});
+
+$totauxReels = computed(fn () => $this->tresorerie->totaux());
+
 $facturesQ = computed(function () {
     [$debut, $fin] = $this->plage;
 
@@ -507,8 +523,11 @@ $graphique = computed(function () {
      * sorties. Le calcul est le même, et `SerieParPoint` le tient par un test qui le compare
      * chiffre par chiffre à la boucle qu'il remplace.
      */
-    $sommesEntrees = SerieParPoint::sommes($this->encaissementsQ, $points, 'date', 'montant');
-    $sommesSorties = SerieParPoint::sommes($this->chargesQ, $points, 'date', 'montant');
+    // Depuis le 20/10, la courbe est celle de la trésorerie réelle : journal de caisse, relevés
+    // bancaires et saisies — elle restait vide en ligne, où presque rien n'est saisi ici.
+    $serie = $this->tresorerie->serie($points);
+    $sommesEntrees = $serie['entrees'];
+    $sommesSorties = $serie['sorties'];
 
     foreach ($points as $rang => $point) {
         $e = $sommesEntrees[$rang];
@@ -590,6 +609,8 @@ $unionEncaissements = computed(fn () => MouvementsDeTresorerie::entrees(
     $this->journalCompte ? (clone $this->journalQ)->toBase() : null,
     $this->colonnesFiltrables,
     (array) $this->filtresLibres,
+    // Les relevés bancaires — 20/10 : « toute la tréso importée, même dans les encaissements ».
+    $this->tresorerie->banque()?->toBase(),
 ));
 
 $nombreEncaissements = computed(fn () => MouvementsDeTresorerie::compter($this->unionEncaissements));
@@ -610,6 +631,8 @@ $detailEncaissements = computed(fn () => $this->garnir(
 $unionDecaissements = computed(fn () => MouvementsDeTresorerie::sorties(
     (clone $this->chargesQ)->toBase(),
     $this->journalCompte ? (clone $this->journalQ)->toBase() : null,
+    [], [],
+    $this->tresorerie->banque()?->toBase(),
 ));
 
 $nombreDecaissements = computed(fn () => MouvementsDeTresorerie::compter($this->unionDecaissements));
@@ -637,7 +660,9 @@ $garnir = protect(function ($lignes) {
         $ligne->date = \Illuminate\Support\Carbon::parse($ligne->date);
         $ligne->site_nom = $sites[$ligne->site_id] ?? null;
         $ligne->facture = isset($ligne->facture_id) ? ($factures[$ligne->facture_id] ?? null) : null;
-        $ligne->vientDuJournal = $ligne->source === 'caisse';
+        // Le journal de caisse et, depuis le 20/10, les relevés bancaires : deux sources importées,
+        // qui renvoient à leur écran plutôt qu'à une page de règlement.
+        $ligne->vientDuJournal = in_array($ligne->source, ['caisse', 'banque'], true);
 
         return $ligne;
     });
@@ -833,17 +858,36 @@ $origineDe = protect(function ($ligne) {
         </p>
     @endif
 
+    {{-- La trésorerie réelle — 20/10 : l'importé (journal de caisse, relevés) et les saisies
+         d'ici, sans les règlements importés de l'état des impayés (le même argent est déjà au
+         journal ou au relevé). Voir `TresorerieReelle`. --}}
+    @php $tr = $this->totauxReels; $d = $tr['detail']; $ventile = ! $activiteFiltre; @endphp
+    <h3 style="font-size:14px; font-weight:700; margin:0 0 8px;">Trésorerie — caisse, banques et saisies</h3>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-bottom:16px;">
+        <x-kpi-card label="Entrées — {{ $this->libellePerimetre }}" :value="ae($tr['entrees'])" couleur="#0E9F6E"
+            :sub="'Caisse '.ae($d['caisse']['entrees']).' · banques '.ae($d['banque']['entrees']).' · saisies '.ae($d['saisies']['entrees'])"
+            :mecanique="$ventile ? ae($tr['entreesVentilees']['mecanique']) : null"
+            :sinistre="$ventile ? ae($tr['entreesVentilees']['sinistre']) : null"
+            :non-ventile="$ventile && $tr['entreesVentilees']['nonVentile'] ? ae($tr['entreesVentilees']['nonVentile']) : null" />
+        <x-kpi-card label="Sorties — {{ $this->libellePerimetre }}" :value="ae($tr['sorties'])" couleur="#C8102E"
+            :sub="'Caisse '.ae($d['caisse']['sorties']).' · banques '.ae($d['banque']['sorties']).' · saisies '.ae($d['saisies']['sorties'])"
+            :mecanique="$ventile ? ae($tr['sortiesVentilees']['mecanique']) : null"
+            :sinistre="$ventile ? ae($tr['sortiesVentilees']['sinistre']) : null"
+            :non-ventile="$ventile && $tr['sortiesVentilees']['nonVentile'] ? ae($tr['sortiesVentilees']['nonVentile']) : null" />
+        <x-kpi-card label="Trésorerie nette — {{ $this->libellePerimetre }}" :value="ae($tr['net'])"
+            :couleur="$tr['net'] >= 0 ? '#0E9F6E' : '#C8102E'" :accent="$tr['net'] < 0" sub="Entrées − sorties de la période" />
+    </div>
+
     {{-- Les quatre cartes lisent les **règlements** : ce que le CA, l'état des impayés et les
-         saisies disent avoir encaissé et payé. La caisse et la banque réelles ont leur bloc,
-         juste en dessous, et ne s'y additionnent pas — 07/10. --}}
-    <h3 style="font-size:14px; font-weight:700; margin:0 0 8px;">Selon les règlements — CA, impayés, saisies</h3>
+         saisies disent avoir encaissé et payé — à titre informatif depuis le 20/10, la
+         trésorerie réelle étant juste au-dessus. --}}
+    <h3 style="font-size:14px; font-weight:700; margin:0 0 8px;">Selon les règlements — CA, impayés, saisies (à titre informatif)</h3>
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:16px;">
-        @php $ventile = ! $activiteFiltre; @endphp
-        <x-kpi-card label="Encaissements — {{ $this->libellePerimetre }}" :value="ae($this->kpis['encaisse'])" couleur="#0E9F6E"
+        <x-kpi-card label="Règlements encaissés — {{ $this->libellePerimetre }}" :value="ae($this->kpis['encaisse'])" couleur="#0E9F6E"
             :mecanique="$ventile ? ae($this->kpis['encaisseVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['encaisseVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['encaisseVentile']['nonVentile'] ? ae($this->kpis['encaisseVentile']['nonVentile']) : null" />
-        <x-kpi-card label="Décaissements — {{ $this->libellePerimetre }}" :value="ae($this->kpis['decaisse'])" couleur="#C8102E"
+        <x-kpi-card label="Charges enregistrées — {{ $this->libellePerimetre }}" :value="ae($this->kpis['decaisse'])" couleur="#C8102E"
             :mecanique="$ventile ? ae($this->kpis['decaisseVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['decaisseVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['decaisseVentile']['nonVentile'] ? ae($this->kpis['decaisseVentile']['nonVentile']) : null" />
@@ -1064,7 +1108,7 @@ $origineDe = protect(function ($ligne) {
                 <h3 style="font-size:15px; font-weight:700; margin:0;">Encaissements ({{ number_format($this->nombreEncaissements, 0, ',', ' ') }})
                     <span style="display:block; font-size:12px; font-weight:400; color:#6B6E76; margin-top:2px;">
                         {{ number_format($this->nombreReglementsEncaisses, 0, ',', ' ') }} règlement(s) ·
-                        {{ number_format(max(0, $this->nombreEncaissements - $this->nombreReglementsEncaisses), 0, ',', ' ') }} entrée(s) du journal de caisse — listées, jamais additionnées
+                        {{ number_format(max(0, $this->nombreEncaissements - $this->nombreReglementsEncaisses), 0, ',', ' ') }} entrée(s) importée(s) — journal de caisse et relevés
                     </span></h3>
                 {{-- Les colonnes qu'aucun filtre ne couvre : le client, le type, le moyen,
                      la référence, le règlement global, le montant. Demandé le 28/09. --}}
@@ -1111,7 +1155,7 @@ $origineDe = protect(function ($ligne) {
                                          caisse se dit lui-même, sans quoi on le prendrait pour un
                                          encaissement importé et l'on chercherait sa facture. --}}
                                     @if ($ligne->vientDuJournal)
-                                        <span style="color:#B87A00; font-weight:600;">Journal de caisse</span>
+                                        <span style="color:#B87A00; font-weight:600;">{{ $ligne->source === 'banque' ? 'Relevé bancaire' : 'Journal de caisse' }}</span>
                                     @elseif ($ligne->lot_import_id === null)
                                         <span style="color:#2563EB; font-weight:600;">Saisi ici</span>
                                     @else
@@ -1125,7 +1169,7 @@ $origineDe = protect(function ($ligne) {
 
                                          Une ligne du journal n'a pas de page à elle : elle renvoie
                                          à la caisse, qui est l'endroit où elle se lit en entier. --}}
-                                    <a href="{{ $ligne->vientDuJournal ? route('caisse') : route('tresorerie.encaissement', $ligne->id) }}"
+                                    <a href="{{ $ligne->vientDuJournal ? route($ligne->source === 'banque' ? 'banques' : 'caisse') : route('tresorerie.encaissement', $ligne->id) }}"
                                         wire:navigate class="bouton bouton-secondaire"
                                         style="padding:3px 9px; font-size:11.5px; text-decoration:none;">Détail</a>
                                 </td>
@@ -1144,7 +1188,7 @@ $origineDe = protect(function ($ligne) {
             <h3 style="font-size:15px; font-weight:700; margin:0 0 14px;">Décaissements ({{ number_format($this->nombreDecaissements, 0, ',', ' ') }})
                 <span style="display:block; font-size:12px; font-weight:400; color:#6B6E76; margin-top:2px;">
                     {{ number_format($this->nombreReglementsDecaisses, 0, ',', ' ') }} charge(s) ·
-                    {{ number_format(max(0, $this->nombreDecaissements - $this->nombreReglementsDecaisses), 0, ',', ' ') }} sortie(s) du journal de caisse — listées, jamais additionnées
+                    {{ number_format(max(0, $this->nombreDecaissements - $this->nombreReglementsDecaisses), 0, ',', ' ') }} sortie(s) importée(s) — journal de caisse et relevés
                 </span></h3>
             <div class="tableau-conteneur">
                 <table class="tableau">
@@ -1175,7 +1219,7 @@ $origineDe = protect(function ($ligne) {
                                      qu'elles comptaient déjà dans le total au-dessus. --}}
                                 <td style="white-space:nowrap; font-size:12px;">
                                     @if ($ligne->vientDuJournal)
-                                        <span style="color:#B87A00; font-weight:600;">Journal de caisse</span>
+                                        <span style="color:#B87A00; font-weight:600;">{{ $ligne->source === 'banque' ? 'Relevé bancaire' : 'Journal de caisse' }}</span>
                                     @elseif ($ligne->lot_import_id === null)
                                         <span style="color:#2563EB; font-weight:600;">Saisi ici</span>
                                     @else
@@ -1184,7 +1228,7 @@ $origineDe = protect(function ($ligne) {
                                 </td>
                                 <td class="colonne-collee" style="white-space:nowrap;">
                                     @if ($ligne->vientDuJournal)
-                                        <a href="{{ route('caisse') }}" wire:navigate class="bouton bouton-secondaire"
+                                        <a href="{{ route($ligne->source === 'banque' ? 'banques' : 'caisse') }}" wire:navigate class="bouton bouton-secondaire"
                                             style="padding:3px 9px; font-size:11.5px; text-decoration:none;">Détail</a>
                                     @else
                                         <button type="button" wire:click="voirDecaissement({{ $ligne->id }})"

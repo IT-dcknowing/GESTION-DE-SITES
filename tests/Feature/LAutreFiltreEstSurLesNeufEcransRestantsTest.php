@@ -60,7 +60,6 @@ class LAutreFiltreEstSurLesNeufEcransRestantsTest extends TestCase
     private const ECRANS = [
         'Tableau initial — fournisseurs' => 'pilotage.fournisseurs-tableau-initial',
         'Liste des fournisseurs' => 'pilotage.fournisseurs-liste',
-        'Conditions de règlement' => 'pilotage.referentiel-fournisseurs',
         'Balance fournisseurs' => 'pilotage.balance-fournisseurs',
         'Règlements fournisseurs' => 'pilotage.reglements-fournisseurs',
         'Clients de l’entreprise' => 'pilotage.clients',

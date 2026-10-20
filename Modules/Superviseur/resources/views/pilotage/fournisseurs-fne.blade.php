@@ -71,7 +71,7 @@ $kpi = computed(function () {
 /*
  * Paginée en base, et sans la colonne `contenu` (18/10) : 2 728 factures relevées le 16/10, chacune
  * avec sa pièce entière en JSON. Les lire toutes à chaque clic pour en montrer vingt-cinq coûtait
- * plus que l'écran ne rapporte ; le détail se lit sur la page « Voir ».
+ * plus que l'écran ne rapporte ; le détail se lit sur la page « Détails ».
  */
 $filtrees = protect(fn () => $this->base()
     ->when($this->filtre === 'a_porter', fn ($q) => $q->whereNull('facture_fournisseur_id'))
@@ -368,7 +368,7 @@ $porter = function (int $id) {
                                     @endif
                                 </td>
                                 {{-- Le détail de la pièce, ligne à ligne : de quoi passer l'écriture comptable (18/10). --}}
-                                <td><a href="{{ route('fournisseurs.fne.detail', $f->id) }}" wire:navigate class="bouton bouton-secondaire" style="padding:5px 10px;">Voir</a></td>
+                                <td><a href="{{ route('fournisseurs.fne.detail', $f->id) }}" wire:navigate class="bouton bouton-secondaire" style="padding:5px 10px;">Détails</a></td>
                             </tr>
                         @empty
                             <x-table-vide :colspan="8" texte="Aucune facture FNE pour cet exercice." />

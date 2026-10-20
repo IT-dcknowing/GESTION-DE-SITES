@@ -50,10 +50,40 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 18 octobre 2026
+## 3. Où l'on en est — 20 octobre 2026
 
 **Branche du 14/10 :** `claude/arrondis-doublons-charges-k1upa9`, poussée puis fusionnée dans
 `main`. Deux migrations additives (tables neuves) : `git pull` puis `php artisan app:deployer`.
+
+### Fait le 20/10 — les fournisseurs bouclés, les charges = la caisse, la trésorerie lit l'importé
+
+**Le module Fournisseurs est terminé** (« nous allons terminer avec les fournisseurs ») : il ne
+figure plus dans ce qui reste. Migration additive **`2026_10_20_000001`** (une colonne nullable).
+
+- **Règle du propriétaire : « toutes les sorties de caisse sont des charges »** ; les fournisseurs
+  « ne font que retracer, c'est un suivi ». Écrite une fois dans **`ChargesDeLaPeriode`** :
+  charges = chaque sortie du journal de caisse + les charges saisies qui n'en viennent pas (une
+  reprise ne compte plus deux fois, elle ne fait que **classer** : libellé, atelier). Lue par la
+  page Charges, le CA, l'accueil du gérant et la synthèse par atelier. Le suivi fournisseurs n'entre
+  plus dans les charges (il est « à côté ») — la règle du 18/10 est **remplacée**.
+- **Page Charges** : cartes Achats pièces / Salaires / Fonctionnement / Autres remplies par la caisse
+  (nature lue par `CategorieDeSortie`), graphique par nature, tableau des charges (saisies + sorties)
+  filtrable par provenance ; genre « Suivi fournisseurs — à côté ».
+- **Règlement fournisseur ↔ sortie de caisse** : « Régler » propose la sortie du journal qui a payé
+  (`reglements_fournisseur.mouvement_caisse_id`) ; la page Fournisseurs dit « dont par la caisse ».
+- **Fournisseurs** : page « Conditions de règlement » retirée (les fiches restent, pour les
+  échéances) ; « Voir » → **Détails** ; **Porter** : ce que dit la facture FNE en premier, en lecture
+  seule, relu côté serveur (et verrouillé ensuite sur la pièce) ; formulaire réduit à l'essentiel ;
+  **KPI des normalisés** (FNE reçues, au suivi, à porter, suivi normalisé) ; carte « Facturé » ne
+  coupe plus les centimes (`(int)` retiré, aussi à l'état des impayés).
+- **Balance** : deux onglets — importée (logiciel comptable) et **produite par le système**
+  (`BalanceDesFournisseurs` : par fournisseur, facturé / réglé / reste, ancienneté aux tranches de
+  la balance âgée, solde importé en regard et écart).
+- **Trésorerie** (`TresorerieReelle`) : entrées et sorties = journal de caisse + relevés bancaires +
+  saisies d'ici ; les règlements importés de l'état des impayés restent à côté (même argent). Le
+  graphique et les listes lisent l'importé (relevés compris).
+- **Accueil du gérant** : cartes à 250 px (plus de débordement) ; **objectifs du mois par employé
+  concerné** (choix du mois ; réalisé = ses factures s'il est commercial, sinon son atelier, sa ville).
 
 ### Fait le 16-18/10 — le relevé FNE en ligne, les fournisseurs dans les charges
 
@@ -71,12 +101,8 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
   on complète et on enregistre, la pièce est liée (`source_rattachement = 'fne'`).
 - **Rapprochement par le n° FNE** écrit dans une ligne importée (n° de pièce, observations…),
   avant celui par date et montant (`AchatsFne::rapprocherParLeNumeroFne`).
-- **Les fournisseurs sont des charges** (`ChargesFournisseurs`) : page Charges = tableau de bord de
-  toutes les charges (carte « Charges fournisseurs » → page Fournisseurs, origines FNE / importées /
-  saisies, série Fournisseurs au graphique) ; **tableau unique** de toutes les charges, filtre de
-  provenance (FNE, importée, saisie, caisse), genre, recherche, paginé en base. Totaux repris au CA,
-  à l'accueil du gérant et à la synthèse par atelier. Une pièce du suivi compte une fois ; une
-  facture FNE seulement tant qu'elle n'est pas au suivi.
+- ~~Les fournisseurs sont des charges~~ — **remplacé le 20/10** : les charges sont la caisse et les
+  saisies, le suivi fournisseurs se lit à côté (voir ci-dessus).
 
 ### Fait le 15/10 — doublons revus, objectifs par accès, rattrapage
 
@@ -337,6 +363,12 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     dire pour chaque accès d'avant s'il est concerné par les objectifs. Pour le relevé FNE :
     réparer `node` (CONSIGNES.md, section « nodevenv »).
 
+19. **Le 20/10** : `git pull` puis `php artisan app:deployer` (migration `2026_10_20_000001` : une
+    colonne nullable sur `reglements_fournisseur`). **À confirmer par le propriétaire** : avec « toutes
+    les sorties de caisse sont des charges », les **versements en banque** et transferts sortis de la
+    caisse comptent aussi en charges (catégorie « Versements & transferts » sur la page Charges) — dire
+    s'il faut les écarter. Corriger les deux tâches Cron de la production (espace après `artisan`).
+
 ### En attente d'un accord, pas d'un travail
 
 - **Correspondances — quatre choix faits sans confirmation**, chacun réversible en une ligne :
@@ -355,9 +387,11 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 
 ### Côté code, prêt à prendre
 
-- **Comptabilité › tableau de bord** et **Trésorerie** ne comptent pas encore les fournisseurs :
-  ce sont des décaissements, et une facture fournisseur n'est décaissée qu'au règlement — à
-  décider avec le propriétaire avant d'y toucher.
+- **Accueil du gérant, « Encaissé » et « Trésorerie nette »** (synthèse par atelier) lisent encore
+  les règlements, pas `TresorerieReelle` comme la page Trésorerie depuis le 20/10 : à aligner (par
+  lieu : journal par ville, relevés en « lieu non précisé »), tests de la synthèse à adapter.
+- **Comptabilité › tableau de bord** : ses charges lisent encore la seule table `charges` — à passer
+  sur `ChargesDeLaPeriode` comme les autres écrans.
 
 - ~~Tableau de bord du gérant : six agrégats par atelier~~ — **fait le 07/10** (§ 3). Reste
   à **remesurer sur la base locale** : les 48 → 23 viennent de la base de test, le « 30 » du
@@ -376,14 +410,6 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 ---
 
 ## 5. Les questions ouvertes, et ce qu'on sait déjà
-
-### 0. Une facture fournisseur payée en espèces et reprise de la caisse — 18/10
-
-Depuis que les fournisseurs entrent dans les charges, une pièce du suivi **et** la sortie de caisse
-qui la paie, reprise en charge, compteraient deux fois. Rien ne relie aujourd'hui une sortie de
-caisse à la pièce qu'elle règle ; le tableau de toutes les charges les montre côte à côte (filtre
-« Reprise de la caisse »). À trancher : reprendre en charge seulement ce qui n'est pas fournisseur,
-ou relier la sortie à la pièce.
 
 ### 1. L'écart de 652 917 F sur `/caisse` en ligne — non expliqué
 

@@ -266,7 +266,6 @@ $ajouter = function () {
         sous-titre="Tous les fournisseurs que la maison connaît — ceux qu'on facture et ceux qu'on a déclarés — avec leur code.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
             <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Suivi fournisseur</a>
-            <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Conditions de règlement</a>
             @if ($this->peutEcrire)
                 <button type="button" class="bouton" wire:click="$toggle('formulaireOuvert')">
                     {{ $formulaireOuvert ? 'Fermer le formulaire' : '+ Ajouter un fournisseur' }}

@@ -73,7 +73,11 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
         $ecran->set('repriseChoix', [(string) $sortie->id])->call('reprendreDeLaCaisse');
         $this->assertSame(1, Charge::withoutGlobalScopes()->count());
 
-        $ecran->assertSee('Provenance')->assertSee('Reprise de la caisse');
+        $ecran->assertSee('Provenance')->assertSee('Journal de caisse');
+
+        // Classée, la sortie compte une fois (20/10 : toutes les sorties sont des charges), sous sa nature.
+        $this->assertSame(45_000, $ecran->instance()->kpis['total']);
+        $this->assertSame(45_000, $ecran->instance()->kpis['pieces']);
     }
 
     public function test_une_sortie_sans_atelier_demande_ou_la_ranger(): void
@@ -123,7 +127,7 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
         $this->assertSame(0, Charge::withoutGlobalScopes()->count());
     }
 
-    /** D'où viennent les charges (12/10) : la reprise de caisse se compte à part, le journal à côté. */
+    /** D'où viennent les charges (12/10, revu le 20/10) : chaque sortie de caisse est une charge, une seule fois. */
     public function test_la_page_des_charges_dit_d_ou_viennent_les_charges(): void
     {
         $sortie = $this->sortie('ACHAT HUILE', 45_000, $this->site->id);
@@ -134,12 +138,13 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
             ->set('repriseChoix', [(string) $sortie->id])
             ->call('reprendreDeLaCaisse');
 
+        // 20/10 : « toutes les sorties de caisse sont des charges » — la reprise ne compte pas deux fois.
         $origines = $ecran->instance()->origines;
-        $this->assertSame(45_000, $origines['caisse']);
-        $this->assertSame(0, $origines['fne']);
-        $this->assertSame(45_000, $origines['nonNormalisees']);
+        $this->assertSame(545_000, $origines['caisse']);
+        $this->assertSame(0, $origines['saisies']);
+        $this->assertSame(545_000, $ecran->instance()->kpis['total']);
         $this->assertSame(545_000, $ecran->instance()->selonLaCaisse['sorties']);
-        $ecran->assertSee('Venant de la FNE — achats normalisés');
+        $ecran->assertSee('Sorties de caisse — toutes des charges');
     }
 
     // ------------------------------------------------------------------ le décor

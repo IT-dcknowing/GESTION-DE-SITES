@@ -302,9 +302,9 @@ final class AchatsFne
      * Règle une facture du suivi, et garde le lettrage : le règlement désigne la facture qu'il
      * solde. Le réglé et le reste de la pièce suivent — le reste se déduit, il ne se saisit pas.
      */
-    public static function regler(FactureFournisseur $piece, int|float $montant, string $date, ?string $mode, User $par): ReglementFournisseur
+    public static function regler(FactureFournisseur $piece, int|float $montant, string $date, ?string $mode, User $par, ?int $mouvementCaisseId = null): ReglementFournisseur
     {
-        if ($montant === 0) {
+        if ($montant == 0) {
             throw new RuntimeException('Un règlement de zéro ne règle rien.');
         }
 
@@ -313,7 +313,22 @@ final class AchatsFne
             throw new RuntimeException('Le montant dépasse ce qui reste dû sur cette pièce ('.montant_nombre(montant_de($piece->reste_a_payer)).' F).');
         }
 
-        return DB::transaction(function () use ($piece, $montant, $date, $mode, $par) {
+        /*
+         * La sortie de caisse qui paie — 20/10 : relue sous l'entreprise de la pièce, et une sortie
+         * seulement. Un identifiant venu du navigateur ne suffit pas à relier deux lignes.
+         */
+        if ($mouvementCaisseId !== null) {
+            $sortie = \Modules\Noyau\Imports\Modeles\MouvementCaisse::withoutGlobalScopes()
+                ->where('entreprise_id', $piece->entreprise_id)
+                ->where('sens', \Modules\Noyau\Imports\Modeles\MouvementCaisse::SORTIE)
+                ->find($mouvementCaisseId);
+
+            if ($sortie === null) {
+                throw new RuntimeException('Cette sortie de caisse est introuvable.');
+            }
+        }
+
+        return DB::transaction(function () use ($piece, $montant, $date, $mode, $par, $mouvementCaisseId) {
             $piece->forceFill([
                 'montant_regle' => montant_de($piece->montant_regle) + $montant,
                 'reste_a_payer' => montant_de($piece->reste_a_payer) - $montant,
@@ -333,7 +348,7 @@ final class AchatsFne
                 'mode_reglement' => $mode,
                 'montant' => $montant,
                 'source_rattachement' => 'saisie',
-            ]);
+            ] + ($mouvementCaisseId !== null ? ['mouvement_caisse_id' => $mouvementCaisseId] : []));
 
             activity()->performedOn($piece)->causedBy($par)
                 ->withProperties(['montant' => $montant, 'reglement' => $reglement->code_reglement])

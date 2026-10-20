@@ -58,12 +58,12 @@ $kpis = computed(function () {
     $realisationMecanique = montant_de($this->factures->where('activite', 'Mécanique')->sum('montant'));
     $realisationSinistre = montant_de($this->factures->where('activite', 'Sinistre')->sum('montant'));
     $encaisse = montant_de($this->factures->sum('encaissements_sum_montant'));
-    $objectifMecanique = (int) round(PeriodeCalculateur::objectifProrata((float) $this->commercial->objectif_mecanique, $debut, $fin));
-    $objectifSinistre = (int) round(PeriodeCalculateur::objectifProrata((float) $this->commercial->objectif_sinistre, $debut, $fin));
+    $objectifMecanique = montant_de(PeriodeCalculateur::objectifProrata((float) $this->commercial->objectif_mecanique, $debut, $fin));
+    $objectifSinistre = montant_de(PeriodeCalculateur::objectifProrata((float) $this->commercial->objectif_sinistre, $debut, $fin));
     $objectif = match ($this->activiteFiltre) {
         'Mécanique' => $objectifMecanique,
         'Sinistre' => $objectifSinistre,
-        default => (int) round(PeriodeCalculateur::objectifProrata((float) $this->commercial->objectif_mensuel, $debut, $fin)),
+        default => montant_de(PeriodeCalculateur::objectifProrata((float) $this->commercial->objectif_mensuel, $debut, $fin)),
     };
 
     // Le commercial couvrant toute la ville, sa contribution se mesure au CA de la ville

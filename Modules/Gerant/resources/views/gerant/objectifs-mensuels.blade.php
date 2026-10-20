@@ -203,8 +203,10 @@ $supprimer = function (int $id) {
 ?>
 
 <div>
-    <x-titre-ecran titre="Objectifs mensuels de l'entreprise"
-        sous-titre="Les tranches à atteindre chaque mois, et la période pendant laquelle elles valent." />
+    {{-- 20/10 : « l'objectif n'est pas pour l'entreprise mais pour les employés concernés, et c'est
+         par mois qu'on vérifie ». Les tranches sont celles de chaque employé concerné, chaque mois. --}}
+    <x-titre-ecran titre="Objectifs mensuels des employés"
+        sous-titre="Les tranches que chaque employé concerné doit atteindre chaque mois, et la période pendant laquelle elles valent. Le suivi, employé par employé, est sur le tableau de bord." />
 
     @if (! $this->disponible)
         <div class="carte" style="border-left:4px solid #C8102E;">

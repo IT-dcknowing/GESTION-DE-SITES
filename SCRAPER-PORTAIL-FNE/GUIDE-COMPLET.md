@@ -185,13 +185,15 @@ Elle doit dire : `2197588Q_….json : N factures (N nouvelles, dont A avoirs), R
   ```
 
 **Où les voir ensuite :**
-- **Fournisseurs › Factures FNE** : toutes les pièces, par exercice ; **Voir** ouvre le détail
-  d'une facture (en-tête, lignes, taxes) ; **Porter** ouvre le formulaire du suivi fournisseurs
-  prérempli.
-- **Charges** (depuis le 18/10) : les fournisseurs **sont des charges**. Une pièce du suivi compte
-  une fois ; une facture FNE compte tant qu'elle n'est pas au suivi, puis par sa ligne du suivi.
-  La carte « Venant de la FNE » et le tableau du bas (filtre « Provenance ») suivent la **période
-  choisie en haut de la page** (par défaut, l'année en cours).
+- **Fournisseurs › Factures FNE** : toutes les pièces, par exercice ; **Détails** ouvre la facture
+  (en-tête, lignes, taxes) ; **Porter** ouvre le formulaire du suivi fournisseurs avec ce que dit la
+  facture en premier, **non modifiable**.
+- **Fournisseurs** (page principale) : les KPI des **normalisés** — factures FNE reçues dans l'année,
+  au suivi, à porter, suivi normalisé.
+- **Charges** (depuis le 20/10) : les factures FNE et le suivi fournisseurs **ne sont pas des
+  charges** — « les fournisseurs ne font que retracer ». La charge est la **sortie de caisse** qui
+  paie la facture ; au moment de **Régler** une pièce, on choisit la sortie du journal qui l'a payée,
+  et la page Fournisseurs le dit (« dont par la caisse »).
 
 ---
 
@@ -253,11 +255,13 @@ Réglages facultatifs du `.env` de l'application : `FNE_HEURE_DEBUT=07:00`, `FNE
 
 1. **Fournisseurs › Factures FNE** : les pièces arrivées. « Rapprochée » = déjà retrouvée dans le
    suivi fournisseurs (même fournisseur, même n° de pièce, sinon même date et même montant).
-2. Une pièce **« à porter »** : **Porter** → le formulaire du suivi fournisseurs s'ouvre
-   **prérempli** ; on complète (atelier, ville, échéance…) et on enregistre. Porter n'est pas régler :
+2. Une pièce **« à porter »** : **Porter** → le formulaire du suivi fournisseurs s'ouvre ; ce que dit
+   la facture FNE est en premier et ne se modifie pas ; on complète (ville, atelier, échéance…) et on
+   enregistre. Porter n'est pas régler :
    la pièce devient une dette, reste à payer = TTC. Une ligne importée qui porte le n° FNE (n° de
    pièce, observations…) est rapprochée toute seule.
-3. À l'échéance : sur la page de la pièce, **Régler** → le règlement est lettré à la facture.
+3. À l'échéance : sur la page de la pièce, **Régler** → le règlement est lettré à la facture ; si la
+   caisse a payé, choisir la sortie du journal dans « Payé par la caisse ? ».
 4. Les KPI de l'écran disent les différences : FNE absentes du suivi, suivi sans FNE.
 
 ---

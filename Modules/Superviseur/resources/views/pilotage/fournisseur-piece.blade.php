@@ -44,7 +44,32 @@ state([
 ]);
 
 // « Régler », 12/10 : chaque paiement s'enregistre et se lettre avec la facture qu'il solde.
-state(['enReglement' => false, 'reglerMontant' => '', 'reglerDate' => '', 'reglerMode' => '']);
+state(['enReglement' => false, 'reglerMontant' => '', 'reglerDate' => '', 'reglerMode' => '', 'reglerSortie' => '']);
+
+/*
+ * Les sorties de caisse qui peuvent avoir payé cette pièce — 20/10 : « si la caisse fait un
+ * règlement fournisseur, le suivi fournisseur peut nous aider ». Celles depuis la date de facture,
+ * de la ville de la pièce (ou sans ville), les plus proches du reste dû d'abord. Facultatif : un
+ * virement ne passe pas par la caisse.
+ */
+$sortiesPossibles = computed(function () {
+    $p = $this->piece;
+
+    if (! $this->enReglement || $p === null || ! \App\Support\SchemaDisponible::colonne('reglements_fournisseur', 'mouvement_caisse_id')) {
+        return [];
+    }
+
+    $reste = abs(montant_de($p->reste_a_payer));
+
+    return \Modules\Noyau\Imports\Modeles\MouvementCaisse::query()
+        ->where('sens', \Modules\Noyau\Imports\Modeles\MouvementCaisse::SORTIE)
+        ->when($p->date_facture, fn ($q) => $q->where('date', '>=', $p->date_facture->toDateString()))
+        ->when($p->ville_id, fn ($q) => $q->where(fn ($v) => $v->where('ville_id', $p->ville_id)->orWhereNull('ville_id')))
+        ->orderByRaw('abs(montant - ?)', [$reste])->orderByDesc('date')
+        ->limit(30)->get(['id', 'date', 'libelle', 'beneficiaire', 'numero_piece', 'montant'])
+        ->mapWithKeys(fn ($m) => [$m->id => $m->date?->format('d/m/Y').' · '.ae(montant_de($m->montant)).' · '.\Illuminate\Support\Str::limit(trim($m->libelle.' '.($m->beneficiaire ? '— '.$m->beneficiaire : '')), 60)])
+        ->all();
+});
 
 mount(function (int $piece) {
     $this->id = $piece;
@@ -108,6 +133,7 @@ $ouvrirReglement = function () {
     $this->reglerMontant = (string) montant_de($this->piece->reste_a_payer);
     $this->reglerDate = now()->toDateString();
     $this->reglerMode = (string) $this->piece->mode_reglement;
+    $this->reglerSortie = '';
     $this->enReglement = true;
 };
 
@@ -123,13 +149,16 @@ $regler = function () {
     }
 
     $donnees = $this->validate([
-        'reglerMontant' => ['required', 'integer', 'not_in:0'],
+        // Des centimes, et un avoir en négatif (piège 17) : `integer` les refusait.
+        'reglerMontant' => ['required', 'numeric', 'not_in:0'],
+        'reglerSortie' => ['nullable', 'integer'],
         'reglerDate' => ['required', 'date'],
         'reglerMode' => ['nullable', 'string', 'max:80'],
     ], [], ['reglerMontant' => 'montant', 'reglerDate' => 'date', 'reglerMode' => 'mode']);
 
     try {
-        $reglement = AchatsFne::regler($p, montant_de($donnees['reglerMontant']), $donnees['reglerDate'], $donnees['reglerMode'] ?: null, auth()->user());
+        $sortie = ($donnees['reglerSortie'] ?? '') !== '' && $donnees['reglerSortie'] !== null ? (int) $donnees['reglerSortie'] : null;
+        $reglement = AchatsFne::regler($p, montant_de($donnees['reglerMontant']), $donnees['reglerDate'], $donnees['reglerMode'] ?: null, auth()->user(), $sortie);
     } catch (\RuntimeException $e) {
         $this->addError('reglerMontant', $e->getMessage());
 
@@ -192,7 +221,8 @@ $enregistrer = function () {
         'naturePiece' => ['nullable', 'string', 'max:60'],
         'dateEcheance' => ['nullable', 'date'],
         'dateReglement' => ['nullable', 'date'],
-        'montantRegle' => ['required', 'integer', 'min:0'],
+        // Des montants à centimes, et un avoir est négatif (piège 17) : `integer` les refusait.
+        'montantRegle' => ['required', 'numeric'],
         'modeReglement' => ['nullable', 'string', 'max:200'],
         'imputation' => ['nullable', 'string', 'max:120'],
         'immatriculation' => ['nullable', 'string', 'max:40'],
@@ -204,7 +234,7 @@ $enregistrer = function () {
         $regles['fournisseur'] = ['required', 'string', 'max:200'];
         $regles['numeroPiece'] = ['required', 'string', 'max:60'];
         $regles['dateFacture'] = ['required', 'date'];
-        $regles['montant'] = ['required', 'integer', 'min:1'];
+        $regles['montant'] = ['required', 'numeric', 'not_in:0'];
     }
 
     $donnees = $this->validate($regles);
@@ -216,7 +246,8 @@ $enregistrer = function () {
     // Un règlement supérieur au montant dû est refusé à la frappe : dans le classeur,
     // 29 lignes le font, et le trop-perçu vient en déduction du total — il masque donc la
     // dette d'autres fournisseurs.
-    if (montant_de($donnees['montantRegle']) > $montant) {
+    $regle = montant_de($donnees['montantRegle']);
+    if (abs($regle) > abs($montant) || ($regle != 0 && ($regle > 0) !== ($montant > 0))) {
         $this->addError('montantRegle', 'Le réglé ne peut pas dépasser le montant de la facture.');
 
         return;
@@ -333,8 +364,7 @@ $enregistrer = function () {
                     <b>{{ $p->fournisseur ?: 'Ce fournisseur' }}</b> n'a pas de fiche dans la
                     feuille « Liste fournisseurs » du classeur : ni terme de règlement, ni
                     TVA. Aucune échéance ne peut donc en être déduite. La liste se complète
-                    dans le classeur, puis le dépôt la reprend —
-                    <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate>voir les conditions de règlement</a>.
+                    dans le classeur, puis le dépôt la reprend.
                 </p>
             @else
                 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px 18px;">
@@ -392,6 +422,10 @@ $enregistrer = function () {
                         <x-champ label="Montant" model="reglerMontant" type="number" requis />
                         <x-champ label="Date du règlement" model="reglerDate" type="date" requis />
                         <x-champ label="Mode de règlement" model="reglerMode" />
+                        @if ($this->sortiesPossibles !== [])
+                            <x-champ label="Payé par la caisse ? (sortie du journal)" model="reglerSortie" type="select"
+                                :options="$this->sortiesPossibles" vide="— non, ou pas encore au journal —" width="360" />
+                        @endif
                     </div>
                     <div style="display:flex; gap:9px; margin-top:14px;">
                         <button type="submit" class="bouton">Enregistrer le règlement</button>

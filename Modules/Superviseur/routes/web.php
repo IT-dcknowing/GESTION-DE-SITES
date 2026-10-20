@@ -135,10 +135,9 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // pas montrer, et qu'il fallait pouvoir lire — et corriger — quelque part.
     Volt::route('/fournisseurs/piece/{piece}', 'pilotage.fournisseur-piece')
         ->name('fournisseurs.piece')->whereNumber('piece');
-    // Le fournisseur lui-même, et non ses factures : à quel terme il se règle, s'il
-    // facture la TVA. C'est de cette page que sort l'échéance attendue d'une pièce que le
-    // fichier n'a pas datée — 5 184 sur 7 350 lignes à la mesure du 24/09.
-    Volt::route('/fournisseurs/referentiel', 'pilotage.referentiel-fournisseurs')->name('referentiel-fournisseurs');
+    // « Conditions de règlement » retirée le 20/10 à la demande du propriétaire : la page n'est
+    // plus nécessaire. Les fiches (`referentiel_fournisseurs`) restent, importées avec le suivi,
+    // et donnent toujours l'échéance attendue d'une pièce que le fichier n'a pas datée.
     Volt::route('/fournisseurs/balance', 'pilotage.balance-fournisseurs')->name('balance-fournisseurs');
     Volt::route('/fournisseurs/reglements', 'pilotage.reglements-fournisseurs')->name('reglements-fournisseurs');
     // Emporter le même tableau, avec les mêmes filtres : l'habilitation est celle de

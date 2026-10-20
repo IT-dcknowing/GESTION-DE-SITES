@@ -24,6 +24,13 @@ use function Livewire\Volt\{computed, state};
 */
 
 state(['recherche' => ''])->url(except: '');
+/*
+ * **Deux balances — 20/10.** « On doit avoir deux balances : celle qu'on importe, et celle que le
+ * système produit avec les données dont il dispose, comme la balance âgée. » La seconde se lit
+ * sur le suivi (`BalanceDesFournisseurs`), et porte en regard le solde de la première.
+ */
+state(['vue' => 'importee'])->url(except: 'importee');
+state(['pageSysteme' => 1]);
 state(['ecartsSeulement' => false])->url(except: false);
 state(['page' => 1]);
 
@@ -34,7 +41,8 @@ state(['page' => 1]);
  */
 state(['filtresLibres' => []]);
 
-$updatedRecherche = function () { $this->page = 1; };
+$updatedRecherche = function () { $this->page = 1; $this->pageSysteme = 1; };
+$updatedVue = function () { $this->page = 1; $this->pageSysteme = 1; };
 $updatedEcartsSeulement = function () { $this->page = 1; };
 $updatedFiltresLibres = function () { $this->page = 1; };
 
@@ -101,18 +109,102 @@ $totaux = computed(fn () => [
     'enEcart' => $this->lignes->filter(fn ($l) => $l['ecart'] !== 0)->count(),
 ]);
 
+$balanceSysteme = computed(fn () => $this->vue !== 'systeme' ? collect()
+    : \Modules\Noyau\Exploitation\Services\BalanceDesFournisseurs::calculer((int) auth()->user()->entreprise_id, now(), $this->recherche));
+
+$totauxSysteme = computed(fn () => \Modules\Noyau\Exploitation\Services\BalanceDesFournisseurs::totaux($this->balanceSysteme));
+
 ?>
 
 <div>
     <x-titre-ecran titre="Balance fournisseurs"
-        sous-titre="Les comptes fournisseurs tels que le logiciel comptable les exporte. Le solde annoncé est conservé, et confronté au recalcul crédit − débit.">
+        sous-titre="Deux balances : celle du logiciel comptable, importée, et celle que le système produit à partir du suivi fournisseurs, par ancienneté.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
             <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Suivi fournisseur</a>
-            <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Conditions de règlement</a>
             <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements</a>
         </div>
     </x-titre-ecran>
 
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
+        <button type="button" wire:click="$set('vue', 'importee')" class="onglet {{ $vue === 'importee' ? 'est-actif' : '' }}">Balance importée (logiciel comptable)</button>
+        <button type="button" wire:click="$set('vue', 'systeme')" class="onglet {{ $vue === 'systeme' ? 'est-actif' : '' }}">Balance produite par le système (âgée)</button>
+    </div>
+
+    @if ($vue === 'systeme')
+        @php $t = $this->totauxSysteme; $tranches = \Modules\Noyau\Exploitation\Services\Recouvrement::TRANCHES; @endphp
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px; margin-bottom:18px;">
+            <x-kpi-card label="Fournisseurs" :value="$t['fournisseurs']" />
+            <x-kpi-card label="Facturé (suivi)" :value="ae($t['facture'])" />
+            <x-kpi-card label="Réglé" :value="ae($t['regle'])" couleur="#0E9F6E" />
+            <x-kpi-card label="Reste à payer" :value="ae($t['reste'])" couleur="#C8102E" sub="Selon le suivi fournisseurs" />
+            <x-kpi-card label="Non échu" :value="ae($t['nonEchu'])" sub="Échéance à venir" />
+            <x-kpi-card label="Solde de la balance importée" :value="ae($t['importe'])" sub="Écart avec le suivi : {{ ae(montant_de($t['reste'] - $t['importe'])) }}" />
+        </div>
+
+        <div class="carte">
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
+                <x-champ label="Rechercher un fournisseur" model="recherche" :live="true" placeholder="Nom du fournisseur…" />
+            </div>
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
+                Produite à partir du suivi fournisseurs, toutes années : le reste de chaque pièce, rangé par
+                ancienneté depuis son échéance (sinon sa date de facture), aux tranches de la balance âgée des
+                clients. En regard, le solde que donne la balance importée, rapproché par le nom.
+            </p>
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Fournisseur</th><th style="text-align:right;">Pièces</th>
+                            <th style="text-align:right;">Facturé</th><th style="text-align:right;">Réglé</th>
+                            <th style="text-align:right;">Reste</th><th style="text-align:right;">Non échu</th>
+                            @foreach ($tranches as $tr)
+                                <th style="text-align:right; color:{{ $tr['couleur'] }};">{{ $tr['libelle'] }}</th>
+                            @endforeach
+                            <th style="text-align:right;">Balance importée</th><th class="colonne-collee" style="text-align:right;">Écart</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($this->balanceSysteme->forPage($pageSysteme, 25) as $b)
+                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                                <td style="font-weight:700;">{{ $b['fournisseur'] }}</td>
+                                <td style="text-align:right;">{{ $b['nombre'] }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($b['facture']) }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($b['regle']) }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:700;">{{ ae($b['reste']) }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; color:#6B6E76;">{{ $b['nonEchu'] != 0 ? ae($b['nonEchu']) : '—' }}</td>
+                                @foreach ($b['tranches'] as $m)
+                                    <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $m != 0 ? ae($m) : '—' }}</td>
+                                @endforeach
+                                <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; color:#6B6E76;">{{ $b['importe'] === null ? 'absent' : ae($b['importe']) }}</td>
+                                <td class="colonne-collee" style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:700; color:{{ $b['ecart'] === null ? '#6B6E76' : ($b['ecart'] == 0 ? '#0E9F6E' : '#C8102E') }};">
+                                    {{ $b['ecart'] === null ? '—' : ($b['ecart'] == 0 ? '✓' : ae($b['ecart'])) }}
+                                </td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="8 + count($tranches)" texte="Aucune pièce au suivi fournisseurs." />
+                        @endforelse
+                    </tbody>
+                    @if ($this->balanceSysteme->isNotEmpty())
+                        <tfoot>
+                            <tr style="font-weight:700; border-top:2px solid var(--th-steel,#2A2E35);">
+                                <td>Total</td><td></td>
+                                <td style="text-align:right; white-space:nowrap;">{{ ae($t['facture']) }}</td>
+                                <td style="text-align:right; white-space:nowrap;">{{ ae($t['regle']) }}</td>
+                                <td style="text-align:right; white-space:nowrap;">{{ ae($t['reste']) }}</td>
+                                <td style="text-align:right; white-space:nowrap;">{{ ae($t['nonEchu']) }}</td>
+                                @foreach ($t['tranches'] as $m)
+                                    <td style="text-align:right; white-space:nowrap;">{{ ae($m) }}</td>
+                                @endforeach
+                                <td style="text-align:right; white-space:nowrap;">{{ ae($t['importe']) }}</td>
+                                <td class="colonne-collee" style="text-align:right; white-space:nowrap;">{{ ae(montant_de($t['reste'] - $t['importe'])) }}</td>
+                            </tr>
+                        </tfoot>
+                    @endif
+                </table>
+            </div>
+            <x-pagination :page="$pageSysteme" :total="$this->balanceSysteme->count()" prop="pageSysteme" :par-page="25" />
+        </div>
+    @else
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; margin-bottom:18px;">
         <x-kpi-card label="Fournisseurs" :value="$this->totaux['fournisseurs']" />
         <x-kpi-card label="Total débit" :value="ae($this->totaux['debit'])" />
@@ -180,4 +272,5 @@ $totaux = computed(fn () => [
             </p>
         @endif
     </div>
+    @endif
 </div>

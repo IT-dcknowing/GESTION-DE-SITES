@@ -10,7 +10,7 @@ use Modules\Noyau\Exploitation\Services\GenerateurNumero;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Services\NumeroDePiece;
 
-use function Livewire\Volt\{computed, mount, state};
+use function Livewire\Volt\{computed, mount, state, protect};
 
 /**
  * Ce que l'entreprise doit à ses fournisseurs, et pour quand.
@@ -101,6 +101,10 @@ state([
  * **Rien de tout cela n'est obligatoire.** Ce sont des précisions : une pièce reçue entre
  * deux dépôts se saisit en trente secondes avec le fournisseur, la date et le montant, et
  * le reste se complète si on l'a sous les yeux.
+ *
+ * **Depuis le 20/10, le formulaire ne les montre plus** (« c'est trop, on garde l'essentiel »).
+ * L'état et l'enregistrement les gardent : le portage FNE y écrit le HT, la TVA et le n° de
+ * facture d'achat, et elles restent reprises du classeur à l'import.
  */
 state([
     'mois' => '',
@@ -132,9 +136,6 @@ state([
     'actionsAMener' => '',
 ]);
 
-/* Les précisions se déplient : posées à plat, elles faisaient un formulaire de six rangées
-   devant un tableau qu'on venait consulter. */
-state(['precisionsOuvertes' => false]);
 
 /*
  * La facture FNE qu'on est en train de porter au suivi — 18/10 : « le bouton Porter doit faire
@@ -159,16 +160,7 @@ mount(function () {
         if ($fne !== null) {
             $this->porterFne = $fne->id;
             $this->formulaireOuvert = true;
-            $this->precisionsOuvertes = true;
-            $this->fournisseur = (string) mb_substr($fne->emetteur_nom ?: 'Fournisseur NCC '.$fne->emetteur_ncc, 0, 200);
-            $this->numeroPiece = (string) mb_substr((string) $fne->reference, 0, 60);
-            $this->naturePiece = $fne->est_avoir ? 'Avoir FNE' : 'Facture FNE';
-            $this->dateFacture = $fne->date_facture?->format('Y-m-d') ?? $this->dateFacture;
-            $this->montant = (string) montant_de($fne->montant_ttc);
-            $this->montantHt = (string) montant_de($fne->montant_ht);
-            $this->tva = (string) montant_de($fne->montant_tva);
-            $this->modeReglement = (string) ($fne->moyen_paiement ?? '');
-            $this->numeroFactureAchat = (string) mb_substr((string) $fne->reference, 0, 60);
+            $this->prendreLaFactureFne($fne);
             $this->observations = 'Portée depuis la FNE (NCC '.($fne->emetteur_ncc ?: '—').').';
 
             if ($fne->date_facture) {
@@ -177,6 +169,34 @@ mount(function () {
         }
     }
 });
+
+/*
+ * Ce que dit la facture FNE, recopié dans le formulaire — 20/10 : « les champs préremplis doivent
+ * être en premier, et ne doivent pas pouvoir être modifiés ». Appelé au montage **et** à
+ * l'enregistrement : ce qui arrive du navigateur pour ces champs est remplacé par la facture
+ * certifiée, qu'on ait touché ou non à la page. Porter n'est pas régler : le réglé reste à zéro.
+ */
+$prendreLaFactureFne = protect(function (\Modules\Noyau\Imports\Modeles\FactureFne $fne) {
+    $this->fournisseur = (string) mb_substr($fne->emetteur_nom ?: 'Fournisseur NCC '.$fne->emetteur_ncc, 0, 200);
+    $this->numeroPiece = (string) mb_substr((string) $fne->reference, 0, 60);
+    $this->naturePiece = $fne->est_avoir ? 'Avoir FNE' : 'Facture FNE';
+    $this->dateFacture = $fne->date_facture?->format('Y-m-d') ?? $this->dateFacture;
+    $this->montant = (string) montant_de($fne->montant_ttc);
+    $this->montantRegle = '';
+    $this->montantHt = (string) montant_de($fne->montant_ht);
+    $this->tva = (string) montant_de($fne->montant_tva);
+    $this->numeroFactureAchat = (string) mb_substr((string) $fne->reference, 0, 60);
+    $this->modeReglement = $this->modeReglement ?: (string) ($fne->moyen_paiement ?? '');
+});
+
+$abandonnerLePortage = function () {
+    $this->porterFne = null;
+    foreach (['fournisseur', 'numeroPiece', 'naturePiece', 'montant', 'montantRegle', 'montantHt', 'tva', 'numeroFactureAchat', 'modeReglement', 'observations'] as $champ) {
+        $this->{$champ} = '';
+    }
+    $this->dateFacture = now()->format('Y-m-d');
+    $this->formulaireOuvert = false;
+};
 
 $updatedExercice = function () { $this->pageDetail = 1; };
 $updatedVilleFiltre = function () { $this->pageDetail = 1; };
@@ -275,6 +295,45 @@ $requete = computed(function () {
     };
 });
 
+/*
+ * **Les fournisseurs normalisés — 20/10** : « affiche aussi des KPI qui reprennent les totaux des
+ * fournisseurs normalisés ». Les factures FNE de l'année (toute l'entreprise : le portail ne dit
+ * pas la ville), ce qui en est au suivi et ce qui ne l'est pas encore ; et la part du suivi que la
+ * caisse a réglée — le lien règlement ↔ sortie de caisse posé dans « Régler ».
+ */
+$normalises = computed(function () {
+    $vide = ['nombre' => 0, 'ttc' => 0, 'nAuSuivi' => 0, 'auSuivi' => 0, 'nHorsSuivi' => 0, 'horsSuivi' => 0, 'suiviNormalise' => 0, 'parLaCaisse' => 0];
+
+    if (! \App\Support\SchemaDisponible::table('factures_fne')) {
+        return $vide;
+    }
+
+    $f = \Modules\Noyau\Imports\Modeles\FactureFne::query()->where('exercice', $this->annee)
+        ->selectRaw('count(*) as n, coalesce(sum(montant_ttc), 0) as ttc')
+        ->selectRaw('coalesce(sum(case when facture_fournisseur_id is not null then 1 else 0 end), 0) as n_suivi')
+        ->selectRaw('coalesce(sum(case when facture_fournisseur_id is not null then montant_ttc else 0 end), 0) as m_suivi')
+        ->toBase()->first();
+
+    $suiviNormalise = montant_de((clone $this->perimetre)->whereExists(fn ($q) => $q->selectRaw('1')->from('factures_fne')
+        ->whereColumn('factures_fne.facture_fournisseur_id', 'factures_fournisseurs.id'))->sum('montant'));
+
+    $parLaCaisse = ! \App\Support\SchemaDisponible::colonne('reglements_fournisseur', 'mouvement_caisse_id') ? 0
+        : montant_de(\Modules\Noyau\Imports\Modeles\ReglementFournisseur::query()->whereNotNull('mouvement_caisse_id')
+            ->whereIn('facture_fournisseur_id', (clone $this->perimetre)->reorder()->select('factures_fournisseurs.id'))
+            ->sum('montant'));
+
+    return [
+        'nombre' => (int) ($f->n ?? 0),
+        'ttc' => montant_de($f->ttc ?? 0),
+        'nAuSuivi' => (int) ($f->n_suivi ?? 0),
+        'auSuivi' => montant_de($f->m_suivi ?? 0),
+        'nHorsSuivi' => (int) ($f->n ?? 0) - (int) ($f->n_suivi ?? 0),
+        'horsSuivi' => montant_de(montant_de($f->ttc ?? 0) - montant_de($f->m_suivi ?? 0)),
+        'suiviNormalise' => $suiviNormalise,
+        'parLaCaisse' => $parLaCaisse,
+    ];
+});
+
 $kpis = computed(fn () => EtatDesFournisseurs::totaux($this->perimetre, $this->annee) + [
     // Le facturé, le réglé, le reste, les avoirs, les reports : sept nombres, une seule
     // lecture. La dette ne compte que les restes positifs — un trop-payé ne rembourse pas
@@ -361,6 +420,15 @@ $enregistrer = function () {
         abort(403);
     }
 
+    // La facture FNE portée : relue sous l'entreprise, et seulement si personne ne l'a portée
+    // entre-temps. Ses champs reprennent la valeur certifiée avant toute validation.
+    $fne = $this->porterFne === null ? null : \Modules\Noyau\Imports\Modeles\FactureFne::query()
+        ->whereNull('facture_fournisseur_id')->find((int) $this->porterFne);
+
+    if ($fne !== null) {
+        $this->prendreLaFactureFne($fne);
+    }
+
     $donnees = $this->validate([
         'fournisseur' => ['required', 'string', 'max:200'],
         'numeroPiece' => ['nullable', 'string', 'max:60'],
@@ -421,10 +489,6 @@ $enregistrer = function () {
 
         return;
     }
-
-    // La facture FNE portée : relue sous l'entreprise, et seulement si personne ne l'a portée entre-temps.
-    $fne = $this->porterFne === null ? null : \Modules\Noyau\Imports\Modeles\FactureFne::query()
-        ->whereNull('facture_fournisseur_id')->find((int) $this->porterFne);
 
     // La ville doit être une des siennes : celle qui arrive du formulaire ne prouve rien.
     $villeId = in_array((int) $donnees['villeSaisie'], $this->idsVilles, true)
@@ -630,7 +694,6 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
             {{-- « Référentiel » ne disait pas ce qu'on y trouve. Cette page porte le terme de
                  règlement d'un fournisseur et sa TVA — c'est de là que sort l'échéance
                  attendue d'une pièce que le classeur n'a pas datée. --}}
-            <a href="{{ route('referentiel-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Conditions de règlement</a>
             <a href="{{ route('balance-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Balance fournisseurs</a>
             <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements fournisseurs</a>
             {{-- Les achats relevés au portail FNE, 12/10 : ils confirment le suivi ou s'y portent. --}}
@@ -657,138 +720,76 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
         <div x-show="$wire.formulaireOuvert" @if (! $formulaireOuvert) style="display:none;" @endif>
             <div class="carte" style="margin-bottom:16px;">
                 <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">{{ $porterFne ? 'Porter au suivi une facture FNE' : 'Ajouter une facture fournisseur' }}</h3>
-                @if ($porterFne)
-                    <p style="margin:0 0 8px; padding:8px 10px; background:#EFF6FF; border-radius:8px; font-size:12.5px; color:#1E3A8A;">
-                        Les champs viennent de la facture FNE. Vérifiez-les, précisez la ville et l'atelier, puis enregistrez :
-                        la ligne entre au suivi comme une dette (rien n'est réglé) et reste liée à sa facture FNE.
-                        <a href="{{ route('fournisseurs.fne.detail', $porterFne) }}" wire:navigate>Voir la facture</a>
-                    </p>
-                @endif
                 <p style="margin:0 0 14px; font-size:12.5px; color:#6B6E76;">
-                    Pour une facture reçue entre deux dépôts. Le n° de pièce est celui du fournisseur ;
-                    laissé vide, un numéro est attribué. Le reste à payer se déduit du montant et du réglé.
+                    @if ($porterFne)
+                        La facture devient une dette du suivi : rien n'est réglé. Elle reste liée à sa facture FNE.
+                    @else
+                        Pour une facture reçue entre deux dépôts. Le n° de pièce est celui du fournisseur ;
+                        laissé vide, un numéro est attribué. Le reste à payer se déduit du montant et du réglé.
+                    @endif
                 </p>
 
-                {{-- **Ce que ce formulaire couvre, et comment il tient sur l'écran.**
-
-                     Les deux classeurs tenus à la main — celui d'Abidjan et celui de
-                     San-Pédro — portent quarante colonnes à eux deux. La saisie n'en
-                     offrait que douze : une pièce saisie ici était donc plus pauvre que la
-                     même venue du classeur, et sa page de détail montrait des cases vides
-                     qu'aucun écran ne permettait de remplir (relevé le 24/09).
-
-                     Elles y sont toutes. Mais posées à plat, elles feraient six rangées de
-                     champs devant un tableau qu'on vient consulter : **l'essentiel reste
-                     visible, le reste se déplie**. Neuf fois sur dix, une pièce reçue entre
-                     deux dépôts se saisit avec le fournisseur, la date et le montant. --}}
+                {{-- **L'essentiel seulement — 20/10** : « les champs de saisie du suivi, c'est trop ; on garde
+                     l'essentiel ». Les colonnes du classeur (section, BC, quantités, refacturation…) ne se
+                     saisissent plus ici ; elles restent en base, reprises du fichier, et se lisent sur la
+                     page de la pièce. --}}
                 <form wire:submit="enregistrer">
+                    @if ($porterFne)
+                        {{-- Ce que dit la facture certifiée, en premier et en lecture seule : le serveur
+                             le relit de toute façon dans la facture FNE à l'enregistrement. --}}
+                        <div style="padding:12px 14px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; margin-bottom:12px;">
+                            <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                                <b style="font-size:13px; color:#1E3A8A;">Repris de la facture FNE — non modifiable</b>
+                                <span style="font-size:12.5px;">
+                                    <a href="{{ route('fournisseurs.fne.detail', $porterFne) }}" wire:navigate>Détails de la facture</a>
+                                    · <button type="button" wire:click="abandonnerLePortage" style="all:unset; cursor:pointer; color:#C8102E; text-decoration:underline;">Abandonner</button>
+                                </span>
+                            </div>
+                            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px 16px; font-size:13px;">
+                                @foreach ([
+                                    'Fournisseur' => $fournisseur,
+                                    'N° de facture FNE' => $numeroPiece,
+                                    'Nature' => $naturePiece,
+                                    'Date de facture' => $dateFacture ? \Illuminate\Support\Carbon::parse($dateFacture)->format('d/m/Y') : '—',
+                                    'Montant HT' => $montantHt !== '' ? ae(montant_de($montantHt)) : '—',
+                                    'TVA' => $tva !== '' ? ae(montant_de($tva)) : '—',
+                                    'Montant TTC' => ae(montant_de($montant ?: 0)),
+                                ] as $libelle => $valeur)
+                                    <div><div style="font-size:11px; color:#6B6E76; text-transform:uppercase; letter-spacing:.04em;">{{ $libelle }}</div><b>{{ $valeur ?: '—' }}</b></div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
                     <div class="bloc-saisie" style="background:#fff; border-style:solid;">
-                        <x-champ label="Fournisseur" model="fournisseur" requis width="230" />
-                        <x-champ label="N° de pièce" model="numeroPiece" placeholder="Celui du fournisseur" width="150" />
-                        <x-champ label="Nature" model="naturePiece" width="130" />
-                        <x-champ label="Date de facture" model="dateFacture" type="date" requis width="155" />
+                        @unless ($porterFne)
+                            <x-champ label="Fournisseur" model="fournisseur" requis width="230" />
+                            <x-champ label="N° de pièce" model="numeroPiece" placeholder="Celui du fournisseur" width="150" />
+                            <x-champ label="Date de facture" model="dateFacture" type="date" requis width="155" />
+                            <x-champ label="Montant TTC" model="montant" type="number" requis width="140" />
+                            <x-champ label="Déjà réglé" model="montantRegle" type="number" width="140" />
+                        @endunless
                         <x-champ label="Échéance" model="dateEcheance" type="date" width="155" />
-                        <x-champ label="Montant" model="montant" type="number" requis width="140" />
-                        <x-champ label="Déjà réglé" model="montantRegle" type="number" width="140" />
                         <x-champ label="Mode de règlement" model="modeReglement" width="170" />
-                        <x-champ label="Imputation" model="imputation" width="170" />
-                        <x-champ label="Immatriculation" model="immatriculation" width="145" />
                         @if (count($this->villesOuSaisir) > 1)
                             <x-champ label="Ville" model="villeSaisie" type="select" live="true"
                                 :options="$this->villesOuSaisir" vide="— à préciser —" width="165" />
                         @endif
                         {{-- L'atelier n'apparaît que là où il y a un choix à faire : Abidjan
-                             en a deux, Bouaké et San-Pédro un seul. Demander « lequel ? »
-                             quand il n'y en a qu'un, c'est poser une question qui n'en est
-                             pas une. --}}
+                             en a deux, Bouaké et San-Pédro un seul. --}}
                         @if ($this->sitesOuSaisir !== [])
                             <x-champ label="Atelier" model="siteSaisie" type="select"
                                 :options="$this->sitesOuSaisir" vide="— à préciser —" width="185" />
                         @endif
+                        <x-champ label="Immatriculation" model="immatriculation" width="145" />
                     </div>
 
                     <div style="margin-top:12px;">
                         <x-champ label="Observations" model="observations" type="textarea" />
                     </div>
 
-                    {{-- ------------------------------------------- les colonnes du classeur --}}
                     <div style="margin-top:14px;">
-                        <button type="button" class="bouton bouton-secondaire bouton-petit"
-                            wire:click="$toggle('precisionsOuvertes')">
-                            {{ $precisionsOuvertes ? '− Masquer' : '+ Ajouter' }} les précisions du classeur
-                        </button>
-                        <span style="font-size:12px; color:#6B6E76; margin-left:8px;">
-                            Section, bon de commande, TVA, refacturation, quantités, marge, n° FEB,
-                            n° de chèque — facultatives, et reprises telles que le classeur les nomme.
-                        </span>
-                    </div>
-
-                    <div x-show="$wire.precisionsOuvertes" @if (! $precisionsOuvertes) style="display:none;" @endif>
-                        <div style="margin-top:12px;">
-                            <p class="sous-titre" style="margin-top:0;">Le dossier</p>
-                            <div class="bloc-saisie">
-                                <x-champ label="Mois" model="mois" type="number" width="100" />
-                                <x-champ label="Section" model="section" width="160"
-                                    placeholder="Peinture, Carrosserie…" />
-                                <x-champ label="N° BC" model="numeroBc" width="140" />
-                                <x-champ label="Date de réception" model="dateReception" type="date" width="165" />
-                                <x-champ label="Type de transaction / services" model="typeTransaction" width="220" />
-                                <x-champ label="N° de fiche de réception" model="numeroFiche" width="180"
-                                    placeholder="FR-…" />
-                                <x-champ label="Véhicule" model="vehicule" width="170" />
-                                <x-champ label="Code pièce" model="codePiece" width="145" />
-                            </div>
-
-                            <p class="sous-titre">Le règlement</p>
-                            <div class="bloc-saisie">
-                                <x-champ label="Date de règlement" model="dateReglement" type="date" width="165" />
-                                <x-champ label="Délai de règlement" model="delaiReglement" width="165"
-                                    placeholder="Comptant, 30 jours…" />
-                                <x-champ label="N° de chèque" model="numeroCheque" width="150" />
-                                <x-champ label="N° FEB" model="numeroFeb" width="130" />
-                            </div>
-
-                            <p class="sous-titre">Les montants</p>
-                            <div class="bloc-saisie">
-                                <x-champ label="Montant HT" model="montantHt" type="number" width="140" />
-                                <x-champ label="TVA" model="tva" type="number" width="120" />
-                                <x-champ label="TVA 2" model="tva2" type="number" width="120" />
-                                <x-champ label="Montant refacturé" model="montantRefacture" type="number" width="160" />
-                                <x-champ label="Montant net achat" model="montantNetAchat" type="number" width="160" />
-                                <x-champ label="Montant net vente" model="montantNetVente" type="number" width="160" />
-                                <x-champ label="Qté totale" model="quantiteTotale" type="number" width="130" />
-                                <x-champ label="Qté refacturée" model="quantiteRefacturee" type="number" width="145" />
-                            </div>
-
-                            <p class="sous-titre">La refacturation au client</p>
-                            <div class="bloc-saisie">
-                                <x-champ label="N° facture achat (FA)" model="numeroFactureAchat" width="175" />
-                                <x-champ label="N° facture vente (FV)" model="numeroFactureVente" width="175" />
-                                <x-champ label="N° facture client" model="numeroFactureClient" width="165" />
-                                <x-champ label="Résultat indicatif" model="resultatIndicatif" width="170" />
-                            </div>
-
-                            {{-- La marge, le taux et la différence ne se saisissent pas : le
-                                 classeur les calcule, et une colonne qu'on peut contredire à
-                                 la main finit toujours par l'être. --}}
-                            <div class="imp-hint" style="margin-top:4px; font-size:12px;">
-                                La <b>marge</b>, le <b>taux</b>, la <b>différence</b> et le <b>reste à payer</b>
-                                ne figurent pas ici : ils se déduisent des montants, comme dans le classeur où
-                                ce sont des colonnes vertes. Les saisir permettrait de les contredire.
-                            </div>
-
-                            <p class="sous-titre">Ce qu'on en dit</p>
-                            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px;">
-                                <x-champ label="Observations sur la facturation client"
-                                    model="observationsFacturation" type="textarea" />
-                                <x-champ label="Commentaires" model="commentaires" type="textarea" />
-                                <x-champ label="Actions à mener" model="actionsAMener" type="textarea" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="margin-top:14px;">
-                        <button type="submit" class="bouton">Enregistrer la pièce</button>
+                        <button type="submit" class="bouton">{{ $porterFne ? 'Enregistrer au suivi' : 'Enregistrer la pièce' }}</button>
                     </div>
                 </form>
             </div>
@@ -816,7 +817,23 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
             :sub="$this->kpis['reportees'].' pièce(s) antérieure(s) encore due(s) — rien n\'est recopié'" />
         <x-kpi-card label="Facturé en {{ $this->annee }}" :value="ae($this->kpis['facture'])"
             :sub="$this->kpis['lignes'].' pièce(s) à l\'état de cette année'" />
-        <x-kpi-card label="Déjà réglé" :value="ae($this->kpis['regle'])" couleur="#0E9F6E" />
+        <x-kpi-card label="Déjà réglé" :value="ae($this->kpis['regle'])" couleur="#0E9F6E"
+            :sub="$this->normalises['parLaCaisse'] != 0 ? 'dont par la caisse '.ae($this->normalises['parLaCaisse']) : null" />
+    </div>
+
+    {{-- Les fournisseurs normalisés — 20/10. --}}
+    @php $n = $this->normalises; @endphp
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
+        <a href="{{ route('fournisseurs.fne') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir les factures FNE">
+            <x-kpi-card label="Factures FNE reçues en {{ $this->annee }}" :value="ae($n['ttc'])" couleur="#7C3AED"
+                :sub="number_format($n['nombre'], 0, ',', ' ').' facture(s) normalisée(s) — toute l\'entreprise ›'" />
+        </a>
+        <x-kpi-card label="FNE au suivi" :value="ae($n['auSuivi'])" couleur="#0E9F6E"
+            :sub="number_format($n['nAuSuivi'], 0, ',', ' ').' facture(s) portée(s) ou rapprochée(s)'" />
+        <x-kpi-card label="FNE pas encore au suivi" :value="ae($n['horsSuivi'])" :accent="$n['nHorsSuivi'] > 0"
+            :sub="number_format($n['nHorsSuivi'], 0, ',', ' ').' facture(s) à porter'" />
+        <x-kpi-card label="Suivi normalisé — {{ $this->libellePerimetre }}" :value="ae($n['suiviNormalise'])"
+            :sub="'Pièces du suivi liées à une facture FNE · non normalisé '.ae(montant_de($this->kpis['facture'] - $n['suiviNormalise']))" />
     </div>
 
     @if ($this->mesVilles !== null && $this->mesVilles->count() > 1)
