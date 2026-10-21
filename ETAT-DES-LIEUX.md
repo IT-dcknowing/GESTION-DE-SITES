@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **20 octobre 2026** (35e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **21 octobre 2026** (36e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -192,6 +192,7 @@ Voir `LecteurPdf`.
 | 16-18/10 | voir `git log` | **claude/arrondis-doublons-charges-k1upa9** | **Relevé FNE en ligne** (Chromium par les bibliothèques de Selflow, `FNE_LIBS`), `GUIDE-COMPLET.md` ; relevé automatique allumé dès que le `.env` du scraper existe, `node` trouvé seul ; bouton **Voir** (détail et lignes de chaque facture FNE) ; **Porter** préremplit le formulaire du suivi ; rapprochement par le n° FNE lu dans les lignes importées ; **les fournisseurs sont des charges** (`ChargesFournisseurs`) : page Charges tableau de bord de toutes les charges, tableau unique filtré par provenance, totaux au CA, à l'accueil du gérant, à la synthèse par atelier. Aucune migration |
 | 20/10 | voir `git log` | **claude/arrondis-doublons-charges-k1upa9** | **Fournisseurs bouclés** : « Conditions de règlement » retirée, « Détails », Porter en lecture seule (relu côté serveur, pièce verrouillée), formulaire réduit à l'essentiel, KPI des normalisés, **balance produite par le système** (âgée) à côté de l'importée, règlement relié à la sortie de caisse qui le paie. **Charges = toutes les sorties de caisse + les saisies** (`ChargesDeLaPeriode`), le suivi fournisseurs à côté (la règle du 18/10 est remplacée) ; cartes et graphique remplis par la caisse. **Trésorerie réelle** (`TresorerieReelle`) : journal + relevés + saisies, courbe et listes. Accueil du gérant : cartes plus larges, **objectifs du mois par employé concerné**. `(int)` retirés de « Facturé » (fournisseurs, impayés) et d'objectifs arrondis. Migration additive `2026_10_20_000001` |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
+| 21/10 | — | `claude/app-documentation-360-zt9ll8` | `PRESENTATION-360.md` : présentation à 360° de l'application à transmettre à un tiers, l'accent sur les importations et les charges ; aucun code touché |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
 site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR.md § 2.
