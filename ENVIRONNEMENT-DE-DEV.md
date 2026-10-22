@@ -337,3 +337,4 @@ Ils sont tous réels, tous rencontrés le 14 septembre 2026.
 | Un import long marqué en échec alors qu'il a abouti | `DB_QUEUE_RETRY_AFTER` plus court que la durée d'une tâche | `DB_QUEUE_RETRY_AFTER=1200` |
 | Un mot de passe du `.env` tronqué | un `#` non protégé ouvre un commentaire | encadrer la valeur de guillemets |
 | Le dev renvoie vers la production | `APP_URL` ou `GOOGLE_REDIRECT_URI` restés sur l'adresse de production | étape 3 |
+| `composer install` échoue dans le conteneur cloud de Claude (22/10) | le réseau de l'environnement refuse `api.github.com` et `codeload.github.com`, d'où viennent les paquets | autoriser ces deux domaines dans les réglages réseau de l'environnement ; sinon lancer `php artisan test` sur le poste |

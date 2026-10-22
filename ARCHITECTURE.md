@@ -72,7 +72,7 @@ ordre d'exécution difficile à suivre.
 
 | Module | Écrans | Rôle Spatie |
 |---|---|---|
-| `SuperAdmin` | tableau de bord, entreprises, accès, administrateurs, journal, maintenance | `super_admin` |
+| `SuperAdmin` | tableau de bord, entreprises, accès, administrateurs, journal, maintenance (dont **rôles et pages**, 22/10) | `super_admin` |
 | `Gerant` | tableau de bord, paramètres | `gerant` |
 | `Superviseur` | `pilotage/` : prospects, devis, CA, charges, trésorerie, commerciaux, création d'accès | `responsable_ville` (lus aussi par `gerant` et `responsable_site`) |
 | `ResponsableSite` | `saisie/` : saisie du jour, fiche prospection | `responsable_site` (partagé avec `responsable_ville`) |
@@ -149,6 +149,18 @@ les rôles admis — `role:gerant|responsable_ville|responsable_site` pour le pi
 `role:responsable_ville|responsable_site` pour la saisie.
 
 C'est le middleware, et non l'emplacement du fichier, qui décide de l'accès.
+
+### Les rôles configurés : une page ouverte sans toucher aux routes (22/10)
+
+Le Super admin peut créer un rôle dans **Maintenance › Rôles et pages** en cochant des pages
+(`CatalogueDesPages::SECTIONS`, Noyau) ; le rôle **Trésorerie** y est défini d'office
+(`CatalogueDesPages::ROLES_PREDEFINIS`). Un tel rôle ne figure dans aucun `role:` des routes, et
+ne doit pas avoir à y figurer : l'alias `role` passe par `App\Http\Middleware\RoleOuPagesOuvertes`,
+qui laisse entrer le compte quand la route est l'une de ses pages cochées, et sinon délègue à
+Spatie, inchangé. Le menu (`MenuNavigation`), l'atterrissage (`RedirectionController`) et le
+périmètre (`Site::visiblesPour` : la ville du compte) lisent le même catalogue. Un rôle configuré
+**lit** : aucune action d'écriture ne le connaît. Les définitions vivent dans la table
+`roles_configures` ; le rôle Spatie de chaque entreprise se crée au premier accès qui le porte.
 
 ## Les routes
 

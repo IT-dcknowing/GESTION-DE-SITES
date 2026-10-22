@@ -54,7 +54,8 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 **Branche du 22/10 : `claude/compassionate-galileo-tly6ai`, poussée puis fusionnée dans `main`**
 (règle du propriétaire, rappelée le 22/10 : une branche par section de travaux, fusionnée dans
-`main` une fois terminée). **La suite de tests n'a pas pu tourner dans le conteneur cloud**
+`main` une fois terminée), sur **les deux dépôts** — le `main` du second portait la présentation du
+21/10, fusionnée au passage. Tous les `.md` sont à jour au 22/10 (dont `PRESENTATION-360.md`). **La suite de tests n'a pas pu tourner dans le conteneur cloud**
 (Composer refusé par le réseau sur `api.github.com`) : la lancer sur le poste — deux fichiers
 neufs, `LesChargesSeLisentParSourceTest` et `UnRoleSeDefinitParSesPagesTest`. Une migration
 additive (`2026_10_22_000001`, table neuve `roles_configures`).
@@ -82,6 +83,12 @@ additive (`2026_10_22_000001`, table neuve `roles_configures`).
 
 **Branche du 14/10 :** `claude/arrondis-doublons-charges-k1upa9`, poussée puis fusionnée dans
 `main`. Deux migrations additives (tables neuves) : `git pull` puis `php artisan app:deployer`.
+
+### Fait le 21/10 — la présentation à 360°
+
+**`PRESENTATION-360.md`** : ce qu'est l'application et comment elle marche, à envoyer à un tiers,
+l'accent sur **les importations** (§ 6) et **les charges** (§ 7). Aucun identifiant ni adresse de
+serveur. À tenir à jour quand la règle des charges ou un format d'import change.
 
 ### Fait le 20/10 — les fournisseurs bouclés, les charges = la caisse, la trésorerie lit l'importé
 
@@ -583,6 +590,7 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | La structure du code, les modules | `ARCHITECTURE.md` |
 | Déployer, les réglages serveur | `MISE-A-JOUR-SERVEUR.md`, `ENVIRONNEMENT-DE-DEV.md` |
 | Les comptes de test | `ACCES_COMPTES.md` |
+| Présenter l'application à un tiers (imports, charges) | `PRESENTATION-360.md` |
 
 ---
 

@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **22 octobre 2026** (36e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **22 octobre 2026** (37e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -191,6 +191,7 @@ Voir `LecteurPdf`.
 | 15/10 | voir `git log` | **claude/arrondis-doublons-charges-k1upa9** | **Doublons revus** : au premier import rien n'est écarté, la ligne répétée est importée et listée « supposée doublon à preuve du contraire » avec sa raison ; garder la première, la seconde ou les deux ; la ligne retirée ne revient pas. **Accès concernés par les objectifs** (case à la création, Super admin › Accès › Rattrapage). Page d'erreur sans mention technique. Consignes `node` cPanel. Plan spécial Excel à part (`PLANS-SPECIAUX/`). Migrations `2026_10_15_000001` et `000002` |
 | 16-18/10 | voir `git log` | **claude/arrondis-doublons-charges-k1upa9** | **Relevé FNE en ligne** (Chromium par les bibliothèques de Selflow, `FNE_LIBS`), `GUIDE-COMPLET.md` ; relevé automatique allumé dès que le `.env` du scraper existe, `node` trouvé seul ; bouton **Voir** (détail et lignes de chaque facture FNE) ; **Porter** préremplit le formulaire du suivi ; rapprochement par le n° FNE lu dans les lignes importées ; **les fournisseurs sont des charges** (`ChargesFournisseurs`) : page Charges tableau de bord de toutes les charges, tableau unique filtré par provenance, totaux au CA, à l'accueil du gérant, à la synthèse par atelier. Aucune migration |
 | 20/10 | voir `git log` | **claude/arrondis-doublons-charges-k1upa9** | **Fournisseurs bouclés** : « Conditions de règlement » retirée, « Détails », Porter en lecture seule (relu côté serveur, pièce verrouillée), formulaire réduit à l'essentiel, KPI des normalisés, **balance produite par le système** (âgée) à côté de l'importée, règlement relié à la sortie de caisse qui le paie. **Charges = toutes les sorties de caisse + les saisies** (`ChargesDeLaPeriode`), le suivi fournisseurs à côté (la règle du 18/10 est remplacée) ; cartes et graphique remplis par la caisse. **Trésorerie réelle** (`TresorerieReelle`) : journal + relevés + saisies, courbe et listes. Accueil du gérant : cartes plus larges, **objectifs du mois par employé concerné**. `(int)` retirés de « Facturé » (fournisseurs, impayés) et d'objectifs arrondis. Migration additive `2026_10_20_000001` |
+| 21/10 | — | `claude/app-documentation-360-zt9ll8` | `PRESENTATION-360.md` : présentation à 360° de l'application à transmettre à un tiers, l'accent sur les importations et les charges ; aucun code touché |
 | 22/10 | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Retours du 22/10.** Fournisseurs : « Factures reçues » et « À qui nous devons le plus » deviennent **deux boutons d'un seul tableau** ; le tableau montre **toutes** les factures (suivi + FNE pas encore au suivi, union paginée en base), filtre de provenance, « Toutes » par défaut ; formulaire : précisions du classeur rétablies **sauf Mois, Code pièce, Résultat indicatif**. Charges : **la caisse partagée par son libellé** en charges administratives / charges fournisseurs (`CategorieDeSortie::volet`), cartes **suivi fournisseurs, FNE, banque** côte à côte, sans lettrage ni addition (`ChargesParSource`). Page FNE : filtres **tiers, n° FNE, dates, montant de A à B**. Accueil du gérant : **Charges — synthèse par source**. **Rôle Trésorerie** et **rôles configurables** (Maintenance › Rôles et pages : nom, sections et pages cochées, Modifier) — `CatalogueDesPages`, middleware `role:` remplacé par `RoleOuPagesOuvertes`. Migration additive `2026_10_22_000001` (table neuve `roles_configures`). **Tests écrits mais non lancés** : Composer bloqué par le réseau du conteneur |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
@@ -2515,8 +2516,9 @@ chaque section terminée est fusionnée dans `main` et poussée sur les deux dé
 ### Le plan du 22/10 — fournisseurs, charges par source, rôles
 
 Demandé le 22/10 (deux messages vocaux retranscrits, et le texte). Branche `claude/compassionate-galileo-tly6ai`.
-Poussée puis **fusionnée dans `main`**. La suite de tests n'a pas pu tourner dans le conteneur (Composer
-refusé par le réseau sur `api.github.com`) — la lancer sur le poste.
+Poussée puis **fusionnée dans `main`**, sur les deux dépôts ; le `main` du second dépôt portait le
+commit de `PRESENTATION-360.md` (21/10), fusionné au passage. La suite de tests n'a pas pu tourner
+dans le conteneur (Composer refusé par le réseau sur `api.github.com`) — la lancer sur le poste.
 
 | # | Demande | État |
 |---|---|---|
@@ -2529,6 +2531,7 @@ refusé par le réseau sur `api.github.com`) — la lancer sur le poste.
 | 72 | Accueil du gérant : **un gros KPI Charges** qui départage par source, comme la synthèse par site pour le CA | ✅ 22/10 — carte « Charges — synthèse par source » : charges retenues (caisse + saisies) en grand, tableau caisse (dont administratif / fournisseurs), saisies, banque, FNE, suivi — ces trois-là « à côté, non additionné » |
 | 73 | **Rôle TRÉSORERIE** : accès à tout ce qui concerne la trésorerie, uniquement | ✅ 22/10 — rôle défini dans `CatalogueDesPages::ROLES_PREDEFINIS` : Trésorerie, Caisse (et par véhicule), Banques ; menu réduit à cela, atterrissage sur la trésorerie, périmètre = la ville du compte (ou toutes). Se choisit à la création d'un accès (gérant, Super admin) ; le rôle Spatie de l'entreprise se crée au premier accès |
 | 74 | Super admin, **page Maintenance** : configurer un rôle — nom, sections et pages cochées — et **Modifier** | ✅ 22/10 — section « Rôles et pages » (composant `superadmin.roles-configures`), table `roles_configures` (migration additive `2026_10_22_000001`). Un rôle configuré **lit** ses pages, il n'écrit rien : les actions d'écriture vérifient toujours les rôles du métier. Le middleware `role:` passe par `RoleOuPagesOuvertes` (Spatie d'abord pour les rôles du métier, puis les pages cochées) |
+| 75 | « Mettre tous les fichiers .md à jour » | ✅ 22/10 — REPRENDRE-ICI, ETAT-DES-LIEUX, PRESENTATION-360 (rôles, écrans, § 7.3 bis charges par source, fournisseurs, état du projet), ARCHITECTURE (rôles configurés), MISE-A-JOUR-SERVEUR (mise à jour du 22/10), ACCES_COMPTES, ENVIRONNEMENT-DE-DEV, SCRAPER-PORTAIL-FNE/GUIDE-COMPLET |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
 

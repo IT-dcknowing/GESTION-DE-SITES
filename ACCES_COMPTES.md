@@ -37,6 +37,12 @@ Jeu installé par `php artisan demo:installer --fraiche`.
 | `y-kouame@artisan-automobile.ci` | San Pedro |
 | `a-gnaore@artisan-automobile.ci` | San Pedro |
 
+## Trésorerie et rôles configurés (22/10)
+
+Le jeu de démonstration n'a pas de compte Trésorerie. En créer un depuis le gérant (Général ›
+Ajouter un accès › rôle **Trésorerie**, une ville) : il ne voit que Trésorerie, Caisse et Banques.
+Les autres rôles se créent dans Super admin › Maintenance › Rôles et pages.
+
 ## Code entreprise
 
 `ART-2026CI` — permet au personnel de s'inscrire seul sur `/rejoindre`.

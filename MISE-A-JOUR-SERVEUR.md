@@ -463,6 +463,20 @@ Ce qu'elle fait, et pourquoi c'est sans danger :
 rien. Les imports se servent du rattachement dès qu'il est posé ; la question sert à le
 corriger, pas à l'autoriser.
 
+### Une seule fois, après la mise à jour du 22 octobre 2026
+
+Une migration additive — `2026_10_22_000001_un_role_se_definit_par_ses_pages` : une table neuve,
+`roles_configures`. Rien n'est lu ni écrit ailleurs ; `php artisan app:deployer` la passe.
+
+```bash
+git pull
+php artisan app:deployer
+```
+
+Ensuite, rien d'obligatoire. Le rôle **Trésorerie** existe d'office ; son rôle Spatie se crée dans
+l'entreprise au premier accès qui le porte (gérant › Ajouter un accès, ou Super admin › Accès). Les
+autres rôles se configurent dans **Super admin › Maintenance › Rôles et pages**.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan
