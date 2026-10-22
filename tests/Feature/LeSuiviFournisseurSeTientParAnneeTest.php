@@ -241,14 +241,12 @@ class LeSuiviFournisseurSeTientParAnneeTest extends TestCase
             ->set('dateFacture', '2026-03-04')
             ->set('montant', '538189')
             // Le dossier
-            ->set('mois', '3')
             ->set('section', 'Carrosserie')
             ->set('numeroBc', '227')
             ->set('dateReception', '2026-03-06')
             ->set('typeTransaction', 'Achat de pièces')
             ->set('numeroFiche', 'FR-AB 010136')
             ->set('vehicule', 'GREAT WALL M4')
-            ->set('codePiece', '24VGCFC50038')
             // Le règlement
             ->set('dateReglement', '2026-03-20')
             ->set('delaiReglement', '30 jours')
@@ -267,7 +265,6 @@ class LeSuiviFournisseurSeTientParAnneeTest extends TestCase
             ->set('numeroFactureAchat', 'FA-1234')
             ->set('numeroFactureVente', 'FV-5678')
             ->set('numeroFactureClient', '1615')
-            ->set('resultatIndicatif', 'Marge correcte')
             ->set('observationsFacturation', 'Une pièce non refacturée.')
             ->set('commentaires', 'Reçue sans bon de livraison.')
             ->set('actionsAMener', 'Vérifier le chèque émis.')
@@ -276,14 +273,12 @@ class LeSuiviFournisseurSeTientParAnneeTest extends TestCase
 
         $piece = FactureFournisseur::withoutGlobalScopes()->firstOrFail();
 
-        $this->assertSame(3, (int) $piece->mois);
         $this->assertSame('Carrosserie', $piece->section);
         $this->assertSame('227', $piece->numero_bc);
         $this->assertSame('2026-03-06', $piece->date_reception?->toDateString());
         $this->assertSame('Achat de pièces', $piece->type_transaction);
         $this->assertSame('FR-AB 010136', $piece->numero_fiche);
         $this->assertSame('GREAT WALL M4', $piece->vehicule);
-        $this->assertSame('24VGCFC50038', $piece->code_piece);
 
         $this->assertSame('2026-03-20', $piece->date_reglement?->toDateString());
         $this->assertSame('30 jours', $piece->delai_reglement);
@@ -298,7 +293,6 @@ class LeSuiviFournisseurSeTientParAnneeTest extends TestCase
 
         $this->assertSame('FA-1234', $piece->numero_facture_achat);
         $this->assertSame('FV-5678', $piece->numero_facture_vente);
-        $this->assertSame('Marge correcte', $piece->resultat_indicatif);
         $this->assertSame('Une pièce non refacturée.', $piece->observations_facturation);
         $this->assertSame('Reçue sans bon de livraison.', $piece->commentaires);
         $this->assertSame('Vérifier le chèque émis.', $piece->actions_a_mener);

@@ -7,6 +7,7 @@ use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
+use Modules\Noyau\Imports\Modeles\FactureFne;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Services\NumeroDePiece;
 
@@ -54,7 +55,20 @@ state(['exercice' => null])->url(except: '');
 
 state([
     'villeFiltre' => '',
-    'etatFiltre' => 'ouvertes',
+    /*
+     * **Toutes les factures par défaut — 22/10** : « c'est la page des fournisseurs, on doit y
+     * avoir toutes les factures fournisseurs — suivies ou pas, venant de la FNE ou pas ». Elle
+     * s'ouvrait sur « Reste à payer » : une pièce soldée, ou une facture FNE pas encore au
+     * suivi, n'y paraissait qu'en changeant de filtre.
+     */
+    'etatFiltre' => 'toutes',
+    // D'où vient la ligne : le suivi (importé, saisi, porté), ou la FNE pas encore au suivi.
+    'provenanceFiltre' => 'toutes',
+    /*
+     * **Un seul tableau, deux boutons — 22/10** : « Factures reçues » et « À qui nous devons le
+     * plus » étaient deux tableaux l'un sous l'autre ; ils deviennent deux vues du même cadre.
+     */
+    'vueTableau' => 'factures',
     'recherche' => '',
     'pageDetail' => 1,
     /*
@@ -64,6 +78,8 @@ state([
      */
     'filtresLibres' => [],
     'formulaireOuvert' => false,
+    // Les précisions du classeur, repliées sous l'essentiel (rétablies le 22/10).
+    'precisionsOuvertes' => false,
 ]);
 
 /* Les champs de la saisie à la main. Vidés par affectation, jamais par `reset()`, qui
@@ -102,12 +118,13 @@ state([
  * deux dépôts se saisit en trente secondes avec le fournisseur, la date et le montant, et
  * le reste se complète si on l'a sous les yeux.
  *
- * **Depuis le 20/10, le formulaire ne les montre plus** (« c'est trop, on garde l'essentiel »).
- * L'état et l'enregistrement les gardent : le portage FNE y écrit le HT, la TVA et le n° de
- * facture d'achat, et elles restent reprises du classeur à l'import.
+ * **Le 20/10, le formulaire les avait retirées** (« c'est trop, on garde l'essentiel »). **Le
+ * 22/10, le propriétaire les rétablit, sauf trois** : « voici ce qu'il faut retirer : Mois, Code
+ * pièce, Résultat indicatif ; tous les autres champs des autres sections peuvent rester ». Elles
+ * reviennent repliées sous l'essentiel. Les trois retirées restent en base, reprises du classeur
+ * à l'import et lisibles sur la page de la pièce ; seule la saisie à la main ne les propose plus.
  */
 state([
-    'mois' => '',
     'section' => '',
     'numeroBc' => '',
     'dateReception' => '',
@@ -117,7 +134,6 @@ state([
     'numeroCheque' => '',
     'numeroFeb' => '',
     'numeroFiche' => '',
-    'codePiece' => '',
     'vehicule' => '',
     'montantHt' => '',
     'tva' => '',
@@ -130,7 +146,6 @@ state([
     'numeroFactureAchat' => '',
     'numeroFactureVente' => '',
     'numeroFactureClient' => '',
-    'resultatIndicatif' => '',
     'observationsFacturation' => '',
     'commentaires' => '',
     'actionsAMener' => '',
@@ -201,6 +216,18 @@ $abandonnerLePortage = function () {
 $updatedExercice = function () { $this->pageDetail = 1; };
 $updatedVilleFiltre = function () { $this->pageDetail = 1; };
 $updatedEtatFiltre = function () { $this->pageDetail = 1; };
+/* La FNE pas encore au suivi ne dit pas ce qui en a été réglé : la choisir, c'est regarder toutes
+   ses pièces, sans filtre d'état qui n'aurait rien à lire. */
+$updatedProvenanceFiltre = function () {
+    $this->pageDetail = 1;
+
+    if ($this->provenanceFiltre === 'fne') {
+        $this->etatFiltre = 'toutes';
+    }
+};
+$montrer = function (string $vue) {
+    $this->vueTableau = in_array($vue, ['factures', 'principaux'], true) ? $vue : 'factures';
+};
 $updatedRecherche = function () { $this->pageDetail = 1; };
 
 $mesVilles = computed(fn () => PerimetreSites::optionsVilles(auth()->user()));
@@ -449,7 +476,6 @@ $enregistrer = function () {
         /* Les précisions du classeur. Aucune n'est exigée : une pièce reçue entre deux
            dépôts se saisit avec le fournisseur, la date et le montant, et le reste se
            complète si on l'a sous les yeux. */
-        'mois' => ['nullable', 'integer', 'min:1', 'max:12'],
         'section' => ['nullable', 'string', 'max:60'],
         'numeroBc' => ['nullable', 'string', 'max:60'],
         'dateReception' => ['nullable', 'date'],
@@ -459,7 +485,6 @@ $enregistrer = function () {
         'numeroCheque' => ['nullable', 'string', 'max:60'],
         'numeroFeb' => ['nullable', 'string', 'max:60'],
         'numeroFiche' => ['nullable', 'string', 'max:40'],
-        'codePiece' => ['nullable', 'string', 'max:60'],
         'vehicule' => ['nullable', 'string', 'max:120'],
         'montantHt' => ['nullable', 'numeric'],
         'tva' => ['nullable', 'numeric'],
@@ -472,7 +497,6 @@ $enregistrer = function () {
         'numeroFactureAchat' => ['nullable', 'string', 'max:60'],
         'numeroFactureVente' => ['nullable', 'string', 'max:60'],
         'numeroFactureClient' => ['nullable', 'string', 'max:60'],
-        'resultatIndicatif' => ['nullable', 'string', 'max:120'],
         'observationsFacturation' => ['nullable', 'string', 'max:2000'],
         'commentaires' => ['nullable', 'string', 'max:2000'],
         'actionsAMener' => ['nullable', 'string', 'max:2000'],
@@ -554,7 +578,6 @@ $enregistrer = function () {
 
         /* Les précisions du classeur, telles quelles. Une chaîne vide devient null : une
            case laissée vide dit « on ne sait pas », pas « c'est vide ». */
-        'mois' => $donnees['mois'] !== '' ? (int) $donnees['mois'] : null,
         'section' => $donnees['section'] ?: null,
         'numero_bc' => $donnees['numeroBc'] ?: null,
         'date_reception' => $donnees['dateReception'] ?: null,
@@ -564,7 +587,6 @@ $enregistrer = function () {
         'numero_cheque' => $donnees['numeroCheque'] ?: null,
         'numero_feb' => $donnees['numeroFeb'] ?: null,
         'numero_fiche' => $donnees['numeroFiche'] ?: null,
-        'code_piece' => $donnees['codePiece'] ?: null,
         'vehicule' => $donnees['vehicule'] ?: null,
         'montant_ht' => $donnees['montantHt'] !== '' ? montant_de($donnees['montantHt']) : null,
         'tva' => $donnees['tva'] !== '' ? montant_de($donnees['tva']) : null,
@@ -577,7 +599,6 @@ $enregistrer = function () {
         'numero_facture_achat' => $donnees['numeroFactureAchat'] ?: null,
         'numero_facture_vente' => $donnees['numeroFactureVente'] ?: null,
         'numero_facture_client' => $donnees['numeroFactureClient'] ?: null,
-        'resultat_indicatif' => $donnees['resultatIndicatif'] ?: null,
         'observations_facturation' => $donnees['observationsFacturation'] ?: null,
         'commentaires' => $donnees['commentaires'] ?: null,
         'actions_a_mener' => $donnees['actionsAMener'] ?: null,
@@ -608,11 +629,11 @@ $enregistrer = function () {
     // Les précisions se vident aussi : la pièce suivante n'a aucune raison d'hériter du
     // n° de chèque de la précédente.
     foreach ([
-        'mois', 'section', 'numeroBc', 'dateReception', 'dateReglement', 'delaiReglement',
-        'typeTransaction', 'numeroCheque', 'numeroFeb', 'numeroFiche', 'codePiece', 'vehicule',
+        'section', 'numeroBc', 'dateReception', 'dateReglement', 'delaiReglement',
+        'typeTransaction', 'numeroCheque', 'numeroFeb', 'numeroFiche', 'vehicule',
         'montantHt', 'tva', 'tva2', 'montantRefacture', 'montantNetAchat', 'montantNetVente',
         'quantiteTotale', 'quantiteRefacturee', 'numeroFactureAchat', 'numeroFactureVente',
-        'numeroFactureClient', 'resultatIndicatif', 'observationsFacturation', 'commentaires',
+        'numeroFactureClient', 'observationsFacturation', 'commentaires',
         'actionsAMener',
     ] as $champ) {
         $this->{$champ} = '';
@@ -623,7 +644,7 @@ $enregistrer = function () {
     $this->exercice = (int) date('Y', strtotime($donnees['dateFacture']));
     $this->pageDetail = 1;
 
-    unset($this->perimetre, $this->requete, $this->detail, $this->kpis, $this->principaux, $this->exercices);
+    unset($this->perimetre, $this->requete, $this->detail, $this->kpis, $this->principaux, $this->exercices, $this->normalises);
 
     $this->dispatch('annonce', texte: 'La pièce '.$numero.' est enregistrée.', ton: 'succes');
 };
@@ -656,12 +677,75 @@ $colonnesFiltrables = computed(fn () => [
     'factures_fournisseurs.date_echeance' => FiltreLibre::colonne('Date d’échéance', 'date'),
 ]);
 
-$detail = computed(fn () => (clone $this->requete)
-    ->with(['ville', 'recuePar'])
+/**
+ * Les factures FNE de l'année qu'aucune ligne du suivi ne porte encore — 22/10.
+ *
+ * « Sur cette page, on doit avoir toutes les factures fournisseurs : suivies ou pas, venant de la
+ * FNE ou pas. » Une pièce du suivi liée à sa FNE paraît une fois, par sa ligne du suivi ; celle que
+ * personne n'a encore portée paraît ici, telle que le portail la donne. Elle ne dit ni ce qui en a
+ * été réglé ni la ville : elle n'entre que sous « Toutes » (un filtre d'état n'aurait rien à y lire)
+ * et paraît dans chaque périmètre, comme toute ligne dont on ne sait pas où elle est. Les « autres
+ * filtres » visent des colonnes du classeur qu'elle n'a pas : posés, ils l'écartent.
+ */
+$fneHorsSuivi = computed(function () {
+    if ($this->provenanceFiltre === 'suivi' || $this->etatFiltre !== 'toutes'
+        || FiltreLibre::compter($this->colonnesFiltrables, (array) $this->filtresLibres) > 0
+        || ! \App\Support\SchemaDisponible::table('factures_fne')) {
+        return null;
+    }
+
+    $terme = trim($this->recherche);
+
+    return FactureFne::query()->whereNull('facture_fournisseur_id')->where('exercice', $this->annee)
+        ->when($terme !== '', fn ($q) => $q->where(fn ($sous) => $sous
+            ->where('emetteur_nom', 'like', '%'.$terme.'%')
+            ->orWhere('emetteur_ncc', 'like', '%'.$terme.'%')
+            ->orWhere('reference', 'like', '%'.$terme.'%')));
+});
+
+/**
+ * Le tableau « Factures reçues » : les pièces du suivi et les factures FNE pas encore au suivi, en
+ * une suite paginée en base (`union all` sur la source, l'identifiant et la date), puis chaque ligne
+ * relue dans son modèle — deux requêtes pour la page, jamais une par ligne.
+ */
+$detail = computed(function () {
+    $parties = [];
+
+    if ($this->provenanceFiltre !== 'fne') {
+        $parties[] = (clone $this->requete)->reorder()->toBase()
+            ->selectRaw("'suivi' as source, factures_fournisseurs.id as id, factures_fournisseurs.date_facture as date_tri");
+    }
+
+    if ($this->fneHorsSuivi !== null) {
+        $parties[] = (clone $this->fneHorsSuivi)->toBase()
+            ->selectRaw("'fne' as source, factures_fne.id as id, factures_fne.date_facture as date_tri");
+    }
+
+    if ($parties === []) {
+        return new \Illuminate\Pagination\LengthAwarePaginator([], 0, 25, 1);
+    }
+
+    $union = array_shift($parties);
+
+    foreach ($parties as $partie) {
+        $union->unionAll($partie);
+    }
+
     // La plus vieille dette en tête : faute d'échéance dans le fichier, c'est
     // l'ancienneté de la facture qui dit ce qui presse.
-    ->orderBy('date_facture')
-    ->paginate(25, ['*'], 'pageDetail', $this->pageDetail));
+    $page = \Illuminate\Support\Facades\DB::query()->fromSub($union, 'toutes')
+        ->orderBy('date_tri')->orderByDesc('source')->orderBy('id')
+        ->paginate(25, ['*'], 'pageDetail', $this->pageDetail);
+
+    $ids = fn (string $source) => $page->getCollection()->where('source', $source)->pluck('id')->all();
+    $pieces = FactureFournisseur::query()->with(['ville', 'recuePar'])->whereIn('id', $ids('suivi'))->get()->keyBy('id');
+    $fne = $ids('fne') === [] ? collect() : FactureFne::query()->whereIn('id', $ids('fne'))
+        ->get(['id', 'reference', 'est_avoir', 'date_facture', 'emetteur_nom', 'emetteur_ncc', 'montant_ttc'])->keyBy('id');
+
+    return $page->setCollection($page->getCollection()
+        ->map(fn ($l) => $l->source === 'suivi' ? ($pieces[$l->id] ?? null) : ($fne[$l->id] ?? null))
+        ->filter()->values());
+});
 
 /**
  * Les fiches des fournisseurs de la page affichée, en une requête.
@@ -672,7 +756,7 @@ $detail = computed(fn () => (clone $this->requete)
  */
 $fiches = computed(fn () => ConditionsFournisseur::pour(
     (int) auth()->user()->entreprise_id,
-    $this->detail->items(),
+    array_values(array_filter($this->detail->items(), fn ($ligne) => $ligne instanceof FactureFournisseur)),
 ));
 
 ?>
@@ -729,10 +813,8 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                     @endif
                 </p>
 
-                {{-- **L'essentiel seulement — 20/10** : « les champs de saisie du suivi, c'est trop ; on garde
-                     l'essentiel ». Les colonnes du classeur (section, BC, quantités, refacturation…) ne se
-                     saisissent plus ici ; elles restent en base, reprises du fichier, et se lisent sur la
-                     page de la pièce. --}}
+                {{-- **L'essentiel d'abord — 20/10** : « les champs de saisie du suivi, c'est trop ; on garde
+                     l'essentiel ». Les précisions du classeur sont rétablies le 22/10, repliées dessous. --}}
                 <form wire:submit="enregistrer">
                     @if ($porterFne)
                         {{-- Ce que dit la facture certifiée, en premier et en lecture seule : le serveur
@@ -782,10 +864,82 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                 :options="$this->sitesOuSaisir" vide="— à préciser —" width="185" />
                         @endif
                         <x-champ label="Immatriculation" model="immatriculation" width="145" />
+                        @unless ($porterFne)
+                            <x-champ label="Nature" model="naturePiece" width="130" />
+                        @endunless
+                        <x-champ label="Imputation" model="imputation" width="170" />
                     </div>
 
                     <div style="margin-top:12px;">
                         <x-champ label="Observations" model="observations" type="textarea" />
+                    </div>
+
+                    {{-- **Les précisions du classeur, rétablies le 22/10** — sans le mois, le code pièce ni le
+                         résultat indicatif, retirés à la demande du propriétaire. Repliées : une pièce reçue
+                         entre deux dépôts se saisit toujours avec l'essentiel. --}}
+                    <div style="margin-top:14px;">
+                        <button type="button" class="bouton bouton-secondaire bouton-petit"
+                            wire:click="$toggle('precisionsOuvertes')">
+                            {{ $precisionsOuvertes ? '− Masquer' : '+ Ajouter' }} les précisions du classeur
+                        </button>
+                        <span style="font-size:12px; color:#6B6E76; margin-left:8px;">
+                            Section, bon de commande, TVA, refacturation, quantités, n° FEB, n° de chèque —
+                            facultatives, et reprises telles que le classeur les nomme.
+                        </span>
+                    </div>
+
+                    <div x-show="$wire.precisionsOuvertes" @if (! $precisionsOuvertes) style="display:none;" @endif>
+                        <div style="margin-top:12px;">
+                            <p class="sous-titre" style="margin-top:0;">Le dossier</p>
+                            <div class="bloc-saisie">
+                                <x-champ label="Section" model="section" width="160" placeholder="Peinture, Carrosserie…" />
+                                <x-champ label="N° BC" model="numeroBc" width="140" />
+                                <x-champ label="Date de réception" model="dateReception" type="date" width="165" />
+                                <x-champ label="Type de transaction / services" model="typeTransaction" width="220" />
+                                <x-champ label="N° de fiche de réception" model="numeroFiche" width="180" placeholder="FR-…" />
+                                <x-champ label="Véhicule" model="vehicule" width="170" />
+                            </div>
+
+                            <p class="sous-titre">Le règlement</p>
+                            <div class="bloc-saisie">
+                                <x-champ label="Date de règlement" model="dateReglement" type="date" width="165" />
+                                <x-champ label="Délai de règlement" model="delaiReglement" width="165" placeholder="Comptant, 30 jours…" />
+                                <x-champ label="N° de chèque" model="numeroCheque" width="150" />
+                                <x-champ label="N° FEB" model="numeroFeb" width="130" />
+                            </div>
+
+                            <p class="sous-titre">Les montants</p>
+                            <div class="bloc-saisie">
+                                {{-- Le HT et la TVA d'une facture FNE portée sont ceux de la pièce certifiée,
+                                     affichés plus haut et relus à l'enregistrement. --}}
+                                @unless ($porterFne)
+                                    <x-champ label="Montant HT" model="montantHt" type="number" width="140" />
+                                    <x-champ label="TVA" model="tva" type="number" width="120" />
+                                @endunless
+                                <x-champ label="TVA 2" model="tva2" type="number" width="120" />
+                                <x-champ label="Montant refacturé" model="montantRefacture" type="number" width="160" />
+                                <x-champ label="Montant net achat" model="montantNetAchat" type="number" width="160" />
+                                <x-champ label="Montant net vente" model="montantNetVente" type="number" width="160" />
+                                <x-champ label="Qté totale" model="quantiteTotale" type="number" width="130" />
+                                <x-champ label="Qté refacturée" model="quantiteRefacturee" type="number" width="145" />
+                            </div>
+
+                            <p class="sous-titre">La refacturation au client</p>
+                            <div class="bloc-saisie">
+                                @unless ($porterFne)
+                                    <x-champ label="N° facture achat (FA)" model="numeroFactureAchat" width="175" />
+                                @endunless
+                                <x-champ label="N° facture vente (FV)" model="numeroFactureVente" width="175" />
+                                <x-champ label="N° facture client" model="numeroFactureClient" width="165" />
+                            </div>
+
+                            <p class="sous-titre">Ce qu'on en dit</p>
+                            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px;">
+                                <x-champ label="Observations sur la facturation client" model="observationsFacturation" type="textarea" />
+                                <x-champ label="Commentaires" model="commentaires" type="textarea" />
+                                <x-champ label="Actions à mener" model="actionsAMener" type="textarea" />
+                            </div>
+                        </div>
                     </div>
 
                     <div style="margin-top:14px;">
@@ -851,51 +1005,20 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
         </div>
     @endif
 
-    @if ($this->principaux->isNotEmpty())
-        <div class="carte" style="margin-bottom:16px;">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 12px;">À qui nous devons le plus</h3>
-            <div class="tableau-conteneur">
-                <table class="tableau">
-                    <thead>
-                        <tr>
-                            <th>Fournisseur</th>
-                            <th style="text-align:right;">Pièces ouvertes</th>
-                            <th style="text-align:right;">Déjà payé</th>
-                            <th style="text-align:right;">Reste à payer</th>
-                            <th style="text-align:right;">Part de la dette</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($this->principaux as $f)
-                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                                <td>{{ $f->fournisseur ?: '—' }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ $f->pieces }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
-                                    {{ ae(montant_de($f->regle)) }}
-                                    @if ($f->engage > 0)
-                                        {{-- La part réglée dit d'un coup d'œil si le compte tourne
-                                             ou s'il s'installe. --}}
-                                        <div style="font-size:11px; color:#6B6E76;">{{ round($f->regle / $f->engage * 100) }} % de l'engagé</div>
-                                    @endif
-                                </td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae(montant_de($f->du)) }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
-                                    {{ $this->kpis['reste'] > 0 ? round($f->du / $this->kpis['reste'] * 100) : 0 }} %
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    @endif
-
+    {{-- **Un seul cadre, deux boutons — 22/10** : « Factures reçues » et « À qui nous devons le plus »
+         étaient deux tableaux superposés ; le bouton choisi décide de ce que montre le cadre. --}}
     <div class="carte">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
-            <h3 style="font-size:15px; font-weight:700; margin:0;">
-                Factures reçues ({{ montant_nombre($this->detail->total()) }})
-            </h3>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" wire:click="montrer('factures')" class="bouton {{ $vueTableau === 'factures' ? '' : 'bouton-secondaire' }}" style="padding:7px 12px;">
+                    Factures reçues ({{ montant_nombre($this->detail->total()) }})
+                </button>
+                <button type="button" wire:click="montrer('principaux')" class="bouton {{ $vueTableau === 'principaux' ? '' : 'bouton-secondaire' }}" style="padding:7px 12px;">
+                    À qui nous devons le plus
+                </button>
+            </div>
 
+            @if ($vueTableau === 'factures')
             <div style="display:flex; gap:9px; flex-wrap:wrap; align-items:center;">
 {{-- **`width:auto` n'est pas un détail de style, c'est la correction du 29/09** :
                      « les deux filtres sont longs pour rien, aligne-les sur la ligne des boutons
@@ -917,6 +1040,12 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                     <option value="toutes" @selected($etatFiltre === 'toutes')>Toutes</option>
                 </select>
 
+                <select wire:model.live="provenanceFiltre" class="champ" style="width:auto;" aria-label="Provenance">
+                    <option value="toutes" @selected($provenanceFiltre === 'toutes')>Suivi et FNE</option>
+                    <option value="suivi" @selected($provenanceFiltre === 'suivi')>Suivi fournisseurs seul</option>
+                    <option value="fne" @selected($provenanceFiltre === 'fne')>FNE pas encore au suivi</option>
+                </select>
+
                 {{-- Les dix-huit colonnes des quarante qu'aucun filtre ne couvre : la section,
                      le mode de règlement, le n° de chèque, l'imputation, les tranches de
                      montants et de dates. Demandé le 28/09. --}}
@@ -928,7 +1057,52 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                 <x-telecharger route="fournisseurs.telecharger"
                     :parametres="['exercice' => $this->annee, 'ville' => $villeFiltre, 'etat' => $etatFiltre, 'recherche' => $recherche]" />
             </div>
+            @endif
         </div>
+
+        @if ($vueTableau === 'principaux')
+        <div class="tableau-conteneur">
+            <table class="tableau">
+                <thead>
+                    <tr>
+                        <th>Fournisseur</th>
+                        <th style="text-align:right;">Pièces ouvertes</th>
+                        <th style="text-align:right;">Déjà payé</th>
+                        <th style="text-align:right;">Reste à payer</th>
+                        <th style="text-align:right;">Part de la dette</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($this->principaux as $f)
+                        <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                            <td>{{ $f->fournisseur ?: '—' }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ $f->pieces }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; color:#0E9F6E;">
+                                {{ ae(montant_de($f->regle)) }}
+                                @if ($f->engage > 0)
+                                    {{-- La part réglée dit d'un coup d'œil si le compte tourne
+                                         ou s'il s'installe. --}}
+                                    <div style="font-size:11px; color:#6B6E76;">{{ round($f->regle / $f->engage * 100) }} % de l'engagé</div>
+                                @endif
+                            </td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae(montant_de($f->du)) }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; color:#6B6E76;">
+                                {{ $this->kpis['reste'] > 0 ? round($f->du / $this->kpis['reste'] * 100) : 0 }} %
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        @if ($this->principaux->isEmpty())
+            <p style="margin:10px 0 0; font-size:12.5px; color:#6B6E76;">Aucune dette ouverte pour cette année et ce périmètre.</p>
+        @endif
+        @else
+            @if ($etatFiltre !== 'toutes' && $provenanceFiltre !== 'suivi')
+                <p style="margin:-6px 0 10px; font-size:12px; color:#6B6E76;">
+                    Les factures FNE pas encore au suivi ne paraissent que sous « Toutes » : le portail ne dit pas ce qui en a été réglé.
+                </p>
+            @endif
 
         <div class="tableau-conteneur">
             <table class="tableau">
@@ -950,6 +1124,35 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                 </thead>
                 <tbody>
                     @forelse ($this->detail as $ligne)
+                        @if ($ligne instanceof FactureFne)
+                            {{-- Une facture FNE qu'aucune ligne du suivi ne porte encore : telle que le
+                                 portail la donne, sans règlement connu. --}}
+                            <tr wire:key="fne-{{ $ligne->id }}" style="border-bottom:1px solid var(--th-ligne,#E2E0D8); background:#FAF7FF;">
+                                <td>
+                                    {{ $ligne->emetteur_nom ?: '—' }}
+                                    <div style="font-size:11px; color:#7C3AED;">FNE — pas encore au suivi</div>
+                                </td>
+                                <td style="color:#6B6E76;">{{ $ligne->reference }}@if ($ligne->est_avoir) <span style="color:#C8102E; font-weight:700;">avoir</span>@endif</td>
+                                <td style="color:#6B6E76;">—</td>
+                                <td style="white-space:nowrap;">{{ $ligne->date_facture?->format('d/m/Y') ?? '—' }}</td>
+                                <td style="color:#6B6E76;">—</td>
+                                <td style="color:#6B6E76;">—</td>
+                                <td style="color:#6B6E76;">—</td>
+                                <td style="color:#6B6E76; font-size:11px;">NCC {{ $ligne->emetteur_ncc ?: '—' }}</td>
+                                <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae(montant_de($ligne->montant_ttc)) }}</td>
+                                <td style="text-align:right; color:#9A9DA5;">—</td>
+                                <td style="text-align:right; color:#9A9DA5; font-size:11.5px;">non suivie</td>
+                                <td class="colonne-collee" style="text-align:right; white-space:nowrap;">
+                                    @if ($this->peutEcrire)
+                                        <a href="{{ route('fournisseurs', ['porter' => $ligne->id]) }}" wire:navigate
+                                            class="bouton" style="padding:4px 10px; font-size:12px; text-decoration:none;">Porter</a>
+                                    @endif
+                                    <a href="{{ route('fournisseurs.fne.detail', $ligne->id) }}" wire:navigate
+                                        class="bouton bouton-secondaire" style="padding:4px 10px; font-size:12px; text-decoration:none;">Détails</a>
+                                </td>
+                            </tr>
+                            @continue
+                        @endif
                         @php
                             $jours = $ligne->date_facture
                                 ? NombreDeJours::entre($ligne->date_facture, now())
@@ -1033,5 +1236,6 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
              perdait la ligne qu'on était en train de lire à chaque page tournée. --}}
         <x-pagination :page="$this->detail->currentPage()" :total="$this->detail->total()"
             prop="pageDetail" :par-page="25" />
+        @endif
     </div>
 </div>

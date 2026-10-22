@@ -136,6 +136,20 @@ $chargesFournisseurs = computed(function () {
 
 $fournisseurs = computed(fn () => $this->chargesFournisseurs->totaux());
 
+/*
+ * **Les charges source par source — 22/10.** « On a la caisse, le suivi des fournisseurs, la FNE et
+ * la banque. » La caisse se partage par son libellé en charges administratives et charges
+ * fournisseurs ; le suivi, la FNE et la banque se lisent tels qu'ils sont, sur la période et le
+ * filtre — sans lettrage, donc sans s'additionner. Voir `ChargesParSource`.
+ */
+$parSource = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return \Modules\Noyau\Exploitation\Services\ChargesParSource::pourLesSites(
+        (int) auth()->user()->entreprise_id, $this->idsSites, $debut, $fin, (string) $this->activiteFiltre,
+    )->tout();
+});
+
 $origines = computed(function () {
     $t = $this->totauxCharges;
     $importees = montant_de((clone $this->charges->saisies())->whereNotNull('charges.lot_import_id')->sum('charges.montant'));
@@ -559,19 +573,37 @@ $pageCharges = computed(function () {
         <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">D'où viennent les charges — exercice {{ $exercice }}</h3>
         <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
             Toutes les sorties du journal de caisse sont des charges, avec celles saisies dans
-            l'application. Le suivi fournisseurs se lit à côté, sans s'additionner : une facture
-            réglée en espèces compte une fois, par sa sortie de caisse.
+            l'application ; la caisse se partage par son libellé entre charges administratives
+            (salaires, transport, fonctionnement…) et charges fournisseurs (pièces, travaux, mécanique,
+            sinistre). Le suivi fournisseurs, la FNE et la banque se lisent à côté, tels qu'ils sont :
+            sans lettrage, une même dépense peut y figurer deux fois, et ils ne s'additionnent pas.
         </p>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
-            <x-kpi-card label="Sorties de caisse — toutes des charges" :value="ae($o['caisse'])"
-                sub="{{ number_format($o['nCaisse'], 0, ',', ' ') }} sortie(s) du journal" couleur="#B45309" />
+        @php $src = $this->parSource; @endphp
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;">
+            {{-- La caisse, partagée par son libellé — 22/10 : « on garde le KPI des charges de la caisse,
+                 et dessous, voici le montant des charges administratives, et voici celui des charges
+                 fournisseurs ». --}}
+            <x-kpi-card label="Charges selon la caisse" :value="ae($src['caisse']['total'])" couleur="#B45309"
+                sub="{{ number_format($src['caisse']['n'], 0, ',', ' ') }} sortie(s) du journal — toutes des charges"
+                :lignes="[
+                    'Charges administratives ('.number_format($src['caisse']['nAdministratif'], 0, ',', ' ').')' => ae($src['caisse']['administratif']),
+                    'Charges fournisseurs ('.number_format($src['caisse']['nFournisseurs'], 0, ',', ' ').')' => ae($src['caisse']['fournisseurs']),
+                ]" />
             <x-kpi-card label="Saisies dans l'application" :value="ae($o['saisies'])"
                 sub="{{ number_format($o['nSaisies'], 0, ',', ' ') }} décaissement(s){{ $o['importees'] != 0 ? ' · importées '.ae($o['importees']) : '' }}" />
-            {{-- « Charge fournisseur » mène à la page Fournisseurs (18/10) ; depuis le 20/10, à côté. --}}
-            @php $fo = $this->fournisseurs; @endphp
+            {{-- Le suivi fournisseurs de la période et du filtre, tel qu'importé — 22/10 : « voici le
+                 montant du suivi fournisseur, suivant la date sélectionnée ; sans lettrage ». --}}
             <a href="{{ route('fournisseurs') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir la page Fournisseurs">
-                <x-kpi-card label="Suivi fournisseurs — à côté" :value="ae($fo['suivi'])" couleur="#7C3AED"
-                    sub="{{ number_format($fo['nSuivi'], 0, ',', ' ') }} pièce(s) facturée(s) sur la période · dont FNE {{ ae($fo['normalisees'] - $fo['fne']) }} — non additionné, détail ›" />
+                <x-kpi-card label="Suivi fournisseurs" :value="ae($src['suivi']['total'])" couleur="#7C3AED"
+                    sub="{{ number_format($src['suivi']['n'], 0, ',', ' ') }} pièce(s) facturée(s) sur la période — à côté, non additionné ›" />
+            </a>
+            <a href="{{ route('fournisseurs.fne') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir les factures FNE">
+                <x-kpi-card label="Factures FNE" :value="ae($src['fne']['total'])" couleur="#7C3AED"
+                    sub="{{ number_format($src['fne']['n'], 0, ',', ' ') }} facture(s) d'achat relevée(s) au portail — toute l'entreprise, à côté ›" />
+            </a>
+            <a href="{{ route('banques') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir les banques">
+                <x-kpi-card label="Banque — débits des relevés" :value="ae($src['banque']['total'])" couleur="#2563EB"
+                    sub="{{ number_format($src['banque']['n'], 0, ',', ' ') }} débit(s) — règlements fournisseurs et autres sorties, à côté ›" />
             </a>
             {{-- Cliquable — 14/10 : le détail par catégorie se déplie dessous. --}}
             <button type="button" wire:click="ouvrirLesCategories" title="Voir le détail par catégorie"

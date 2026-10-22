@@ -213,6 +213,21 @@ $syntheseDuCa = computed(fn () => $this->synthese
     ->reject(fn ($l) => ($l['genre'] ?? 'atelier') !== 'atelier' && $l['ca'] === 0 && $l['devisAttente'] === 0)
     ->values());
 
+/*
+ * **Les charges par source — 22/10.** « Un gros KPI Charges, et dans ces charges une sélection qui
+ * départage l'information, comme on l'a fait pour le chiffre d'affaires avec la synthèse par site :
+ * les charges de la caisse, de la FNE, de la banque, du suivi fournisseur. Pas de lettrage pour
+ * l'instant : on met les informations telles qu'elles sont. » Le total retenu reste caisse +
+ * saisies ; les autres sources se lisent à côté — voir `ChargesParSource`.
+ */
+$chargesParSource = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return \Modules\Noyau\Exploitation\Services\ChargesParSource::pourLesSites(
+        (int) auth()->user()->entreprise_id, $this->sitesRetenus->pluck('id')->all(), $debut, $fin, (string) $this->activiteFiltre,
+    )->tout();
+});
+
 /** La seconde section de la synthèse : l'état des impayés par lieu — 12/10, voir `SyntheseParAtelier::impayes`. */
 $syntheseImpayes = computed(function () {
     [$debut, $fin] = $this->plage;
@@ -642,6 +657,66 @@ $commentaires = computed(function () {
                     prop="pageCommentaires.{{ $cle }}" :par-page="7" />
             </div>
         @endforeach
+    </div>
+
+    {{-- ─────────────────────────────── les charges par source — 22/10 --}}
+    @php $src = $this->chargesParSource; @endphp
+    <div class="carte" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+            <div>
+                <h3 class="titre-section" style="margin-bottom:2px;">Charges — synthèse par source</h3>
+                <p style="margin:0; font-size:12.5px; color:#6B6E76; line-height:1.5; max-width:640px;">
+                    Ce que dit chaque source sur la période et le filtre. Les charges retenues sont la caisse et
+                    les saisies ; le suivi fournisseurs, la FNE et la banque se lisent à côté, tels qu'ils sont —
+                    sans lettrage, une même dépense peut y figurer deux fois, et ils ne s'additionnent pas.
+                </p>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:11px; color:#6B6E76; text-transform:uppercase; letter-spacing:.04em;">Charges retenues — {{ $this->libellePerimetre }}</div>
+                <div style="font-size:26px; font-weight:800; color:#C8102E; font-variant-numeric:tabular-nums;">{{ ae($src['retenu']) }}</div>
+            </div>
+        </div>
+        <div class="tableau-conteneur" style="margin-top:12px;">
+            <table class="tableau">
+                <thead>
+                    <tr><th>Source</th><th style="text-align:right;">Lignes</th><th style="text-align:right;">Montant</th><th>Dans les charges retenues ?</th></tr>
+                </thead>
+                <tbody>
+                    <tr style="font-weight:700;">
+                        <td>Caisse — sorties du journal</td>
+                        <td style="text-align:right;">{{ number_format($src['caisse']['n'], 0, ',', ' ') }}</td>
+                        <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($src['caisse']['total']) }}</td>
+                        <td style="color:#0E9F6E;">Oui</td>
+                    </tr>
+                    <tr>
+                        <td style="padding-left:26px; color:#4B4E55;">dont charges administratives <span style="font-size:11px; color:#9A9DA5;">(salaires, transport, fonctionnement…)</span></td>
+                        <td style="text-align:right; color:#6B6E76;">{{ number_format($src['caisse']['nAdministratif'], 0, ',', ' ') }}</td>
+                        <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; color:#4B4E55;">{{ ae($src['caisse']['administratif']) }}</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td style="padding-left:26px; color:#4B4E55;">dont charges fournisseurs <span style="font-size:11px; color:#9A9DA5;">(pièces, travaux, mécanique, sinistre)</span></td>
+                        <td style="text-align:right; color:#6B6E76;">{{ number_format($src['caisse']['nFournisseurs'], 0, ',', ' ') }}</td>
+                        <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; color:#4B4E55;">{{ ae($src['caisse']['fournisseurs']) }}</td>
+                        <td></td>
+                    </tr>
+                    <tr style="font-weight:700;">
+                        <td>Saisies dans l'application</td>
+                        <td style="text-align:right;">{{ number_format($src['saisies']['n'], 0, ',', ' ') }}</td>
+                        <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($src['saisies']['total']) }}</td>
+                        <td style="color:#0E9F6E;">Oui</td>
+                    </tr>
+                    @foreach (['banque' => 'Banque — débits des relevés', 'fne' => "Factures FNE — achats relevés au portail", 'suivi' => 'Suivi fournisseurs — pièces facturées'] as $cle => $libelle)
+                        <tr>
+                            <td>{{ $libelle }}</td>
+                            <td style="text-align:right;">{{ number_format($src[$cle]['n'], 0, ',', ' ') }}</td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($src[$cle]['total']) }}</td>
+                            <td style="color:#6B6E76;">À côté — non additionné</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
     </div>
 
     {{-- ─────────────────────────────── la synthèse, en deux sections — 12/10

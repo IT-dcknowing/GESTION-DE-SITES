@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Entreprises\Services;
 
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
+use Modules\Noyau\Entreprises\Support\CatalogueDesPages;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -30,7 +31,8 @@ class ProvisionneurEntreprise
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($entreprise->id);
 
-        foreach (self::ROLES as $role) {
+        // Les rôles configurés dans la Maintenance (22/10) aussi : un accès qui les porte doit les trouver.
+        foreach ([...self::ROLES, ...array_keys(CatalogueDesPages::roles())] as $role) {
             Role::firstOrCreate([
                 'name' => $role,
                 'guard_name' => 'web',

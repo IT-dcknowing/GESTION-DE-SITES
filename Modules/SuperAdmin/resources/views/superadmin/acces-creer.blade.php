@@ -233,7 +233,8 @@ $optionsSiteCommercial = computed(fn () => $this->roleActif === 'commercial' && 
  * proposé ici mais absent de l'entreprise ferait échouer l'affectation au moment
  * d'enregistrer, et un rôle créé sans être proposé resterait inattribuable.
  */
-$rolesDisponibles = computed(fn () => collect(ProvisionneurEntreprise::ROLES)
+// Les rôles configurés dans la Maintenance (22/10) suivent : `ProvisionneurEntreprise` les crée aussi.
+$rolesDisponibles = computed(fn () => collect([...ProvisionneurEntreprise::ROLES, ...array_keys(\Modules\Noyau\Entreprises\Support\CatalogueDesPages::roles())])
     ->mapWithKeys(fn (string $role) => [$role => LibellesRoles::de($role)])
     ->all());
 

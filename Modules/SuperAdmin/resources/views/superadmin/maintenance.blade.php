@@ -423,6 +423,16 @@ $declarerRegle = function (string $reference) {
     <x-titre-ecran titre="Maintenance"
         sous-titre="L'état technique de la plateforme et les gestes d'entretien." />
 
+    {{-- ═══════════════════════════════ les rôles configurés — 22/10
+
+         « Une section où je configure les rôles, dans la page Maintenance. » Son propre composant :
+         ses cases cochées n'ont rien à faire dans l'état des purges. --}}
+    <div id="roles">
+    <x-carte-section titre="Rôles et pages — configurer un rôle">
+        <livewire:superadmin.roles-configures />
+    </x-carte-section>
+    </div>
+
     {{-- ═══════════════════════════════ les incidents — 09/10
 
          En tête : c'est ce qu'on vient chercher quand un utilisateur appelle avec une

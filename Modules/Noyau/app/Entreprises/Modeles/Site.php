@@ -96,7 +96,11 @@ class Site extends Model
          * « Abidjan 2 », et la caisse se lisait en deux moitiés. L'atelier du compte ne sert
          * plus qu'à proposer un lieu par défaut à la saisie.
          */
-        if ($user->hasRole('caissier')) {
+        /*
+         * Un rôle configuré dans la Maintenance (22/10 — la Trésorerie, par exemple) lit comme la
+         * comptabilité : la ville de son compte, ou toutes s'il les couvre (`voitToutesLesVilles`).
+         */
+        if ($user->hasRole('caissier') || \Modules\Noyau\Entreprises\Support\CatalogueDesPages::roleDe($user) !== null) {
             $villeId = $user->ville_id
                 ?: ($user->site_id ? static::withoutGlobalScopes()->whereKey($user->site_id)->value('ville_id') : null);
 

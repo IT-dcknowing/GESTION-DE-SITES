@@ -43,7 +43,8 @@ class LibellesRoles
             return '—';
         }
 
-        return self::TOUS[$role] ?? $role;
+        // Un rôle configuré dans la Maintenance (22/10) dit le libellé qu'on lui a donné.
+        return self::TOUS[$role] ?? CatalogueDesPages::libelleDe($role) ?? $role;
     }
 
     /**
