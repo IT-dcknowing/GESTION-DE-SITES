@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 15 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 22 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -50,7 +50,35 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 20 octobre 2026
+## 3. Où l'on en est — 22 octobre 2026
+
+**Branche du 22/10 : `claude/compassionate-galileo-tly6ai`, poussée puis fusionnée dans `main`**
+(règle du propriétaire, rappelée le 22/10 : une branche par section de travaux, fusionnée dans
+`main` une fois terminée). **La suite de tests n'a pas pu tourner dans le conteneur cloud**
+(Composer refusé par le réseau sur `api.github.com`) : la lancer sur le poste — deux fichiers
+neufs, `LesChargesSeLisentParSourceTest` et `UnRoleSeDefinitParSesPagesTest`. Une migration
+additive (`2026_10_22_000001`, table neuve `roles_configures`).
+
+### Fait le 22/10 — un seul tableau fournisseurs, les charges par source, les rôles configurés
+
+- **Fournisseurs** : « Factures reçues » et « À qui nous devons le plus » sont **deux boutons d'un
+  seul cadre**. Le tableau montre **toutes les factures** : pièces du suivi **et** factures FNE pas
+  encore au suivi (union paginée en base) ; filtre de provenance ; « Toutes » par défaut. Une FNE
+  hors suivi ne dit ni règlement ni ville : elle n'entre que sous « Toutes », avec « Porter » et
+  « Détails » sur sa ligne.
+- **Formulaire de la pièce** : précisions du classeur rétablies (repliées), **sans Mois, Code pièce
+  ni Résultat indicatif** ; Nature et Imputation reviennent.
+- **Charges** (`ChargesParSource`) : carte « Charges selon la caisse » avec **charges
+  administratives / charges fournisseurs** lues dans le libellé (`CategorieDeSortie::volet` —
+  pièces, travaux, mécanique, sinistre, règlements et achats divers = fournisseurs ; le reste =
+  administratif) ; cartes **Suivi fournisseurs, Factures FNE, Banque (débits)** à côté — **sans
+  lettrage, jamais additionnées** : le total des charges reste caisse + saisies.
+- **Page FNE** : filtres tiers, n° FNE, dates, montant de A à B ; nombre et total de la liste.
+- **Accueil du gérant** : carte « **Charges — synthèse par source** ».
+- **Rôle Trésorerie** (Trésorerie, Caisse, Banques ; ville du compte) et **rôles configurables** :
+  Super admin › Maintenance › « Rôles et pages » — nom, sections et pages cochées, **Modifier**.
+  Un rôle configuré **lit**, n'écrit pas. `CatalogueDesPages` ; l'alias `role` passe par
+  `RoleOuPagesOuvertes`.
 
 **Branche du 14/10 :** `claude/arrondis-doublons-charges-k1upa9`, poussée puis fusionnée dans
 `main`. Deux migrations additives (tables neuves) : `git pull` puis `php artisan app:deployer`.
@@ -369,6 +397,13 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     caisse comptent aussi en charges (catégorie « Versements & transferts » sur la page Charges) — dire
     s'il faut les écarter. Corriger les deux tâches Cron de la production (espace après `artisan`).
 
+20. **Le 22/10** : sur le poste, `git pull` sur `main` puis **`php artisan test`** — rien n'a pu
+    être lancé dans le conteneur. En ligne, `git pull` et `php artisan app:deployer` (migration
+    `2026_10_22_000001`, table neuve `roles_configures` ; rien n'est lu ni écrit ailleurs). Ensuite :
+    créer les accès Trésorerie (gérant › Ajouter un accès, ou Super admin › Accès) ; vérifier sur
+    `/charges` que le partage administratif / fournisseurs de la caisse tombe juste — la règle lit
+    des mots, et un libellé mal rangé se corrige dans `CategorieDeSortie::REGLES`.
+
 ### En attente d'un accord, pas d'un travail
 
 - **Correspondances — quatre choix faits sans confirmation**, chacun réversible en une ligne :
@@ -386,6 +421,12 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
   des modifications non commitées du propriétaire. **Ne pas y toucher sans son accord.**
 
 ### Côté code, prêt à prendre
+
+- **Lettrage des sources de charges** : caisse, suivi fournisseurs, FNE et banque se lisent côte à
+  côte sans retrait des doublons (22/10). Quand un indicateur commun existera (n° FNE porté dans la
+  caisse, référence de règlement…), retirer les doublons dans `ChargesParSource`.
+- **Rôles configurés en écriture** : aujourd'hui ils lisent seulement. Ouvrir une écriture à l'un
+  d'eux demanderait de passer chaque `peutEcrire()` / `hasAnyRole` des actions par le catalogue.
 
 - **Accueil du gérant, « Encaissé » et « Trésorerie nette »** (synthèse par atelier) lisent encore
   les règlements, pas `TresorerieReelle` comme la page Trésorerie depuis le 20/10 : à aligner (par
@@ -439,6 +480,17 @@ pas en théorie :
    seulement ont une facture positive de même numéro en base.* Les doublons se verront.
 2. les **47 lignes « facture d'avoir à établir »** sont des avoirs *annoncés*, pas écrits. Leur
    reste est déjà à zéro. Elles restent des créances ordinaires, et c'est voulu.
+
+### 3. Le partage de la caisse en administratif / fournisseurs — trois choix à confirmer (22/10)
+
+1. **« Achats divers »** (motif fourre-tout du journal imprimé) est rangé en **fournisseurs** : il
+   nomme un achat.
+2. **Ce que la règle ne reconnaît pas** (« Autres ») est rangé en **administratif** : on ne prête pas
+   un fournisseur à une sortie qui n'en dit aucun.
+3. **Versements et transferts** restent dans la caisse et donc en **administratif** — la question du
+   20/10 (les écarter des charges ?) attend toujours sa réponse.
+
+Chacun se change en une ligne dans `CategorieDeSortie` (`CATEGORIES_FOURNISSEURS`).
 
 ---
 

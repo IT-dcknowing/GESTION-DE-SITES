@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
+use Modules\Noyau\Entreprises\Support\CatalogueDesPages;
 
 /**
  * Point d'entrée unique après connexion : chaque rôle a son écran d'atterrissage.
@@ -29,6 +30,8 @@ class RedirectionController extends Controller
             // changement d'habilitation demain fasse atterrir quelqu'un sur un 403.
             $utilisateur->hasRole('superviseur_recouvrement'), $utilisateur->hasRole('agent_recouvrement')
                 => route('recouvrement.'.(\Modules\Recouvrement\Support\AccesRecouvrement::pagesDe($utilisateur)[0] ?? 'saisie')),
+            // Un rôle configuré dans la Maintenance (22/10) atterrit sur sa première page cochée.
+            CatalogueDesPages::accueilDe($utilisateur) !== null => route(CatalogueDesPages::accueilDe($utilisateur)),
             default => null,
         };
 

@@ -30,6 +30,13 @@ usesFileUploads();
 
 state(['exercice' => null, 'filtre' => 'tous', 'page' => 1, 'fichier' => null, 'bilan' => null]);
 
+/*
+ * **Les filtres du 22/10** : « sur la page FNE, des filtres pour filtrer sur le tiers — le
+ * fournisseur —, sur le numéro FNE, sur la date ; et un filtre du montant, de A à B ». Ils
+ * s'ajoutent à « Afficher » et bornent la liste, pas les cartes du haut, qui disent l'exercice.
+ */
+state(['tiers' => '', 'numero' => '', 'dateDu' => '', 'dateAu' => '', 'montantMin' => '', 'montantMax' => '']);
+
 // Le bouton « Actualiser » : l'instant du lancement (Unix) tant que le relevé est attendu, sinon null.
 state(['attenteDepuis' => null, 'messageActualisation' => null]);
 
@@ -39,6 +46,17 @@ mount(function () {
 
 $updatedExercice = function () { $this->page = 1; };
 $updatedFiltre = function () { $this->page = 1; };
+// Tout filtre changé ramène à la première page : la vingtième d'un résultat de trois lignes est vide.
+$updated = function (string $propriete) {
+    if (in_array($propriete, ['tiers', 'numero', 'dateDu', 'dateAu', 'montantMin', 'montantMax'], true)) {
+        $this->page = 1;
+    }
+};
+
+$viderLesFiltres = function () {
+    $this->tiers = $this->numero = $this->dateDu = $this->dateAu = $this->montantMin = $this->montantMax = '';
+    $this->page = 1;
+};
 
 $peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()));
 
@@ -73,10 +91,31 @@ $kpi = computed(function () {
  * avec sa pièce entière en JSON. Les lire toutes à chaque clic pour en montrer vingt-cinq coûtait
  * plus que l'écran ne rapporte ; le détail se lit sur la page « Détails ».
  */
-$filtrees = protect(fn () => $this->base()
-    ->when($this->filtre === 'a_porter', fn ($q) => $q->whereNull('facture_fournisseur_id'))
-    ->when($this->filtre === 'au_suivi', fn ($q) => $q->whereNotNull('facture_fournisseur_id'))
-    ->when($this->filtre === 'avoirs', fn ($q) => $q->where('est_avoir', true)));
+$filtrees = protect(function () {
+    $tiers = trim($this->tiers);
+    $numero = trim($this->numero);
+    // Une date ou un montant mal formés sont ignorés plutôt que d'échouer : un filtre à moitié tapé
+    // ne doit pas vider la liste.
+    $date = fn ($v) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $v) ? (string) $v : null;
+    $nombre = fn ($v) => is_numeric(str_replace([' ', ','], ['', '.'], (string) $v)) ? (float) str_replace([' ', ','], ['', '.'], (string) $v) : null;
+
+    return $this->base()
+        ->when($this->filtre === 'a_porter', fn ($q) => $q->whereNull('facture_fournisseur_id'))
+        ->when($this->filtre === 'au_suivi', fn ($q) => $q->whereNotNull('facture_fournisseur_id'))
+        ->when($this->filtre === 'avoirs', fn ($q) => $q->where('est_avoir', true))
+        // Le tiers : son nom ou son NCC, tel que le portail l'écrit.
+        ->when($tiers !== '', fn ($q) => $q->where(fn ($s) => $s->where('emetteur_nom', 'like', '%'.$tiers.'%')
+            ->orWhere('emetteur_ncc', 'like', '%'.$tiers.'%')))
+        ->when($numero !== '', fn ($q) => $q->where('reference', 'like', '%'.$numero.'%'))
+        ->when($date($this->dateDu), fn ($q, $du) => $q->whereDate('date_facture', '>=', $du))
+        ->when($date($this->dateAu), fn ($q, $au) => $q->whereDate('date_facture', '<=', $au))
+        // Le montant TTC tel que donné, centimes compris (piège 17) ; un avoir est négatif.
+        ->when($nombre($this->montantMin) !== null, fn ($q) => $q->where('montant_ttc', '>=', $nombre($this->montantMin)))
+        ->when($nombre($this->montantMax) !== null, fn ($q) => $q->where('montant_ttc', '<=', $nombre($this->montantMax)));
+});
+
+/** Le total TTC de ce que la liste montre, filtres compris. */
+$totalFiltre = computed(fn () => montant_de($this->filtrees()->sum('montant_ttc')));
 
 $nombreLignes = computed(fn () => $this->filtrees()->count());
 
@@ -319,7 +358,23 @@ $porter = function (int $id) {
                 'avoirs' => 'Avoirs',
                 'suivi_sans_fne' => 'Lignes du suivi sans FNE',
             ]" />
+            @if ($filtre !== 'suivi_sans_fne')
+                <x-champ label="Fournisseur (nom ou NCC)" model="tiers" :live="true" width="200" placeholder="Nom du tiers…" />
+                <x-champ label="N° FNE" model="numero" :live="true" width="160" />
+                <x-champ label="Date du" model="dateDu" type="date" :live="true" width="150" />
+                <x-champ label="au" model="dateAu" type="date" :live="true" width="150" />
+                <x-champ label="Montant TTC de" model="montantMin" type="number" :live="true" width="140" />
+                <x-champ label="à" model="montantMax" type="number" :live="true" width="140" />
+                @if ($tiers !== '' || $numero !== '' || $dateDu !== '' || $dateAu !== '' || $montantMin !== '' || $montantMax !== '')
+                    <button type="button" wire:click="viderLesFiltres" class="bouton bouton-secondaire" style="align-self:flex-end; padding:7px 12px;">Effacer les filtres</button>
+                @endif
+            @endif
         </div>
+        @if ($filtre !== 'suivi_sans_fne')
+            <p style="margin:0 0 10px; font-size:12.5px; color:#6B6E76;">
+                {{ number_format($this->nombreLignes, 0, ',', ' ') }} facture(s) · {{ ae($this->totalFiltre) }} TTC
+            </p>
+        @endif
 
         @if ($filtre === 'suivi_sans_fne')
             <div class="tableau-conteneur">

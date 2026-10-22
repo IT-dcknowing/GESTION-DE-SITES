@@ -4,6 +4,7 @@ namespace Modules\Noyau\Commun\Services;
 
 use App\Models\User;
 use Modules\Import\Support\AccesImport;
+use Modules\Noyau\Entreprises\Support\CatalogueDesPages;
 use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
 use Modules\Recouvrement\Support\AccesRecouvrement;
 
@@ -36,6 +37,22 @@ class MenuNavigation
                 $sections,
                 fn ($onglet) => $onglet['section'] === null || $utilisateur->peutAccederA($onglet['section']),
             ));
+        }
+
+        /*
+         * Un rôle configuré dans la Maintenance (22/10) : ses sections et ses pages cochées, rien
+         * d'autre — un onglet qui mène à un refus vaut moins qu'un onglet absent. Les écrans
+         * communs, ouverts à tout compte, se replient sous « Paramètres ».
+         */
+        if (CatalogueDesPages::roleDe($utilisateur) !== null) {
+            return self::construire([
+                ...CatalogueDesPages::onglets($utilisateur),
+                ['label' => 'Paramètres', 'groupe' => [
+                    ['label' => 'Messages', 'route' => 'messages'],
+                    ['label' => 'Notifications', 'route' => 'mes-notifications'],
+                    ['label' => 'Mon espace', 'route' => 'mon-espace'],
+                ]],
+            ]);
         }
 
         /*

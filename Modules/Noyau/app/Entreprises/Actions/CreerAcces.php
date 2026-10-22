@@ -9,6 +9,7 @@ use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Support\CatalogueDesPages;
 use Modules\Noyau\Entreprises\Support\ChoixDeLieu;
 use Modules\Noyau\Entreprises\Support\ChoixDeVille;
 use Modules\Noyau\Entreprises\Support\HierarchieAcces;
@@ -20,6 +21,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -145,6 +147,12 @@ class CreerAcces
 
             try {
                 $registrar->setPermissionsTeamId($entreprise->id);
+
+                // Un rôle configuré (22/10) n'existe dans l'équipe de l'entreprise qu'à son premier accès.
+                if (CatalogueDesPages::estConfigure($role)) {
+                    Role::firstOrCreate(['name' => $role, 'guard_name' => 'web', 'entreprise_id' => $entreprise->id]);
+                }
+
                 $utilisateur->assignRole($role);
             } finally {
                 $registrar->setPermissionsTeamId($equipeInitiale);
@@ -233,7 +241,7 @@ class CreerAcces
             return $ville;
         }
 
-        if (! in_array($role, ['responsable_ville', 'responsable_commercial', 'commercial', 'caissier'], true)) {
+        if (! in_array($role, ['responsable_ville', 'responsable_commercial', 'commercial', 'caissier'], true) && ! CatalogueDesPages::estConfigure($role)) {
             return null;
         }
 

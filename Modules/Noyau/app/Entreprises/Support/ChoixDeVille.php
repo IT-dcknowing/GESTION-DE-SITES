@@ -64,7 +64,8 @@ class ChoixDeVille
     /** Les rôles à qui l'entrée « toutes les villes » est proposée. */
     public static function peutCouvrirToutesLesVilles(?string $role): bool
     {
-        return $role === 'responsable_commercial';
+        // Un rôle configuré (22/10) peut couvrir le groupe : une trésorerie centrale lit toutes les villes.
+        return $role === 'responsable_commercial' || CatalogueDesPages::estConfigure($role);
     }
 
     public static function estToutes(mixed $choix): bool

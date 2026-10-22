@@ -66,6 +66,12 @@ $rolesDisponibles = computed(function () {
         default => ['commercial', 'caissier'],
     };
 
+    // Les rôles configurés dans la Maintenance (22/10), au gérant seul : ce sont des lectures
+    // d'indicateurs de toute l'entreprise, que seule la direction distribue.
+    if (auth()->user()->hasRole('gerant')) {
+        $noms = [...$noms, ...array_keys(\Modules\Noyau\Entreprises\Support\CatalogueDesPages::roles())];
+    }
+
     return collect($noms)->mapWithKeys(fn (string $role) => [$role => LibellesRoles::de($role)])->all();
 });
 
