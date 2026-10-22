@@ -2515,8 +2515,8 @@ chaque section terminée est fusionnée dans `main` et poussée sur les deux dé
 ### Le plan du 22/10 — fournisseurs, charges par source, rôles
 
 Demandé le 22/10 (deux messages vocaux retranscrits, et le texte). Branche `claude/compassionate-galileo-tly6ai`.
-**Ni fusionnée ni mise en ligne** : la suite de tests n'a pas pu tourner dans le conteneur (Composer refusé
-par le réseau sur `api.github.com`) — la lancer sur le poste, puis fusionner dans `main`.
+Poussée puis **fusionnée dans `main`**. La suite de tests n'a pas pu tourner dans le conteneur (Composer
+refusé par le réseau sur `api.github.com`) — la lancer sur le poste.
 
 | # | Demande | État |
 |---|---|---|

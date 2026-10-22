@@ -52,12 +52,12 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ## 3. Où l'on en est — 22 octobre 2026
 
-**Branche du 22/10 : `claude/compassionate-galileo-tly6ai`, poussée mais PAS fusionnée dans `main`.**
-La suite de tests n'a pas pu tourner dans le conteneur cloud (Composer refusé par le réseau sur
-`api.github.com`) ; règle 4 : on ne fusionne pas ce qui n'a pas été vérifié. **D'abord, sur le
-poste : `php artisan test`** (deux fichiers neufs : `LesChargesSeLisentParSourceTest`,
-`UnRoleSeDefinitParSesPagesTest`), puis fusionner dans `main`. Une migration additive
-(`2026_10_22_000001`, table neuve `roles_configures`).
+**Branche du 22/10 : `claude/compassionate-galileo-tly6ai`, poussée puis fusionnée dans `main`**
+(règle du propriétaire, rappelée le 22/10 : une branche par section de travaux, fusionnée dans
+`main` une fois terminée). **La suite de tests n'a pas pu tourner dans le conteneur cloud**
+(Composer refusé par le réseau sur `api.github.com`) : la lancer sur le poste — deux fichiers
+neufs, `LesChargesSeLisentParSourceTest` et `UnRoleSeDefinitParSesPagesTest`. Une migration
+additive (`2026_10_22_000001`, table neuve `roles_configures`).
 
 ### Fait le 22/10 — un seul tableau fournisseurs, les charges par source, les rôles configurés
 
@@ -397,9 +397,8 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     caisse comptent aussi en charges (catégorie « Versements & transferts » sur la page Charges) — dire
     s'il faut les écarter. Corriger les deux tâches Cron de la production (espace après `artisan`).
 
-20. **Le 22/10** : sur le poste, `git checkout claude/compassionate-galileo-tly6ai` puis
-    **`php artisan test`** — rien n'a pu être lancé dans le conteneur. Si c'est vert : fusionner dans
-    `main`, pousser, puis en ligne `git pull` et `php artisan app:deployer` (migration
+20. **Le 22/10** : sur le poste, `git pull` sur `main` puis **`php artisan test`** — rien n'a pu
+    être lancé dans le conteneur. En ligne, `git pull` et `php artisan app:deployer` (migration
     `2026_10_22_000001`, table neuve `roles_configures` ; rien n'est lu ni écrit ailleurs). Ensuite :
     créer les accès Trésorerie (gérant › Ajouter un accès, ou Super admin › Accès) ; vérifier sur
     `/charges` que le partage administratif / fournisseurs de la caisse tombe juste — la règle lit
