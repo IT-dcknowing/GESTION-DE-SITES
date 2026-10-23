@@ -52,4 +52,10 @@ class ReglementFournisseur extends Model
     {
         return $this->belongsTo(Site::class);
     }
+
+    /** La pièce du suivi que ce règlement solde — le lettrage, posé par « Régler » ou « Suivre ». */
+    public function facture(): BelongsTo
+    {
+        return $this->belongsTo(FactureFournisseur::class, 'facture_fournisseur_id');
+    }
 }

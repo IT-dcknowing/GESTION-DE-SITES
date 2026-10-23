@@ -150,6 +150,12 @@ les rôles admis — `role:gerant|responsable_ville|responsable_site` pour le pi
 
 C'est le middleware, et non l'emplacement du fichier, qui décide de l'accès.
 
+### Une page sans onglet : Charges fournisseurs (23/10)
+
+`/fournisseurs` n'est plus au menu (`MenuNavigation`) : elle s'ouvre depuis la page Charges, et ses
+pages filles (grand livre, décaissements fournisseurs de la caisse, balance, factures FNE…) depuis
+elle. La route garde son middleware : retirer un onglet ne ferme pas une page.
+
 ### Les rôles configurés : une page ouverte sans toucher aux routes (22/10)
 
 Le Super admin peut créer un rôle dans **Maintenance › Rôles et pages** en cochant des pages

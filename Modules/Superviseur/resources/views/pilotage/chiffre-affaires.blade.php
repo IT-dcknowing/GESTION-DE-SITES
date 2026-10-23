@@ -414,12 +414,14 @@ $comptesParOrigine = computed(function () {
             :sub="$this->totauxCharges['caisse'] != 0 ? 'Dont sorties de caisse '.ae($this->totauxCharges['caisse']) : null"
             :mecanique="$ventile ? ae($this->kpis['chargesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['chargesVentilees']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['chargesVentilees']['nonVentile'] ? ae($this->kpis['chargesVentilees']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['chargesVentilees']['nonVentile'] ? ae($this->kpis['chargesVentilees']['nonVentile']) : null" 
+            autres="Autres : décaissements de caisse (le journal ne dit jamais mécanique ou sinistre) et charges saisies sans activité." :autres-lien="route('charges')" />
         <x-kpi-card label="Résultat net (CA − charges)" :value="ae($this->kpis['resultat'])"
             :bon="$this->kpis['resultat'] >= 0" :accent="$this->kpis['resultat'] < 0"
             :mecanique="$ventile ? ae($this->kpis['resultatVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['resultatVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['resultatVentile']['nonVentile'] ? ae($this->kpis['resultatVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['resultatVentile']['nonVentile'] ? ae($this->kpis['resultatVentile']['nonVentile']) : null" 
+            :signes="true" autres="Autres : le « Autres » du CA moins celui des charges — surtout les décaissements de caisse, sans activité." :autres-lien="route('charges')" />
     </div>
 
     {{-- Les lignes du fichier du CA mises de côté comme doublons, et le montant du fichier — 14/10. --}}

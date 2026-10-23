@@ -78,7 +78,7 @@ class TableauDesImports
         // Le journal imprimé alimente la même table que le classeur tenu à la main : ce sont
         // deux sources pour une seule caisse, et c'est bien la même caisse qu'on compte.
         'journal-caisse' => 'mouvements_caisse',
-        // Les deux exports du logiciel comptable, entrés les 21 et 22/09. Sans eux, trois
+        // Les deux exports du logiciel d'atelier, entrés les 21 et 22/09. Sans eux, trois
         // des onze types n'affichaient aucun compteur — or la question de cet écran est
         // « qu'est-ce qui manque encore ? ».
         'balance-fournisseurs' => 'soldes_fournisseur',

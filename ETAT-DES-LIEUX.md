@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **22 octobre 2026** (37e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **23 octobre 2026** (38e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -111,7 +111,7 @@ se connecter ; `AtterrissageDeChaqueRoleTest` le détecte.
 `entrees` → `sorties`. Source : `Registre::DISPONIBLES`.
 
 **Un seul format n'est pas un tableur** : `journal-caisse` lit un **PDF**, parce que le
-logiciel comptable ne sort pas cet état autrement et que Bouaké et San-Pédro n'ont que lui.
+logiciel d'atelier ne sort pas cet état autrement et que Bouaké et San-Pédro n'ont que lui.
 Voir `LecteurPdf`.
 
 ---
@@ -146,7 +146,7 @@ Voir `LecteurPdf`.
 | 21/09 | `4c0d120` | **creances** | jour 5 : le barème de commission devient une donnée (grilles, tranches, date d'effet) ; page du barème réservée au gérant, avec essai ; colonnes *Barème*, *Commission* et *Cumul* sur l'écran Commerciaux |
 | 21/09 | `110cee2` | **creances** | la grille dit elle-même quels rôles elle rémunère (plus aucune règle de rémunération dans le code) ; second maillon *devis → facture*, qui porte le commercial jusqu'à l'assiette du barème |
 | 21/09 | `16a60e2` | **creances** | correction : l'écran de rapprochement comparait tout à tout et bloquait le serveur (donc toute l'application) ; index par fiche, numéro, plaque et nom |
-| 21/09 | `b0f010c` | **creances** | jour 6 : la balance et les règlements fournisseurs exportés du logiciel comptable entrent (deux formats, deux tables, migration `2026_09_21_000006`) |
+| 21/09 | `b0f010c` | **creances** | jour 6 : la balance et les règlements fournisseurs exportés du logiciel d'atelier entrent (deux formats, deux tables, migration `2026_09_21_000006`) |
 | 22/09 | `5698290` | **creances** | retours du propriétaire : le n° de devis exigé au passage en devis ; barème refait et cloisonné par exercice ; balance et règlements ont leur page, avec l'écart entre solde annoncé et recalcul |
 | 23/09 | `2156dfc` | **creances** | vitesse : les jours ne se comptent plus par Carbon, et les consolidations ne construisent plus d'objets (« Clients & tiers » 4,8 s → 0,7 s) ; « Où vous joindre » demande son numéro à qui n'en a pas ; section **Code-import** sur l'écran des codes — un code se déclare à la main, s'aligne dans un tableau et sert aux imports comme n'importe quel autre ; le suivi fournisseur entre en entier — feuille `DETAIL`, 40 colonnes, deux classeurs fondus sans doublon |
 | 23/09 | `5bb665e` | **creances** | seconde passe de vitesse : les créances ouvertes se lisent aussi sans objets — synthèse 1,5 s → 0,66 s, balance âgée 1,15 s → 0,59 s, tableau de bord 2,2 s → 1,64 s ; un test confronte les deux lectures |
@@ -193,6 +193,7 @@ Voir `LecteurPdf`.
 | 20/10 | voir `git log` | **claude/arrondis-doublons-charges-k1upa9** | **Fournisseurs bouclés** : « Conditions de règlement » retirée, « Détails », Porter en lecture seule (relu côté serveur, pièce verrouillée), formulaire réduit à l'essentiel, KPI des normalisés, **balance produite par le système** (âgée) à côté de l'importée, règlement relié à la sortie de caisse qui le paie. **Charges = toutes les sorties de caisse + les saisies** (`ChargesDeLaPeriode`), le suivi fournisseurs à côté (la règle du 18/10 est remplacée) ; cartes et graphique remplis par la caisse. **Trésorerie réelle** (`TresorerieReelle`) : journal + relevés + saisies, courbe et listes. Accueil du gérant : cartes plus larges, **objectifs du mois par employé concerné**. `(int)` retirés de « Facturé » (fournisseurs, impayés) et d'objectifs arrondis. Migration additive `2026_10_20_000001` |
 | 21/10 | — | `claude/app-documentation-360-zt9ll8` | `PRESENTATION-360.md` : présentation à 360° de l'application à transmettre à un tiers, l'accent sur les importations et les charges ; aucun code touché |
 | 22/10 | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Retours du 22/10.** Fournisseurs : « Factures reçues » et « À qui nous devons le plus » deviennent **deux boutons d'un seul tableau** ; le tableau montre **toutes** les factures (suivi + FNE pas encore au suivi, union paginée en base), filtre de provenance, « Toutes » par défaut ; formulaire : précisions du classeur rétablies **sauf Mois, Code pièce, Résultat indicatif**. Charges : **la caisse partagée par son libellé** en charges administratives / charges fournisseurs (`CategorieDeSortie::volet`), cartes **suivi fournisseurs, FNE, banque** côte à côte, sans lettrage ni addition (`ChargesParSource`). Page FNE : filtres **tiers, n° FNE, dates, montant de A à B**. Accueil du gérant : **Charges — synthèse par source**. **Rôle Trésorerie** et **rôles configurables** (Maintenance › Rôles et pages : nom, sections et pages cochées, Modifier) — `CatalogueDesPages`, middleware `role:` remplacé par `RoleOuPagesOuvertes`. Migration additive `2026_10_22_000001` (table neuve `roles_configures`). **Tests écrits mais non lancés** : Composer bloqué par le réseau du conteneur |
+| 23/10 | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Retours du 23/10.** « Autres » expliqué sur chaque carte (ligne + « ⋯ »), « + » au résultat net ; **versements et transferts hors des charges** ; débits de banque retenus par libellé ; provenances du tableau des charges renommées ; « Classer des sorties » retiré de l'écran ; part des catégories à deux décimales ; « Fournisseurs » → **Charges fournisseurs**, hors du menu, ajout en deux voies (FNE / saisie) ; liste des fournisseurs avec les émetteurs FNE et « Accepter » ; tableau initial « commandé pour / reçu par » ; **grand livre fournisseur** ; **décaissements fournisseurs de la caisse** avec « Suivre » et lettrage ; **avoir négatif** à l'état des impayés ; « logiciel comptable » → logiciel d'atelier partout. Aucune migration. Tests écrits, non lancés (réseau du conteneur) |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -424,7 +425,7 @@ que par le classeur Excel tenu à la main d'Abidjan. Bouaké et San-Pédro n'ont
 classeur : elles n'ont qu'un **journal de caisse en PDF**, que rien ne lisait. Deux villes
 sur trois n'avaient donc pas de caisse dans l'application.
 
-**Il a fallu écrire un lecteur de PDF**, et c'est assumé : le logiciel comptable ne sort pas
+**Il a fallu écrire un lecteur de PDF**, et c'est assumé : le logiciel d'atelier ne sort pas
 cet état autrement. `Modules/Noyau/app/Imports/Lecteurs/LecteurPdf.php` n'exécute rien — ni
 script, ni police, ni action — il ne lit que des positions et des caractères.
 
@@ -599,7 +600,7 @@ autres villes sont tous deux lus, et l'écran montre ce qu'ils portent.
 
   **Question posée le 21/09 — les deux sources sont-elles prises en compte ? Non, une seule.**
   L'écran *Caisse* est alimenté par le **classeur Excel tenu à la main**, un onglet par mois,
-  lu par `FormatDeLaCaisse`. Le **journal de caisse en PDF** (sortie du logiciel comptable :
+  lu par `FormatDeLaCaisse`. Le **journal de caisse en PDF** (sortie du logiciel d'atelier :
   *PÉRIODE du … au …*, *CAISSE : CAISSE BOUAKÉ*, *SOLDE AVANT LA PÉRIODE*, puis DATE /
   LIBELLÉ DE LA TRANSACTION / ENTRÉE / SORTIE / SOLDE) **n'est lu par rien** — aucun format
   d'import ne lit de PDF, et celui-ci ne porte ni immatriculation ni colonne bénéficiaire :
@@ -1210,13 +1211,13 @@ Chaque format déclare donc s'il se range par les codes, la réponse voyage dans
 liste déroulante, et l'écran affiche l'une ou l'autre phrase — celle de la ventilation, ou
 celle qui dit ce qui va réellement se passer : « ses lignes ne portent pas de numéro de fiche
 […] c'est la ville que vous déclarez qui range ce qu'il contient ». Le piège de la liste est
-le **code de règlement** du logiciel comptable : il ressemble à un code de saisie sans en
+le **code de règlement** du logiciel d'atelier : il ressemble à un code de saisie sans en
 être un, et c'est pour cela qu'il fallait le déclarer plutôt que de laisser l'écran le
 supposer.
 
 **Le nom du type « Journal de caisse — état imprimé (PDF) » a été conservé**, contrairement à
 la demande, et il faut le dire : ce format lit **réellement un PDF**. C'est le seul, le
-logiciel comptable ne sort pas cet état autrement, et 1 104 mouvements de Bouaké et San-Pédro
+logiciel d'atelier ne sort pas cet état autrement, et 1 104 mouvements de Bouaké et San-Pédro
 en viennent. Retirer la mention ferait chercher un classeur qui n'existe pas.
 
 ### Les séparateurs de la colonne libre
@@ -1297,7 +1298,7 @@ de contenir 2024 reviendrait à leur reprocher d'être ce qu'ils sont.
 
 ✅ **Dit, et corrigé là où c'était faux.** Le propriétaire dépose le journal de Bouaké, la
 page *Caisse* se remplit, la page *Trésorerie* reste vide, et il demande si c'est normal.
-Ça l'est : *Caisse* lit `mouvements_caisse` — ce que la caisse du logiciel comptable a
+Ça l'est : *Caisse* lit `mouvements_caisse` — ce que la caisse du logiciel d'atelier a
 enregistré — tandis que *Trésorerie* lit `encaissements` et `charges` — ce que l'application
 a elle-même encaissé et décaissé. Les fondre ferait compter deux fois l'argent d'Abidjan,
 qui a les deux.
@@ -2358,7 +2359,7 @@ inscrit. Test : `LeDiagnosticDitCommentLesImportsSontLancesTest`.
 
 **La réponse à la question du propriétaire** — « ajoute "banque modèle" au type de fichier, ou
 laisse-le au niveau des banques ? » : **les deux types coexistent au dépôt**. « Banque — pièces
-du logiciel comptable » (l'ancien « Banque », renommé pour qu'on ne les confonde plus) reste
+du logiciel d'atelier » (l'ancien « Banque », renommé pour qu'on ne les confonde plus) reste
 au cas où ; « **Relevé bancaire — suivi de la caissière (BGFI, AFG)** » est le nouveau, et
 c'est lui qu'on dépose. Les deux demandent **le compte au dépôt**.
 
@@ -2532,6 +2533,34 @@ dans le conteneur (Composer refusé par le réseau sur `api.github.com`) — la 
 | 73 | **Rôle TRÉSORERIE** : accès à tout ce qui concerne la trésorerie, uniquement | ✅ 22/10 — rôle défini dans `CatalogueDesPages::ROLES_PREDEFINIS` : Trésorerie, Caisse (et par véhicule), Banques ; menu réduit à cela, atterrissage sur la trésorerie, périmètre = la ville du compte (ou toutes). Se choisit à la création d'un accès (gérant, Super admin) ; le rôle Spatie de l'entreprise se crée au premier accès |
 | 74 | Super admin, **page Maintenance** : configurer un rôle — nom, sections et pages cochées — et **Modifier** | ✅ 22/10 — section « Rôles et pages » (composant `superadmin.roles-configures`), table `roles_configures` (migration additive `2026_10_22_000001`). Un rôle configuré **lit** ses pages, il n'écrit rien : les actions d'écriture vérifient toujours les rôles du métier. Le middleware `role:` passe par `RoleOuPagesOuvertes` (Spatie d'abord pour les rôles du métier, puis les pages cochées) |
 | 75 | « Mettre tous les fichiers .md à jour » | ✅ 22/10 — REPRENDRE-ICI, ETAT-DES-LIEUX, PRESENTATION-360 (rôles, écrans, § 7.3 bis charges par source, fournisseurs, état du projet), ARCHITECTURE (rôles configurés), MISE-A-JOUR-SERVEUR (mise à jour du 22/10), ACCES_COMPTES, ENVIRONNEMENT-DE-DEV, SCRAPER-PORTAIL-FNE/GUIDE-COMPLET |
+
+### Le plan du 23/10 — « Autres », charges revues, charges fournisseurs
+
+Demandé le 23/10 (message vocal retranscrit). Même branche, fusionnée dans `main`, poussée sur les deux
+dépôts. Aucune migration.
+
+| # | Demande | État |
+|---|---|---|
+| 76 | Tableau de bord et tout KPI : « Autres » expliqué par une ligne, et « ⋯ » vers ses lignes | ✅ 23/10 — `x-kpi-card` (`autres`, `autres-lien`, `autres-action`) ; texte propre à chaque carte (accueil du gérant, Charges, CA, Trésorerie), sinon le texte général |
+| 77 | Résultat net : un « + » devant mécanique et sinistre, qui s'additionnent | ✅ 23/10 — `signes` ; aussi sur les nets de trésorerie |
+| 78 | Tableau des charges, provenances : *Venant de la FNE · Décaissement de caisse (journal de caisse) · Saisie dans l'application · Suivi fournisseur initial (importé) · Suivi fournisseur* (toutes les lignes du suivi, importées et saisies) | ✅ 23/10 — `ChargesFournisseurs::PROVENANCES`, les trois du suivi « à côté » ; le sélecteur de genre retiré de l'écran |
+| 79 | « Les vraies charges devraient être le suivi fournisseurs ; pour l'instant, la caisse » | ⏸ noté — rien de changé |
+| 80 | Banque : retenir un débit seulement si le libellé dit un fournisseur ou une charge | ✅ 23/10 — `ChargesParSource::debitEstUneCharge` ; les autres montrés « non retenus » |
+| 81 | Versements et transferts : pas des charges ; ils restent, avec un mot | ✅ 23/10 — `ChargesDeLaPeriode::pasDesCharges()` les écarte de tout total (tableau et synthèse compris) ; carte et catégories disent « non comptés » |
+| 82 | Retirer « Fournisseurs » du menu des indicateurs ; on y va par les Charges | ✅ 23/10 — aussi du menu de la comptabilité |
+| 83 | Retirer la section « Classer des sorties de caisse », son tableau et son filtre | ✅ 23/10 — retirée de l'écran ; les actions restent pour la refonte annoncée |
+| 84 | Sorties par catégorie : « 115 000 F à 0 % n'est pas possible » | ✅ 23/10 — deux décimales sous 0,1 %, « < 0,01 % » en dessous |
+| 85 | « Fournisseurs » → **Charges fournisseurs** ; « + Ajouter une pièce » aussi sur la page Charges | ✅ 23/10 — `?ajouter=1` ouvre le formulaire |
+| 86 | Ajouter une pièce : un champ pour **choisir la facture FNE** (recherche), qui reporte ses informations comme « Porter » ; un bouton **Saisir** qui ouvre les champs | ✅ 23/10 — `modeSaisie`, `fneChoisie`, `x-select-cherchable` |
+| 87 | Retirer « Relancer le rapprochement » (aucun moyen de rapprocher) | ✅ 23/10 |
+| 88 | Tableau initial : San-Pédro chez Abidjan et l'inverse — commandé pour l'un, reçu par l'autre ; « retrouver la logique » | ✅ 23/10 — encart, et « commandée pour … · reçue par … » sur la ligne (la règle est tenue depuis le 13/10 : `recue_par_ville_id`) |
+| 89 | Liste des fournisseurs : tous les émetteurs FNE d'office ; les autres noms à vérifier, et à accepter | ✅ 23/10 — statut Connu — FNE / Accepté / À vérifier, émetteur proche proposé, bouton Accepter (pose la fiche et son code) |
+| 90 | **Pas de logiciel comptable** : tout vient du logiciel d'atelier ; rectifier partout | ✅ 23/10 — écrans, code, commentaires, documents |
+| 91 | **Grand livre fournisseur**, comme l'extrait de compte ; recherche d'un tiers par son nom (balance et grand livre) | ✅ 23/10 — `GrandLivreFournisseur`, page `fournisseurs/grand-livre` ; la balance cherchait déjà par nom, elle mène au grand livre |
+| 92 | Page des **décaissements fournisseurs de la caisse**, bouton **Suivre**, **lettrage** caisse ↔ suivi cliquable des deux côtés | ✅ 23/10 — `fournisseurs/decaissements` ; « Suivre » crée la pièce réglée par la sortie (`AchatsFne::regler`, `mouvement_caisse_id`) |
+| 93 | Notifications au gestionnaire des fournisseurs (décaissements, factures FNE) | ⏸ attend le rôle, que le propriétaire créera |
+| 94 | État des impayés : saisir un **avoir** en négatif — « si c'est déjà le cas, dis-le » | ✅ 23/10 — **ce n'était pas possible** (entier ≥ 1) ; montant négatif accepté, centimes compris, `est_avoir`, pas de règlement sur un avoir |
+| 95 | Mettre tous les `.md` à jour | ✅ 23/10 |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
 
@@ -3100,7 +3129,7 @@ l'on en pose une à la fois.
   dit *d'où vient la ligne*. Deux questions, deux formes.
 - **La ville quitte le formulaire** : « la banque créée devra s'afficher en liste déroulante
   partout ». Un compte rattaché à une ville ne se proposerait pas aux autres, alors qu'il sert
-  l'entreprise entière — et c'est ce que le logiciel comptable fait déjà.
+  l'entreprise entière — et c'est ce que le logiciel d'atelier fait déjà.
 
 #### L'import du relevé bancaire est écrit
 

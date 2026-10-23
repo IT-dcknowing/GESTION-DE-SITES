@@ -124,7 +124,7 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // passer l'écriture comptable (18/10).
     Volt::route('/fournisseurs/fne/{facture}', 'pilotage.fournisseur-fne-detail')->name('fournisseurs.fne.detail')->whereNumber('facture');
     /*
-     * Les deux exports du logiciel comptable ont leur page, à côté du suivi tenu à la main.
+     * Les deux exports du logiciel d'atelier ont leur page, à côté du suivi tenu à la main.
      *
      * Trois écrans donc, et c'est voulu : le suivi dit ce que l'atelier croit devoir, la
      * balance ce que la comptabilité a enregistré, les règlements ce qu'elle a payé. Les
@@ -139,6 +139,10 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|caiss
     // plus nécessaire. Les fiches (`referentiel_fournisseurs`) restent, importées avec le suivi,
     // et donnent toujours l'échéance attendue d'une pièce que le fichier n'a pas datée.
     Volt::route('/fournisseurs/balance', 'pilotage.balance-fournisseurs')->name('balance-fournisseurs');
+    // Le grand livre d'un fournisseur — son extrait de compte, comme au recouvrement (23/10).
+    Volt::route('/fournisseurs/grand-livre', 'pilotage.grand-livre-fournisseurs')->name('fournisseurs.grand-livre');
+    // Les décaissements de caisse faits pour des fournisseurs, à suivre et à lettrer (23/10).
+    Volt::route('/fournisseurs/decaissements', 'pilotage.decaissements-fournisseurs')->name('fournisseurs.decaissements');
     Volt::route('/fournisseurs/reglements', 'pilotage.reglements-fournisseurs')->name('reglements-fournisseurs');
     // Emporter le même tableau, avec les mêmes filtres : l'habilitation est celle de
     // l'écran d'où il vient, puisqu'un export n'est rien d'autre qu'une lecture.

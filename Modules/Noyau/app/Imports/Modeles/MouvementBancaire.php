@@ -13,7 +13,7 @@ use Modules\Noyau\Exploitation\Modeles\Banque;
  * Une opération du relevé bancaire, tel que la caissière le tient — voir la migration du
  * 07/10 et `FormatDuReleveBancaire`.
  *
- * À ne pas confondre avec `PieceBancaire`, qui est une écriture du logiciel comptable : ici
+ * À ne pas confondre avec `PieceBancaire`, qui est une écriture du logiciel d'atelier : ici
  * c'est la banque qui parle, avec le solde qu'elle annonce après chaque opération.
  */
 #[Fillable([

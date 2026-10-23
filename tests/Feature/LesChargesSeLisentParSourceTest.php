@@ -160,6 +160,7 @@ class LesChargesSeLisentParSourceTest extends TestCase
     public function test_le_formulaire_rend_les_precisions_sans_les_trois_champs_retires(): void
     {
         Volt::actingAs($this->gerant)->test('pilotage.fournisseurs')
+            ->call('choisirLaSaisie')
             ->set('precisionsOuvertes', true)
             ->assertSee('Les précisions du classeur', false)
             ->assertSee('N° BC')

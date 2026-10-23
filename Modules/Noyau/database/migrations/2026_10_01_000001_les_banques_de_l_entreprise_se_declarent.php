@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Schema;
  * supports qui ne sont pas des banques. Tant que le nom est un champ libre, la question
  * « combien ai-je à la BGFI » n'a pas de réponse calculable.
  *
- * **Une banque appartient à l'entreprise, pas à un atelier**, et le logiciel comptable le
+ * **Une banque appartient à l'entreprise, pas à un atelier**, et le logiciel d'atelier le
  * confirme : son écran de pièces demande le compte bancaire **sans** demander de site. La
  * ville reste donc facultative — elle sert à proposer d'abord les bonnes banques à qui
  * travaille dans une ville, jamais à écarter une écriture.

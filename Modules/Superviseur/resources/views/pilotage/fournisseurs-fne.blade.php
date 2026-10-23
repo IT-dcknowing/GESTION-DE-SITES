@@ -262,7 +262,7 @@ $porter = function (int $id) {
     <x-titre-ecran titre="Factures FNE des fournisseurs"
         sous-titre="Les pièces émises par les tiers sur la plateforme, avoirs compris, chacune dans son exercice.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
-            <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Retour au suivi</a>
+            <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Charges fournisseurs</a>
             <x-champ label="Exercice" model="exercice" type="select" :options="$this->exercices" :live="true" width="130" />
             @if ($this->peutEcrire)
                 {{-- Relève le portail FNE maintenant ; les relevés automatiques passent d'eux-mêmes
@@ -270,7 +270,9 @@ $porter = function (int $id) {
                 <button type="button" wire:click="actualiser" class="bouton" @disabled($attenteDepuis !== null)>
                     {{ $attenteDepuis !== null ? 'Relevé en cours…' : 'Actualiser depuis la FNE' }}
                 </button>
-                <button type="button" wire:click="rapprocher" class="bouton bouton-secondaire">Relancer le rapprochement</button>
+                {{-- « Relancer le rapprochement » retiré le 23/10 : « il n'a pas son utilité, on n'a aucun moyen
+                     de rapprocher les éléments entre eux » (les numéros du suivi ne sont pas ceux de la FNE).
+                     Le rapprochement par n° FNE cité dans une ligne importée continue de se faire au relevé. --}}
             @endif
         </div>
     </x-titre-ecran>

@@ -160,6 +160,25 @@ state([
 state(['porterFne' => null]);
 // L'adresse `?porter=<id>` que donne le bouton « Porter au suivi » de la page des factures FNE.
 state(['porter' => null])->url(except: null);
+// `?ajouter=1` : le bouton « + Ajouter une pièce » de la page Charges arrive formulaire ouvert (23/10).
+state(['ajouter' => null])->url(except: null);
+
+/*
+ * **Deux voies pour ajouter une pièce — 23/10** : « le bouton Ajouter une pièce ouvre deux choses :
+ * un champ pour sélectionner la facture FNE, avec une recherche comme les autres — sélectionnée, ses
+ * informations se reportent comme le fait le bouton Porter — ; et un bouton de saisie, qui ouvre les
+ * champs du suivi ». '' = le choix n'est pas fait ; 'fne' = une facture choisie ; 'libre' = saisie.
+ */
+state(['modeSaisie' => '', 'fneChoisie' => '']);
+
+/*
+ * **« Suivre » un décaissement de caisse — 23/10.** `?suivre=<id>` vient de la page des
+ * décaissements fournisseurs : le formulaire s'ouvre prérempli de la sortie, et l'enregistrement
+ * crée la pièce **réglée par cette sortie** — le règlement pointe la sortie, et les deux lignes se
+ * répondent (lettrage). La sortie est relue sous l'entreprise, et seulement si rien ne la lettre déjà.
+ */
+state(['suivre' => null])->url(except: null);
+state(['suivreSortie' => null]);
 
 mount(function () {
     $this->exercice ??= EtatDesFournisseurs::exerciceOuvert(auth()->user()->entreprise_id);
@@ -169,11 +188,36 @@ mount(function () {
     $aPorter = (int) ($this->porter ?? 0);
     $this->porter = null;
 
+    if ($this->ajouter && EtatDesFournisseurs::peutEcrire(auth()->user())) {
+        $this->formulaireOuvert = true;
+    }
+    $this->ajouter = null;
+
+    $aSuivre = (int) ($this->suivre ?? 0);
+    $this->suivre = null;
+
+    if ($aSuivre > 0 && EtatDesFournisseurs::peutEcrire(auth()->user()) && ($sortie = $this->sortieASuivre($aSuivre)) !== null) {
+        $this->suivreSortie = $sortie->id;
+        $this->modeSaisie = 'libre';
+        $this->formulaireOuvert = true;
+        $this->fournisseur = (string) mb_substr(trim((string) ($sortie->beneficiaire ?: $sortie->libelle)), 0, 200);
+        $this->dateFacture = $sortie->date?->format('Y-m-d') ?? $this->dateFacture;
+        $this->montant = (string) montant_de($sortie->montant);
+        $this->modeReglement = 'Espèces';
+        $this->observations = 'Suivi d\'un décaissement de caisse du '.($sortie->date?->format('d/m/Y') ?? '—')
+            .' — '.trim($sortie->libelle.($sortie->numero_piece ? ' (pièce '.$sortie->numero_piece.')' : '')).'.';
+
+        if ($sortie->date) {
+            $this->exercice = $sortie->date->year;
+        }
+    }
+
     if ($aPorter > 0 && EtatDesFournisseurs::peutEcrire(auth()->user()) && \App\Support\SchemaDisponible::table('factures_fne')) {
         $fne = \Modules\Noyau\Imports\Modeles\FactureFne::query()->whereNull('facture_fournisseur_id')->find($aPorter);
 
         if ($fne !== null) {
             $this->porterFne = $fne->id;
+            $this->modeSaisie = 'fne';
             $this->formulaireOuvert = true;
             $this->prendreLaFactureFne($fne);
             $this->observations = 'Portée depuis la FNE (NCC '.($fne->emetteur_ncc ?: '—').').';
@@ -204,13 +248,61 @@ $prendreLaFactureFne = protect(function (\Modules\Noyau\Imports\Modeles\FactureF
     $this->modeReglement = $this->modeReglement ?: (string) ($fne->moyen_paiement ?? '');
 });
 
+/** La sortie de caisse à suivre : une sortie de l'entreprise, que nul règlement ne lettre encore. */
+$sortieASuivre = protect(fn (int $id) => \Modules\Noyau\Imports\Modeles\MouvementCaisse::query()
+    ->where('sens', \Modules\Noyau\Imports\Modeles\MouvementCaisse::SORTIE)
+    ->when(\App\Support\SchemaDisponible::colonne('reglements_fournisseur', 'mouvement_caisse_id'),
+        fn ($q) => $q->whereNotExists(fn ($r) => $r->selectRaw('1')->from('reglements_fournisseur')
+            ->whereColumn('reglements_fournisseur.mouvement_caisse_id', 'mouvements_caisse.id')))
+    ->find($id));
+
 $abandonnerLePortage = function () {
+    $this->suivreSortie = null;
     $this->porterFne = null;
+    $this->modeSaisie = '';
+    $this->fneChoisie = '';
     foreach (['fournisseur', 'numeroPiece', 'naturePiece', 'montant', 'montantRegle', 'montantHt', 'tva', 'numeroFactureAchat', 'modeReglement', 'observations'] as $champ) {
         $this->{$champ} = '';
     }
     $this->dateFacture = now()->format('Y-m-d');
     $this->formulaireOuvert = false;
+};
+
+/**
+ * Les factures FNE de l'année qu'aucune ligne du suivi ne porte : les choix du champ « Facture FNE ».
+ *
+ * @return array<int, string>
+ */
+$fnesAPorter = computed(fn () => ! \App\Support\SchemaDisponible::table('factures_fne') ? [] : FactureFne::query()
+    ->whereNull('facture_fournisseur_id')->where('exercice', $this->annee)
+    ->orderByDesc('date_facture')
+    ->get(['id', 'reference', 'date_facture', 'emetteur_nom', 'montant_ttc'])
+    ->mapWithKeys(fn (FactureFne $f) => [$f->id => $f->reference.' · '.($f->emetteur_nom ?: '—').' · '
+        .($f->date_facture?->format('d/m/Y') ?? '—').' · '.ae(montant_de($f->montant_ttc))])
+    ->all());
+
+/** Une facture FNE choisie : ses informations se reportent comme par « Porter », relues sous l'entreprise. */
+$updatedFneChoisie = function () {
+    if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
+        abort(403);
+    }
+
+    $fne = FactureFne::query()->whereNull('facture_fournisseur_id')->find((int) $this->fneChoisie);
+
+    if ($fne === null) {
+        return;
+    }
+
+    $this->porterFne = $fne->id;
+    $this->modeSaisie = 'fne';
+    $this->prendreLaFactureFne($fne);
+    $this->observations = 'Portée depuis la FNE (NCC '.($fne->emetteur_ncc ?: '—').').';
+};
+
+$choisirLaSaisie = function () {
+    $this->porterFne = null;
+    $this->fneChoisie = '';
+    $this->modeSaisie = 'libre';
 };
 
 $updatedExercice = function () { $this->pageDetail = 1; };
@@ -508,6 +600,27 @@ $enregistrer = function () {
     $montant = montant_de($donnees['montant']);
     $regle = montant_de($donnees['montantRegle'] ?: 0);
 
+    // « Suivre » : la sortie relue, et la pièce doit au moins couvrir ce qu'elle a payé.
+    $sortie = $this->suivreSortie === null ? null : $this->sortieASuivre((int) $this->suivreSortie);
+
+    if ($this->suivreSortie !== null && $sortie === null) {
+        $this->suivreSortie = null;
+        $this->addError('fournisseur', 'Ce décaissement est déjà suivi, ou introuvable.');
+
+        return;
+    }
+
+    if ($sortie !== null) {
+        if ($montant < montant_de($sortie->montant)) {
+            $this->addError('montant', 'La pièce doit couvrir au moins le décaissement qui la paie ('.ae(montant_de($sortie->montant)).').');
+
+            return;
+        }
+
+        // Le règlement est la sortie elle-même, posé après la création : rien de « déjà réglé » saisi en plus.
+        $regle = 0;
+    }
+
     if (abs($regle) > abs($montant) || ($regle != 0 && ($regle > 0) !== ($montant > 0))) {
         $this->addError('montantRegle', 'Le réglé ne peut pas dépasser le montant de la facture.');
 
@@ -605,13 +718,23 @@ $enregistrer = function () {
     ]);
 
     activity()->performedOn($piece)->causedBy(auth()->user())
-        ->log($fne !== null ? 'Facture FNE portée au suivi' : 'Pièce fournisseur saisie à la main');
+        ->log($fne !== null ? 'Facture FNE portée au suivi' : ($sortie !== null ? 'Décaissement de caisse suivi au suivi fournisseurs' : 'Pièce fournisseur saisie à la main'));
+
+    // Le lettrage caisse ↔ suivi : la pièce est réglée par la sortie qu'on suit.
+    if ($sortie !== null) {
+        \Modules\Noyau\Imports\Services\AchatsFne::regler($piece, montant_de($sortie->montant), $sortie->date?->toDateString() ?? $donnees['dateFacture'], 'Espèces', auth()->user(), $sortie->id);
+        $this->suivreSortie = null;
+    }
 
     // Le lien qui fait que la facture ne compte qu'une fois : par la ligne du suivi.
     if ($fne !== null) {
         $fne->forceFill(['facture_fournisseur_id' => $piece->id])->save();
         $this->porterFne = null;
     }
+
+    $this->modeSaisie = '';
+    $this->fneChoisie = '';
+    unset($this->fnesAPorter);
 
     // Vidés par affectation : `reset()` les remettrait à null, et la pièce suivante se
     // verrait réclamer une date qu'on croirait avoir laissée.
@@ -762,15 +885,17 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
 ?>
 
 <div>
-    <x-titre-ecran titre="Fournisseurs"
-        sous-titre="Ce que l'entreprise doit, à qui, et depuis combien de temps — repris du suivi fournisseurs.">
-        {{-- Les deux exports du logiciel comptable s'ouvrent d'ici : c'est la page où l'on
+    {{-- « Charges fournisseurs » depuis le 23/10 : la page s'ouvre depuis les Charges, et n'est plus au menu. --}}
+    <x-titre-ecran titre="Charges fournisseurs"
+        sous-titre="Ce que l'entreprise doit, à qui, et depuis combien de temps — repris du suivi fournisseurs et de la FNE.">
+        {{-- Les deux exports du logiciel d'atelier s'ouvrent d'ici : c'est la page où l'on
              se pose la question, et c'est donc là que doivent être les réponses. --}}
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
             <x-champ label="Année de l'état" model="exercice" type="select" :options="$this->exercices" :live="true" width="130" />
             {{-- Le pendant du « Tableau état initial » des impayés. Il manquait, et son
                  absence se remarquait : l'état par année ne montre jamais l'ensemble d'un
                  coup, et une pièce soldée d'une année passée n'y paraît nulle part. --}}
+            <a href="{{ route('charges') }}" wire:navigate class="bouton bouton-secondaire">← Charges</a>
             <a href="{{ route('fournisseurs.tableau-initial') }}" wire:navigate class="bouton bouton-secondaire">Tableau initial</a>
             {{-- L'annuaire, demandé le 28/09 : cet écran liste des pièces, les conditions
                  listent des accords, aucun ne disait quels fournisseurs on connaît. --}}
@@ -779,7 +904,11 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                  règlement d'un fournisseur et sa TVA — c'est de là que sort l'échéance
                  attendue d'une pièce que le classeur n'a pas datée. --}}
             <a href="{{ route('balance-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Balance fournisseurs</a>
+            {{-- Le grand livre : l'extrait de compte d'un fournisseur, comme au recouvrement (23/10). --}}
+            <a href="{{ route('fournisseurs.grand-livre') }}" wire:navigate class="bouton bouton-secondaire">Grand livre fournisseur</a>
             <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements fournisseurs</a>
+            {{-- Les décaissements de caisse faits pour des fournisseurs, à suivre (23/10). --}}
+            <a href="{{ route('fournisseurs.decaissements') }}" wire:navigate class="bouton bouton-secondaire">Décaissements fournisseurs (caisse)</a>
             {{-- Les achats relevés au portail FNE, 12/10 : ils confirment le suivi ou s'y portent. --}}
             <a href="{{ route('fournisseurs.fne') }}" wire:navigate class="bouton bouton-secondaire">Factures FNE</a>
             @if ($this->peutEcrire)
@@ -815,6 +944,27 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
 
                 {{-- **L'essentiel d'abord — 20/10** : « les champs de saisie du suivi, c'est trop ; on garde
                      l'essentiel ». Les précisions du classeur sont rétablies le 22/10, repliées dessous. --}}
+                @if (! $porterFne && $modeSaisie !== 'libre')
+                    {{-- Les deux voies : choisir la facture FNE (ses informations se reportent), ou saisir. --}}
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:6px;">
+                        <div style="flex:1 1 380px; max-width:620px;">
+                            <x-select-cherchable id="ajout-fne" label="Facture FNE à suivre ({{ $this->annee }})" model="fneChoisie" :valeur="$fneChoisie"
+                                :options="$this->fnesAPorter" vide="— choisir la facture FNE —" placeholder="N° FNE, fournisseur, date, montant…" :seuil="0" />
+                            <div style="font-size:11.5px; color:#6B6E76; margin-top:3px;">{{ count($this->fnesAPorter) }} facture(s) FNE de l'année pas encore au suivi.</div>
+                        </div>
+                        <span style="font-size:12.5px; color:#6B6E76; padding-bottom:9px;">ou</span>
+                        <button type="button" wire:click="choisirLaSaisie" class="bouton bouton-secondaire">Saisir une pièce</button>
+                    </div>
+                @endif
+
+                @if ($porterFne || $modeSaisie === 'libre')
+                @if ($suivreSortie)
+                    <div style="padding:10px 12px; background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; margin-bottom:12px; font-size:13px;">
+                        <b>Suivi d'un décaissement de caisse</b> — la pièce enregistrée sera <b>réglée par ce décaissement</b>,
+                        et les deux lignes seront lettrées (<a href="{{ route('fournisseurs.decaissements', ['sortie' => $suivreSortie]) }}" wire:navigate>voir la sortie</a>).
+                        Corrigez le fournisseur et ajoutez le n° de sa facture si vous l'avez.
+                    </div>
+                @endif
                 <form wire:submit="enregistrer">
                     @if ($porterFne)
                         {{-- Ce que dit la facture certifiée, en premier et en lecture seule : le serveur
@@ -849,7 +999,9 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                             <x-champ label="N° de pièce" model="numeroPiece" placeholder="Celui du fournisseur" width="150" />
                             <x-champ label="Date de facture" model="dateFacture" type="date" requis width="155" />
                             <x-champ label="Montant TTC" model="montant" type="number" requis width="140" />
-                            <x-champ label="Déjà réglé" model="montantRegle" type="number" width="140" />
+                            @unless ($suivreSortie)
+                                <x-champ label="Déjà réglé" model="montantRegle" type="number" width="140" />
+                            @endunless
                         @endunless
                         <x-champ label="Échéance" model="dateEcheance" type="date" width="155" />
                         <x-champ label="Mode de règlement" model="modeReglement" width="170" />
@@ -944,8 +1096,10 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
 
                     <div style="margin-top:14px;">
                         <button type="submit" class="bouton">{{ $porterFne ? 'Enregistrer au suivi' : 'Enregistrer la pièce' }}</button>
+                        <button type="button" wire:click="abandonnerLePortage" class="bouton bouton-secondaire">Annuler</button>
                     </div>
                 </form>
+                @endif
             </div>
         </div>
     @endif

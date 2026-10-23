@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Les pièces bancaires entrent, et le dépôt dit par quel compte.
  *
- * **Les huit colonnes sont relevées sur l'écran du logiciel comptable** — « Liste de toutes
+ * **Les huit colonnes sont relevées sur l'écran du logiciel d'atelier** — « Liste de toutes
  * les pièces comptables », montré le 30/09 :
  *
  *   DATE PIÈCE · CODE PIÈCE · RÉFÉRENCE PIÈCE · BANQUE ÉMETTRICE ·

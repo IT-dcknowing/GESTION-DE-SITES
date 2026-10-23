@@ -177,7 +177,7 @@ class FormatDesFournisseurs extends Format
     /**
      * Parcourt la feuille annexe, quand le classeur en porte une.
      *
-     * Son absence n'est pas une anomalie : les exports du logiciel comptable n'en ont pas,
+     * Son absence n'est pas une anomalie : les exports du logiciel d'atelier n'en ont pas,
      * et un classeur tenu à la main peut très bien s'en passer. Rien n'est donc rejeté ni
      * signalé — il n'y a simplement pas de fiches.
      */

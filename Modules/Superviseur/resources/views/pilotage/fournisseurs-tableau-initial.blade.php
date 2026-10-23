@@ -110,7 +110,7 @@ $colonnesFiltrables = computed(fn () => [
  */
 $requete = computed(function () {
     $requete = EtatDesFournisseurs::dansLePerimetre(
-        FactureFournisseur::query()->with(['ville', 'site', 'lot', 'auteur']),
+        FactureFournisseur::query()->with(['ville', 'site', 'lot', 'auteur', 'recuePar']),
         $this->idsVilles,
     );
 
@@ -206,6 +206,13 @@ $lignes = computed(fn () => (clone $this->requete)->forPage($this->page, 20)->ge
             copies partiellement recouvrantes du même suivi — il n'y a pas de « bon » fichier à
             choisir, il faut les deux, et la ville se lit ligne à ligne dans la colonne SITE.
         </p>
+        {{-- La logique dite par le propriétaire le 23/10, et tenue depuis le 13/10 (`recue_par_ville_id`). --}}
+        <div class="encart" style="margin:0 0 10px; padding:10px 12px; border-left:3px solid #2563EB; background:#EFF6FF; font-size:13px; line-height:1.6;">
+            <strong>San Pédro dans le fichier d'Abidjan, Abidjan dans celui de San Pédro : ce ne sont pas des erreurs.</strong>
+            On commande parfois des pièces <b>pour San Pédro</b> qu'<b>Abidjan reçoit</b> : Abidjan enregistre alors la facture
+            dans son fichier, au nom de San Pédro (et inversement). La ligne est rangée à la <b>ville qui a commandé</b> — celle
+            de la colonne SITE — et la colonne Ville dit « reçue par » la ville du fichier qui l'a enregistrée.
+        </div>
         <p style="margin:0; font-size:13px; line-height:1.6;">
             <strong>Pourquoi les montants ne comptent pas double.</strong> <b>10 101 lignes</b>
             exploitables à eux deux, <b>7 373 distinctes</b> : <b>2 648 figurent dans les deux</b>.
@@ -308,7 +315,12 @@ $lignes = computed(fn () => (clone $this->requete)->forPage($this->page, 20)->ge
                             <td style="color:#6B6E76;">{{ $ligne->type_transaction ?: '—' }}</td>
                             {{-- Le fichier ne porte l'atelier que sur une ligne sur six : un tiret
                                  dit « le classeur ne le dit pas », jamais « aucune ville ». --}}
-                            <td style="color:#6B6E76;">{{ $ligne->ville?->nom ?? '—' }}</td>
+                            <td style="color:#6B6E76;">
+                                {{ $ligne->ville?->nom ?? '—' }}
+                                @if ($ligne->recuePar)
+                                    <div style="font-size:11px; color:#2563EB;">commandée pour {{ $ligne->ville?->nom ?? '—' }} · reçue par {{ $ligne->recuePar->nom }}</div>
+                                @endif
+                            </td>
                             <td style="white-space:nowrap;">{{ $ligne->date_facture?->format('d/m/Y') ?? '—' }}</td>
                             <td style="white-space:nowrap; color:#6B6E76;">{{ $ligne->date_reception?->format('d/m/Y') ?? '—' }}</td>
                             <td style="white-space:nowrap; color:#6B6E76;">{{ $ligne->date_reglement?->format('d/m/Y') ?? '—' }}</td>

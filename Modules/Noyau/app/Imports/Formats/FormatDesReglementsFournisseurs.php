@@ -5,7 +5,7 @@ namespace Modules\Noyau\Imports\Formats;
 use Modules\Noyau\Imports\Modeles\ReglementFournisseur;
 
 /**
- * Les règlements fournisseurs, tels que le logiciel comptable les exporte.
+ * Les règlements fournisseurs, tels que le logiciel d'atelier les exporte.
  *
  * Cinq colonnes, relevées sur le fichier réel
  * (`REGLEMENT-FOURNISSEUR(global-pas de filtre sur exercice)010126-170926.xlsx`) : DATE
@@ -58,7 +58,7 @@ class FormatDesReglementsFournisseurs extends Format
     }
 
     /** Le code de règlement est la référence : c'est de lui que se tire le code agent. */
-    /** Le code de règlement du logiciel comptable n'est pas un numéro de fiche : il ressemble à un code sans en être un, et c'est justement pour cela qu'il faut le dire ici plutôt que de laisser l'écran le supposer. */
+    /** Le code de règlement du logiciel d'atelier n'est pas un numéro de fiche : il ressemble à un code sans en être un, et c'est justement pour cela qu'il faut le dire ici plutôt que de laisser l'écran le supposer. */
     public static function ventileParLesCodes(): bool
     {
         return false;

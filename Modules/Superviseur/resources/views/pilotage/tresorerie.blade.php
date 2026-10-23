@@ -868,12 +868,14 @@ $origineDe = protect(function ($ligne) {
             :sub="'Caisse '.ae($d['caisse']['entrees']).' · banques '.ae($d['banque']['entrees']).' · saisies '.ae($d['saisies']['entrees'])"
             :mecanique="$ventile ? ae($tr['entreesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($tr['entreesVentilees']['sinistre']) : null"
-            :non-ventile="$ventile && $tr['entreesVentilees']['nonVentile'] ? ae($tr['entreesVentilees']['nonVentile']) : null" />
+            :non-ventile="$ventile && $tr['entreesVentilees']['nonVentile'] ? ae($tr['entreesVentilees']['nonVentile']) : null" 
+            autres="Autres : entrées du journal de caisse et crédits des relevés bancaires — ni l'un ni l'autre ne dit l'activité." :autres-lien="route('caisse')" />
         <x-kpi-card label="Sorties — {{ $this->libellePerimetre }}" :value="ae($tr['sorties'])" couleur="#C8102E"
             :sub="'Caisse '.ae($d['caisse']['sorties']).' · banques '.ae($d['banque']['sorties']).' · saisies '.ae($d['saisies']['sorties'])"
             :mecanique="$ventile ? ae($tr['sortiesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($tr['sortiesVentilees']['sinistre']) : null"
-            :non-ventile="$ventile && $tr['sortiesVentilees']['nonVentile'] ? ae($tr['sortiesVentilees']['nonVentile']) : null" />
+            :non-ventile="$ventile && $tr['sortiesVentilees']['nonVentile'] ? ae($tr['sortiesVentilees']['nonVentile']) : null" 
+            autres="Autres : décaissements du journal de caisse et débits des relevés bancaires, qui ne disent pas l'activité." :autres-lien="route('caisse')" />
         <x-kpi-card label="Trésorerie nette — {{ $this->libellePerimetre }}" :value="ae($tr['net'])"
             :couleur="$tr['net'] >= 0 ? '#0E9F6E' : '#C8102E'" :accent="$tr['net'] < 0" sub="Entrées − sorties de la période" />
     </div>
@@ -886,19 +888,23 @@ $origineDe = protect(function ($ligne) {
         <x-kpi-card label="Règlements encaissés — {{ $this->libellePerimetre }}" :value="ae($this->kpis['encaisse'])" couleur="#0E9F6E"
             :mecanique="$ventile ? ae($this->kpis['encaisseVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['encaisseVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['encaisseVentile']['nonVentile'] ? ae($this->kpis['encaisseVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['encaisseVentile']['nonVentile'] ? ae($this->kpis['encaisseVentile']['nonVentile']) : null" 
+            autres="Autres : règlements dont la facture ne dit pas l'activité, ou rattachés à aucune facture." :autres-lien="route('impayes')" />
         <x-kpi-card label="Charges enregistrées — {{ $this->libellePerimetre }}" :value="ae($this->kpis['decaisse'])" couleur="#C8102E"
             :mecanique="$ventile ? ae($this->kpis['decaisseVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['decaisseVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['decaisseVentile']['nonVentile'] ? ae($this->kpis['decaisseVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['decaisseVentile']['nonVentile'] ? ae($this->kpis['decaisseVentile']['nonVentile']) : null" 
+            autres="Autres : charges saisies sans activité." :autres-lien="route('charges')" />
         <x-kpi-card label="Net des règlements — {{ $this->libellePerimetre }}" :value="ae($this->kpis['net'])" sub="Encaissements − décaissements enregistrés, à titre informatif" :accent="$this->kpis['net'] < 0" :couleur="$this->kpis['net'] >= 0 ? '#0E9F6E' : '#C8102E'"
             :mecanique="$ventile ? ae($this->kpis['netVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['netVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['netVentile']['nonVentile'] ? ae($this->kpis['netVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['netVentile']['nonVentile'] ? ae($this->kpis['netVentile']['nonVentile']) : null" 
+            :signes="true" autres="Autres : encaissé sans activité moins décaissé sans activité." />
         <x-kpi-card label="Facturé non encaissé — {{ $this->libellePerimetre }}" :value="ae($this->kpis['nonEncaisse'])" sub="Créances clients"
             :mecanique="$ventile ? ae($this->kpis['nonEncaisseVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['nonEncaisseVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['nonEncaisseVentile']['nonVentile'] ? ae($this->kpis['nonEncaisseVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['nonEncaisseVentile']['nonVentile'] ? ae($this->kpis['nonEncaisseVentile']['nonVentile']) : null" 
+            autres="Autres : factures sans activité dite qui attendent encore leur règlement." :autres-lien="route('impayes')" />
     </div>
 
     {{-- ─────────────────────────────── selon la caisse et la banque — 07/10

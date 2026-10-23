@@ -439,8 +439,16 @@ d'élargissement le 02/10 — aucune ligne lue, modifiée ni supprimée.
 sont toujours dans `lignes_rejetees_import` avec toutes leurs valeurs. La structure les accepte
 désormais ; rien n'entre tout seul.
 
+**Saisir un avoir à l'écran — 23/10.** « J'ajoute une créance qui n'est pas une créance mais un
+avoir : il faut pouvoir mettre le signe négatif, et qu'il soit pris en compte dans le montant. »
+Ce n'était **pas possible** : le formulaire exigeait un entier d'au moins 1 (et arrondissait au
+franc). Il accepte désormais un montant **négatif, centimes compris** : la ligne est marquée
+`est_avoir` et diminue ce que le client doit. Seul zéro est refusé, et un avoir **ne se règle pas**
+(le champ « règlement » doit rester vide).
+
 Où cela vit : `NatureDeLaCreance`, `tests/Unit/TroisNaturesDeNegatifNeSeConfondentPasTest.php`,
-`tests/Feature/UnAvoirEntreEtFaitBaisserLaDetteTest.php`.
+`tests/Feature/UnAvoirEntreEtFaitBaisserLaDetteTest.php`,
+`tests/Feature/LesDecaissementsFournisseursSeSuiventTest.php` (saisie à l'écran).
 
 ### Hors de ce module, et toujours en attente
 

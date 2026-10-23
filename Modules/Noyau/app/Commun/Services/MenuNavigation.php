@@ -147,8 +147,8 @@ class MenuNavigation
                  * trésorerie — `/caisse` et `/banques` restent donc partageables.
                  */
                 ['label' => 'Trésorerie', 'route' => 'tresorerie'],
-                ['label' => 'Charges', 'route' => 'charges'],
-                ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
+                // « Fournisseurs » quitte le menu le 23/10 : la page s'ouvre depuis les Charges.
+                ['label' => 'Charges', 'route' => 'charges', 'actifPattern' => 'charges'],
                 ['label' => 'Messages', 'route' => 'messages'],
                 ['label' => 'Notifications', 'route' => 'mes-notifications'],
                 ['label' => 'Paramètres', 'route' => 'mon-espace'],
@@ -287,7 +287,11 @@ class MenuNavigation
                  * Ils gardent leur adresse et s'ouvrent des deux boutons en tête de la
                  * trésorerie — `/caisse` et `/banques` restent donc partageables.
                  */
-                ['label' => 'Fournisseurs', 'route' => 'fournisseurs'],
+                /*
+                 * **« Fournisseurs » n'est plus au menu — 23/10** : « j'ai demandé de retirer le lien
+                 * fournisseur des indicateurs : c'est dans les Charges qu'on le retrouve maintenant ».
+                 * La page garde son adresse, et s'ouvre des boutons de la page Charges.
+                 */
                 ['label' => 'Commerciaux', 'route' => 'commerciaux'],
             ],
         ];

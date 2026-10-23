@@ -12,7 +12,7 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Exploitation\Modeles\Banque;
 
 /**
- * Une pièce passée sur un compte bancaire, telle que le logiciel comptable l'exporte.
+ * Une pièce passée sur un compte bancaire, telle que le logiciel d'atelier l'exporte.
  *
  * **Le compte ne vient pas du fichier.** Sur l'écran « Liste de toutes les pièces
  * comptables », le compte bancaire se choisit **au-dessus de la grille** : l'export ne le
@@ -74,7 +74,7 @@ class PieceBancaire extends Model
     /**
      * Le sens que le type de pièce désigne, ou null quand on ne sait pas.
      *
-     * **Les mots sont ceux qu'un logiciel comptable emploie d'ordinaire**, et non ceux du
+     * **Les mots sont ceux qu'un logiciel d'atelier emploie d'ordinaire**, et non ceux du
      * fichier : il n'est pas encore arrivé. Ils seront confrontés au premier dépôt, et c'est
      * pour cela que le doute rend `null` plutôt qu'un sens par défaut — une pièce non orientée
      * se verra à l'écran au lieu de fausser un total.

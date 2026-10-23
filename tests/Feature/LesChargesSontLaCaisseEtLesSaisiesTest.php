@@ -101,7 +101,7 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
         $salaires = collect($ecran->instance()->graphique['datasets'])->firstWhere('label', 'Salaires & personnel');
         $this->assertSame(20_000, array_sum($salaires['data']));
 
-        $ecran->assertSee('Suivi fournisseurs — à côté');
+        $ecran->assertSee('Suivi fournisseur — à côté');
     }
 
     public function test_le_tableau_montre_les_charges_et_le_suivi_a_cote(): void

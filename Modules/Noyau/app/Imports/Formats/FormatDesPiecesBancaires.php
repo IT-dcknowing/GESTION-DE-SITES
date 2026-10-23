@@ -6,7 +6,7 @@ use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Modeles\PieceBancaire;
 
 /**
- * Le relevé d'un compte bancaire, tel que le logiciel comptable l'exporte.
+ * Le relevé d'un compte bancaire, tel que le logiciel d'atelier l'exporte.
  *
  * **Huit colonnes, relevées sur l'écran et non sur le fichier.** Le propriétaire a montré le
  * 30/09 l'écran « Liste de toutes les pièces comptables » du logiciel ; le fichier lui-même
@@ -50,7 +50,7 @@ class FormatDesPiecesBancaires extends Format
     {
         // « Banque » seul ne disait plus lequel des deux relevés : depuis le 07/10, celui de la
         // caissière a son propre type, et c'est lui qui est à jour.
-        return 'Banque — pièces du logiciel comptable';
+        return 'Banque — pièces du logiciel d’atelier';
     }
 
     public static function colonnes(): array

@@ -8,7 +8,7 @@ use Modules\Noyau\Imports\Modeles\MouvementCaisse;
 use Modules\Noyau\Imports\Modeles\OuvertureCaisse;
 
 /**
- * Le journal de caisse imprimé — la sortie du logiciel comptable.
+ * Le journal de caisse imprimé — la sortie du logiciel d'atelier.
  *
  * **Pourquoi il fallait le lire.** L'écran *Caisse* n'était alimenté que par le classeur
  * tenu à la main d'Abidjan. Bouaké et San-Pédro n'ont pas de classeur : elles n'ont que ce

@@ -15,7 +15,26 @@
     // indicateur ne se comprend qu'en montrant les deux chiffres qu'il compare : afficher
     // l'écart seul obligerait à aller chercher ailleurs ce qu'il oppose à quoi.
     'lignes' => null,
+    /*
+     * **« Autres », expliqué — 23/10.** « Au tableau de bord et à tout autre KPI, quand il y a
+     * "Autres", une ligne en dessous pour expliquer ce que c'est, et trois points de suspension qui
+     * mènent aux lignes de cet "Autres". » Sans texte, l'explication générale s'affiche ; le lien
+     * (une adresse) ou l'action (une méthode du composant) mène aux lignes.
+     */
+    'autres' => null,
+    'autresLien' => null,
+    'autresAction' => null,
+    /*
+     * **Des signes pour ce qui s'additionne — 23/10** : sur le résultat net, « mécanique et sinistre
+     * s'additionnent : un signe positif pour montrer l'addition, comme Autres a son signe négatif ».
+     */
+    'signes' => false,
 ])
+
+@php
+    // « + » devant une part positive quand la carte additionne ; un montant négatif garde son « - ».
+    $signe = fn ($montant) => $signes && $montant !== null && ! str_starts_with(trim((string) $montant), '-') ? '+ '.$montant : $montant;
+@endphp
 
 <div class="carte carte-kpi {{ $accent ? 'est-alerte' : ($bon ? 'est-bon' : '') }}">
     <div class="kpi-libelle">{{ $label }}</div>
@@ -45,14 +64,14 @@
                 <div style="display:flex; align-items:baseline; gap:6px; font-size:11.5px; color:#4B4E55;">
                     <span style="flex:0 0 auto; align-self:center; width:3px; height:11px; border-radius:2px; background:#2563EB;"></span>
                     <span style="flex:1 1 auto; min-width:0;">Mécanique</span>
-                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $mecanique }}</b>
+                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $signe($mecanique) }}</b>
                 </div>
             @endif
             @if ($sinistre !== null)
                 <div style="display:flex; align-items:baseline; gap:6px; font-size:11.5px; color:#4B4E55;">
                     <span style="flex:0 0 auto; align-self:center; width:3px; height:11px; border-radius:2px; background:#D97706;"></span>
                     <span style="flex:1 1 auto; min-width:0;">Sinistre</span>
-                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $sinistre }}</b>
+                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $signe($sinistre) }}</b>
                 </div>
             @endif
             @if ($nonVentile !== null)
@@ -65,7 +84,15 @@
                     title="Opérations saisies sans précision d'activité — ni mécanique, ni sinistre.">
                     <span style="flex:0 0 auto; align-self:center; width:3px; height:11px; border-radius:2px; background:#9CA3AF;"></span>
                     <span style="flex:1 1 auto; min-width:0;">Autres</span>
-                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $nonVentile }}</b>
+                    <b style="flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $signe($nonVentile) }}</b>
+                    @if ($autresLien)
+                        <a href="{{ $autresLien }}" wire:navigate title="Voir les lignes de « Autres »" style="flex:0 0 auto; text-decoration:none; font-weight:800; color:#2563EB;">⋯</a>
+                    @elseif ($autresAction)
+                        <button type="button" wire:click="{{ $autresAction }}" title="Voir les lignes de « Autres »" style="all:unset; flex:0 0 auto; cursor:pointer; font-weight:800; color:#2563EB;">⋯</button>
+                    @endif
+                </div>
+                <div style="font-size:10.5px; color:#9A9DA5; line-height:1.35; padding-left:9px;">
+                    {{ $autres ?? 'Autres : opérations dont l\'activité n\'est pas dite — ni mécanique, ni sinistre.' }}
                 </div>
             @endif
         </div>

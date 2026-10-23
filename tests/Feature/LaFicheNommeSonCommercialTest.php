@@ -368,7 +368,7 @@ class LaFicheNommeSonCommercialTest extends TestCase
 
         // Et ceux qui n'en portent aucun. Leur annoncer une ventilation par les codes
         // décrivait un mécanisme étranger à ce qu'ils font — relevé par le propriétaire le
-        // 24/09. Le « code de règlement » du logiciel comptable est le piège de la liste :
+        // 24/09. Le « code de règlement » du logiciel d'atelier est le piège de la liste :
         // il ressemble à un code sans en être un.
         foreach (['impayes', 'fournisseurs', 'balance-fournisseurs',
             'reglements-fournisseurs', 'caisse', 'journal-caisse'] as $cle) {

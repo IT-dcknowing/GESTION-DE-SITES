@@ -56,7 +56,7 @@ $adresse = function (string $nom): ?string {
              redécouvre écran par écran. --}}
         <div class="imp-hint" style="margin-top:11px;">
             <strong>Caisse et Trésorerie ne lisent pas la même chose.</strong>
-            <em>Caisse</em> montre ce que la caisse du logiciel comptable a enregistré — c'est là
+            <em>Caisse</em> montre ce que la caisse du logiciel d'atelier a enregistré — c'est là
             qu'arrivent le classeur d'Abidjan et le journal imprimé de Bouaké et San-Pédro.
             <em>Trésorerie</em> montre ce que l'application a elle-même encaissé et décaissé.
             Déposer un journal de caisse ne remplit donc pas la Trésorerie, et c'est voulu : les

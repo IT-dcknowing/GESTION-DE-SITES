@@ -57,7 +57,7 @@ class Depot
          * **Le compte bancaire du dépôt — seul le relevé bancaire en porte un.**
          *
          * Il est déclaré au dépôt et non lu dans le fichier, parce que le fichier ne le
-         * porte pas : sur l'écran du logiciel comptable, le compte se choisit **au-dessus**
+         * porte pas : sur l'écran du logiciel d'atelier, le compte se choisit **au-dessus**
          * de la grille. Sa colonne « BANQUE EMETRICE », elle, est la banque du chèque reçu —
          * ce qui n'est pas du tout la même chose.
          */

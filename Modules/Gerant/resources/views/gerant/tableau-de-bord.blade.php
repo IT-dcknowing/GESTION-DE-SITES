@@ -484,27 +484,32 @@ $commentaires = computed(function () {
             :mecanique="$ventile ? ae($this->kpis['caMecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['caSinistre']) : null"
             :non-ventile="$ventile && $this->kpis['caNonVentile'] ? ae($this->kpis['caNonVentile']) : null"
-            sub="Fichier du CA et saisies" />
+            sub="Fichier du CA et saisies" autres="Autres : factures du CA dont l'activité n'est pas dite — ni fiche de réception ni n° de sinistre pour la trancher." :autres-lien="route('chiffre-affaires')"
+            />
         <x-kpi-card label="CA selon les impayés — {{ $this->libellePerimetre }}" :value="ae($this->kpis['caSelonImpayes'])"
             sub="Créances de l'état non retrouvées dans le fichier du CA — à côté, jamais additionné" couleur="#B45309" />
         <x-kpi-card label="Charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['charges'])"
             :mecanique="$ventile ? ae($this->kpis['chargesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['chargesVentilees']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['chargesVentilees']['nonVentile'] ? ae($this->kpis['chargesVentilees']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['chargesVentilees']['nonVentile'] ? ae($this->kpis['chargesVentilees']['nonVentile']) : null" autres="Autres : décaissements de caisse (le journal ne dit jamais mécanique ou sinistre) et charges saisies sans activité." :autres-lien="route('charges')"
+            />
         <x-kpi-card label="Résultat net — {{ $this->libellePerimetre }}" :value="ae($this->kpis['resultat'])"
             sub="CA facturé − charges" :bon="$this->kpis['resultat'] >= 0" :accent="$this->kpis['resultat'] < 0"
             :mecanique="$ventile ? ae($this->kpis['resultatVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['resultatVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['resultatVentile']['nonVentile'] ? ae($this->kpis['resultatVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['resultatVentile']['nonVentile'] ? ae($this->kpis['resultatVentile']['nonVentile']) : null" :signes="true" autres="Autres : le « Autres » du CA moins le « Autres » des charges — surtout les décaissements de caisse, sans activité." :autres-lien="route('charges')"
+            />
         <x-kpi-card label="Encaissé — {{ $this->libellePerimetre }}" :value="ae($this->kpis['encaisse'])"
             :sub="$this->kpis['ca'] > 0 ? an($this->kpis['encaisse'] / $this->kpis['ca']).' du CA facturé' : null"
             :mecanique="$ventile ? ae($this->kpis['encaisseVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['encaisseVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['encaisseVentile']['nonVentile'] ? ae($this->kpis['encaisseVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['encaisseVentile']['nonVentile'] ? ae($this->kpis['encaisseVentile']['nonVentile']) : null" autres="Autres : règlements dont la facture ne dit pas l'activité, ou qui ne sont rattachés à aucune facture." :autres-lien="route('tresorerie')"
+            />
         <x-kpi-card label="Trésorerie nette — {{ $this->libellePerimetre }}" :value="ae($this->kpis['treso'])" :accent="$this->kpis['treso'] < 0"
             :mecanique="$ventile ? ae($this->kpis['tresoVentilee']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['tresoVentilee']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['tresoVentilee']['nonVentile'] ? ae($this->kpis['tresoVentilee']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['tresoVentilee']['nonVentile'] ? ae($this->kpis['tresoVentilee']['nonVentile']) : null" :signes="true" autres="Autres : encaissé sans activité moins décaissé sans activité." :autres-lien="route('tresorerie')"
+            />
         <x-kpi-card label="Taux transfo devis — {{ $this->libellePerimetre }}" :value="an($this->kpis['tauxTransfo'])" sub="Devis validés ou facturés"
             :mecanique="$ventile ? an($this->kpis['tauxTransfoMecanique']) : null"
             :sinistre="$ventile ? an($this->kpis['tauxTransfoSinistre']) : null" />

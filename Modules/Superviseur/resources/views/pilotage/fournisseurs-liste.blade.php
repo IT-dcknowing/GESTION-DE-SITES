@@ -72,6 +72,7 @@ $colonnesFiltrables = computed(fn () => [
     'pieces' => FiltreLibre::colonne('Nombre de pièces', 'nombre'),
     'reste' => FiltreLibre::colonne('Reste dû', 'nombre'),
     'fiche' => FiltreLibre::colonne('Fiche déclarée', 'liste', ['1' => 'Oui', '0' => 'Non']),
+    'statut' => FiltreLibre::colonne('Statut', 'liste', ['fne' => 'Connu par la FNE', 'accepte' => 'Accepté', 'a_verifier' => 'À vérifier']),
 ]);
 
 /**
@@ -121,7 +122,66 @@ $annuaire = computed(function () {
         ];
     }
 
+    /*
+     * **Les émetteurs FNE — 23/10** : « la liste des fournisseurs doit prendre en compte tous les
+     * fournisseurs FNE : dès qu'on télécharge, leur nom doit apparaître ici, car ce sont des
+     * fournisseurs connus. Pour les autres, il faut vérifier le nom, et proposer qu'on puisse
+     * l'accepter. » Lus dans les factures relevées, sans rien écrire : le relevé suffit à les
+     * connaître. Un nom du suivi qui est celui d'un émetteur se confond avec lui (même clé).
+     */
+    if (\App\Support\SchemaDisponible::table('factures_fne')) {
+        $emetteurs = \Modules\Noyau\Imports\Modeles\FactureFne::query()
+            ->selectRaw('emetteur_nom, max(emetteur_ncc) as ncc, count(*) as n')
+            ->whereNotNull('emetteur_nom')
+            ->groupBy('emetteur_nom')->get();
+
+        foreach ($emetteurs as $emetteur) {
+            $cle = FournisseurReferentiel::clePour($emetteur->emetteur_nom);
+            $fiche = $fiches->get($cle);
+
+            $lignes[$cle] ??= [
+                'nom' => (string) $emetteur->emetteur_nom,
+                'code' => $fiche?->code,
+                'terme' => $fiche?->delai_reglement,
+                'pieces' => 0,
+                'reste' => 0,
+                'fiche' => $fiche !== null,
+            ];
+            $lignes[$cle]['ncc'] = $emetteur->ncc;
+            $lignes[$cle]['nFne'] = (int) $emetteur->n;
+        }
+    }
+
+    foreach ($lignes as $cle => $ligne) {
+        $lignes[$cle] += ['ncc' => null, 'nFne' => 0];
+        $lignes[$cle]['statut'] = $lignes[$cle]['nFne'] > 0 ? 'fne' : ($ligne['fiche'] ? 'accepte' : 'a_verifier');
+    }
+
     return collect($lignes)->sortBy('nom', SORT_NATURAL | SORT_FLAG_CASE)->values();
+});
+
+/**
+ * Pour un nom à vérifier, l'émetteur FNE dont le nom est le plus proche — souvent le même
+ * fournisseur écrit autrement au classeur. Une proposition, jamais une fusion.
+ */
+$procheFne = computed(function () {
+    $emetteurs = $this->annuaire->where('statut', 'fne');
+
+    return $this->annuaire->where('statut', 'a_verifier')->mapWithKeys(function (array $l) use ($emetteurs) {
+        $cle = FournisseurReferentiel::clePour($l['nom']);
+        $meilleur = null;
+        $score = 0;
+
+        foreach ($emetteurs as $e) {
+            similar_text($cle, FournisseurReferentiel::clePour($e['nom']), $p);
+
+            if ($p > $score) {
+                [$meilleur, $score] = [$e['nom'], $p];
+            }
+        }
+
+        return [$l['nom'] => $score >= 70 ? $meilleur : null];
+    })->filter()->all();
 });
 
 $filtrees = computed(function () {
@@ -136,6 +196,8 @@ $filtrees = computed(function () {
 });
 
 $sansCode = computed(fn () => $this->annuaire->whereNull('code')->count());
+
+$aVerifier = computed(fn () => $this->annuaire->where('statut', 'a_verifier')->count());
 
 /**
  * Les fournisseurs dont le nom ressemble à celui qu'on saisit.
@@ -191,9 +253,9 @@ $coder = function (string $nom) {
         ['source_feuille' => 'code attribué à l’écran'],
     );
 
-    unset($this->annuaire, $this->filtrees, $this->sansCode);
+    unset($this->annuaire, $this->filtrees, $this->sansCode, $this->aVerifier, $this->procheFne);
 
-    session()->flash('message', '« '.$nom.' » porte désormais le code '.$fiche->fresh()->code.'.');
+    session()->flash('message', '« '.$nom.' » est accepté, sous le code '.$fiche->fresh()->code.'.');
 };
 
 $coderTout = function () {
@@ -263,7 +325,7 @@ $ajouter = function () {
 
 <div>
     <x-titre-ecran titre="Liste des fournisseurs"
-        sous-titre="Tous les fournisseurs que la maison connaît — ceux qu'on facture et ceux qu'on a déclarés — avec leur code.">
+        sous-titre="Tous les fournisseurs que la maison connaît — ceux de la FNE, ceux qu'on facture et ceux qu'on a déclarés — avec leur code.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
             <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Suivi fournisseur</a>
             @if ($this->peutEcrire)
@@ -351,6 +413,14 @@ $ajouter = function () {
             <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
         </div>
 
+        @if ($this->aVerifier > 0)
+            <div class="imp-hint warn" style="margin-top:11px;">
+                <strong>{{ number_format($this->aVerifier, 0, ',', ' ') }} nom(s) du suivi à vérifier</strong> : ni émetteur FNE, ni
+                fournisseur accepté. Vérifiez l'orthographe — un nom voisin d'un émetteur FNE est proposé — puis
+                « Accepter » le fait entrer dans la liste, sous un code.
+            </div>
+        @endif
+
         @if ($this->sansCode > 0 && $this->peutEcrire)
             <div class="imp-hint" style="margin-top:11px;">
                 <strong>{{ number_format($this->sansCode, 0, ',', ' ') }} fournisseur(s) n'ont pas encore de code.</strong>
@@ -374,6 +444,7 @@ $ajouter = function () {
                     <tr>
                         <th>Code</th>
                         <th>Fournisseur</th>
+                        <th>Statut</th>
                         <th>Terme de règlement</th>
                         <th class="num">Pièces</th>
                         <th style="text-align:right;">Reste dû</th>
@@ -391,12 +462,25 @@ $ajouter = function () {
                                     {{ $ligne['code'] }}
                                 @elseif ($this->peutEcrire)
                                     <button type="button" wire:click="coder('{{ addslashes($ligne['nom']) }}')"
-                                        class="bouton bouton-secondaire" style="padding:2px 8px; font-size:11px;">coder</button>
+                                        class="bouton {{ $ligne['statut'] === 'a_verifier' ? '' : 'bouton-secondaire' }}" style="padding:2px 8px; font-size:11px;">{{ $ligne['statut'] === 'a_verifier' ? 'Accepter' : 'coder' }}</button>
                                 @else
                                     <span style="color:#9A9DA5;">—</span>
                                 @endif
                             </td>
-                            <td style="font-weight:600;">{{ $ligne['nom'] }}</td>
+                            <td style="font-weight:600;">
+                                {{ $ligne['nom'] }}
+                                @if ($ligne['ncc'])<div style="font-size:11px; font-weight:400; color:#9A9DA5;">NCC {{ $ligne['ncc'] }} · {{ $ligne['nFne'] }} facture(s) FNE</div>@endif
+                                @if (isset($this->procheFne[$ligne['nom']]))
+                                    <div style="font-size:11px; font-weight:400; color:#B87A00;">ressemble à l'émetteur FNE « {{ $this->procheFne[$ligne['nom']] }} »</div>
+                                @endif
+                            </td>
+                            <td style="white-space:nowrap; font-size:12px;">
+                                @switch ($ligne['statut'])
+                                    @case ('fne') <span style="color:#7C3AED; font-weight:700;">Connu — FNE</span> @break
+                                    @case ('accepte') <span style="color:#0E9F6E; font-weight:700;">Accepté</span> @break
+                                    @default <span style="color:#B87A00; font-weight:700;">À vérifier</span>
+                                @endswitch
+                            </td>
                             {{-- Le terme vient des conditions de règlement : c'est de lui que
                                  sort l'échéance attendue d'une pièce que le classeur n'a pas
                                  datée — 5 184 lignes sur 7 350. --}}
@@ -420,7 +504,7 @@ $ajouter = function () {
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="6"
+                        <x-table-vide :colspan="7"
                             texte="Aucun fournisseur. Ils arrivent avec le classeur de suivi, ou s'ajoutent ici un par un." />
                     @endforelse
                 </tbody>

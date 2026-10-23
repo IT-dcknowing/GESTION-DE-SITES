@@ -50,7 +50,39 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 22 octobre 2026
+## 3. Où l'on en est — 23 octobre 2026
+
+**Le 23/10**, sur la même branche `claude/compassionate-galileo-tly6ai`, fusionnée dans `main` et
+poussée sur les deux dépôts. **Aucune migration.** Les tests ne tournent toujours pas dans le
+conteneur cloud (réseau) : un fichier neuf, `LesDecaissementsFournisseursSeSuiventTest`, et trois
+tests existants adaptés (`UneChargeSeReprendDeLaCaisseTest`, `LesChargesSontLaCaisseEtLesSaisiesTest`,
+`LeSuiviFournisseurSeTientParAnneeTest`).
+
+### Fait le 23/10 — « Autres » expliqué, charges revues, charges fournisseurs, grand livre
+
+- **« Autres » s'explique** sur chaque carte ventilée (accueil du gérant, Charges, CA,
+  Trésorerie) : une ligne dit ce qu'il recouvre, **« ⋯ »** mène aux lignes ; le **résultat net**
+  (et les nets de trésorerie) portent un **« + »** devant mécanique et sinistre (`x-kpi-card` :
+  `autres`, `autres-lien`, `autres-action`, `signes`).
+- **Charges** : les **versements et transferts ne comptent plus** (montrés, « non comptés ») —
+  la question du 20/10 est tranchée (`ChargesDeLaPeriode::pasDesCharges`) ; **débits de banque**
+  retenus seulement si le libellé dit une charge ou un fournisseur ; provenances renommées
+  (*Venant de la FNE · Décaissement de caisse (journal de caisse) · Saisie dans l'application · Suivi
+  fournisseur initial (importé) · Suivi fournisseur*) ; « Classer des sorties de caisse » retiré de
+  l'écran ; part des catégories avec deux décimales ; bouton **+ Ajouter une pièce**.
+- **Fournisseurs → « Charges fournisseurs »** : hors du menu (on y va par les Charges) ; ajout en
+  deux voies (**choisir une FNE** avec recherche, ou **Saisir**) ; « Relancer le rapprochement »
+  retiré ; **liste des fournisseurs** avec les émetteurs FNE d'office et les noms « à vérifier » à
+  **Accepter** ; **tableau initial** : la logique « commandé pour / reçu par » dite et affichée.
+- **Grand livre fournisseur** (`GrandLivreFournisseur`) : extrait de compte par nom, report, solde
+  courant ; lien depuis chaque ligne de la balance.
+- **Décaissements fournisseurs (caisse)** : les sorties que le libellé range en fournisseurs ;
+  **Suivre** crée la pièce réglée par la sortie (règlement `mouvement_caisse_id`) ; lettrage
+  cliquable dans les deux sens.
+- **État des impayés** : un **avoir se saisit en négatif** (centimes compris) — ce n'était pas
+  possible ; il ne se règle pas.
+- **« Logiciel comptable » n'existe pas** : tout vient du logiciel d'atelier. Corrigé partout
+  (écrans, code, documents), sauf les deux passages qui citent l'ancienne erreur.
 
 **Branche du 22/10 : `claude/compassionate-galileo-tly6ai`, poussée puis fusionnée dans `main`**
 (règle du propriétaire, rappelée le 22/10 : une branche par section de travaux, fusionnée dans
@@ -111,7 +143,7 @@ figure plus dans ce qui reste. Migration additive **`2026_10_20_000001`** (une c
   seule, relu côté serveur (et verrouillé ensuite sur la pièce) ; formulaire réduit à l'essentiel ;
   **KPI des normalisés** (FNE reçues, au suivi, à porter, suivi normalisé) ; carte « Facturé » ne
   coupe plus les centimes (`(int)` retiré, aussi à l'état des impayés).
-- **Balance** : deux onglets — importée (logiciel comptable) et **produite par le système**
+- **Balance** : deux onglets — importée (logiciel d'atelier) et **produite par le système**
   (`BalanceDesFournisseurs` : par fournisseur, facturé / réglé / reste, ancienneté aux tranches de
   la balance âgée, solde importé en regard et écart).
 - **Trésorerie** (`TresorerieReelle`) : entrées et sorties = journal de caisse + relevés bancaires +
@@ -399,10 +431,8 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     réparer `node` (CONSIGNES.md, section « nodevenv »).
 
 19. **Le 20/10** : `git pull` puis `php artisan app:deployer` (migration `2026_10_20_000001` : une
-    colonne nullable sur `reglements_fournisseur`). **À confirmer par le propriétaire** : avec « toutes
-    les sorties de caisse sont des charges », les **versements en banque** et transferts sortis de la
-    caisse comptent aussi en charges (catégorie « Versements & transferts » sur la page Charges) — dire
-    s'il faut les écarter. Corriger les deux tâches Cron de la production (espace après `artisan`).
+    colonne nullable sur `reglements_fournisseur`). ~~Versements en banque dans les charges ?~~ —
+    **tranché le 23/10 : non**. Corriger les deux tâches Cron de la production (espace après `artisan`).
 
 20. **Le 22/10** : sur le poste, `git pull` sur `main` puis **`php artisan test`** — rien n'a pu
     être lancé dans le conteneur. En ligne, `git pull` et `php artisan app:deployer` (migration
@@ -410,6 +440,14 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     créer les accès Trésorerie (gérant › Ajouter un accès, ou Super admin › Accès) ; vérifier sur
     `/charges` que le partage administratif / fournisseurs de la caisse tombe juste — la règle lit
     des mots, et un libellé mal rangé se corrige dans `CategorieDeSortie::REGLES`.
+
+21. **Le 23/10** : `php artisan test` sur le poste, puis en ligne `git pull` et `php artisan
+    app:deployer` (aucune migration). **Le total des charges baissera** du montant des versements
+    et transferts de la caisse : c'est la règle demandée, pas une régression. Ensuite : sur
+    **Charges fournisseurs › Liste des fournisseurs**, accepter les noms « à vérifier » ; sur
+    **Décaissements fournisseurs (caisse)**, suivre les sorties ; créer, quand il le souhaite, le rôle
+    du **gestionnaire des fournisseurs** (Maintenance › Rôles et pages) pour qu'on y branche les
+    notifications.
 
 ### En attente d'un accord, pas d'un travail
 
@@ -428,6 +466,13 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
   des modifications non commitées du propriétaire. **Ne pas y toucher sans son accord.**
 
 ### Côté code, prêt à prendre
+
+- **Notifications fournisseurs** (23/10) : à chaque décaissement fournisseur de la caisse et à chaque
+  facture FNE relevée, prévenir « celui qui gère les fournisseurs » — **le rôle sera créé par le
+  propriétaire** (il peut l'être par Maintenance › Rôles et pages) ; à brancher ensuite.
+- **Les vraies charges = le suivi fournisseurs** : annoncé le 23/10 (« pour l'instant on garde la
+  caisse ; dans le futur, on verra comment changer ça »). Rien n'est fait.
+- **« Classer des sorties de caisse »** : à réformer (retirée de l'écran le 23/10, code gardé).
 
 - **Lettrage des sources de charges** : caisse, suivi fournisseurs, FNE et banque se lisent côte à
   côte sans retrait des doublons (22/10). Quand un indicateur commun existera (n° FNE porté dans la
@@ -488,14 +533,16 @@ pas en théorie :
 2. les **47 lignes « facture d'avoir à établir »** sont des avoirs *annoncés*, pas écrits. Leur
    reste est déjà à zéro. Elles restent des créances ordinaires, et c'est voulu.
 
-### 3. Le partage de la caisse en administratif / fournisseurs — trois choix à confirmer (22/10)
+### 3. Le partage de la caisse en administratif / fournisseurs — choix à confirmer (22/10, revu le 23/10)
 
 1. **« Achats divers »** (motif fourre-tout du journal imprimé) est rangé en **fournisseurs** : il
    nomme un achat.
 2. **Ce que la règle ne reconnaît pas** (« Autres ») est rangé en **administratif** : on ne prête pas
    un fournisseur à une sortie qui n'en dit aucun.
-3. **Versements et transferts** restent dans la caisse et donc en **administratif** — la question du
-   20/10 (les écarter des charges ?) attend toujours sa réponse.
+3. ~~Versements et transferts~~ — **tranché le 23/10** : ils ne sont pas des charges ; montrés à part.
+4. **Débits de banque** : un libellé que la règle ne reconnaît pas (« CHEQUE 0012345 ») n'est pas
+   retenu. Si des règlements fournisseurs passent par chèque sans nom, ils manqueront : à vérifier
+   sur les relevés en ligne.
 
 Chacun se change en une ligne dans `CategorieDeSortie` (`CATEGORIES_FOURNISSEURS`).
 

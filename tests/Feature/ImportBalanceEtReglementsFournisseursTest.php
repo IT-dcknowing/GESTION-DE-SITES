@@ -24,7 +24,7 @@ use Tests\ConstruitDesClasseurs;
 use Tests\TestCase;
 
 /**
- * Les deux exports fournisseurs du logiciel comptable.
+ * Les deux exports fournisseurs du logiciel d'atelier.
  *
  * **Ce qui manquait.** Le suivi fournisseur tenu à la main était lu depuis longtemps : il
  * dit ce que l'atelier croit devoir. Les deux exports du logiciel disent ce que la

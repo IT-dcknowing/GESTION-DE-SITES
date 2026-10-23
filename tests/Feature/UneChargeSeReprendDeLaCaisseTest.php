@@ -139,12 +139,14 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
             ->call('reprendreDeLaCaisse');
 
         // 20/10 : « toutes les sorties de caisse sont des charges » — la reprise ne compte pas deux fois.
+        // 23/10 : sauf les versements et transferts, montrés mais non comptés.
         $origines = $ecran->instance()->origines;
-        $this->assertSame(545_000, $origines['caisse']);
+        $this->assertSame(45_000, $origines['caisse']);
         $this->assertSame(0, $origines['saisies']);
-        $this->assertSame(545_000, $ecran->instance()->kpis['total']);
+        $this->assertSame(45_000, $ecran->instance()->kpis['total']);
+        // Le journal, lui, porte toutes ses sorties.
         $this->assertSame(545_000, $ecran->instance()->selonLaCaisse['sorties']);
-        $ecran->assertSee('Sorties de caisse — toutes des charges');
+        $ecran->assertSee('Charges selon la caisse')->assertSee('non comptés dans les charges');
     }
 
     // ------------------------------------------------------------------ le décor

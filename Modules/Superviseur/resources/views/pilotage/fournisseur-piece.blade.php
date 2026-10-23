@@ -448,7 +448,7 @@ $enregistrer = function () {
                 @if ($this->reglements->isNotEmpty())
                     <div class="tableau-conteneur">
                         <table class="tableau">
-                            <thead><tr><th>Règlement</th><th>Date</th><th>Mode</th><th style="text-align:right;">Montant</th></tr></thead>
+                            <thead><tr><th>Règlement</th><th>Date</th><th>Mode</th><th style="text-align:right;">Montant</th><th>Caisse</th></tr></thead>
                             <tbody>
                                 @foreach ($this->reglements as $r)
                                     <tr>
@@ -456,6 +456,8 @@ $enregistrer = function () {
                                         <td>{{ $r->date_reglement?->format('d/m/Y') }}</td>
                                         <td>{{ $r->mode_reglement ?: '—' }}</td>
                                         <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae(montant_de($r->montant)) }}</td>
+                                        {{-- Le lettrage se lit des deux côtés (23/10) : la sortie de caisse qui a payé. --}}
+                                        <td>@if ($r->mouvement_caisse_id)<a href="{{ route('fournisseurs.decaissements', ['sortie' => $r->mouvement_caisse_id]) }}" wire:navigate style="font-size:12px;">payé par la caisse ›</a>@else — @endif</td>
                                     </tr>
                                 @endforeach
                             </tbody>

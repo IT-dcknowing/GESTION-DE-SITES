@@ -135,7 +135,7 @@ class LeReferentielFournisseurEntreTest extends TestCase
 
     public function test_un_classeur_sans_la_feuille_n_est_pas_un_echec(): void
     {
-        // Les exports du logiciel comptable n'en ont pas : leur absence n'est pas une
+        // Les exports du logiciel d'atelier n'en ont pas : leur absence n'est pas une
         // anomalie et ne doit produire ni rejet ni message.
         $resultat = $this->importer(avecLaFeuille: false);
 

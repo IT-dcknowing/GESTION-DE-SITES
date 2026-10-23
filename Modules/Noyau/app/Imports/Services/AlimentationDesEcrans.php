@@ -125,7 +125,7 @@ class AlimentationDesEcrans
             'consequence' => "Une caisse n'a pas de numéro de pièce : le rapprochement se fait sur la "
                 .'ligne entière — date, sens, montant, libellé — ce qui protège du redépôt du même mois. '
                 ."Il ne remplit pas la Trésorerie : celle-ci compte ce que l'application encaisse et "
-                .'décaisse elle-même, la caisse compte ce que le logiciel comptable a enregistré.',
+                .'décaisse elle-même, la caisse compte ce que le logiciel d’atelier a enregistré.',
         ],
         /*
          * Le même contenu, par l'autre document. Bouaké et San-Pédro ne tiennent pas de

@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Les deux exports fournisseurs du logiciel comptable entrent dans l'application.
+ * Les deux exports fournisseurs du logiciel d'atelier entrent dans l'application.
  *
  * **Ce qui manquait.** Le suivi fournisseur tenu à la main était lu depuis longtemps, mais
  * il est tenu par quelqu'un : il dit ce que l'atelier croit devoir. Les deux exports du

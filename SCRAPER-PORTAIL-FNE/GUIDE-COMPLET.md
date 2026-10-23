@@ -185,13 +185,18 @@ Elle doit dire : `2197588Q_….json : N factures (N nouvelles, dont A avoirs), R
   ```
 
 **Où les voir ensuite :**
-- **Fournisseurs › Factures FNE** : toutes les pièces, par exercice ; filtres **tiers** (nom ou NCC),
+- **Charges fournisseurs › Factures FNE** (la page « Fournisseurs » s'appelle ainsi depuis le 23/10 et
+  s'ouvre depuis les Charges) : toutes les pièces, par exercice ; le bouton « Relancer le
+  rapprochement » est retiré (les numéros du suivi ne collent pas à ceux de la FNE) ; filtres **tiers** (nom ou NCC),
   **n° FNE**, **dates** et **montant de A à B** (22/10) ; **Détails** ouvre la facture (en-tête,
   lignes, taxes) ; **Porter** ouvre le formulaire du suivi fournisseurs avec ce que dit la facture en
   premier, **non modifiable**.
 - **Fournisseurs** (page principale) : les KPI des **normalisés** — factures FNE reçues dans l'année,
   au suivi, à porter, suivi normalisé — et, depuis le 22/10, les factures FNE pas encore au suivi
-  **dans le tableau « Factures reçues »**, à côté des pièces du suivi (filtre de provenance).
+  **dans le tableau « Factures reçues »**, à côté des pièces du suivi (filtre de provenance). Depuis
+  le 23/10, « + Ajouter une pièce » propose de **choisir une facture FNE** (recherche) : ses
+  informations se reportent comme par « Porter ». Les émetteurs FNE paraissent d'office dans la
+  **liste des fournisseurs**, comme fournisseurs connus.
 - **Charges** (depuis le 20/10) : les factures FNE et le suivi fournisseurs **ne sont pas des
   charges** — « les fournisseurs ne font que retracer ». La charge est la **sortie de caisse** qui
   paie la facture ; au moment de **Régler** une pièce, on choisit la sortie du journal qui l'a payée,

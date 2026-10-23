@@ -2,7 +2,7 @@
 
 *Document de présentation à transmettre à un tiers (prestataire, auditeur, partenaire, autre
 équipe). Il dit ce qu'est l'application, comment elle fonctionne, et s'attarde sur les deux
-sujets qui en font la difficulté : **les importations** et **les charges**. État au 22 octobre 2026.*
+sujets qui en font la difficulté : **les importations** et **les charges**. État au 23 octobre 2026.*
 
 > Aucun identifiant, mot de passe ni adresse de serveur ne figure ici. Les noms de classes
 > sont cités pour qu'un développeur retrouve le code ; un lecteur non technique peut les sauter.
@@ -38,7 +38,8 @@ ateliers)**, **Bouaké**, **San-Pédro**.
 Elle répond à trois besoins :
 
 1. **Rassembler en un seul endroit** ce que l'entreprise disperse aujourd'hui entre un logiciel
-   d'atelier, un logiciel comptable et une dizaine de classeurs Excel tenus à la main.
+   d'atelier — **il n'y a pas de logiciel comptable** (précisé le 23/10) — et une dizaine de classeurs
+   Excel tenus à la main.
 2. **Saisir ce qu'aucun logiciel ne connaît** : la prospection commerciale, les relances de
    recouvrement, les règlements et les charges du jour, les commentaires.
 3. **Montrer à chacun ce qui le concerne, ni plus ni moins** : le gérant voit l'entreprise, le
@@ -91,8 +92,9 @@ impayés**, que le module Recouvrement poursuit.
 
 **Les données ne naissent pas dans l'application.** Elles viennent :
 
-- du **logiciel d'atelier** (parc, devis, factures, impayés, entrées/sorties de véhicules) ;
-- du **logiciel comptable** (balance et règlements fournisseurs, journal de caisse, banques) ;
+- du **logiciel d'atelier** — le seul logiciel de la maison, qui tient aussi les caisses : parc,
+  devis, factures, impayés, entrées/sorties de véhicules, balance et règlements fournisseurs,
+  journal de caisse, banques. Il n'y a **pas de logiciel comptable** (23/10) ;
 - de **classeurs tenus à la main** (caisse d'Abidjan, suivi des fournisseurs, relevé bancaire
   de la caissière) ;
 - du **portail FNE** de l'administration fiscale (factures normalisées des fournisseurs).
@@ -108,8 +110,7 @@ deviner.**
 ## 3. Le principe de fonctionnement
 
 ```
-  Logiciel d'atelier ─┐
-  Logiciel comptable ─┤                ┌──────────────────────────────┐
+  Logiciel d'atelier ─┐                ┌──────────────────────────────┐
   Classeurs manuels ──┼──► IMPORT ───► │                              │
   Portail FNE (JSON) ─┘   (contrôle,   │   BASE UNIQUE                │ ──► Écrans par rôle
                            simulation, │   (par entreprise, par ville,│     (tableaux de bord,
@@ -169,7 +170,7 @@ paramètre envoyé par le navigateur.
 | **Ventes** | chiffre d'affaires, rapprochement CA ↔ impayés, rapprochement prospections ↔ devis |
 | **Créances** | état des impayés, état initial, détail d'une créance ; module Recouvrement (9 pages : saisie, synthèse, balance âgée, courtiers, clients & tiers, extrait de compte, relances, encaissements, piste d'audit) |
 | **Argent** | **charges**, trésorerie, caisse, banques |
-| **Fournisseurs** | toutes les factures (suivi et FNE pas encore au suivi) et « à qui nous devons le plus » en un seul tableau à deux boutons, liste, factures FNE (filtres tiers, n°, dates, montant), balance (importée / produite), règlements, tableau initial |
+| **Charges fournisseurs** (depuis la page Charges) | toutes les factures (suivi et FNE pas encore au suivi) et « à qui nous devons le plus » en un seul tableau à deux boutons, liste (émetteurs FNE, noms à accepter), factures FNE (filtres tiers, n°, dates, montant), balance (importée / produite), **grand livre**, règlements, **décaissements fournisseurs de la caisse** (« Suivre », lettrage), tableau initial |
 | **Atelier** | parc véhicules (fiche par dossier), clients, entrées / sorties de véhicules, saisie du jour |
 | **Import** | dépôt, informations, traitements en cours, journal des imports (détail, corrections, traçabilité), codes employés |
 | **Administration** | entreprises, accès (création, rattrapage), administrateurs, codes, journal, maintenance (dont **rôles et pages**), incidents |
@@ -196,12 +197,12 @@ regard d'une facture. Source unique : `Registre::DISPONIBLES`.
 | 3 | `factures` | Chiffre d'affaires TTC (« CATTC ») | logiciel d'atelier | **chiffre d'affaires** | N° facture, fiche, sinistre, montant, site |
 | 4 | `impayes` | État des impayés — créances clients | logiciel d'atelier | créances, **règlements reçus**, recouvrement | assureur, courtier, client, n° facture, TTC, réglé, reste, mode et date de règlement |
 | 5 | `fournisseurs` | Suivi des factures fournisseurs | classeur manuel | **suivi fournisseurs** (dettes) | date facture, n° pièce, fournisseur, montant, réglé, reste |
-| 6 | `balance-fournisseurs` | Balance fournisseurs | logiciel comptable | balance importée | fournisseur, débit, crédit, solde |
-| 7 | `reglements-fournisseurs` | Règlements fournisseurs | logiciel comptable | paiements enregistrés | code règlement, fournisseur, mode, montant |
-| 8 | `banque` | Pièces bancaires | logiciel comptable | banques | code pièce, type, bénéficiaire, montant |
+| 6 | `balance-fournisseurs` | Balance fournisseurs | logiciel d'atelier | balance importée | fournisseur, débit, crédit, solde |
+| 7 | `reglements-fournisseurs` | Règlements fournisseurs | logiciel d'atelier | paiements enregistrés | code règlement, fournisseur, mode, montant |
+| 8 | `banque` | Pièces bancaires | logiciel d'atelier | banques | code pièce, type, bénéficiaire, montant |
 | 9 | `releve-banque` | Relevé bancaire — suivi de la caissière (BGFI, AFG) | classeur manuel | **banques, trésorerie** | date, libellé, débit, crédit, solde |
 | 10 | `caisse` | Classeur de caisse (Abidjan) | classeur manuel, un onglet par mois | **caisse, charges, trésorerie** | date, libellé, entrées, sorties, solde, bénéficiaire |
-| 11 | `journal-caisse` | Journal de caisse imprimé (Bouaké, San-Pédro) | logiciel comptable, **PDF** | **caisse, charges, trésorerie** | date, libellé, entrée, sortie, solde, motif |
+| 11 | `journal-caisse` | Journal de caisse imprimé (Bouaké, San-Pédro) | logiciel d'atelier, **PDF** | **caisse, charges, trésorerie** | date, libellé, entrée, sortie, solde, motif |
 | 12 | `entrees` | Entrées de véhicules | logiciel d'atelier | mouvements du parc | n° fiche, immatriculation, motif, travaux |
 | 13 | `sorties` | Sorties de véhicules | logiciel d'atelier | mouvements du parc | n° fiche, date de sortie |
 
@@ -401,17 +402,22 @@ périmètre ; les codes employés sont réservés à ceux qui en décident.
 > plusieurs fois au fil des retours du propriétaire ; celle qui fait foi est celle du
 > **20 octobre 2026**, écrite une seule fois dans `ChargesDeLaPeriode` et lue par tous les écrans.
 > Le **22 octobre**, la caisse se partage en charges administratives et charges fournisseurs, et
-> les autres sources (suivi, FNE, banque) se lisent à côté, sans s'additionner (§ 7.3 bis).
+> les autres sources (suivi, FNE, banque) se lisent à côté, sans s'additionner (§ 7.3 bis). Le
+> **23 octobre**, les versements et transferts sortent des charges, et les débits de banque se
+> lisent par leur libellé. Le propriétaire précise : « les vraies charges devraient être celles du
+> suivi fournisseurs ; pour l'instant on garde la caisse » — un changement annoncé, pas fait.
 
 ### 7.1 La règle
 
-**« Toutes les sorties de caisse sont des charges. »** Les fournisseurs, eux, « ne font que
-retracer : c'est un suivi ».
+**« Toutes les sorties de caisse sont des charges »** — **sauf les versements et transferts**
+(23/10 : « ce ne sont pas des charges, ce sont des indications ; ils peuvent rester, avec un mot pour
+dire qu'ils ne sont pas comptés »). Les fournisseurs, eux, « ne font que retracer : c'est un suivi ».
 
 | Compte dans les charges | Ne compte pas |
 |---|---|
 | **chaque sortie du journal de caisse** (classeur d'Abidjan ou journal PDF de Bouaké / San-Pédro), qu'elle ait été reprise ou non | **le suivi fournisseurs** (une dette, suivie à côté) |
 | **chaque charge saisie** dans l'application, de type « Charges », qui ne vient pas de la caisse | une charge **reprise** de la caisse : sa sortie compte déjà |
+| | les **versements et transferts** sortis de la caisse (dépôt en banque, appro, caisse centrale, DG…) — montrés, non comptés (23/10) |
 | | les **transferts de trésorerie** vers un autre site et les **décaissements DG** saisis |
 
 Pourquoi cette règle : avec l'ancienne (18/10), les pièces du suivi fournisseurs entraient aussi
@@ -455,7 +461,7 @@ règle ne sait pas lire.
 | Taxes & frais administratifs | taxe, impôt, timbre, vignette, frais bancaires, visite technique… | Autres décaissements |
 | Règlements fournisseurs | règlement, fournisseur, facture… | Autres décaissements |
 | Achats divers | achat, divers | Autres décaissements |
-| Versements & transferts | versement, dépôt banque, transfert, appro, retrait, caisse centrale, DG… | Autres décaissements *(voir 7.8)* |
+| Versements & transferts | versement, dépôt banque, transfert, appro, retrait, caisse centrale, DG… | **aucune — non comptés dans les charges** (23/10) |
 | Autres | rien de reconnu | Autres décaissements |
 
 Les quatre cartes (« natures ») sont : **Achats pièces**, **Salaires & personnel**,
@@ -471,7 +477,8 @@ La demande du propriétaire : « on a la caisse, le suivi des fournisseurs, la F
 | Volet | Catégories |
 |---|---|
 | **Charges fournisseurs** — tout ce qui remonte aux travaux | Achats pièces · Main-d'œuvre & sous-traitance (dont travaux, mécanique, sinistre, carrosserie) · Règlements fournisseurs · Achats divers |
-| **Charges administratives** — ce qui ne concerne pas un fournisseur | salaires, transport, fonctionnement, taxes, restauration, versements, et ce que la règle ne reconnaît pas |
+| **Charges administratives** — ce qui ne concerne pas un fournisseur | salaires, transport, fonctionnement, taxes, restauration, et ce que la règle ne reconnaît pas |
+| *Versements & transferts* | montrés à part sous la carte de la caisse, **non comptés** (23/10) |
 
 **Les quatre sources se lisent côte à côte** (`ChargesParSource`), sur la période et le filtre :
 
@@ -479,7 +486,7 @@ La demande du propriétaire : « on a la caisse, le suivi des fournisseurs, la F
 |---|---|---|
 | Caisse | chaque sortie du journal (dont administratif / fournisseurs) | **oui** |
 | Saisies | charges saisies non reprises de la caisse | **oui** |
-| Banque | débits des relevés bancaires | à côté |
+| Banque | débits des relevés **dont le libellé dit une charge ou un fournisseur** (23/10) ; les autres (chèque sans objet, transfert…) montrés à part, non retenus | à côté |
 | FNE | toutes les factures d'achat relevées au portail, TTC | à côté |
 | Suivi fournisseurs | les pièces facturées, importées telles quelles (années, centimes) | à côté |
 
@@ -490,8 +497,9 @@ doublons.
 
 ### 7.4 « Reprendre » une sortie de caisse
 
-Ceux qui tiennent la caisse (gérant, superviseur de ville, caissier) peuvent **reprendre** une
-sortie, ligne à ligne : elle devient une charge **classée** — libellé d'opération choisi, atelier
+**Retiré de l'écran le 23/10** (« elle ne fait pas grand-chose : toutes les sorties comptent déjà ;
+on la réformera ») — le code reste pour la refonte. Ce qu'elle faisait : ceux qui tiennent la caisse
+(gérant, superviseur de ville, caissier) pouvaient **reprendre** une sortie, ligne à ligne : elle devient une charge **classée** — libellé d'opération choisi, atelier
 précisé — liée à sa sortie (`charges.mouvement_caisse_id`). Depuis le 20/10 la reprise **ne fait
 plus entrer** la sortie dans les charges (elle y est d'office) : elle la **classe** mieux, sans
 jamais la compter deux fois. Rien ne se reprend tout seul.
@@ -509,12 +517,14 @@ jamais la compter deux fois. Rien ne se reprend tout seul.
 | Bloc | Ce qu'il montre |
 |---|---|
 | **D'où viennent les charges** (exercice) | **Charges selon la caisse** (dont charges administratives / charges fournisseurs) · Saisies dans l'application · *Suivi fournisseurs*, *Factures FNE*, *Banque — débits* (à côté) · Sorties de caisse par catégorie (cliquable) |
-| **Total charges** du périmètre | sorties de caisse + charges saisies, hors transferts et décaissements DG saisis |
+| **Total charges** du périmètre | décaissements de caisse + charges saisies, hors versements, transferts et décaissements DG |
 | **Cartes par nature** | Achats pièces · Salaires & personnel · Fonctionnement · Autres décaissements |
-| **Résultat net** | CA facturé − charges (vert si positif, rouge sinon) |
+| **Résultat net** | CA facturé − charges (vert si positif, rouge sinon) ; mécanique et sinistre portent un **« + »** (ils s'additionnent) |
+| **« Autres »** (23/10) | sur chaque carte ventilée, une ligne dit ce que « Autres » recouvre (le plus souvent : les décaissements de caisse, dont le journal ne dit pas l'activité), et **« ⋯ »** mène aux lignes |
+| **Bouton « + Ajouter une pièce »** | le formulaire des charges fournisseurs, ouvert |
 | **Graphique** | charges par nature dans le temps |
-| **Tableau de toutes les charges** | saisies + sorties de caisse, paginé en base ; filtres **provenance** (journal de caisse / saisie / importée), **genre** (dont « Suivi fournisseurs — à côté »), recherche libre (tiers, référence, nature, observations) ; colonne **Origine** |
-| **Reprendre des sorties de caisse** | pour ceux qui tiennent la caisse |
+| **Tableau de toutes les charges** | saisies + décaissements de caisse, paginé en base ; filtre **provenance** (23/10) : *Venant de la FNE* · *Décaissement de caisse (journal de caisse)* · *Saisie dans l'application* · *Suivi fournisseur initial (importé)* · *Suivi fournisseur* (toutes les lignes du suivi, importées et saisies) — les trois du suivi « à côté, non additionné » ; recherche libre ; colonne **Provenance** |
+| **Sorties de caisse par catégorie** | la part de chaque catégorie, avec deux décimales sous 0,1 % (« 0 % » pour 115 000 F n'était pas possible) ; les versements marqués « non compté » |
 
 Filtres communs de pilotage : période, ville, atelier, activité.
 
@@ -529,7 +539,26 @@ la seule table des charges saisies.
 
 ### 7.8 Les fournisseurs, à côté des charges
 
-Le module Fournisseurs est **un suivi de la dette**, pas une source de charges :
+La page s'appelle **Charges fournisseurs** depuis le 23/10 ; elle n'est plus au menu et s'ouvre depuis
+la page Charges. C'est **un suivi de la dette**, pas une source de charges :
+
+- **Ajouter une pièce** (23/10) : deux voies — **choisir la facture FNE** dans une liste qu'on fouille
+  (ses informations se reportent comme par « Porter ») ou **« Saisir une pièce »**.
+- **Décaissements fournisseurs (caisse)** (23/10) : les sorties de caisse que leur libellé range en
+  charges fournisseurs. Au bout de chaque ligne, **« Suivre »** ouvre le formulaire prérempli ; la
+  pièce créée est **réglée par cette sortie** et les deux lignes sont **lettrées**, cliquables dans
+  les deux sens (la pièce dit « payé par la caisse ›», la sortie dit sa pièce). Une sortie suivie ne
+  se suit pas deux fois. Les **notifications** (à chaque décaissement fournisseur, à chaque facture
+  FNE relevée) attendent le rôle « gestionnaire des fournisseurs », annoncé par le propriétaire.
+- **Grand livre fournisseur** (23/10) : l'extrait de compte d'un fournisseur, trouvé par son nom —
+  report, factures au crédit, règlements au débit, solde ligne à ligne ; la balance mène à lui.
+- **Liste des fournisseurs** (23/10) : les émetteurs FNE y paraissent d'office (« connus — FNE ») ;
+  un nom qui ne vient que du suivi est « à vérifier », avec l'émetteur FNE le plus proche proposé,
+  et un bouton **Accepter**.
+- **Tableau initial** : San-Pédro dans le fichier d'Abidjan (et l'inverse) n'est pas une erreur —
+  commandé pour une ville, reçu par l'autre ; la ligne dit « commandée pour … · reçue par … ».
+- Le bouton « Relancer le rapprochement » de la page FNE est retiré : les numéros du suivi ne
+  collent pas à ceux de la FNE.
 
 - **Un seul tableau, deux boutons** (22/10) : « Factures reçues » montre **toutes** les factures —
   les pièces du suivi **et** les factures FNE pas encore portées (filtre de provenance) — ; « À qui
@@ -545,15 +574,12 @@ Le module Fournisseurs est **un suivi de la dette**, pas une source de charges :
 - **Régler** une pièce fait le **lettrage** ; le règlement peut pointer la **sortie de caisse qui a
   payé** — la page dit alors « dont par la caisse ». C'est le pont entre les deux mondes : la
   sortie est la charge, la pièce dit à quoi elle correspondait.
-- **Balance** en deux onglets : **importée** (logiciel comptable) et **produite par le système**
+- **Balance** en deux onglets : **importée** (logiciel d'atelier) et **produite par le système**
   (par fournisseur, facturé / réglé / reste, ancienneté par tranches, écart avec l'importée).
 
 ### 7.9 Points ouverts sur les charges
 
-1. **Versements en banque et transferts sortis de la caisse.** Avec la règle « toutes les sorties
-   de caisse sont des charges », ils comptent aujourd'hui en charges (catégorie « Versements &
-   transferts »), alors que l'argent change de poche sans quitter l'entreprise. **Décision
-   attendue du propriétaire** : les écarter ou non.
+1. ~~Versements en banque et transferts~~ — **tranché le 23/10** : ils ne comptent pas.
 2. **Dates mal lues** dans le classeur de caisse (une ligne au `31/12/1899`, zéro d'Excel) : sans
    effet sur le solde, mais la ligne tombe hors de la bonne période.
 3. **Comptabilité › tableau de bord** à passer sur la définition commune.
@@ -594,7 +620,8 @@ Le module Fournisseurs est **un suivi de la dette**, pas une source de charges :
   par la fiche puis par le devis ; KPI « CA selon les impayés » à côté. Une créance de l'état non
   retrouvée au CATTC n'est **pas** une vente.
 - **État des impayés** : créances par client, assureur, courtier ; ancienneté recalculée à chaque
-  lecture ; règlements ; avoirs ; extrait de compte exportable.
+  lecture ; règlements ; avoirs — **qui se saisissent aussi à l'écran, en négatif** (23/10) ;
+  extrait de compte exportable.
 - **Le tiers payant** : qui doit vraiment l'argent — le **courtier** s'il y en a un, sinon
   l'**assurance**, sinon le **client**. Calculé à un seul endroit (`Facture::tiersPayant()`).
 - **Recouvrement** : relances à niveaux (N1 à N5 ; N3 agent, N4 superviseur, N5 gérant =
@@ -712,7 +739,10 @@ d'import ; montants au centime ; objectifs ; correspondances ; **charges par sou
 - dates mal lues du classeur de caisse ;
 - affichage des avoirs dans l'état des impayés (après le prochain dépôt) ;
 - vitesse : agrégats restants de l'accueil du gérant ;
-- lettrage entre les sources de charges (caisse, suivi, FNE, banque).
+- lettrage entre les sources de charges (caisse, suivi, FNE, banque) — commencé le 23/10 pour la
+  caisse et le suivi (« Suivre ») ;
+- notifications au futur gestionnaire des fournisseurs (décaissements, factures FNE) ;
+- faire du suivi fournisseurs « les vraies charges », comme le propriétaire l'annonce.
 
 **Reste, côté exploitation (propriétaire)** : passer les dernières migrations en ligne ; redéposer
 les fichiers d'origine pour retrouver les centimes ; trancher le cas des versements en banque dans

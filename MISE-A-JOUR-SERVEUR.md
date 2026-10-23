@@ -368,7 +368,7 @@ la commission compte.
 `soldes_fournisseur` et `reglements_fournisseur`. Elles naissent vides, et rien ne les
 remplit tant que personne n'a déposé de fichier.
 
-Le module Import sait désormais lire **deux exports de plus**, ceux du logiciel comptable :
+Le module Import sait désormais lire **deux exports de plus**, ceux du logiciel d'atelier :
 la **balance fournisseurs** (débit, crédit, solde) et les **règlements fournisseurs** (chaque
 paiement avec son code et son mode). Ils apparaissent dans la liste de l'écran de dépôt, à
 côté des huit autres.
@@ -476,6 +476,17 @@ php artisan app:deployer
 Ensuite, rien d'obligatoire. Le rôle **Trésorerie** existe d'office ; son rôle Spatie se crée dans
 l'entreprise au premier accès qui le porte (gérant › Ajouter un accès, ou Super admin › Accès). Les
 autres rôles se configurent dans **Super admin › Maintenance › Rôles et pages**.
+
+### Après la mise à jour du 23 octobre 2026
+
+**Aucune migration.** `git pull` puis `php artisan app:deployer`, comme toujours. Ce qui change à
+l'écran, et qu'il faut savoir avant d'ouvrir les pages :
+
+- les **versements et transferts** sortis de la caisse **ne comptent plus dans les charges** (ils
+  restent affichés, avec la mention « non comptés ») : le total des charges baisse d'autant ;
+- « Fournisseurs » quitte le menu des indicateurs : la page s'appelle **Charges fournisseurs** et
+  s'ouvre depuis la page **Charges** (bouton « Charges fournisseurs › » et « + Ajouter une pièce ») ;
+- deux pages neuves : **Grand livre fournisseur** et **Décaissements fournisseurs (caisse)**.
 
 ### Les deux réglages qui font le plus pour la vitesse
 

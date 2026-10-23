@@ -497,7 +497,16 @@ $pageCharges = computed(function () {
 
 <div>
     <x-titre-ecran titre="Charges & décaissements"
-        sous-titre="Ce que l'exploitation a coûté sur la période." />
+        sous-titre="Ce que l'exploitation a coûté sur la période.">
+        {{-- « Ajouter une pièce », le même formulaire que la page des charges fournisseurs (23/10) :
+             on y arrive formulaire ouvert. --}}
+        @if (\Modules\Noyau\Exploitation\Services\EtatDesFournisseurs::peutEcrire(auth()->user()))
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                <a href="{{ route('fournisseurs', ['ajouter' => 1]) }}" wire:navigate class="bouton">+ Ajouter une pièce</a>
+                <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Charges fournisseurs ›</a>
+            </div>
+        @endif
+    </x-titre-ecran>
 
     <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="$this->mesSitesFiltre" :site-filtre="$siteFiltre" :activite-filtre="$activiteFiltre"
@@ -506,66 +515,10 @@ $pageCharges = computed(function () {
     {{-- Les colonnes qu'aucun filtre ne couvre : le libellé, le tiers, le moyen, la
          référence, le motif, le montant. Demandé le 28/09. --}}
     <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-        @if ($this->peutReprendre)
-            <button type="button" wire:click="ouvrirLaReprise"
-                class="bouton {{ $repriseOuverte ? '' : 'bouton-secondaire' }}" style="padding:8px 14px;">
-                Classer des sorties de caisse
-            </button>
-        @endif
+        {{-- « Classer des sorties de caisse » retiré le 23/10 : « elle ne fait pas grand-chose, toutes les
+             sorties comptent déjà ; on la réformera ». Ses actions restent, sans bouton. --}}
         <x-autre-filtre :colonnes="$this->colonnesFiltrables" :actifs="$filtresLibres" />
     </div>
-
-    @if ($repriseOuverte && $this->peutReprendre)
-        <div class="carte" style="margin-bottom:16px;">
-            <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">
-                Sorties du journal de caisse pas encore classées ({{ number_format($this->nombreSortiesDeCaisse, 0, ',', ' ') }})
-            </h3>
-            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
-                Toutes les sorties de caisse comptent déjà dans les charges (20/10). Classer une sortie
-                lui donne son <b>libellé d'opération</b> et son <b>atelier</b> — elle ne compte pas
-                deux fois. Une sortie classée quitte cette liste.
-            </p>
-
-            <div class="bloc-saisie" style="background:#fff; border-style:solid; margin-bottom:12px;">
-                <x-champ label="Rechercher" model="repriseRecherche" :live="true" width="220" placeholder="Libellé, motif, bénéficiaire…" />
-                <x-champ label="Libellé d'opération" model="repriseLibelle" type="select" :requis="true" width="210"
-                    :options="$this->libellesDeCharge" />
-                <x-champ label="Atelier (si la sortie n'en dit pas)" model="repriseSiteId" type="select" width="230"
-                    :options="$this->ateliersDeReprise" vide="— choisir —" />
-                <button type="button" wire:click="reprendreDeLaCaisse" class="bouton">
-                    Classer la sélection ({{ count($repriseChoix) }})
-                </button>
-            </div>
-            <x-erreurs-du-bloc prefixe="reprise" />
-
-            <div class="tableau-conteneur">
-                <table class="tableau">
-                    <thead>
-                        <tr>
-                            <th></th><th>Date</th><th>N° pièce</th><th>Libellé</th><th>Bénéficiaire</th><th>Lieu</th>
-                            <th style="text-align:right;">Montant</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($this->pageSortiesDeCaisse as $sortie)
-                            <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                                <td><input type="checkbox" wire:model.live="repriseChoix" value="{{ $sortie->id }}"></td>
-                                <td style="white-space:nowrap;">{{ $sortie->date?->format('d/m/Y') }}</td>
-                                <td>{{ $sortie->numero_piece ?: '—' }}</td>
-                                <td>{{ $sortie->libelle }}@if ($sortie->motif)<div style="font-size:11.5px; color:#6B6E76;">{{ $sortie->motif }}</div>@endif</td>
-                                <td style="color:#6B6E76;">{{ $sortie->beneficiaire ?: '—' }}</td>
-                                <td style="color:#6B6E76;">{{ $sortie->site?->nom ?? ($sortie->ville?->nom ? $sortie->ville->nom.' — atelier non précisé' : '—') }}</td>
-                                <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae(montant_de($sortie->montant)) }}</td>
-                            </tr>
-                        @empty
-                            <x-table-vide :colspan="7" texte="Aucune sortie de caisse à reprendre sur cette période." />
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <x-pagination :page="$pageReprise" :total="$this->nombreSortiesDeCaisse" prop="pageReprise" :par-page="15" />
-        </div>
-    @endif
 
     {{-- ─────────────────────────────── d'où viennent les charges — 12/10 --}}
     @php $o = $this->origines; $c = $this->selonLaCaisse; $exercice = \Illuminate\Support\Carbon::parse($this->plage[0])->year; @endphp
@@ -584,11 +537,13 @@ $pageCharges = computed(function () {
                  et dessous, voici le montant des charges administratives, et voici celui des charges
                  fournisseurs ». --}}
             <x-kpi-card label="Charges selon la caisse" :value="ae($src['caisse']['total'])" couleur="#B45309"
-                sub="{{ number_format($src['caisse']['n'], 0, ',', ' ') }} sortie(s) du journal — toutes des charges"
-                :lignes="[
+                sub="{{ number_format($src['caisse']['n'], 0, ',', ' ') }} décaissement(s) du journal comptés en charges"
+                :lignes="array_filter([
                     'Charges administratives ('.number_format($src['caisse']['nAdministratif'], 0, ',', ' ').')' => ae($src['caisse']['administratif']),
                     'Charges fournisseurs ('.number_format($src['caisse']['nFournisseurs'], 0, ',', ' ').')' => ae($src['caisse']['fournisseurs']),
-                ]" />
+                    // 23/10 : « ce ne sont pas des charges, ce sont des indications ; ils peuvent rester ».
+                    'Versements & transferts ('.number_format($src['caisse']['nVersements'], 0, ',', ' ').') — non comptés dans les charges' => $src['caisse']['nVersements'] > 0 ? ae($src['caisse']['versements']) : null,
+                ])" />
             <x-kpi-card label="Saisies dans l'application" :value="ae($o['saisies'])"
                 sub="{{ number_format($o['nSaisies'], 0, ',', ' ') }} décaissement(s){{ $o['importees'] != 0 ? ' · importées '.ae($o['importees']) : '' }}" />
             {{-- Le suivi fournisseurs de la période et du filtre, tel qu'importé — 22/10 : « voici le
@@ -603,7 +558,8 @@ $pageCharges = computed(function () {
             </a>
             <a href="{{ route('banques') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir les banques">
                 <x-kpi-card label="Banque — débits des relevés" :value="ae($src['banque']['total'])" couleur="#2563EB"
-                    sub="{{ number_format($src['banque']['n'], 0, ',', ' ') }} débit(s) — règlements fournisseurs et autres sorties, à côté ›" />
+                    sub="{{ number_format($src['banque']['n'], 0, ',', ' ') }} débit(s) dont le libellé dit une charge ou un fournisseur — à côté ›"
+                    :lignes="$src['banque']['nNonRetenu'] > 0 ? ['Autres débits ('.number_format($src['banque']['nNonRetenu'], 0, ',', ' ').') — libellé sans charge, non retenus' => ae($src['banque']['nonRetenu'])] : null" />
             </a>
             {{-- Cliquable — 14/10 : le détail par catégorie se déplie dessous. --}}
             <button type="button" wire:click="ouvrirLesCategories" title="Voir le détail par catégorie"
@@ -619,7 +575,8 @@ $pageCharges = computed(function () {
                 <p style="margin:0 0 10px; font-size:12px; color:#6B6E76; line-height:1.5;">
                     La catégorie se lit dans le motif du journal, sinon dans le libellé, sinon dans le
                     bénéficiaire. Cliquer une catégorie montre ses lignes dans le tableau du bas.
-                    « Versements & transferts » ne sont pas des charges : l'argent change de poche.
+                    « Versements & transferts » ne sont pas des charges : l'argent change de poche — ils restent
+                    ici pour l'indication, et ne sont comptés dans aucun total des charges (23/10).
                 </p>
                 <div class="tableau-conteneur">
                     <table class="tableau">
@@ -632,10 +589,13 @@ $pageCharges = computed(function () {
                         <tbody>
                             @forelse ($this->categoriesDeCaisse as $cat)
                                 <tr wire:click="voirLaCategorie({{ array_search($cat['categorie'], \Modules\Noyau\Exploitation\Services\CategorieDeSortie::toutes(), true) }})" style="cursor:pointer; border-bottom:1px solid var(--th-ligne,#E2E0D8); {{ $cat['charge'] ? '' : 'color:#6B6E76;' }}">
-                                    <td style="font-weight:700;">{{ $cat['categorie'] }}</td>
+                                    <td style="font-weight:700;">{{ $cat['categorie'] }}@unless ($cat['charge'])<div style="font-size:11px; font-weight:400;">non compté dans les charges</div>@endunless</td>
                                     <td style="text-align:right;">{{ number_format($cat['nombre'], 0, ',', ' ') }}</td>
                                     <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap;">{{ ae($cat['montant']) }}</td>
-                                    <td style="text-align:right;">{{ an($cat['part']) }}</td>
+                                    {{-- 23/10 : « 115 000 F, et je vois 0 % — ce n'est pas possible ». Une part sous 0,1 %
+                                         se dit avec deux décimales, et sous 0,01 % « moins de 0,01 % ». --}}
+                                    @php $part = (float) ($cat['part'] ?? 0); @endphp
+                                    <td style="text-align:right; white-space:nowrap;">{{ $cat['part'] === null ? '—' : ($part > 0 && $part < 0.0001 ? '< 0,01 %' : number_format($part * 100, $part < 0.001 ? 2 : 1, ',', ' ').' %') }}</td>
                                     <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ $cat['repris'] > 0 ? ae($cat['repris']) : '—' }}</td>
                                     <td style="font-size:11.5px; color:#6B6E76;">
                                         @foreach ($cat['libelles'] as $lib => $m)<div>{{ \Illuminate\Support\Str::limit($lib ?: '—', 60) }} · {{ ae($m) }}</div>@endforeach
@@ -653,20 +613,26 @@ $pageCharges = computed(function () {
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp
-        <x-kpi-card label="Total charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" sub="Sorties de caisse et charges saisies — hors transferts et décaissements DG saisis"
+        <x-kpi-card label="Total charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" sub="Décaissements de caisse et charges saisies — hors versements, transferts et décaissements DG"
             :mecanique="$ventile ? ae($this->kpis['totalVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['totalVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['totalVentile']['nonVentile'] ? ae($this->kpis['totalVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['totalVentile']['nonVentile'] ? ae($this->kpis['totalVentile']['nonVentile']) : null"
+            autres="Autres : les décaissements de caisse (le journal ne dit jamais mécanique ou sinistre) et les charges saisies sans activité."
+            autres-action="voirLaCaisse" />
         @foreach (['pieces' => 'Achats pièces', 'salaires' => 'Salaires & personnel', 'fonctionnement' => 'Fonctionnement', 'autres' => 'Autres décaissements'] as $cle => $libelle)
             <x-kpi-card :label="$libelle" :value="ae($this->kpis[$cle])"
                 :mecanique="$ventile ? ae($this->kpis[$cle.'Ventile']['mecanique']) : null"
                 :sinistre="$ventile ? ae($this->kpis[$cle.'Ventile']['sinistre']) : null"
-                :non-ventile="$ventile && $this->kpis[$cle.'Ventile']['nonVentile'] ? ae($this->kpis[$cle.'Ventile']['nonVentile']) : null" />
+                :non-ventile="$ventile && $this->kpis[$cle.'Ventile']['nonVentile'] ? ae($this->kpis[$cle.'Ventile']['nonVentile']) : null"
+                :autres="'Autres : décaissements de caisse classés « '.$libelle.' » par leur libellé, et charges saisies sans activité — le journal ne dit pas mécanique ou sinistre.'"
+                autres-action="voirLaCaisse" />
         @endforeach
         <x-kpi-card label="Résultat net — {{ $this->libellePerimetre }}" :value="ae($this->kpis['resultat'])" :couleur="$this->kpis['resultat'] >= 0 ? '#0E9F6E' : '#C8102E'" sub="CA facturé − charges"
             :mecanique="$ventile ? ae($this->kpis['resultatVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['resultatVentile']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['resultatVentile']['nonVentile'] ? ae($this->kpis['resultatVentile']['nonVentile']) : null" />
+            :non-ventile="$ventile && $this->kpis['resultatVentile']['nonVentile'] ? ae($this->kpis['resultatVentile']['nonVentile']) : null"
+            :signes="true" autres="Autres : le « Autres » du CA moins celui des charges — surtout les décaissements de caisse, sans activité."
+            autres-action="voirLaCaisse" />
     </div>
 
     <div style="margin-bottom:20px;">
@@ -730,15 +696,13 @@ $pageCharges = computed(function () {
         @else
             @php $provenances = \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::PROVENANCES; @endphp
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                {{-- Une seule liste depuis le 23/10 : les deux premières valeurs sont des charges, les trois
+                     du suivi se lisent à côté, non additionnées. --}}
                 <select wire:model.live="provenanceFiltre" class="champ" style="width:auto;" aria-label="Provenance">
-                    <option value="">Toutes les provenances</option>
+                    <option value="">Toutes les charges (décaissements de caisse et saisies)</option>
                     @foreach ($provenances as $cle => $libelle)
-                        <option value="{{ $cle }}">{{ $libelle }}</option>
+                        <option value="{{ $cle }}">{{ $libelle }}{{ in_array($cle, \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::PROVENANCES_DU_SUIVI, true) ? ' — à côté, non additionné' : '' }}</option>
                     @endforeach
-                </select>
-                <select wire:model.live="typeFiltre" class="champ" style="width:auto;" aria-label="Genre">
-                    <option value="">Charges (sorties de caisse et saisies)</option>
-                    <option value="fournisseurs">Suivi fournisseurs — à côté, non additionné</option>
                 </select>
                 <input type="search" wire:model.live.debounce.400ms="rechercheCharges" class="champ" style="width:220px;" placeholder="Tiers, référence, libellé…" aria-label="Rechercher">
             </div>
@@ -763,7 +727,7 @@ $pageCharges = computed(function () {
                                 <td style="color:#6B6E76; font-size:12px;">{{ $ligne->lieu }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap;">{{ ae(montant_de($ligne->montant)) }}</td>
                                 <td style="font-size:11.5px; white-space:nowrap; color:{{ match ($ligne->provenance) { 'caisse' => '#B45309', 'fne' => '#7C3AED', default => '#6B6E76' } }}; font-weight:{{ in_array($ligne->provenance, ['caisse', 'fne'], true) ? '700' : '400' }};">
-                                    {{ $provenances[$ligne->provenance] ?? $ligne->provenance }}@if ($ligne->provenance !== 'fne' && (int) $ligne->normalisee === 1)<div style="color:#7C3AED;">facture FNE rattachée</div>@endif
+                                    {{ \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::libelleDeLaLigne($ligne->source, $ligne->provenance) }}@if ($ligne->provenance !== 'fne' && (int) $ligne->normalisee === 1)<div style="color:#7C3AED;">facture FNE rattachée</div>@endif
                                 </td>
                                 <td style="white-space:nowrap;">
                                     @if ($ligne->source === 'fournisseur')

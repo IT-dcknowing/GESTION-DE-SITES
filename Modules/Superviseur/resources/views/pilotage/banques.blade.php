@@ -86,7 +86,7 @@ state([
  * **Sans ville, et c'est une correction du 01/10** : « retire le champ ville au niveau du
  * formulaire, car la banque créée devra s'afficher en liste déroulante partout ». Une banque
  * rattachée à une ville ne se proposerait pas aux autres, alors que le compte sert
- * l'entreprise entière — et c'est ce que le logiciel comptable fait déjà : il demande le
+ * l'entreprise entière — et c'est ce que le logiciel d'atelier fait déjà : il demande le
  * compte sans demander de site.
  */
 state([

@@ -64,7 +64,8 @@ final class CatalogueDesPages
         'fournisseurs' => ['libelle' => 'Fournisseurs', 'pages' => [
             'fournisseurs' => ['libelle' => 'Suivi fournisseurs (tableau initial, liste, pièces)', 'routes' => ['fournisseurs', 'fournisseurs.tableau-initial', 'fournisseurs.liste', 'fournisseurs.piece', 'fournisseurs.telecharger']],
             'fournisseurs.fne' => ['libelle' => 'Factures FNE', 'routes' => ['fournisseurs.fne', 'fournisseurs.fne.*']],
-            'balance-fournisseurs' => ['libelle' => 'Balance fournisseurs', 'routes' => ['balance-fournisseurs']],
+            'balance-fournisseurs' => ['libelle' => 'Balance et grand livre fournisseurs', 'routes' => ['balance-fournisseurs', 'fournisseurs.grand-livre']],
+            'fournisseurs.decaissements' => ['libelle' => 'Décaissements fournisseurs de la caisse', 'routes' => ['fournisseurs.decaissements']],
             'reglements-fournisseurs' => ['libelle' => 'Règlements fournisseurs', 'routes' => ['reglements-fournisseurs']],
         ]],
     ];

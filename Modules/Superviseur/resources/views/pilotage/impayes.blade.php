@@ -666,8 +666,16 @@ $enregistrer = function () {
         // commentaire ferait inventer un atelier à celui qui ne le connaît pas.
         'fSiteId' => [$ligne === null ? 'required' : 'nullable', Rule::in($sitesPermis)],
         'fVilleId' => ['nullable', Rule::in(array_keys($this->villesSaisissables))],
-        'fMontant' => ['required', 'integer', 'min:1'],
-        'fRegle' => ['nullable', 'integer', 'min:0', 'lte:fMontant'],
+        /*
+         * **Un avoir se saisit en négatif — 23/10** : « ajouter une créance qui n'est pas une créance
+         * mais un avoir : il faut pouvoir mettre le signe négatif, et qu'il soit pris en compte dans
+         * le montant ». Le signe décide (`NatureDeLaCreance`) : un montant négatif est un avoir.
+         * Tels que donnés, centimes compris (piège 17) — l'ancien `integer` arrondissait au franc.
+         * Seul zéro est refusé : une pièce de zéro ne doit rien.
+         */
+        'fMontant' => ['required', 'numeric', 'not_in:0'],
+        // Le plafond (le reste à payer) se vérifie plus bas : `lte:fMontant` refusait tout sur un avoir.
+        'fRegle' => ['nullable', 'numeric', 'min:0'],
         /*
          * Obligatoire, depuis la décision du 16/09/2026 : c'est la date du dépôt, donc ce
          * qui fait d'une facture une créance de cet état, et le point de départ de son âge.
@@ -718,7 +726,21 @@ $enregistrer = function () {
 
     $date = Carbon::parse($donnees['fDate']);
     $montant = montant_de($donnees['fMontant']);
-    $regle = montant_de($donnees['fRegle'] ?? 0);
+    $regle = montant_de(($donnees['fRegle'] ?? '') ?: 0);
+
+    // Un avoir diminue ce que le client doit : il ne se règle pas.
+    if ($montant < 0 && $regle != 0) {
+        $this->addError('fRegle', 'Un avoir (montant négatif) ne se règle pas : laissez le règlement vide.');
+
+        return;
+    }
+
+    // Le plafond d'une créance neuve se vérifie avant d'écrire quoi que ce soit (l'ancien `lte:fMontant`).
+    if ($ligne === null && $regle > $montant) {
+        $this->addError('fRegle', 'Le règlement dépasse le montant de la créance ('.ae($montant).').');
+
+        return;
+    }
     $immatriculation = mb_strtoupper(trim((string) ($donnees['fImmatriculation'] ?? '')));
 
     /*
@@ -766,6 +788,7 @@ $enregistrer = function () {
         'immatriculation' => $immatriculation ?: null,
         'n_sinistre' => $donnees['fSinistre'] ?: null,
         'montant' => $montant,
+        'est_avoir' => $montant < 0,
         'observations' => $donnees['fCommentaires'] ?: null,
     ];
 
@@ -796,7 +819,7 @@ $enregistrer = function () {
             $facture = Facture::whereKey($ligne->id)->lockForUpdate()->first();
             $encaisse = montant_de($facture->encaissements()->sum('montant'));
 
-            if ($montant < $encaisse) {
+            if ($montant >= 0 && $montant < $encaisse) {
                 return ['fMontant', 'Le montant ne peut pas descendre sous ce qui est déjà encaissé ('.ae($encaisse).').'];
             }
 
@@ -1030,7 +1053,8 @@ $basculerPortage = function () {
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:flex-start;">
                     <x-champ label="Vehicule" model="fVehicule" width="150" />
                     <x-champ label="Immatriculation" model="fImmatriculation" width="140" :disabled="in_array('immatriculation', $verrou, true)" />
-                    <x-champ label="montantTTC" model="fMontant" type="number" :requis="true" width="130" :disabled="in_array('montant', $verrou, true)" />
+                    {{-- Un avoir se saisit en négatif (23/10) : « -150000 ». --}}
+                    <x-champ label="montantTTC" model="fMontant" type="number" :requis="true" width="130" :disabled="in_array('montant', $verrou, true)" placeholder="négatif = avoir" />
                     <x-champ :label="$modif ? 'Nouveau règlement' : 'Montantréglé'" model="fRegle" type="number" width="130" />
                     {{-- Par où le règlement est passé — le même composant que partout
                          ailleurs. Il ne paraît qu'avec un règlement saisi : sans règlement,

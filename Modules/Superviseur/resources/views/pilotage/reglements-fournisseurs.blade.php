@@ -10,7 +10,7 @@ use function Livewire\Volt\{computed, state};
 |--------------------------------------------------------------------------
 | Règlements fournisseurs — ce que la comptabilité a payé
 |--------------------------------------------------------------------------
-| Chaque paiement enregistré par le logiciel comptable, avec son code, son mode et son
+| Chaque paiement enregistré par le logiciel d'atelier, avec son code, son mode et son
 | montant. C'est ce qu'on cite quand un fournisseur conteste avoir été payé.
 |
 | **Le fichier n'a pas d'exercice, et cet écran non plus par défaut.** Le propriétaire l'a
@@ -41,7 +41,7 @@ $updatedFiltresLibres = function () { $this->page = 1; };
 /**
  * Les modes de règlement réellement présents, pour la liste déroulante.
  *
- * Lus dans le fichier et non écrits à la main : le logiciel comptable les nomme comme il
+ * Lus dans le fichier et non écrits à la main : le logiciel d'atelier les nomme comme il
  * veut — « CHQ », « Chèque », « VIREMENT BANCAIRE » — et une liste tenue ici finirait par
  * proposer un mode que l'export n'emploie plus, ou par taire celui qu'il vient d'introduire.
  * Ils ne se comptent pas par centaines : la liste reste courte.

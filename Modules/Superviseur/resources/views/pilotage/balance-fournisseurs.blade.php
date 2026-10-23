@@ -11,7 +11,7 @@ use function Livewire\Volt\{computed, state};
 |--------------------------------------------------------------------------
 | **Deux sources, et l'écart entre elles.** L'écran *Fournisseurs* montre le suivi tenu à
 | la main : ce que l'atelier croit devoir, pièce par pièce. Celui-ci montre la balance
-| exportée du logiciel comptable : ce qui est enregistré. C'est leur écart qu'on cherche
+| exportée du logiciel d'atelier : ce qui est enregistré. C'est leur écart qu'on cherche
 | quand un fournisseur réclame.
 |
 | **Le solde est gardé tel que le logiciel l'annonce, et recalculé à côté.** Demandé par le
@@ -118,7 +118,7 @@ $totauxSysteme = computed(fn () => \Modules\Noyau\Exploitation\Services\BalanceD
 
 <div>
     <x-titre-ecran titre="Balance fournisseurs"
-        sous-titre="Deux balances : celle du logiciel comptable, importée, et celle que le système produit à partir du suivi fournisseurs, par ancienneté.">
+        sous-titre="Deux balances : celle du logiciel d'atelier, importée, et celle que le système produit à partir du suivi fournisseurs, par ancienneté.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
             <a href="{{ route('fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">← Suivi fournisseur</a>
             <a href="{{ route('reglements-fournisseurs') }}" wire:navigate class="bouton bouton-secondaire">Règlements</a>
@@ -126,7 +126,7 @@ $totauxSysteme = computed(fn () => \Modules\Noyau\Exploitation\Services\BalanceD
     </x-titre-ecran>
 
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
-        <button type="button" wire:click="$set('vue', 'importee')" class="onglet {{ $vue === 'importee' ? 'est-actif' : '' }}">Balance importée (logiciel comptable)</button>
+        <button type="button" wire:click="$set('vue', 'importee')" class="onglet {{ $vue === 'importee' ? 'est-actif' : '' }}">Balance importée (logiciel d'atelier)</button>
         <button type="button" wire:click="$set('vue', 'systeme')" class="onglet {{ $vue === 'systeme' ? 'est-actif' : '' }}">Balance produite par le système (âgée)</button>
     </div>
 
@@ -166,7 +166,8 @@ $totauxSysteme = computed(fn () => \Modules\Noyau\Exploitation\Services\BalanceD
                     <tbody>
                         @forelse ($this->balanceSysteme->forPage($pageSysteme, 25) as $b)
                             <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                                <td style="font-weight:700;">{{ $b['fournisseur'] }}</td>
+                                <td style="font-weight:700;">{{ $b['fournisseur'] }}
+                                    <div style="font-size:11px; font-weight:400;"><a href="{{ route('fournisseurs.grand-livre', ['fournisseur' => $b['fournisseur']]) }}" wire:navigate>Grand livre ›</a></div></td>
                                 <td style="text-align:right;">{{ $b['nombre'] }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($b['facture']) }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($b['regle']) }}</td>
@@ -246,7 +247,8 @@ $totauxSysteme = computed(fn () => \Modules\Noyau\Exploitation\Services\BalanceD
                     <tbody>
                         @forelse ($this->lignes->forPage($page, 25) as $l)
                             <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
-                                <td style="font-weight:700;">{{ $l['ligne']->fournisseur }}</td>
+                                <td style="font-weight:700;">{{ $l['ligne']->fournisseur }}
+                                    <div style="font-size:11px; font-weight:400;"><a href="{{ route('fournisseurs.grand-livre', ['fournisseur' => $l['ligne']->fournisseur]) }}" wire:navigate>Grand livre ›</a></div></td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae($l['ligne']->debit) }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums;">{{ ae($l['ligne']->credit) }}</td>
                                 <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ ae($l['ligne']->solde) }}</td>

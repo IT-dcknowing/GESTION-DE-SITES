@@ -85,7 +85,7 @@ $formats = computed(fn () => Registre::options());
  * seront créées manuellement dans la page banque à travers le formulaire, et ces banques
  * créées, ce sont elles qui devront s'afficher en liste déroulante au niveau de l'import »*.
  *
- * Le fichier ne porte pas le compte — sur l'écran du logiciel comptable, il se choisit
+ * Le fichier ne porte pas le compte — sur l'écran du logiciel d'atelier, il se choisit
  * au-dessus de la grille. Sa colonne « BANQUE EMETRICE », elle, est la banque du chèque
  * **reçu**, ce qui n'est pas du tout la même chose.
  */

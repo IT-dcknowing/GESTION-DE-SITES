@@ -5,7 +5,7 @@ namespace Modules\Noyau\Imports\Formats;
 use Modules\Noyau\Imports\Modeles\SoldeFournisseur;
 
 /**
- * La balance fournisseurs, telle que le logiciel comptable l'exporte.
+ * La balance fournisseurs, telle que le logiciel d'atelier l'exporte.
  *
  * Quatre colonnes, relevées sur le fichier réel
  * (`BALANCE-FOURNISSEUR(global-pas de filtre date ni de site)-010126-170926.xlsx`) :

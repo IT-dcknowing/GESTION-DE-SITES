@@ -33,7 +33,7 @@ class Registre
         // règlements, or un règlement n'a de sens qu'en regard d'une facture.
         'impayes' => FormatDesImpayes::class,
         'fournisseurs' => FormatDesFournisseurs::class,
-        // Les deux exports du logiciel comptable viennent après le classeur tenu à la
+        // Les deux exports du logiciel d'atelier viennent après le classeur tenu à la
         // main, et ne s'y mêlent pas : celui-là dit ce que l'atelier croit devoir, ceux-ci
         // ce que la comptabilité a enregistré. C'est l'écart entre les deux qu'on cherche
         // quand un fournisseur réclame.
@@ -51,7 +51,7 @@ class Registre
         // Le journal de caisse imprimé vient juste après le classeur tenu à la main : ils
         // décrivent la même caisse par deux bouts, et ce sont deux villes différentes qui
         // en dépendent — Abidjan tient un classeur, Bouaké et San-Pédro n'ont que ce
-        // journal. Seul format lu dans un PDF, et c'est assumé : le logiciel comptable ne
+        // journal. Seul format lu dans un PDF, et c'est assumé : le logiciel d'atelier ne
         // sort pas cet état autrement.
         'journal-caisse' => FormatDuJournalDeCaisse::class,
         // Les entrées et les sorties viennent en dernier : elles enrichissent des fiches
@@ -64,7 +64,7 @@ class Registre
      * Ce qui reste à écrire.
      *
      * **Elle s'est remplie à nouveau le 01/10, et c'est son usage.** Les dix types de
-     * fichiers du logiciel d'atelier et du logiciel comptable sont lus depuis le 21/09 ;
+     * fichiers du logiciel d'atelier (le seul de la maison) sont lus depuis le 21/09 ;
      * un onzième est apparu — les **relevés bancaires** —, et il se déclare ici avant d'être
      * écrit plutôt que d'exister à moitié. L'écran de dépôt le montre comme prévu et non
      * comme disponible : il serait malhonnête d'afficher une entrée qui refuserait le fichier.
