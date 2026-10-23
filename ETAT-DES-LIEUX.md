@@ -2561,6 +2561,9 @@ dépôts. Aucune migration.
 | 93 | Notifications au gestionnaire des fournisseurs (décaissements, factures FNE) | ⏸ attend le rôle, que le propriétaire créera |
 | 94 | État des impayés : saisir un **avoir** en négatif — « si c'est déjà le cas, dis-le » | ✅ 23/10 — **ce n'était pas possible** (entier ≥ 1) ; montant négatif accepté, centimes compris, `est_avoir`, pas de règlement sur un avoir |
 | 95 | Mettre tous les `.md` à jour | ✅ 23/10 |
+| 96 | Avoir : « dans quel champ on le met ? » | ✅ 23/10 — répondu : le champ **montantTTC** du formulaire de l'état des impayés, en négatif (« -150000 ») ; le champ porte l'indication « négatif = avoir » |
+| 97 | Commerciaux : même sans objectif atteint, montrer ce qu'ils ont fait et le pourcentage réalisé | ✅ 23/10 — page Commerciaux : « hors tranche » dit le CA du mois et la part du seuil d'entrée du barème ; accueil du gérant, objectifs du mois : « x % réalisé » par tranche et en tête de l'avancement (la page en avait déjà le taux, Ma performance aussi) |
+| 98 | Fichier d'import des tâches de la semaine (modèle `modele-import-taches`) | ✅ 23/10 — produit hors du dépôt, livré dans la conversation : projet « SOLUTIONS DIGITAL », domaine « Informatique, Developpement Web », assigné AGNIMEL MELEDJE ABRAHAM |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
 

@@ -633,6 +633,10 @@ la page Charges. C'est **un suivi de la dette**, pas une source de charges :
 
 ## 10. Le commercial : prospections, correspondances, objectifs
 
+> 23/10 : même quand l'objectif n'est pas atteint, chaque écran dit **ce qui a été fait** et le
+> **pourcentage réalisé** (page Commerciaux, y compris « hors tranche » du barème ; objectifs du mois
+> sur l'accueil du gérant ; Ma performance).
+
 - **Prospections** saisies par les commerciaux et les responsables ; affichage général pour tous
   (« déjà prospecté ? ») ; la prospection récupère seule son devis.
 - **Correspondances** : chaque commercial **coche les factures nées de ses prospections** ; un

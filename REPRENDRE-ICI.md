@@ -81,6 +81,8 @@ tests existants adaptés (`UneChargeSeReprendDeLaCaisseTest`, `LesChargesSontLaC
   cliquable dans les deux sens.
 - **État des impayés** : un **avoir se saisit en négatif** (centimes compris) — ce n'était pas
   possible ; il ne se règle pas.
+- **Commerciaux** (fin de journée) : même hors tranche ou sous l'objectif, la page dit le CA fait et
+  le pourcentage réalisé ; l'accueil du gérant donne « x % réalisé » pour chaque tranche d'objectif.
 - **« Logiciel comptable » n'existe pas** : tout vient du logiciel d'atelier. Corrigé partout
   (écrans, code, documents), sauf les deux passages qui citent l'ancienne erreur.
 

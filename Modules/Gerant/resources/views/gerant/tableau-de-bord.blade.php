@@ -565,6 +565,8 @@ $commentaires = computed(function () {
                                     @foreach ($l['tranches'] as $t)
                                         <div style="white-space:nowrap; color:{{ $l['realise'] >= $t['montant'] ? '#0E9F6E' : '#4B4E55' }};">
                                             {{ $l['realise'] >= $t['montant'] ? '✔' : '○' }} {{ $t['libelle'] }} · {{ ae($t['montant']) }}
+                                            {{-- Le pourcentage réalisé, tranche atteinte ou non (23/10). --}}
+                                            @if ($t['montant'] > 0) <span style="color:#6B6E76;">— {{ an($l['realise'] / $t['montant']) }} réalisé</span> @endif
                                         </div>
                                     @endforeach
                                 </td>
@@ -573,7 +575,7 @@ $commentaires = computed(function () {
                                         <div style="height:6px; width:{{ min(100, max(0, ($taux ?? 0) * 100)) }}%; background:{{ $suivante === null ? '#0E9F6E' : '#D97706' }};"></div>
                                     </div>
                                     <div style="font-size:12px; color:{{ $suivante === null ? '#0E9F6E' : '#6B6E76' }}; font-weight:600;">
-                                        {{ $l['atteintes'] }} / {{ count($l['tranches']) }} tranche(s)
+                                        {{ an($taux) }} réalisé · {{ $l['atteintes'] }} / {{ count($l['tranches']) }} tranche(s)
                                         @if ($suivante) — reste {{ ae(montant_de($suivante['montant'] - $l['realise'])) }} pour « {{ $suivante['libelle'] }} » @else — toutes atteintes ✔ @endif
                                     </div>
                                 </td>

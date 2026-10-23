@@ -218,6 +218,16 @@ $classement = computed(function () {
         $dernierMois = end($moisDeLaPeriode) ?: null;
         $dernier = $dernierMois !== null ? ($periode['mois'][$dernierMois] ?? null) : null;
 
+        /*
+         * **Hors tranche, on dit quand même ce qu'il a fait — 23/10.** « Même s'ils n'ont pas atteint
+         * leur objectif, mets ce qu'ils ont fait, mets le pourcentage réalisé. » Le seuil d'entrée de
+         * sa grille, ce mois-là, et la part qu'il en a faite.
+         */
+        $grille = $dernierMois !== null && ($dernier['taux'] ?? null) === null
+            ? \Modules\Noyau\Exploitation\Services\CommissionCommerciale::grillePour($entrepriseId, $commercial->utilisateur, \Illuminate\Support\Carbon::parse($dernierMois.'-01')->endOfMonth())
+            : null;
+        $seuil = $grille?->tranches->min('plancher');
+
         return [
             'commercial' => $commercial,
             'commission' => $periode['commission'],
@@ -226,6 +236,7 @@ $classement = computed(function () {
             'caDuDernierMois' => $dernier['ca'] ?? 0,
             'moisSansGrille' => $periode['sansGrille'],
             'moisSansTranche' => $periode['sansTranche'],
+            'seuilBareme' => $seuil,
             'objectif' => $objectifProrata,
             'objectifMecanique' => (int) round(PeriodeCalculateur::objectifProrata((float) $commercial->objectif_mecanique, $debut, $fin)),
             'objectifSinistre' => (int) round(PeriodeCalculateur::objectifProrata((float) $commercial->objectif_sinistre, $debut, $fin)),
@@ -427,6 +438,13 @@ $graphique = computed(fn () => [
                                         <span style="color:#B45309; font-size:12px;">aucune grille</span>
                                     @elseif ($ligne['tauxBareme'] === null)
                                         <span style="color:#C8102E; font-size:12px;">hors tranche</span>
+                                        {{-- Ce qu'il a fait, et la part du seuil d'entrée (23/10). --}}
+                                        <div style="color:#6B6E76; font-size:11px;">
+                                            CA du mois {{ ae($ligne['caDuDernierMois']) }}
+                                            @if ($ligne['seuilBareme'])
+                                                · {{ an($ligne['caDuDernierMois'] / $ligne['seuilBareme']) }} du seuil ({{ ae($ligne['seuilBareme']) }})
+                                            @endif
+                                        </div>
                                     @else
                                         <b>{{ rtrim(rtrim(number_format($ligne['tauxBareme'], 2, ',', ' '), '0'), ',') }} %</b>
                                         <span style="color:#6B6E76; font-size:11px;">sur {{ ae($ligne['caDuDernierMois']) }}</span>
