@@ -22,6 +22,9 @@ class RecouvrementServiceProvider extends ServiceProvider
     {
         $this->loadViewsFrom(module_path('Recouvrement', 'resources/views'), 'recouvrement');
 
+        // Le catalogue des rôles (Maintenance) lit ici quelles pages chaque rôle du métier a (23/10).
+        \Modules\Noyau\Entreprises\Support\CatalogueDesPages::declarerUnModuleAPages('recouvrement.', fn (string $role) => \Modules\Recouvrement\Support\AccesRecouvrement::pagesDuRole($role));
+
         // La coquille (bandeau et barre latérale de la section) est un composant anonyme :
         // <x-recouvrement::coquille>. Sans cet enregistrement, Blade la chercherait dans
         // resources/views/components de l'application et ne la trouverait pas.

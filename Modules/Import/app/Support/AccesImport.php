@@ -100,8 +100,25 @@ class AccesImport
     public static function pagesDe(?User $utilisateur): array
     {
         $role = self::role($utilisateur);
+        $duRole = $role === null ? [] : self::PAGES_PAR_ROLE[$role];
 
-        return $role === null ? [] : self::PAGES_PAR_ROLE[$role];
+        // Pages cochées dans la Maintenance (23/10) : un rôle configuré, ou un rôle du métier modifié.
+        $cochees = $utilisateur ? \Modules\Noyau\Entreprises\Support\CatalogueDesPages::pagesDuModule($utilisateur, 'import.') : null;
+
+        if ($cochees === null) {
+            return $duRole;
+        }
+
+        // L'ordre du module : sa première page est la page d'arrivée.
+        $ordre = ['depot', 'traitements', 'lots', 'codes', 'informations'];
+
+        return array_values(array_intersect($ordre, $cochees));
+    }
+
+    /** @return array<int, string> les pages qu'un rôle du métier a d'office */
+    public static function pagesDuRole(string $role): array
+    {
+        return self::PAGES_PAR_ROLE[$role] ?? [];
     }
 
     public static function peutVoir(?User $utilisateur, string $page): bool
@@ -109,14 +126,18 @@ class AccesImport
         return in_array($page, self::pagesDe($utilisateur), true);
     }
 
+    /** Déposer : les rôles déposants, ou un rôle configuré à qui l'on a coché le dépôt (23/10). */
     public static function peutDeposer(?User $utilisateur): bool
     {
-        return in_array(self::role($utilisateur), self::DEPOSANTS, true);
+        return in_array(self::role($utilisateur), self::DEPOSANTS, true)
+            || (self::role($utilisateur) === null && self::peutVoir($utilisateur, 'depot'));
     }
 
+    /** Arbitrer les codes : les rôles arbitres, ou un rôle configuré à qui l'on a coché les codes. */
     public static function peutArbitrer(?User $utilisateur): bool
     {
-        return in_array(self::role($utilisateur), self::ARBITRES, true);
+        return in_array(self::role($utilisateur), self::ARBITRES, true)
+            || (self::role($utilisateur) === null && self::peutVoir($utilisateur, 'codes'));
     }
 
     /** La page d'arrivée : la première à laquelle la personne a droit. */

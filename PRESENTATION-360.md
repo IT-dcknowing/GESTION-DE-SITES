@@ -149,8 +149,9 @@ Trois idées tiennent l'ensemble :
 | *rôle configuré* | défini par le Super admin (22/10) | sa ville, ou toutes | lecture seule des pages cochées |
 
 **Les rôles configurés (22/10).** Le Super admin crée un rôle dans **Maintenance › Rôles et pages** :
-un nom, puis les sections et les pages cochées (indicateurs, trésorerie, charges, fournisseurs,
-tableau de bord de la direction) ; un bouton **Modifier** les reprend. Le rôle se choisit ensuite à
+un nom, puis les sections et les pages cochées — toutes les sections d'une entreprise depuis le 23/10 :
+tableau de bord, saisie, commercial, indicateurs, recouvrement, import, comptabilité, trésorerie,
+charges, fournisseurs, général ; un bouton **Modifier** les reprend. Le rôle se choisit ensuite à
 la création d'un accès, comme les autres. Il **lit** ses pages et n'y écrit rien : toute action qui
 engage l'entreprise reste réservée aux rôles du métier. Le rôle **Trésorerie** est le premier de
 ces rôles, défini d'office (`CatalogueDesPages`). Les **rôles du métier** figurent sur la même page,

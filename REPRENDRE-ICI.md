@@ -85,7 +85,8 @@ tests existants adaptés (`UneChargeSeReprendDeLaCaisseTest`, `LesChargesSontLaC
   le pourcentage réalisé ; l'accueil du gérant donne « x % réalisé » pour chaque tranche d'objectif.
 - **Maintenance › Rôles et pages** montre aussi les **rôles du métier** et ce qu'ils ouvrent (lu dans
   les routes), avec **Modifier** (cocher ouvre une page du catalogue, décocher la ferme, à l'adresse et au
-  menu) et **Rétablir** ; **Super admin › Codes** : un code déclaré ne paraît plus « sans titulaire » ; l'incident
+  menu) et **Rétablir** ; « Créer un rôle » propose **toutes les sections** (saisie, commercial, recouvrement,
+  import, comptabilité, général comprises) ; **Super admin › Codes** : un code déclaré ne paraît plus « sans titulaire » ; l'incident
   `ChoixDeVille` du 23/09, corrigé le 07/10, quitte la liste des incidents.
 - **« Logiciel comptable » n'existe pas** : tout vient du logiciel d'atelier. Corrigé partout
   (écrans, code, documents), sauf les deux passages qui citent l'ancienne erreur.

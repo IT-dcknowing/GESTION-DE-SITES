@@ -136,15 +136,35 @@ class AccesRecouvrement
 
     public static function ouvertA(?User $utilisateur): bool
     {
-        return $utilisateur !== null && self::role($utilisateur) !== null;
+        return $utilisateur !== null && self::pagesDe($utilisateur) !== [];
     }
 
-    /** @return array<int, string> */
+    /**
+     * Les pages du module pour ce compte : celles de son rôle — sauf quand la Maintenance en a décidé
+     * autrement (23/10) : un rôle configuré, ou un rôle du métier dont on a coché les pages, a celles
+     * qu'on y a cochées (`CatalogueDesPages::pagesDuModule`). Dans l'ordre du module.
+     *
+     * @return array<int, string>
+     */
     public static function pagesDe(?User $utilisateur): array
     {
         $role = $utilisateur ? self::role($utilisateur) : null;
+        $duRole = $role ? self::PAGES_PAR_ROLE[$role] : [];
+        $cochees = $utilisateur ? \Modules\Noyau\Entreprises\Support\CatalogueDesPages::pagesDuModule($utilisateur, 'recouvrement.') : null;
 
-        return $role ? self::PAGES_PAR_ROLE[$role] : [];
+        if ($cochees === null) {
+            return $duRole;
+        }
+
+        $ordre = array_values(array_unique(array_merge(...array_values(self::PAGES_PAR_ROLE))));
+
+        return array_values(array_intersect($ordre, $cochees));
+    }
+
+    /** @return array<int, string> les pages qu'un rôle du métier a d'office */
+    public static function pagesDuRole(string $role): array
+    {
+        return self::PAGES_PAR_ROLE[$role] ?? [];
     }
 
     public static function peutVoir(?User $utilisateur, string $page): bool
@@ -164,7 +184,12 @@ class AccesRecouvrement
     {
         $role = self::role($utilisateur);
 
-        return $role !== null && $role !== 'agent_recouvrement';
+        // Un rôle configuré lit le portefeuille entier : il n'a pas de dossiers à lui.
+        if ($role === null) {
+            return self::pagesDe($utilisateur) !== [];
+        }
+
+        return $role !== 'agent_recouvrement';
     }
 
     /** Qui pose un geste dans ce module, et qui ne fait que le lire. */

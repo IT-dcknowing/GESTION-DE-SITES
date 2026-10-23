@@ -166,10 +166,15 @@ class UnRoleSeDefinitParSesPagesTest extends TestCase
         $caissier = $this->compte('caissier');
         $this->actingAs($caissier)->get(route('charges'))->assertOk();
 
-        Volt::actingAs($this->superAdmin())->test('superadmin.roles-configures')
+        $section = Volt::actingAs($this->superAdmin())->test('superadmin.roles-configures')
             ->call('modifier', 'caissier')
-            ->assertSet('libelle', 'Comptabilité')
-            ->set('pagesCochees', ['tresorerie', 'caisse', 'banques', 'chiffre-affaires'])
+            ->assertSet('libelle', 'Comptabilité');
+
+        // Ses pages d'aujourd'hui sont cochées, toutes sections comprises ; on retire les charges, on ajoute le CA.
+        $cochees = $section->get('pagesCochees');
+        $this->assertContains('caissier.tableau-de-bord', $cochees);
+        $this->assertContains('recouvrement.saisie', $cochees);
+        $section->set('pagesCochees', [...array_diff($cochees, ['charges']), 'chiffre-affaires'])
             ->call('enregistrer')
             ->assertHasNoErrors();
 
@@ -189,6 +194,27 @@ class UnRoleSeDefinitParSesPagesTest extends TestCase
         Volt::actingAs($this->superAdmin())->test('superadmin.roles-configures')->call('retablir', 'caissier');
         CatalogueDesPages::oublier();
         $this->actingAs($caissier)->get(route('charges'))->assertOk();
+    }
+
+    /** « Toutes les sections et pages doivent être là » — 23/10 : un rôle configuré sur le recouvrement et l'import. */
+    public function test_un_role_configure_ouvre_aussi_recouvrement_import_et_comptabilite(): void
+    {
+        RoleConfigure::query()->create(['nom' => 'controle', 'libelle' => 'Contrôle', 'pages' => ['recouvrement.balance', 'import.lots', 'caissier.encaissements']]);
+        CatalogueDesPages::oublier();
+        $controleur = $this->compte('controle');
+
+        $this->assertSame(['balance'], \Modules\Recouvrement\Support\AccesRecouvrement::pagesDe($controleur));
+        $this->assertSame(['lots'], \Modules\Import\Support\AccesImport::pagesDe($controleur));
+        $this->assertFalse(\Modules\Import\Support\AccesImport::peutDeposer($controleur));
+
+        $this->actingAs($controleur)->get(route('recouvrement.balance'))->assertOk();
+        $this->actingAs($controleur)->get(route('import.lots'))->assertOk();
+        $this->actingAs($controleur)->get(route('caissier.encaissements'))->assertOk();
+        $this->actingAs($controleur)->get(route('recouvrement.saisie'))->assertRedirect(route('recouvrement.balance'));
+
+        foreach (['saisie', 'commercial', 'recouvrement', 'import', 'comptabilite', 'general'] as $section) {
+            $this->assertArrayHasKey($section, CatalogueDesPages::SECTIONS);
+        }
     }
 
     /** « Si un code est déjà enregistré, il ne doit pas s'afficher en haut comme s'il n'avait pas été créé. » */

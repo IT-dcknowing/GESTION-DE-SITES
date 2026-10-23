@@ -38,8 +38,25 @@ final class CatalogueDesPages
      * @var array<string, array{libelle: string, pages: array<string, array{libelle: string, routes: list<string>}>}>
      */
     public const SECTIONS = [
+        /*
+         * **Toutes les sections d'une entreprise — 23/10** : « les sections et les pages ne sont pas
+         * complètes ; le but est de configurer un rôle proprement, avec les pages de toutes les
+         * sections dont une entreprise peut disposer ». Seules restent hors du catalogue les pages de
+         * la plateforme (Super admin) et les écrans communs à tout compte (messages, espace).
+         */
         'tableau' => ['libelle' => 'Tableau de bord', 'pages' => [
             'tableau-de-bord' => ['libelle' => 'Tableau de bord de la direction', 'routes' => ['tableau-de-bord']],
+        ]],
+        'saisie' => ['libelle' => 'Saisie', 'pages' => [
+            'saisie-du-jour' => ['libelle' => 'Saisie du jour (et fiches de prospection)', 'routes' => ['saisie-du-jour', 'prospection.voir', 'prospection.fiche']],
+        ]],
+        'commercial' => ['libelle' => 'Commercial', 'pages' => [
+            'mes-prospections' => ['libelle' => 'Mes prospections', 'routes' => ['mes-prospections']],
+            'mes-notes' => ['libelle' => 'Mes notes', 'routes' => ['mes-notes']],
+            'ma-performance' => ['libelle' => 'Ma performance', 'routes' => ['ma-performance']],
+            'correspondances' => ['libelle' => 'Correspondances (et mes correspondances)', 'routes' => ['correspondances', 'correspondances.miennes']],
+            'correspondances.suivi' => ['libelle' => 'Suivi des correspondances', 'routes' => ['correspondances.suivi']],
+            'rapprochement.prospections-devis' => ['libelle' => 'Rapprochement prospections / devis', 'routes' => ['rapprochement.prospections-devis']],
         ]],
         'indicateurs' => ['libelle' => 'Indicateurs', 'pages' => [
             'prospects' => ['libelle' => 'Prospects', 'routes' => ['prospects']],
@@ -52,6 +69,30 @@ final class CatalogueDesPages
             'clients' => ['libelle' => 'Clients', 'routes' => ['clients']],
             'impayes' => ['libelle' => 'État des impayés', 'routes' => ['impayes', 'impayes.*']],
             'rapprochement-ca-impayes' => ['libelle' => 'Rapprochement CA / impayés', 'routes' => ['rapprochement-ca-impayes']],
+        ]],
+        'recouvrement' => ['libelle' => 'Recouvrement', 'pages' => [
+            'recouvrement.tableau-de-bord' => ['libelle' => 'Tableau de bord du recouvrement', 'routes' => ['recouvrement.tableau-de-bord', 'recouvrement.dossier']],
+            'recouvrement.saisie' => ['libelle' => 'Saisie des relances', 'routes' => ['recouvrement.saisie']],
+            'recouvrement.synthese' => ['libelle' => 'Synthèse', 'routes' => ['recouvrement.synthese']],
+            'recouvrement.balance' => ['libelle' => 'Balance âgée (et exports)', 'routes' => ['recouvrement.balance', 'recouvrement.telecharger']],
+            'recouvrement.courtiers' => ['libelle' => 'Courtiers', 'routes' => ['recouvrement.courtiers']],
+            'recouvrement.clients' => ['libelle' => 'Clients & tiers', 'routes' => ['recouvrement.clients']],
+            'recouvrement.extrait' => ['libelle' => 'Extrait de compte', 'routes' => ['recouvrement.extrait']],
+            'recouvrement.relances' => ['libelle' => 'Journal des relances', 'routes' => ['recouvrement.relances']],
+            'recouvrement.encaissements' => ['libelle' => 'Journal des encaissements', 'routes' => ['recouvrement.encaissements']],
+            'recouvrement.audit' => ['libelle' => "Piste d'audit", 'routes' => ['recouvrement.audit']],
+        ]],
+        'import' => ['libelle' => 'Import', 'pages' => [
+            'import.depot' => ['libelle' => 'Dépôt de fichiers', 'routes' => ['import.depot', 'import.deposer']],
+            'import.informations' => ['libelle' => 'Informations', 'routes' => ['import.informations']],
+            'import.traitements' => ['libelle' => 'Traitements en cours', 'routes' => ['import.traitements', 'import.traitements.*']],
+            'import.lots' => ['libelle' => 'Journal des imports', 'routes' => ['import.lots', 'import.lot', 'import.lot.*']],
+            'import.codes' => ['libelle' => 'Codes employés', 'routes' => ['import.codes', 'import.codes.*']],
+        ]],
+        'comptabilite' => ['libelle' => 'Comptabilité', 'pages' => [
+            'caissier.tableau-de-bord' => ['libelle' => 'Tableau de bord de la comptabilité', 'routes' => ['caissier.tableau-de-bord']],
+            'caissier.encaissements' => ['libelle' => 'Encaissements', 'routes' => ['caissier.encaissements']],
+            'caissier.decaissements' => ['libelle' => 'Décaissements', 'routes' => ['caissier.decaissements']],
         ]],
         'tresorerie' => ['libelle' => 'Trésorerie', 'pages' => [
             'tresorerie' => ['libelle' => 'Trésorerie', 'routes' => ['tresorerie', 'tresorerie.*']],
@@ -67,6 +108,13 @@ final class CatalogueDesPages
             'balance-fournisseurs' => ['libelle' => 'Balance et grand livre fournisseurs', 'routes' => ['balance-fournisseurs', 'fournisseurs.grand-livre']],
             'fournisseurs.decaissements' => ['libelle' => 'Décaissements fournisseurs de la caisse', 'routes' => ['fournisseurs.decaissements']],
             'reglements-fournisseurs' => ['libelle' => 'Règlements fournisseurs', 'routes' => ['reglements-fournisseurs']],
+        ]],
+        'general' => ['libelle' => 'Général', 'pages' => [
+            'acces.creer' => ['libelle' => 'Ajouter et gérer des accès', 'routes' => ['acces.creer', 'acces.modifier', 'acces.modifier.enregistrer', 'acces.agir']],
+            'annuaire' => ['libelle' => 'Annuaire (PDF)', 'routes' => ['annuaire']],
+            'parametres' => ['libelle' => "Paramètres de l'entreprise", 'routes' => ['parametres', 'reaffecter']],
+            'bareme-commission' => ['libelle' => 'Barème de commission', 'routes' => ['bareme-commission']],
+            'objectifs-mensuels' => ['libelle' => "Objectifs mensuels de l'entreprise", 'routes' => ['objectifs-mensuels']],
         ]],
     ];
 
@@ -137,6 +185,49 @@ final class CatalogueDesPages
     public static function metierModifiable(string $role): bool
     {
         return array_key_exists($role, LibellesRoles::TOUS) && $role !== 'super_admin';
+    }
+
+    /**
+     * Les modules qui distribuent leurs pages rôle par rôle (recouvrement, import), déclarés par eux
+     * au démarrage : le Noyau ne dépend d'aucun module de rôle (ARCHITECTURE.md), ce sont eux qui
+     * lui disent leur règle.
+     *
+     * @var array<string, callable(string): list<string>>
+     */
+    private static array $modulesAPages = [];
+
+    public static function declarerUnModuleAPages(string $prefixe, callable $pagesDuRole): void
+    {
+        self::$modulesAPages[$prefixe] = $pagesDuRole;
+    }
+
+    /**
+     * Les pages d'un module à pages (« recouvrement. », « import. ») que le catalogue ouvre à ce
+     * compte, sans le préfixe — ou null si le catalogue n'a rien à en dire (rôle du métier non
+     * modifié) et que le module garde sa propre règle (`AccesRecouvrement`, `AccesImport`).
+     *
+     * @return list<string>|null
+     */
+    public static function pagesDuModule(User $utilisateur, string $prefixe): ?array
+    {
+        $pages = null;
+
+        if (self::roleDe($utilisateur) !== null) {
+            $pages = self::pagesDe($utilisateur);
+        } else {
+            foreach ($utilisateur->getRoleNames() as $role) {
+                if (isset(self::modifications()[$role])) {
+                    $pages = [...($pages ?? []), ...self::modifications()[$role]];
+                }
+            }
+        }
+
+        if ($pages === null) {
+            return null;
+        }
+
+        return array_values(array_unique(array_map(fn ($p) => substr($p, strlen($prefixe)),
+            array_filter($pages, fn ($p) => str_starts_with($p, $prefixe)))));
     }
 
     /** La page du catalogue à laquelle appartient une route, ou null si aucune. */
@@ -415,8 +506,17 @@ final class CatalogueDesPages
 
             foreach (self::SECTIONS as $section) {
                 foreach ($section['pages'] as $cle => $page) {
-                    // La page s'ouvre au rôle si sa route principale l'admet.
-                    if (in_array($page['routes'][0], $routes, true)) {
+                    // La page s'ouvre au rôle si sa route principale l'admet — et, pour le recouvrement
+                    // et l'import, si leur propre règle de pages la lui donne aussi.
+                    $parLeModule = true;
+
+                    foreach (self::$modulesAPages as $prefixe => $pagesDuRole) {
+                        if (str_starts_with($cle, $prefixe)) {
+                            $parLeModule = in_array(substr($cle, strlen($prefixe)), $pagesDuRole($role), true);
+                        }
+                    }
+
+                    if ($parLeModule && in_array($page['routes'][0], $routes, true)) {
                         $pages[] = $cle;
                     }
                 }

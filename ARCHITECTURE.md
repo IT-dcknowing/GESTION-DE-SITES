@@ -169,7 +169,12 @@ Maintenance montre aussi les rôles du métier, ce qu'ils ouvrent étant **lu da
 (`CatalogueDesPages::rolesDuMetier`, middleware `role:`) plutôt que recopié. Leurs pages du catalogue
 se **modifient** depuis cette page : la modification est une ligne de `roles_configures` au nom du rôle,
 et `RoleOuPagesOuvertes` comme `MenuNavigation` la consultent (`decisionDuMetier`) avant la règle des
-routes. Les autres écrans d'un rôle du métier, et ce qu'il peut y écrire, restent ceux du code. Un rôle configuré
+routes. Ce qu'un rôle peut écrire dans un écran reste la règle de cet écran.
+
+Le catalogue couvre toutes les sections d'une entreprise (23/10). Le recouvrement et l'import
+distribuent leurs pages rôle par rôle : ils **déclarent leur règle au catalogue** au démarrage
+(`CatalogueDesPages::declarerUnModuleAPages`, dans leur fournisseur de services) et lisent les pages
+cochées (`pagesDuModule`) — le Noyau ne les appelle jamais, la règle de dépendance tient. Un rôle configuré
 **lit** : aucune action d'écriture ne le connaît. Les définitions vivent dans la table
 `roles_configures` ; le rôle Spatie de chaque entreprise se crée au premier accès qui le porte.
 

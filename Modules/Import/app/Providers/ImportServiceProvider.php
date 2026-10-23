@@ -23,6 +23,9 @@ class ImportServiceProvider extends ServiceProvider
     {
         $this->loadViewsFrom(module_path('Import', 'resources/views'), 'import');
 
+        // Le catalogue des rôles (Maintenance) lit ici quelles pages chaque rôle du métier a (23/10).
+        \Modules\Noyau\Entreprises\Support\CatalogueDesPages::declarerUnModuleAPages('import.', fn (string $role) => \Modules\Import\Support\AccesImport::pagesDuRole($role));
+
         // La coquille de la section est un composant anonyme : <x-import::coquille>.
         Blade::anonymousComponentPath(module_path('Import', 'resources/views/components'), 'import');
 

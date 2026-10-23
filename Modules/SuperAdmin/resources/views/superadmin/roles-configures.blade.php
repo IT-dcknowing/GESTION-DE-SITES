@@ -202,9 +202,12 @@ $enregistrer = function () {
 
 <div>
     <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
-        Un rôle configuré <b>lit</b> les pages cochées, dans la ville de son compte (ou toutes, s'il les couvre) ;
-        il n'y écrit pas. Il se choisit à la création d'un accès, comme les rôles du métier. Le nom technique se tire
-        du nom du rôle à sa création et ne change plus ; le nom affiché et les pages se modifient.
+        Toutes les sections dont une entreprise dispose sont proposées : saisie, commercial, indicateurs, recouvrement,
+        import, comptabilité, trésorerie, charges, fournisseurs, général. Un rôle configuré ouvre les pages cochées, dans
+        la ville de son compte (ou toutes, s'il les couvre) ; ce qu'il peut y faire suit la règle de chaque écran — les
+        gestes réservés à un rôle du métier (créer une créance, fixer l'objectif…) le restent. Il se choisit à la
+        création d'un accès. Le nom technique se tire du nom du rôle et ne change plus ; le nom affiché et les pages se
+        modifient.
     </p>
 
     <h3 style="font-size:14.5px; font-weight:700; margin:0 0 6px;">Rôles configurés</h3>
