@@ -15,6 +15,8 @@ class MenuNavigation
 {
     public static function pour(User $utilisateur): array
     {
+        self::$pour = $utilisateur;
+
         if ($utilisateur->hasRole('super_admin')) {
             // Un Super Admin secondaire ne voit que les sections qui lui ont été ouvertes :
             // afficher un onglet menant à un 403 n'aurait aucun intérêt.
@@ -331,8 +333,49 @@ class MenuNavigation
         return self::construire($onglets);
     }
 
+    /** Le compte dont on construit le menu : ses rôles du métier peuvent avoir été modifiés (23/10). */
+    private static ?User $pour = null;
+
+    /**
+     * Les pages modifiées d'un rôle du métier, appliquées au menu écrit plus haut — 23/10.
+     *
+     * Une page du catalogue que le Super admin a retirée au rôle disparaît du menu ; une page qu'il
+     * lui a ajoutée paraît sous « Pages ajoutées », avant le dernier onglet. Sans modification, le
+     * menu reste exactement celui du code.
+     */
+    private static function selonLesPagesModifiees(array $onglets): array
+    {
+        $compte = self::$pour;
+
+        if ($compte === null || CatalogueDesPages::modifications() === []) {
+            return $onglets;
+        }
+
+        $garde = fn (array $item) => ! isset($item['route']) || CatalogueDesPages::decisionDuMetier($compte, $item['route']) !== false;
+        $onglets = array_values(array_filter(array_map(function ($onglet) use ($garde) {
+            if (isset($onglet['groupe'])) {
+                $onglet['groupe'] = array_values(array_filter($onglet['groupe'], $garde));
+
+                return $onglet['groupe'] === [] ? null : $onglet;
+            }
+
+            return $garde($onglet) ? $onglet : null;
+        }, $onglets)));
+
+        $ajoutees = array_map(fn ($page) => ['label' => CatalogueDesPages::page($page)['libelle'], 'route' => $page],
+            CatalogueDesPages::pagesAjoutees($compte));
+
+        if ($ajoutees !== []) {
+            array_splice($onglets, max(0, count($onglets) - 1), 0, [['label' => 'Pages ajoutées', 'groupe' => $ajoutees]]);
+        }
+
+        return $onglets;
+    }
+
     private static function construire(array $onglets): array
     {
+        $onglets = self::selonLesPagesModifiees($onglets);
+
         return array_map(function ($onglet) {
             if (isset($onglet['groupe'])) {
                 $items = array_map(fn ($item) => [

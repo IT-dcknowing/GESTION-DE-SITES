@@ -26,9 +26,21 @@ class RoleOuPagesOuvertes
     {
         $utilisateur = $request->user();
 
-        if ($utilisateur !== null && CatalogueDesPages::ouvre($utilisateur, $request->route()?->getName())) {
+        $route = $request->route()?->getName();
+
+        if ($utilisateur !== null && CatalogueDesPages::ouvre($utilisateur, $route)) {
             return $next($request);
         }
+
+        // Un rôle du métier dont la Maintenance a modifié les pages (23/10) : pour une page du
+        // catalogue, ce sont elles qui décident — ouverte en plus, ou fermée malgré la route.
+        $decision = $utilisateur !== null ? CatalogueDesPages::decisionDuMetier($utilisateur, $route) : null;
+
+        if ($decision === true) {
+            return $next($request);
+        }
+
+        abort_if($decision === false, 403, "Cette page n'est pas ouverte à votre rôle.");
 
         return app(RoleMiddleware::class)->handle($request, $next, ...$arguments);
     }

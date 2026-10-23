@@ -160,6 +160,37 @@ class UnRoleSeDefinitParSesPagesTest extends TestCase
             ->assertSee('Comptabilité');
     }
 
+    /** « Ajoute le bouton Modifier » sur les rôles du métier — 23/10. */
+    public function test_un_role_du_metier_se_modifie_puis_se_retablit(): void
+    {
+        $caissier = $this->compte('caissier');
+        $this->actingAs($caissier)->get(route('charges'))->assertOk();
+
+        Volt::actingAs($this->superAdmin())->test('superadmin.roles-configures')
+            ->call('modifier', 'caissier')
+            ->assertSet('libelle', 'Comptabilité')
+            ->set('pagesCochees', ['tresorerie', 'caisse', 'banques', 'chiffre-affaires'])
+            ->call('enregistrer')
+            ->assertHasNoErrors();
+
+        // Le rôle reste un rôle du métier : il n'est pas devenu un rôle configuré.
+        $this->assertFalse(CatalogueDesPages::estConfigure('caissier'));
+        CatalogueDesPages::oublier();
+
+        $this->actingAs($caissier)->get(route('charges'))->assertForbidden();
+        $this->actingAs($caissier)->get(route('chiffre-affaires'))->assertOk();
+        // Ses autres écrans ne changent pas.
+        $this->actingAs($caissier)->get(route('caissier.tableau-de-bord'))->assertOk();
+
+        $menu = collect(MenuNavigation::pour($caissier))->flatMap(fn ($o) => isset($o['groupe']) ? array_column($o['groupe'], 'label') : [$o['label']])->all();
+        $this->assertNotContains('Charges', $menu);
+        $this->assertContains("Chiffre d'affaires", $menu);
+
+        Volt::actingAs($this->superAdmin())->test('superadmin.roles-configures')->call('retablir', 'caissier');
+        CatalogueDesPages::oublier();
+        $this->actingAs($caissier)->get(route('charges'))->assertOk();
+    }
+
     /** « Si un code est déjà enregistré, il ne doit pas s'afficher en haut comme s'il n'avait pas été créé. » */
     public function test_un_code_declare_ne_parait_plus_parmi_les_codes_sans_titulaire(): void
     {

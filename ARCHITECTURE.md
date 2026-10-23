@@ -166,7 +166,10 @@ qui laisse entrer le compte quand la route est l'une de ses pages cochées, et s
 Spatie, inchangé. Le menu (`MenuNavigation`), l'atterrissage (`RedirectionController`) et le
 périmètre (`Site::visiblesPour` : la ville du compte) lisent le même catalogue. La même page de la
 Maintenance montre aussi les rôles du métier, ce qu'ils ouvrent étant **lu dans les routes**
-(`CatalogueDesPages::rolesDuMetier`, middleware `role:`) plutôt que recopié. Un rôle configuré
+(`CatalogueDesPages::rolesDuMetier`, middleware `role:`) plutôt que recopié. Leurs pages du catalogue
+se **modifient** depuis cette page : la modification est une ligne de `roles_configures` au nom du rôle,
+et `RoleOuPagesOuvertes` comme `MenuNavigation` la consultent (`decisionDuMetier`) avant la règle des
+routes. Les autres écrans d'un rôle du métier, et ce qu'il peut y écrire, restent ceux du code. Un rôle configuré
 **lit** : aucune action d'écriture ne le connaît. Les définitions vivent dans la table
 `roles_configures` ; le rôle Spatie de chaque entreprise se crée au premier accès qui le porte.
 

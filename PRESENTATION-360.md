@@ -153,7 +153,9 @@ un nom, puis les sections et les pages cochées (indicateurs, trésorerie, charg
 tableau de bord de la direction) ; un bouton **Modifier** les reprend. Le rôle se choisit ensuite à
 la création d'un accès, comme les autres. Il **lit** ses pages et n'y écrit rien : toute action qui
 engage l'entreprise reste réservée aux rôles du métier. Le rôle **Trésorerie** est le premier de
-ces rôles, défini d'office (`CatalogueDesPages`).
+ces rôles, défini d'office (`CatalogueDesPages`). Les **rôles du métier** figurent sur la même page,
+avec ce qu'ils ouvrent, et leurs pages se **modifient** aussi (23/10) — ouvrir ou fermer une page de
+lecture ; leurs droits d'écriture restent ceux du code.
 
 Chaque accès est vérifié **deux fois** : à la route (qui entre dans le module) et dans l'action
 (jusqu'où il va). Le périmètre est toujours lu sur **l'identité** de l'utilisateur, jamais sur un

@@ -63,7 +63,8 @@ $basculerSection = function (string $section) {
 $modifier = function (string $nom) {
     $this->garder();
 
-    $role = $this->roles[$nom] ?? null;
+    // Un rôle du métier (23/10) : ses pages du catalogue se modifient, son nom reste celui du métier.
+    $role = $this->roles[$nom] ?? (CatalogueDesPages::metierModifiable($nom) ? ($this->rolesDuMetier[$nom] ?? null) : null);
 
     if ($role === null) {
         return;
@@ -82,8 +83,62 @@ $annuler = function () {
     $this->resetValidation();
 };
 
+/** Remet un rôle du métier tel que le disent les routes : sa modification est effacée. */
+$retablir = function (string $nom) {
+    $this->garder();
+
+    if (! CatalogueDesPages::metierModifiable($nom)) {
+        return;
+    }
+
+    $role = RoleConfigure::query()->where('nom', $nom)->first();
+
+    if ($role !== null) {
+        activity()->performedOn($role)->causedBy(auth()->user())->log('Rôle du métier rétabli comme dans le code');
+        $role->delete();
+    }
+
+    CatalogueDesPages::oublier();
+    unset($this->roles, $this->rolesDuMetier);
+    $this->annuler();
+    $this->dispatch('annonce', ton: 'succes', texte: 'Le rôle « '.LibellesRoles::de($nom).' » ouvre de nouveau les pages prévues par le code.');
+};
+
+/**
+ * Enregistre les pages d'un rôle du métier — 23/10. Une page cochée s'ouvre au rôle ; une page
+ * décochée se ferme, même si la route l'admet. Aucun minimum : le rôle garde ses autres écrans.
+ */
+$enregistrerLeMetier = protect(function (string $nom) {
+    $pages = CatalogueDesPages::pagesConnues((array) $this->pagesCochees);
+
+    $role = RoleConfigure::query()->firstOrNew(['nom' => $nom]);
+    $creation = ! $role->exists;
+    $role->fill(['libelle' => LibellesRoles::de($nom), 'pages' => $pages, 'modifie_par' => auth()->id()]);
+
+    if ($creation) {
+        $role->cree_par = auth()->id();
+    }
+
+    $role->save();
+
+    activity()->performedOn($role)->causedBy(auth()->user())
+        ->withProperties(['pages' => $pages, 'pages_du_code' => $this->rolesDuMetier[$nom]['pagesDuCode'] ?? []])
+        ->log('Rôle du métier modifié');
+
+    CatalogueDesPages::oublier();
+    unset($this->roles, $this->rolesDuMetier);
+    $this->annuler();
+    $this->dispatch('annonce', ton: 'succes', texte: 'Les pages du rôle « '.LibellesRoles::de($nom).' » sont enregistrées.');
+});
+
 $enregistrer = function () {
     $this->garder();
+
+    if ($this->enModification !== null && CatalogueDesPages::metierModifiable($this->enModification)) {
+        $this->enregistrerLeMetier($this->enModification);
+
+        return;
+    }
 
     $this->validate(['libelle' => ['required', 'string', 'max:120']], [], ['libelle' => 'nom du rôle']);
 
@@ -190,18 +245,22 @@ $enregistrer = function () {
          les modifie pas d'une case à cocher. --}}
     <h3 style="font-size:14.5px; font-weight:700; margin:0 0 6px;">Rôles du métier — définis dans le code</h3>
     <p style="margin:0 0 8px; font-size:12px; color:#6B6E76;">
-        Lus dans les routes de l'application : ce que chacun ouvre aujourd'hui. Ils ne se modifient pas ici — leurs
-        écrans écrivent, et ce qu'ils y font se vérifie dans le code.
+        Lus dans les routes de l'application : ce que chacun ouvre aujourd'hui. <b>Modifier</b> change ses pages
+        (cocher l'ouvre, décocher la ferme, au menu comme à l'adresse) ; ses autres écrans et ce qu'il a le droit
+        d'y écrire ne changent pas. <b>Rétablir</b> revient aux pages prévues par le code.
     </p>
     <div class="tableau-conteneur" style="margin-bottom:18px;">
         <table class="tableau">
             <thead>
-                <tr><th>Rôle</th><th>Pages ouvertes</th><th>Autres écrans</th><th style="text-align:right;">Accès</th></tr>
+                <tr><th>Rôle</th><th>Pages ouvertes</th><th>Autres écrans</th><th style="text-align:right;">Accès</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach ($this->rolesDuMetier as $nom => $role)
-                    <tr wire:key="metier-{{ $nom }}">
-                        <td><b>{{ $role['libelle'] }}</b><div style="font-size:11px; color:#9A9DA5;">{{ $nom }}</div></td>
+                    <tr wire:key="metier-{{ $nom }}" style="{{ $enModification === $nom ? 'background:#FDF2F4;' : '' }}">
+                        <td>
+                            <b>{{ $role['libelle'] }}</b><div style="font-size:11px; color:#9A9DA5;">{{ $nom }}</div>
+                            @if ($role['modifie'])<div style="font-size:11px; color:#B45309; font-weight:700;">pages modifiées</div>@endif
+                        </td>
                         <td style="font-size:12px; color:#4B4E55;">
                             @foreach (CatalogueDesPages::SECTIONS as $section)
                                 @php $dans = array_values(array_intersect(array_keys($section['pages']), $role['pages'])); @endphp
@@ -213,6 +272,14 @@ $enregistrer = function () {
                         </td>
                         <td style="font-size:12px; color:#4B4E55;">{{ $role['autres'] === [] ? '—' : implode(' · ', $role['autres']) }}</td>
                         <td style="text-align:right;">{{ $this->nombreDAcces[$nom] ?? 0 }}</td>
+                        <td style="text-align:right; white-space:nowrap;">
+                            @if (CatalogueDesPages::metierModifiable($nom))
+                                <button type="button" wire:click="modifier('{{ $nom }}')" class="bouton bouton-secondaire" style="padding:5px 10px;">Modifier</button>
+                                @if ($role['modifie'])
+                                    <button type="button" wire:click="retablir('{{ $nom }}')" class="bouton bouton-secondaire" style="padding:5px 10px;" title="Revenir aux pages prévues par le code">Rétablir</button>
+                                @endif
+                            @endif
+                        </td>
                     </tr>
                 @endforeach
             </tbody>
@@ -221,10 +288,12 @@ $enregistrer = function () {
 
     <form wire:submit="enregistrer">
         <h3 style="font-size:14.5px; font-weight:700; margin:0 0 8px;">
-            {{ $enModification ? 'Modifier le rôle « '.($this->roles[$enModification]['libelle'] ?? $enModification).' »' : 'Créer un rôle' }}
+            {{ $enModification ? 'Modifier le rôle « '.($this->roles[$enModification]['libelle'] ?? LibellesRoles::de($enModification)).' »' : 'Créer un rôle' }}
         </h3>
         <div class="bloc-saisie" style="background:#fff; border-style:solid; margin-bottom:12px;">
-            <x-champ label="Nom du rôle" model="libelle" requis width="280" placeholder="Trésorerie, Contrôle de gestion…" />
+            {{-- Le nom d'un rôle du métier ne change pas : c'est celui que portent les accès et le code. --}}
+            <x-champ label="Nom du rôle" model="libelle" requis width="280" placeholder="Trésorerie, Contrôle de gestion…"
+                :disabled="$enModification !== null && CatalogueDesPages::metierModifiable($enModification)" />
             @if ($enModification)
                 <div style="align-self:flex-end; font-size:12px; color:#6B6E76; padding-bottom:9px;">Nom technique : <code>{{ $enModification }}</code></div>
             @endif

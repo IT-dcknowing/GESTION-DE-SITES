@@ -94,8 +94,18 @@ final class CatalogueDesPages
 
         $roles = array_map(fn ($r) => $r + ['enregistre' => false], self::ROLES_PREDEFINIS);
 
+        $modifies = [];
+
         if (SchemaDisponible::table('roles_configures')) {
             foreach (RoleConfigure::query()->orderBy('libelle')->get() as $role) {
+                // Un rôle du métier modifié dans la Maintenance (23/10) n'est pas un rôle configuré :
+                // il garde ses écrans, seules ses pages du catalogue changent — voir `modifications()`.
+                if (array_key_exists($role->nom, LibellesRoles::TOUS)) {
+                    $modifies[$role->nom] = self::pagesConnues((array) $role->pages);
+
+                    continue;
+                }
+
                 $roles[$role->nom] = [
                     'libelle' => $role->libelle,
                     'pages' => self::pagesConnues((array) $role->pages),
@@ -105,14 +115,113 @@ final class CatalogueDesPages
         }
 
         app()->instance('catalogue-des-pages.roles', $roles);
+        app()->instance('catalogue-des-pages.modifies', $modifies);
 
         return $roles;
+    }
+
+    /**
+     * Les rôles du métier dont le Super admin a modifié les pages — 23/10 : « ajoute le bouton
+     * Modifier » sur les rôles du métier.
+     *
+     * @return array<string, list<string>> rôle => pages du catalogue retenues
+     */
+    public static function modifications(): array
+    {
+        self::roles();
+
+        return app('catalogue-des-pages.modifies');
+    }
+
+    /** Le rôle du métier qu'on peut modifier : tous, sauf la plateforme, qui n'a aucune page du catalogue. */
+    public static function metierModifiable(string $role): bool
+    {
+        return array_key_exists($role, LibellesRoles::TOUS) && $role !== 'super_admin';
+    }
+
+    /** La page du catalogue à laquelle appartient une route, ou null si aucune. */
+    public static function pageDeLaRoute(?string $route): ?string
+    {
+        if ($route === null || $route === '') {
+            return null;
+        }
+
+        foreach (self::SECTIONS as $section) {
+            foreach ($section['pages'] as $cle => $page) {
+                foreach ($page['routes'] as $motif) {
+                    if (Str::is($motif, $route)) {
+                        return $cle;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Ce que décident les pages modifiées d'un rôle du métier, pour cette route.
+     *
+     * `null` : rien à décider — la route n'est pas une page du catalogue, ou aucun rôle du compte n'a
+     * été modifié ; la règle des routes (Spatie) s'applique telle quelle. Sinon, `true` ou `false` :
+     * la page est-elle parmi celles que ses rôles retiennent (les modifiées, et pour un rôle non
+     * modifié celles que lui ouvrent les routes) ?
+     */
+    public static function decisionDuMetier(User $utilisateur, ?string $route): ?bool
+    {
+        $modifications = self::modifications();
+        $page = self::pageDeLaRoute($route);
+
+        if ($modifications === [] || $page === null) {
+            return null;
+        }
+
+        $sesRoles = array_values(array_filter($utilisateur->getRoleNames()->all(), fn ($r) => self::metierModifiable($r)));
+
+        if (array_intersect($sesRoles, array_keys($modifications)) === []) {
+            return null;
+        }
+
+        $metier = self::rolesDuMetier();
+
+        foreach ($sesRoles as $role) {
+            if (in_array($page, $metier[$role]['pages'] ?? [], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Les pages retenues pour ce compte par ses rôles du métier modifiés, qui ne sont pas dans son
+     * menu d'origine — ajoutées par la Maintenance.
+     *
+     * @return list<string>
+     */
+    public static function pagesAjoutees(User $utilisateur): array
+    {
+        $modifications = self::modifications();
+        $ajoutees = [];
+
+        foreach ($utilisateur->getRoleNames() as $role) {
+            if (! isset($modifications[$role])) {
+                continue;
+            }
+
+            $duCode = self::rolesDuMetier()[$role]['pagesDuCode'] ?? [];
+            $ajoutees = [...$ajoutees, ...array_diff($modifications[$role], $duCode)];
+        }
+
+        return array_values(array_unique($ajoutees));
     }
 
     /** À appeler après une écriture : la requête en cours relira les rôles. */
     public static function oublier(): void
     {
         app()->forgetInstance('catalogue-des-pages.roles');
+        app()->forgetInstance('catalogue-des-pages.modifies');
+        app()->forgetInstance('catalogue-des-pages.metier');
     }
 
     public static function estConfigure(?string $role): bool
@@ -267,10 +376,19 @@ final class CatalogueDesPages
      * sections ; les autres écrans (saisie, recouvrement, import…) se disent par module. Le
      * recouvrement et l'import affinent ensuite page par page (`AccesRecouvrement`, `AccesImport`).
      *
-     * @return array<string, array{libelle: string, pages: list<string>, autres: list<string>}>
+     * **Modifiables depuis le 23/10** : « ajoute le bouton Modifier ». Les pages cochées d'un rôle du
+     * métier remplacent alors, pour les pages du catalogue seulement, ce que disent les routes
+     * (`decisionDuMetier`, appliquée par `RoleOuPagesOuvertes` et le menu). Ses autres écrans et ce
+     * qu'il a le droit d'y écrire ne changent pas.
+     *
+     * @return array<string, array{libelle: string, pages: list<string>, pagesDuCode: list<string>, modifie: bool, autres: list<string>}>
      */
     public static function rolesDuMetier(): array
     {
+        if (app()->bound('catalogue-des-pages.metier')) {
+            return app('catalogue-des-pages.metier');
+        }
+
         $ouvertes = [];
 
         foreach (\Illuminate\Support\Facades\Route::getRoutes() as $route) {
@@ -316,8 +434,19 @@ final class CatalogueDesPages
                 }
             }
 
-            $roles[$role] = ['libelle' => $libelle, 'pages' => $pages, 'autres' => array_keys($autres)];
+            // Modifié dans la Maintenance : ses pages du catalogue sont celles qu'on a cochées.
+            $modifiees = self::modifications()[$role] ?? null;
+
+            $roles[$role] = [
+                'libelle' => $libelle,
+                'pages' => $modifiees ?? $pages,
+                'pagesDuCode' => $pages,
+                'modifie' => $modifiees !== null,
+                'autres' => array_keys($autres),
+            ];
         }
+
+        app()->instance('catalogue-des-pages.metier', $roles);
 
         return $roles;
     }
