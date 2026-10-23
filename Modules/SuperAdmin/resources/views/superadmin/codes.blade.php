@@ -462,10 +462,14 @@ $sites = computed(fn () => $this->entrepriseId
     @endif
 
     @if ($this->cible && $vue === 'comptes')
-        @if ($this->libres->isNotEmpty())
+        {{-- **Seuls les codes que personne n'a nommés — 23/10** : « si un code est déjà enregistré, il ne
+             doit pas s'afficher en haut comme s'il n'avait pas été créé ». Le bloc prenait tous les codes
+             sans compte, déclarés compris ; un code déclaré a son titulaire, sans accès, et se lit dans
+             l'onglet Code-import. --}}
+        @if ($this->nonNommes->isNotEmpty())
             <x-carte-section titre="Codes vus dans les imports, encore sans titulaire">
                 <div style="display:flex; flex-wrap:wrap; gap:7px;">
-                    @foreach ($this->libres as $libre)
+                    @foreach ($this->nonNommes as $libre)
                         <span style="display:inline-block; background:#FFF3B0; border:1px solid #E5D98A; border-radius:20px;
                                      padding:3px 11px; font-size:12.5px;">
                             <b style="letter-spacing:1px;">{{ $libre->code }}</b>

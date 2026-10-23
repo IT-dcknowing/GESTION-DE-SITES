@@ -164,7 +164,9 @@ Le Super admin peut créer un rôle dans **Maintenance › Rôles et pages** en 
 ne doit pas avoir à y figurer : l'alias `role` passe par `App\Http\Middleware\RoleOuPagesOuvertes`,
 qui laisse entrer le compte quand la route est l'une de ses pages cochées, et sinon délègue à
 Spatie, inchangé. Le menu (`MenuNavigation`), l'atterrissage (`RedirectionController`) et le
-périmètre (`Site::visiblesPour` : la ville du compte) lisent le même catalogue. Un rôle configuré
+périmètre (`Site::visiblesPour` : la ville du compte) lisent le même catalogue. La même page de la
+Maintenance montre aussi les rôles du métier, ce qu'ils ouvrent étant **lu dans les routes**
+(`CatalogueDesPages::rolesDuMetier`, middleware `role:`) plutôt que recopié. Un rôle configuré
 **lit** : aucune action d'écriture ne le connaît. Les définitions vivent dans la table
 `roles_configures` ; le rôle Spatie de chaque entreprise se crée au premier accès qui le porte.
 

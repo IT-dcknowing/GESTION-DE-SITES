@@ -37,10 +37,13 @@ $garder = protect(function () {
 
 $roles = computed(fn () => CatalogueDesPages::roles());
 
+// Les rôles du métier, lus dans les routes : montrés, pas modifiables ici (23/10).
+$rolesDuMetier = computed(fn () => CatalogueDesPages::rolesDuMetier());
+
 /** Combien d'accès portent chaque rôle, toutes entreprises confondues : une requête pour la liste. */
 $nombreDAcces = computed(fn () => DB::table('model_has_roles')
     ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
-    ->whereIn('roles.name', array_keys($this->roles))
+    ->whereIn('roles.name', [...array_keys($this->roles), ...array_keys(LibellesRoles::TOUS)])
     ->groupBy('roles.name')
     ->selectRaw('roles.name as nom, count(distinct model_has_roles.model_id) as n')
     ->pluck('n', 'nom')->all());
@@ -149,6 +152,7 @@ $enregistrer = function () {
         du nom du rôle à sa création et ne change plus ; le nom affiché et les pages se modifient.
     </p>
 
+    <h3 style="font-size:14.5px; font-weight:700; margin:0 0 6px;">Rôles configurés</h3>
     <div class="tableau-conteneur" style="margin-bottom:16px;">
         <table class="tableau">
             <thead>
@@ -177,6 +181,40 @@ $enregistrer = function () {
                 @empty
                     <x-table-vide :colspan="4" texte="Aucun rôle configuré." />
                 @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    {{-- **Les rôles du métier aussi — 23/10** : « même les rôles déjà créés doivent figurer, avec ce
+         qu'ils contiennent ». Écrits dans le code, ils écrivent dans leurs écrans : on les lit ici, on ne
+         les modifie pas d'une case à cocher. --}}
+    <h3 style="font-size:14.5px; font-weight:700; margin:0 0 6px;">Rôles du métier — définis dans le code</h3>
+    <p style="margin:0 0 8px; font-size:12px; color:#6B6E76;">
+        Lus dans les routes de l'application : ce que chacun ouvre aujourd'hui. Ils ne se modifient pas ici — leurs
+        écrans écrivent, et ce qu'ils y font se vérifie dans le code.
+    </p>
+    <div class="tableau-conteneur" style="margin-bottom:18px;">
+        <table class="tableau">
+            <thead>
+                <tr><th>Rôle</th><th>Pages ouvertes</th><th>Autres écrans</th><th style="text-align:right;">Accès</th></tr>
+            </thead>
+            <tbody>
+                @foreach ($this->rolesDuMetier as $nom => $role)
+                    <tr wire:key="metier-{{ $nom }}">
+                        <td><b>{{ $role['libelle'] }}</b><div style="font-size:11px; color:#9A9DA5;">{{ $nom }}</div></td>
+                        <td style="font-size:12px; color:#4B4E55;">
+                            @foreach (CatalogueDesPages::SECTIONS as $section)
+                                @php $dans = array_values(array_intersect(array_keys($section['pages']), $role['pages'])); @endphp
+                                @if ($dans !== [])
+                                    <div><b>{{ $section['libelle'] }}</b> : {{ collect($dans)->map(fn ($p) => $section['pages'][$p]['libelle'])->implode(', ') }}</div>
+                                @endif
+                            @endforeach
+                            @if ($role['pages'] === []) <span style="color:#9A9DA5;">—</span> @endif
+                        </td>
+                        <td style="font-size:12px; color:#4B4E55;">{{ $role['autres'] === [] ? '—' : implode(' · ', $role['autres']) }}</td>
+                        <td style="text-align:right;">{{ $this->nombreDAcces[$nom] ?? 0 }}</td>
+                    </tr>
+                @endforeach
             </tbody>
         </table>
     </div>

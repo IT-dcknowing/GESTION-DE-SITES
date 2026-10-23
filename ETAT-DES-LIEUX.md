@@ -2563,6 +2563,9 @@ dépôts. Aucune migration.
 | 95 | Mettre tous les `.md` à jour | ✅ 23/10 |
 | 96 | Avoir : « dans quel champ on le met ? » | ✅ 23/10 — répondu : le champ **montantTTC** du formulaire de l'état des impayés, en négatif (« -150000 ») ; le champ porte l'indication « négatif = avoir » |
 | 97 | Commerciaux : même sans objectif atteint, montrer ce qu'ils ont fait et le pourcentage réalisé | ✅ 23/10 — page Commerciaux : « hors tranche » dit le CA du mois et la part du seuil d'entrée du barème ; accueil du gérant, objectifs du mois : « x % réalisé » par tranche et en tête de l'avancement (la page en avait déjà le taux, Ma performance aussi) |
+| 99 | Maintenance › Rôles et pages : « même les rôles déjà créés doivent figurer, avec ce qu'ils contiennent » | ✅ 23/10 — tableau « Rôles du métier — définis dans le code » : pages ouvertes par section et autres écrans, **lus dans les routes** (`CatalogueDesPages::rolesDuMetier`), nombre d'accès ; non modifiables ici |
+| 100 | Incident « Class Modules\Noyau\Entreprises\Support\Site not found » (`ChoixDeVille.php:127`, 23/09) : vérifier | ✅ 23/10 — **déjà corrigé le 07/10** (l'import `Modeles\Site` manquait) ; la panne restait dans la liste des incidents : ajoutée aux pannes connues réglées (`JournalDesIncidents::CORRIGES`), elle la quitte |
+| 101 | Super admin › Codes : un code déjà déclaré s'affichait encore en haut, « sans titulaire » | ✅ 23/10 — le bloc du haut ne montre plus que les codes que personne n'a nommés (il prenait tous les codes sans compte, déclarés compris) |
 | 98 | Fichier d'import des tâches de la semaine (modèle `modele-import-taches`) | ✅ 23/10 — produit hors du dépôt, livré dans la conversation : projet « SOLUTIONS DIGITAL », domaine « Informatique, Developpement Web », assigné AGNIMEL MELEDJE ABRAHAM |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)

@@ -143,6 +143,36 @@ class UnRoleSeDefinitParSesPagesTest extends TestCase
         $this->assertSame($this->ville->id, (int) $compte->fresh()->ville_id);
     }
 
+    /** « Même les rôles déjà créés doivent figurer, avec ce qu'ils contiennent » — 23/10. */
+    public function test_les_roles_du_metier_figurent_avec_leurs_pages(): void
+    {
+        $metier = CatalogueDesPages::rolesDuMetier();
+
+        $this->assertContains('charges', $metier['gerant']['pages']);
+        $this->assertContains('tableau-de-bord', $metier['gerant']['pages']);
+        $this->assertContains('tresorerie', $metier['caissier']['pages']);
+        $this->assertNotContains('charges', $metier['commercial']['pages']);
+        $this->assertContains('Mes prospections', $metier['commercial']['autres']);
+
+        Volt::actingAs($this->superAdmin())->test('superadmin.roles-configures')
+            ->assertSee('Rôles du métier')
+            ->assertSee('Superviseur de ville')
+            ->assertSee('Comptabilité');
+    }
+
+    /** « Si un code est déjà enregistré, il ne doit pas s'afficher en haut comme s'il n'avait pas été créé. » */
+    public function test_un_code_declare_ne_parait_plus_parmi_les_codes_sans_titulaire(): void
+    {
+        \Modules\Noyau\Imports\Modeles\CodeAgent::withoutGlobalScopes()->create(['entreprise_id' => $this->e->id, 'code' => 'AB', 'nom' => 'KOUASSI', 'occurrences' => 6554, 'est_actif' => true]);
+        \Modules\Noyau\Imports\Modeles\CodeAgent::withoutGlobalScopes()->create(['entreprise_id' => $this->e->id, 'code' => 'DM', 'occurrences' => 345, 'est_actif' => true]);
+
+        $ecran = Volt::actingAs($this->superAdmin())->test('superadmin.codes')->set('entrepriseId', (string) $this->e->id);
+
+        $this->assertSame(['DM'], $ecran->instance()->nonNommes->pluck('code')->all());
+        $ecran->assertSee('Codes vus dans les imports, encore sans titulaire')
+            ->assertDontSee('6 554 fiche(s)');
+    }
+
     // ------------------------------------------------------------------------------ outils
 
     private function compte(string $role): User

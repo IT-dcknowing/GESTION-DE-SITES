@@ -234,6 +234,94 @@ final class CatalogueDesPages
         return $connues;
     }
 
+    /**
+     * Les écrans hors catalogue, regroupés pour la lecture : préfixe de route => libellé.
+     *
+     * @var array<string, string>
+     */
+    private const AUTRES_ECRANS = [
+        'super-admin.' => 'Plateforme (Super admin)',
+        'saisie' => 'Saisie du jour',
+        'caissier.' => 'Comptabilité : tableau de bord, encaissements, décaissements',
+        'recouvrement.' => 'Recouvrement (pages selon le rôle)',
+        'import.' => 'Import (pages selon le rôle)',
+        'correspondances' => 'Correspondances',
+        'rapprochement.prospections-devis' => 'Rapprochement prospections / devis',
+        'mes-prospections' => 'Mes prospections',
+        'mes-notes' => 'Mes notes',
+        'ma-performance' => 'Ma performance',
+        'acces.' => 'Gestion des accès',
+        'annuaire' => 'Annuaire',
+        'parametres' => 'Paramètres de la direction (barème, objectifs, réaffectation)',
+        'bareme-commission' => 'Paramètres de la direction (barème, objectifs, réaffectation)',
+        'objectifs-mensuels' => 'Paramètres de la direction (barème, objectifs, réaffectation)',
+        'reaffecter' => 'Paramètres de la direction (barème, objectifs, réaffectation)',
+    ];
+
+    /**
+     * Les rôles du métier et ce qu'ils ouvrent — 23/10 : « même les rôles déjà créés doivent figurer,
+     * avec ce qu'ils contiennent ».
+     *
+     * Lu dans les routes elles-mêmes (leur middleware `role:`), et non recopié : une route ouverte
+     * demain à un rôle paraît ici sans qu'on y pense. Les pages du catalogue se rangent dans leurs
+     * sections ; les autres écrans (saisie, recouvrement, import…) se disent par module. Le
+     * recouvrement et l'import affinent ensuite page par page (`AccesRecouvrement`, `AccesImport`).
+     *
+     * @return array<string, array{libelle: string, pages: list<string>, autres: list<string>}>
+     */
+    public static function rolesDuMetier(): array
+    {
+        $ouvertes = [];
+
+        foreach (\Illuminate\Support\Facades\Route::getRoutes() as $route) {
+            $nom = $route->getName();
+
+            if ($nom === null) {
+                continue;
+            }
+
+            foreach ($route->gatherMiddleware() as $middleware) {
+                if (is_string($middleware) && str_starts_with($middleware, 'role:')) {
+                    foreach (explode('|', substr($middleware, 5)) as $role) {
+                        $ouvertes[trim($role)][] = $nom;
+                    }
+                }
+            }
+        }
+
+        $roles = [];
+
+        foreach (LibellesRoles::TOUS as $role => $libelle) {
+            $routes = array_unique($ouvertes[$role] ?? []);
+            $pages = [];
+
+            foreach (self::SECTIONS as $section) {
+                foreach ($section['pages'] as $cle => $page) {
+                    // La page s'ouvre au rôle si sa route principale l'admet.
+                    if (in_array($page['routes'][0], $routes, true)) {
+                        $pages[] = $cle;
+                    }
+                }
+            }
+
+            $autres = [];
+
+            foreach ($routes as $nom) {
+                foreach (self::AUTRES_ECRANS as $prefixe => $intitule) {
+                    if (str_starts_with($nom, $prefixe)) {
+                        $autres[$intitule] = true;
+
+                        break;
+                    }
+                }
+            }
+
+            $roles[$role] = ['libelle' => $libelle, 'pages' => $pages, 'autres' => array_keys($autres)];
+        }
+
+        return $roles;
+    }
+
     /** Le nom technique d'un rôle, tiré de son libellé : « Trésorerie Abidjan » → tresorerie_abidjan. */
     public static function nomTechnique(string $libelle): string
     {

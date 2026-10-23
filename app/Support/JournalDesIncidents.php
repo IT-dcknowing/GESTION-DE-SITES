@@ -46,6 +46,8 @@ final class JournalDesIncidents
         ['motif' => "/Unknown column 'factures\.date_reception'/", 'correction' => '30/09 — migration de la date de dépôt passée.'],
         ['motif' => '/Undefined variable \$dateDebut.*filtre-periode/s', 'correction' => '16/09 — le filtre de période reçoit ses dates par défaut.'],
         ['motif' => '/InvalidStateException/', 'correction' => '09/10 — connexion Google expirée : retour à la page de connexion, ce n’est plus une panne.'],
+        // Vue en ligne le 23/09, signalée de nouveau le 23/10 : l'import manquait dans ChoixDeVille, ajouté le 07/10.
+        ['motif' => '/Class "Modules\\\\Noyau\\\\Entreprises\\\\Support\\\\Site" not found/', 'correction' => '07/10 — ChoixDeVille : la classe Site est importée (Modeles\\Site).'],
     ];
 
     /**
