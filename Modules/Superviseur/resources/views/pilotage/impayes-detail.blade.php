@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
@@ -130,10 +131,11 @@ $traitants = computed(fn () => $this->creance === null ? collect() : QuiAAgi::de
                 </div>
             </div>
 
-            @if ($f->exercice_impayes)
+            {{-- Le bouton n'apparaît qu'à qui a le geste — habilitations du 26/10. --}}
+            @if ($f->exercice_impayes && HabilitationsDActions::accorde(auth()->user(), 'creances', 'modifier'))
                 <a href="{{ route('impayes', ['exercice' => $f->exercice_impayes, 'modifier' => $f->id]) }}" wire:navigate
                    class="bouton" style="padding:9px 16px; text-decoration:none;">Modifier</a>
-            @else
+            @elseif (! $f->exercice_impayes)
                 {{-- Une facture qui n'est pas à l'état ne se corrige pas d'ici : elle s'y
                      porte d'abord, et c'est un geste qui appartient à l'état des impayés. --}}
                 <span style="font-size:12.5px; color:#B9791C; font-weight:700; align-self:center;">

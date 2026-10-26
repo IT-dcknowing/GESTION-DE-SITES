@@ -83,15 +83,17 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
         $this->assertNull(FactureFne::withoutGlobalScopes()->where('reference', '2626A0000003')->value('facture_fournisseur_id'));
     }
 
-    public function test_les_charges_sont_les_sorties_de_caisse_et_les_saisies_sans_les_fournisseurs(): void
+    /** Depuis le 26/10 : la caisse administrative, les saisies, et chaque pièce du suivi fournisseurs. */
+    public function test_les_charges_sont_la_caisse_administrative_les_saisies_et_le_suivi(): void
     {
         $ecran = $this->charges();
 
         $kpis = $ecran->instance()->kpis;
-        $this->assertSame(30_000, $kpis['total']);
+        $this->assertSame(148_000, $kpis['total']);
         $this->assertSame(20_000, $kpis['salaires'], 'La sortie « avance salaire » est une charge de personnel.');
         $this->assertSame(10_000, $kpis['fonctionnement']);
-        $this->assertSame(30_000, $kpis['totalVentile']['nonVentile']);
+        $this->assertSame(118_000, $kpis['pieces'], 'La pièce du suivi est un achat de pièces.');
+        $this->assertSame(148_000, $kpis['totalVentile']['nonVentile']);
 
         $origines = $ecran->instance()->origines;
         $this->assertSame(20_000, $origines['caisse']);
@@ -101,19 +103,23 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
         $salaires = collect($ecran->instance()->graphique['datasets'])->firstWhere('label', 'Salaires & personnel');
         $this->assertSame(20_000, array_sum($salaires['data']));
 
-        $ecran->assertSee('Suivi fournisseur — à côté');
+        $ecran->assertSee('Suivi fournisseurs — compté en charges');
     }
 
-    public function test_le_tableau_montre_les_charges_et_le_suivi_a_cote(): void
+    public function test_le_tableau_montre_les_charges_et_le_suivi(): void
     {
         $ecran = $this->charges();
 
-        $this->assertSame(2, $ecran->instance()->nombreCharges);
-        $this->assertSame(30_000, $ecran->instance()->montantCharges);
-        $ecran->assertSee('AVANCE SALAIRE MARS');
+        $this->assertSame(3, $ecran->instance()->nombreCharges);
+        $this->assertSame(148_000, $ecran->instance()->montantCharges);
+        $ecran->assertSee('AVANCE SALAIRE MARS')->assertSee('Ets Kouassi pièces');
 
         $ecran->set('provenanceFiltre', 'caisse');
         $this->assertSame(1, $ecran->instance()->nombreCharges);
+
+        $ecran->set('provenanceFiltre', 'suivi');
+        $this->assertSame(1, $ecran->instance()->nombreCharges);
+        $this->assertSame(118_000, $ecran->instance()->montantCharges);
 
         $ecran->set('provenanceFiltre', '')->set('typeFiltre', 'fournisseurs');
         $this->assertSame(2, $ecran->instance()->nombreCharges, 'La pièce du suivi et la FNE pas encore au suivi.');
@@ -135,15 +141,15 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
     {
         $ca = Volt::actingAs($this->gerant)->test('pilotage.chiffre-affaires')
             ->set('dateDebut', '2026-01-01')->set('dateFin', '2026-12-31');
-        $this->assertSame(30_000, $ca->instance()->chargesPeriode);
-        $this->assertSame(-30_000, $ca->instance()->kpis['resultat']);
+        $this->assertSame(148_000, $ca->instance()->chargesPeriode);
+        $this->assertSame(-148_000, $ca->instance()->kpis['resultat']);
 
         $accueil = Volt::actingAs($this->gerant)->test('gerant.tableau-de-bord')
             ->set('dateDebut', '2026-01-01')->set('dateFin', '2026-12-31');
         $kpis = $accueil->instance()->kpis;
-        $this->assertSame(30_000, $kpis['charges']);
-        $this->assertSame(-30_000, $kpis['resultat']);
-        $this->assertSame(30_000, $kpis['chargesVentilees']['mecanique'] + $kpis['chargesVentilees']['sinistre'] + $kpis['chargesVentilees']['nonVentile']);
+        $this->assertSame(148_000, $kpis['charges']);
+        $this->assertSame(-148_000, $kpis['resultat']);
+        $this->assertSame(148_000, $kpis['chargesVentilees']['mecanique'] + $kpis['chargesVentilees']['sinistre'] + $kpis['chargesVentilees']['nonVentile']);
     }
 
     public function test_details_montre_les_lignes_de_la_facture_fne(): void
@@ -192,7 +198,8 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
         $this->assertSame($sortie->id, (int) $reglement->mouvement_caisse_id);
         $this->assertSame(0, $this->piece->fresh()->reste_a_payer);
 
-        // La charge est la sortie de caisse, une fois : 10 000 + 20 000 + 118 000.
+        // La facture compte une fois, par sa pièce du suivi (26/10) : la sortie « règlement » est une
+        // sortie fournisseurs, montrée sans compter. 10 000 + 20 000 + 118 000.
         $this->assertSame(148_000, $this->charges()->instance()->kpis['total']);
 
         $fournisseurs = Volt::actingAs($this->gerant)->test('pilotage.fournisseurs')->set('exercice', 2026);

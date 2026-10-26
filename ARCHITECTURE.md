@@ -178,6 +178,18 @@ cochées (`pagesDuModule`) — le Noyau ne les appelle jamais, la règle de dép
 **lit** : aucune action d'écriture ne le connaît. Les définitions vivent dans la table
 `roles_configures` ; le rôle Spatie de chaque entreprise se crée au premier accès qui le porte.
 
+### Les habilitations : qui voit Modifier et Supprimer (26/10)
+
+`HabilitationsDActions` (Noyau, `Entreprises/Support`) dit si un compte a un geste — `modifier`,
+`supprimer` — sur un domaine (`creances`, `pieces_fournisseurs`). Le code fixe les rôles du départ
+(`DOMAINES[...]['defaut']`, ce que chaque écran permettait avant) ; la table `habilitations_actions`
+porte les écarts décidés en **Maintenance › Habilitations** : un rôle (pour toutes les entreprises)
+ou un compte, accordé ou retiré. Ordre : le compte, puis un rôle accordé, puis un rôle du départ non
+retiré ; le gérant n'est jamais retiré. Les lignes se lisent une fois par requête (instance du
+conteneur, `oublier()` après écriture). Chaque écran lit la même fonction pour **afficher** le bouton
+et pour **autoriser** l'action ; les verrous propres à l'écran (rien de réglé, rien d'importé) restent
+dans `SuppressionDUneCreance` / `SuppressionDUnePieceFournisseur`.
+
 ## Les routes
 
 `routes/web.php` à la racine est **vide**. Chaque module déclare les siennes :

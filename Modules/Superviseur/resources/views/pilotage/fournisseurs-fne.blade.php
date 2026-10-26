@@ -355,8 +355,9 @@ $porter = function (int $id) {
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
             <x-champ label="Afficher" model="filtre" type="select" :live="true" width="240" :options="[
                 'tous' => 'Toutes les factures FNE',
-                'a_porter' => 'FNE absentes du suivi',
-                'au_suivi' => 'Rapprochées du suivi',
+                // 26/10 : « un filtre rapproché, non rapproché ».
+                'au_suivi' => 'Rapprochées du suivi ✔',
+                'a_porter' => 'Non rapprochées ✘',
                 'avoirs' => 'Avoirs',
                 'suivi_sans_fne' => 'Lignes du suivi sans FNE',
             ]" />
@@ -403,7 +404,7 @@ $porter = function (int $id) {
                 <table class="tableau">
                     <thead>
                         <tr><th>N° FNE</th><th>Date</th><th>Émetteur</th><th style="text-align:right;">HT</th>
-                            <th style="text-align:right;">TVA</th><th style="text-align:right;">TTC</th><th>Au suivi</th><th></th></tr>
+                            <th style="text-align:right;">TVA</th><th style="text-align:right;">TTC</th><th>Rapprochée du suivi</th><th></th></tr>
                     </thead>
                     <tbody>
                         @forelse ($this->lignes as $f)
@@ -415,13 +416,16 @@ $porter = function (int $id) {
                                 <td style="text-align:right;">{{ ae(montant_de($f->montant_tva)) }}</td>
                                 <td style="text-align:right; font-weight:700;">{{ ae(montant_de($f->montant_ttc)) }}</td>
                                 <td>
+                                    {{-- Rapprochée ou non, d'un signe (26/10), et la pièce du suivi d'un clic. --}}
                                     @if ($f->pieceDuSuivi)
+                                        <span style="color:#0E9F6E; font-weight:800;">✔</span>
                                         <a href="{{ route('fournisseurs.piece', $f->pieceDuSuivi->id) }}" wire:navigate>{{ $f->pieceDuSuivi->numero_piece }}</a>
                                         <div style="font-size:11px; color:#6B6E76;">reste {{ ae(montant_de($f->pieceDuSuivi->reste_a_payer)) }}</div>
-                                    @elseif ($this->peutEcrire)
-                                        <a href="{{ route('fournisseurs', ['porter' => $f->id]) }}" wire:navigate class="bouton">Porter au suivi</a>
                                     @else
-                                        <span style="color:#C8102E;">absente du suivi</span>
+                                        <span style="color:#C8102E; font-weight:800;" title="Aucune ligne du suivi ne porte ce n°">✘ non rapprochée</span>
+                                        @if ($this->peutEcrire)
+                                            <div style="margin-top:4px;"><a href="{{ route('fournisseurs', ['porter' => $f->id]) }}" wire:navigate class="bouton" style="padding:4px 10px; font-size:12px;">Porter au suivi</a></div>
+                                        @endif
                                     @endif
                                 </td>
                                 {{-- Le détail de la pièce, ligne à ligne : de quoi passer l'écriture comptable (18/10). --}}

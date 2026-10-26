@@ -269,8 +269,8 @@ $kpis = computed(function () {
         ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre))
         ->when($this->idsCommercialFiltre !== null, fn ($q) => $q->whereIn('commercial_id', $this->idsCommercialFiltre))
         ->sum('montant'));
-    // Les charges : sorties de caisse et charges saisies (`ChargesDeLaPeriode`, 20/10) — la caisse,
-    // sans activité, va à « Autres », pour que mécanique + sinistre + autres refassent le total.
+    // Les charges : sorties de caisse administratives, charges saisies et suivi fournisseurs
+    // (`ChargesDeLaPeriode`, 26/10) — la caisse et le suivi, sans activité, vont à « Autres », pour que mécanique + sinistre + autres refassent le total.
     $charges = \Modules\Noyau\Exploitation\Services\ChargesDeLaPeriode::pourLesSites($idsSites->all(), $debut, $fin, (string) $this->activiteFiltre)->totaux()['ventile'];
     $sorties = VentilationActivite::repartir($sortiesQ);
     $encaisse = VentilationActivite::repartir($encaisseQ, 'montant', Encaissement::ACTIVITE_SQL);
@@ -491,7 +491,7 @@ $commentaires = computed(function () {
         <x-kpi-card label="Charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['charges'])"
             :mecanique="$ventile ? ae($this->kpis['chargesVentilees']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['chargesVentilees']['sinistre']) : null"
-            :non-ventile="$ventile && $this->kpis['chargesVentilees']['nonVentile'] ? ae($this->kpis['chargesVentilees']['nonVentile']) : null" autres="Autres : décaissements de caisse (le journal ne dit jamais mécanique ou sinistre) et charges saisies sans activité." :autres-lien="route('charges')"
+            :non-ventile="$ventile && $this->kpis['chargesVentilees']['nonVentile'] ? ae($this->kpis['chargesVentilees']['nonVentile']) : null" autres="Autres : décaissements de caisse (le journal ne dit jamais mécanique ou sinistre), pièces du suivi fournisseurs et charges saisies sans activité." :autres-lien="route('charges')"
             />
         <x-kpi-card label="Résultat net — {{ $this->libellePerimetre }}" :value="ae($this->kpis['resultat'])"
             sub="CA facturé − charges" :bon="$this->kpis['resultat'] >= 0" :accent="$this->kpis['resultat'] < 0"
@@ -673,9 +673,9 @@ $commentaires = computed(function () {
             <div>
                 <h3 class="titre-section" style="margin-bottom:2px;">Charges — synthèse par source</h3>
                 <p style="margin:0; font-size:12.5px; color:#6B6E76; line-height:1.5; max-width:640px;">
-                    Ce que dit chaque source sur la période et le filtre. Les charges retenues sont la caisse et
-                    les saisies ; le suivi fournisseurs, la FNE et la banque se lisent à côté, tels qu'ils sont —
-                    sans lettrage, une même dépense peut y figurer deux fois, et ils ne s'additionnent pas.
+                    Ce que dit chaque source sur la période et le filtre. Les charges retenues (26/10) : la caisse
+                    administrative, les saisies et le suivi fournisseurs. Les sorties de caisse fournisseurs (le suivi
+                    les porte), la FNE et la banque se lisent à côté, sans s'additionner.
                 </p>
             </div>
             <div style="text-align:right;">
@@ -690,22 +690,16 @@ $commentaires = computed(function () {
                 </thead>
                 <tbody>
                     <tr style="font-weight:700;">
-                        <td>Caisse — sorties du journal</td>
+                        <td>Caisse — sorties administratives</td>
                         <td style="text-align:right;">{{ number_format($src['caisse']['n'], 0, ',', ' ') }}</td>
                         <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($src['caisse']['total']) }}</td>
                         <td style="color:#0E9F6E;">Oui</td>
                     </tr>
                     <tr>
-                        <td style="padding-left:26px; color:#4B4E55;">dont charges administratives <span style="font-size:11px; color:#9A9DA5;">(salaires, transport, fonctionnement…)</span></td>
-                        <td style="text-align:right; color:#6B6E76;">{{ number_format($src['caisse']['nAdministratif'], 0, ',', ' ') }}</td>
-                        <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; color:#4B4E55;">{{ ae($src['caisse']['administratif']) }}</td>
-                        <td></td>
-                    </tr>
-                    <tr>
-                        <td style="padding-left:26px; color:#4B4E55;">dont charges fournisseurs <span style="font-size:11px; color:#9A9DA5;">(pièces, travaux, mécanique, sinistre)</span></td>
+                        <td style="padding-left:26px; color:#4B4E55;">Caisse — sorties fournisseurs <span style="font-size:11px; color:#9A9DA5;">(pièces, travaux, mécanique, sinistre)</span></td>
                         <td style="text-align:right; color:#6B6E76;">{{ number_format($src['caisse']['nFournisseurs'], 0, ',', ' ') }}</td>
                         <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; color:#4B4E55;">{{ ae($src['caisse']['fournisseurs']) }}</td>
-                        <td></td>
+                        <td style="color:#6B6E76;">Non — le suivi fournisseurs les porte</td>
                     </tr>
                     <tr style="font-weight:700;">
                         <td>Saisies dans l'application</td>
@@ -713,7 +707,13 @@ $commentaires = computed(function () {
                         <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($src['saisies']['total']) }}</td>
                         <td style="color:#0E9F6E;">Oui</td>
                     </tr>
-                    @foreach (['banque' => 'Banque — débits des relevés', 'fne' => "Factures FNE — achats relevés au portail", 'suivi' => 'Suivi fournisseurs — pièces facturées'] as $cle => $libelle)
+                    <tr style="font-weight:700;">
+                        <td>Suivi fournisseurs — pièces facturées</td>
+                        <td style="text-align:right;">{{ number_format($src['suivi']['n'], 0, ',', ' ') }}</td>
+                        <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ ae($src['suivi']['total']) }}</td>
+                        <td style="color:#0E9F6E;">Oui (26/10)</td>
+                    </tr>
+                    @foreach (['banque' => 'Banque — débits des relevés', 'fne' => "Factures FNE — achats relevés au portail"] as $cle => $libelle)
                         <tr>
                             <td>{{ $libelle }}</td>
                             <td style="text-align:right;">{{ number_format($src[$cle]['n'], 0, ',', ' ') }}</td>

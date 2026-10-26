@@ -75,9 +75,10 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
 
         $ecran->assertSee('Provenance')->assertSee('Journal de caisse');
 
-        // Classée, la sortie compte une fois (20/10 : toutes les sorties sont des charges), sous sa nature.
-        $this->assertSame(45_000, $ecran->instance()->kpis['total']);
-        $this->assertSame(45_000, $ecran->instance()->kpis['pieces']);
+        // 26/10 : un achat de pièces payé par la caisse est une sortie fournisseurs — le suivi
+        // fournisseurs porte l'achat, la sortie ne compte pas, même reprise.
+        $this->assertSame(0, $ecran->instance()->kpis['total']);
+        $this->assertSame(0, $ecran->instance()->kpis['pieces']);
     }
 
     public function test_une_sortie_sans_atelier_demande_ou_la_ranger(): void
@@ -130,7 +131,7 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
     /** D'où viennent les charges (12/10, revu le 20/10) : chaque sortie de caisse est une charge, une seule fois. */
     public function test_la_page_des_charges_dit_d_ou_viennent_les_charges(): void
     {
-        $sortie = $this->sortie('ACHAT HUILE', 45_000, $this->site->id);
+        $sortie = $this->sortie('AVANCE SUR SALAIRE', 45_000, $this->site->id);
         $this->sortie('VERSEMENT BANQUE', 500_000, $this->site->id);
 
         $ecran = Volt::actingAs($this->compte('gerant'))->test('pilotage.charges')
@@ -139,7 +140,8 @@ class UneChargeSeReprendDeLaCaisseTest extends TestCase
             ->call('reprendreDeLaCaisse');
 
         // 20/10 : « toutes les sorties de caisse sont des charges » — la reprise ne compte pas deux fois.
-        // 23/10 : sauf les versements et transferts, montrés mais non comptés.
+        // 23/10 : sauf les versements et transferts, montrés mais non comptés ; 26/10 : et les sorties
+        // fournisseurs, que le suivi porte.
         $origines = $ecran->instance()->origines;
         $this->assertSame(45_000, $origines['caisse']);
         $this->assertSame(0, $origines['saisies']);

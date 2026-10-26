@@ -64,6 +64,8 @@ state([
     'etatFiltre' => 'toutes',
     // D'où vient la ligne : le suivi (importé, saisi, porté), ou la FNE pas encore au suivi.
     'provenanceFiltre' => 'toutes',
+    // Rapprochée de sa facture FNE ou non — 26/10 : « un filtre rapproché, non rapproché ».
+    'rapprochementFiltre' => '',
     /*
      * **Un seul tableau, deux boutons — 22/10** : « Factures reçues » et « À qui nous devons le
      * plus » étaient deux tableaux l'un sous l'autre ; ils deviennent deux vues du même cadre.
@@ -308,6 +310,7 @@ $choisirLaSaisie = function () {
 $updatedExercice = function () { $this->pageDetail = 1; };
 $updatedVilleFiltre = function () { $this->pageDetail = 1; };
 $updatedEtatFiltre = function () { $this->pageDetail = 1; };
+$updatedRapprochementFiltre = function () { $this->pageDetail = 1; };
 /* La FNE pas encore au suivi ne dit pas ce qui en a été réglé : la choisir, c'est regarder toutes
    ses pièces, sans filtre d'état qui n'aurait rien à lire. */
 $updatedProvenanceFiltre = function () {
@@ -397,6 +400,12 @@ $requete = computed(function () {
      * avant le filtre d'état, puisque celui-ci clôt la requête par un `match`.
      */
     FiltreLibre::appliquer($requete, $this->colonnesFiltrables, (array) $this->filtresLibres);
+
+    // Le rapprochement au relevé FNE, par le n° de pièce (26/10).
+    if (in_array($this->rapprochementFiltre, ['rapprochees', 'non'], true) && \App\Support\SchemaDisponible::table('factures_fne')) {
+        $lie = fn ($q) => $q->selectRaw('1')->from('factures_fne')->whereColumn('factures_fne.facture_fournisseur_id', 'factures_fournisseurs.id');
+        $this->rapprochementFiltre === 'rapprochees' ? $requete->whereExists($lie) : $requete->whereNotExists($lie);
+    }
 
     return match ($this->etatFiltre) {
         'ouvertes' => $requete->where('reste_a_payer', '>', 0),
@@ -811,7 +820,8 @@ $colonnesFiltrables = computed(fn () => [
  * filtres » visent des colonnes du classeur qu'elle n'a pas : posés, ils l'écartent.
  */
 $fneHorsSuivi = computed(function () {
-    if ($this->provenanceFiltre === 'suivi' || $this->etatFiltre !== 'toutes'
+    // Une FNE hors suivi n'est, par définition, rapprochée de rien.
+    if ($this->provenanceFiltre === 'suivi' || $this->etatFiltre !== 'toutes' || $this->rapprochementFiltre === 'rapprochees'
         || FiltreLibre::compter($this->colonnesFiltrables, (array) $this->filtresLibres) > 0
         || ! \App\Support\SchemaDisponible::table('factures_fne')) {
         return null;
@@ -861,7 +871,9 @@ $detail = computed(function () {
         ->paginate(25, ['*'], 'pageDetail', $this->pageDetail);
 
     $ids = fn (string $source) => $page->getCollection()->where('source', $source)->pluck('id')->all();
-    $pieces = FactureFournisseur::query()->with(['ville', 'recuePar'])->whereIn('id', $ids('suivi'))->get()->keyBy('id');
+    $pieces = FactureFournisseur::query()->with(['ville', 'recuePar'])
+        ->when(\App\Support\SchemaDisponible::table('factures_fne'), fn ($q) => $q->with('factureFne:id,reference,facture_fournisseur_id'))
+        ->whereIn('id', $ids('suivi'))->get()->keyBy('id');
     $fne = $ids('fne') === [] ? collect() : FactureFne::query()->whereIn('id', $ids('fne'))
         ->get(['id', 'reference', 'est_avoir', 'date_facture', 'emetteur_nom', 'emetteur_ncc', 'montant_ttc'])->keyBy('id');
 
@@ -1194,6 +1206,12 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                     <option value="toutes" @selected($etatFiltre === 'toutes')>Toutes</option>
                 </select>
 
+                <select wire:model.live="rapprochementFiltre" class="champ" style="width:auto;" aria-label="Rapprochement FNE">
+                    <option value="" @selected($rapprochementFiltre === '')>Rapprochées et non rapprochées</option>
+                    <option value="rapprochees" @selected($rapprochementFiltre === 'rapprochees')>Rapprochées de la FNE ✔</option>
+                    <option value="non" @selected($rapprochementFiltre === 'non')>Non rapprochées ✘</option>
+                </select>
+
                 <select wire:model.live="provenanceFiltre" class="champ" style="width:auto;" aria-label="Provenance">
                     <option value="toutes" @selected($provenanceFiltre === 'toutes')>Suivi et FNE</option>
                     <option value="suivi" @selected($provenanceFiltre === 'suivi')>Suivi fournisseurs seul</option>
@@ -1264,6 +1282,8 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                     <tr>
                         <th>Fournisseur</th>
                         <th>N° pièce</th>
+                        {{-- 26/10 : « une colonne qui dit si c'est rapproché ou pas, et un lien vers son pareil ». --}}
+                        <th>FNE</th>
                         <th>Report</th>
                         <th>Facture</th>
                         <th>Échéance</th>
@@ -1287,6 +1307,7 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                     <div style="font-size:11px; color:#7C3AED;">FNE — pas encore au suivi</div>
                                 </td>
                                 <td style="color:#6B6E76;">{{ $ligne->reference }}@if ($ligne->est_avoir) <span style="color:#C8102E; font-weight:700;">avoir</span>@endif</td>
+                                <td style="white-space:nowrap;"><span style="color:#C8102E; font-weight:800;" title="Aucune ligne du suivi ne porte ce n°">✘</span></td>
                                 <td style="color:#6B6E76;">—</td>
                                 <td style="white-space:nowrap;">{{ $ligne->date_facture?->format('d/m/Y') ?? '—' }}</td>
                                 <td style="color:#6B6E76;">—</td>
@@ -1341,6 +1362,14 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                     <div style="font-size:11px; color:#9A9DA5;">saisie</div>
                                 @endif
                             </td>
+                            <td style="white-space:nowrap; font-size:12px;">
+                                @if ($ligne->relationLoaded('factureFne') && $ligne->factureFne)
+                                    <span style="color:#0E9F6E; font-weight:800;">✔</span>
+                                    <a href="{{ route('fournisseurs.fne.detail', $ligne->factureFne->id) }}" wire:navigate title="La facture FNE rapprochée">{{ $ligne->factureFne->reference }}</a>
+                                @else
+                                    <span style="color:#C8102E; font-weight:800;" title="Aucune facture FNE ne porte ce n° de pièce">✘</span>
+                                @endif
+                            </td>
                             <td style="white-space:nowrap; color:#6B6E76;">
                                 {{ EtatDesFournisseurs::libelleReport($ligne, $this->annee) }}
                             </td>
@@ -1378,7 +1407,7 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                             </td>
                         </tr>
                     @empty
-                        <x-table-vide :colspan="12"
+                        <x-table-vide :colspan="13"
                             texte="Aucune facture fournisseur pour cette année et ce filtre. Le suivi fournisseurs se dépose depuis le module Import." />
                     @endforelse
                 </tbody>

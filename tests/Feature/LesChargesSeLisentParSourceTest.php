@@ -91,12 +91,14 @@ class LesChargesSeLisentParSourceTest extends TestCase
     {
         $src = ChargesParSource::pourLesSites($this->e->id, [$this->site->id], '2026-01-01', '2026-12-31')->tout();
 
-        $this->assertSame(25_000, $src['caisse']['total']);
+        // Depuis le 26/10, la caisse ne compte que ses sorties administratives : l'achat de filtres
+        // se montre à côté, le suivi fournisseurs porte les achats.
+        $this->assertSame(20_000, $src['caisse']['total']);
         $this->assertSame(20_000, $src['caisse']['administratif']);
         $this->assertSame(5_000, $src['caisse']['fournisseurs']);
         $this->assertSame(10_000, $src['saisies']['total']);
-        // Le seul total qui s'additionne : la caisse et les saisies.
-        $this->assertSame(35_000, $src['retenu']);
+        // Ce qui s'additionne : la caisse administrative, les saisies et le suivi fournisseurs.
+        $this->assertSame(148_000, $src['retenu']);
         $this->assertSame(118_000, $src['suivi']['total']);
         // Toutes les FNE de la période, au suivi ou non : rien n'est retiré sans lettrage.
         $this->assertSame(177_000, $src['fne']['total']);
@@ -119,7 +121,7 @@ class LesChargesSeLisentParSourceTest extends TestCase
             ->set('dateDebut', '2026-01-01')->set('dateFin', '2026-12-31')
             ->assertSee('Charges selon la caisse')
             ->assertSee('Charges administratives (1)')
-            ->assertSee('Charges fournisseurs (1)')
+            ->assertSee('Charges fournisseurs (1) — non comptées')
             ->assertSee('Factures FNE')
             ->assertSee('Banque — débits des relevés');
 
@@ -127,9 +129,9 @@ class LesChargesSeLisentParSourceTest extends TestCase
             ->set('dateDebut', '2026-01-01')->set('dateFin', '2026-12-31')
             ->assertSee('Charges — synthèse par source');
 
-        $this->assertSame(35_000, $accueil->instance()->chargesParSource['retenu']);
-        // Le KPI « Charges » du haut ne change pas : caisse et saisies.
-        $this->assertSame(35_000, $accueil->instance()->kpis['charges']);
+        $this->assertSame(148_000, $accueil->instance()->chargesParSource['retenu']);
+        // Le KPI « Charges » du haut dit la même chose que la synthèse — 26/10.
+        $this->assertSame(148_000, $accueil->instance()->kpis['charges']);
     }
 
     /** « Factures reçues » et « À qui nous devons le plus » : un cadre, deux boutons — 22/10. */
@@ -154,6 +156,33 @@ class LesChargesSeLisentParSourceTest extends TestCase
         $ecran->call('montrer', 'principaux')
             ->assertSee('Pièces ouvertes')
             ->assertDontSee('FNE — pas encore au suivi');
+    }
+
+    /** « Une colonne aux deux endroits : rapproché ou non, d'un signe, et le lien vers l'autre ; un filtre » — 26/10. */
+    public function test_le_rapprochement_suivi_fne_se_lit_et_se_filtre_des_deux_cotes(): void
+    {
+        $piece = FactureFournisseur::withoutGlobalScopes()->where('numero_piece', 'BL-77')->sole();
+        $fne = FactureFne::withoutGlobalScopes()->where('reference', '2626A0000002')->sole();
+        $this->assertSame($piece->id, (int) $fne->facture_fournisseur_id);
+
+        $suivi = Volt::actingAs($this->gerant)->test('pilotage.fournisseurs')->set('exercice', 2026)
+            ->assertSee(route('fournisseurs.fne.detail', $fne->id), false);
+
+        $suivi->set('rapprochementFiltre', 'rapprochees');
+        $this->assertSame(1, $suivi->instance()->detail->total());
+
+        // Non rapprochées : la seule FNE que personne n'a portée — la pièce rapprochée sort.
+        $suivi->set('rapprochementFiltre', 'non')->assertSee('2626A0000003');
+        $this->assertSame(1, $suivi->instance()->detail->total());
+
+        $ecranFne = Volt::actingAs($this->gerant)->test('pilotage.fournisseurs-fne')->set('exercice', 2026)
+            ->assertSee(route('fournisseurs.piece', $piece->id), false)
+            ->assertSee('non rapprochée');
+
+        $ecranFne->set('filtre', 'au_suivi');
+        $this->assertSame(1, $ecranFne->instance()->nombreLignes);
+        $ecranFne->set('filtre', 'a_porter');
+        $this->assertSame(1, $ecranFne->instance()->nombreLignes);
     }
 
     /** Mois, Code pièce et Résultat indicatif ne se saisissent plus — 22/10 ; le reste des précisions revient. */

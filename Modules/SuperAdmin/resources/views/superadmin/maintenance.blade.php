@@ -433,6 +433,16 @@ $declarerRegle = function (string $reference) {
     </x-carte-section>
     </div>
 
+    {{-- ═══════════════════════════════ les habilitations — 26/10
+
+         « Donner des habilitations de suppression et de modification à certains rôles ou à
+         certains utilisateurs ; les boutons apparaissent chez ceux qui les ont. » --}}
+    <div id="habilitations">
+    <x-carte-section titre="Habilitations — modifier et supprimer">
+        <livewire:superadmin.habilitations />
+    </x-carte-section>
+    </div>
+
     {{-- ═══════════════════════════════ les incidents — 09/10
 
          En tête : c'est ce qu'on vient chercher quand un utilisateur appelle avec une

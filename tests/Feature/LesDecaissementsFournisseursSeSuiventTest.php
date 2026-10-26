@@ -59,7 +59,7 @@ class LesDecaissementsFournisseursSeSuiventTest extends TestCase
     /** « Versements et transferts ne sont pas des charges : ils peuvent rester, avec un mot. » */
     public function test_les_versements_restent_montres_mais_ne_comptent_pas_dans_les_charges(): void
     {
-        $this->sortie('ACHAT PLAQUETTES', 30_000);
+        $this->sortie('TRANSPORT LIVREUR', 30_000);
         $this->sortie('VERSEMENT BANQUE BGFI', 500_000);
 
         $charges = ChargesDeLaPeriode::pourLesSites([$this->site->id], '2026-01-01', '2026-12-31');

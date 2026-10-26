@@ -272,6 +272,10 @@ Réglages facultatifs du `.env` de l'application : `FNE_HEURE_DEBUT=07:00`, `FNE
 3. À l'échéance : sur la page de la pièce, **Régler** → le règlement est lettré à la facture ; si la
    caisse a payé, choisir la sortie du journal dans « Payé par la caisse ? ».
 4. Les KPI de l'écran disent les différences : FNE absentes du suivi, suivi sans FNE.
+5. Depuis le 26/10, le rapprochement **se lit des deux côtés** : à la page FNE, colonne « Rapprochée du
+   suivi » (✔ + lien vers la pièce, ou ✘ « non rapprochée » + Porter au suivi) ; aux Charges
+   fournisseurs, colonne « FNE » (✔ + lien vers la facture FNE, ou ✘). Un filtre « rapprochées / non
+   rapprochées » de chaque côté.
 
 ---
 

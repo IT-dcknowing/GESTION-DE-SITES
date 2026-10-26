@@ -488,6 +488,29 @@ l'écran, et qu'il faut savoir avant d'ouvrir les pages :
   s'ouvre depuis la page **Charges** (bouton « Charges fournisseurs › » et « + Ajouter une pièce ») ;
 - deux pages neuves : **Grand livre fournisseur** et **Décaissements fournisseurs (caisse)**.
 
+### Une seule fois, après la mise à jour du 26 octobre 2026
+
+Une migration additive — `2026_10_26_000001_une_habilitation_ouvre_modifier_et_supprimer` : une table
+neuve, `habilitations_actions`. Rien n'est lu ni écrit ailleurs ; vide, elle laisse chaque bouton tel
+qu'avant. `php artisan app:deployer` la passe.
+
+```bash
+git pull
+php artisan app:deployer
+```
+
+Ce qui change à l'écran :
+
+- **les charges** sont désormais les sorties de caisse **administratives**, les charges saisies et
+  **chaque pièce du suivi fournisseurs** ; les sorties de caisse fournisseurs restent affichées, non
+  comptées. **Le total des charges monte** (le suivi pèse plus que la caisse) : c'est la règle choisie
+  le 26/10. Les sorties fournisseurs sans pièce au suivi se suivent sur **Décaissements fournisseurs
+  (caisse)** ;
+- **rapprochement suivi ↔ FNE** : colonne ✔ / ✘ avec lien des deux côtés, filtre « rapprochées / non
+  rapprochées » ;
+- **Super admin › Maintenance › Habilitations** : donner ou retirer *Modifier* et *Supprimer* (créances,
+  pièces fournisseurs) à un rôle ou à un compte précis.
+
 ### Les deux réglages qui font le plus pour la vitesse
 
 Ils ne se règlent pas dans le code : ils appartiennent à l'hébergement. `php artisan

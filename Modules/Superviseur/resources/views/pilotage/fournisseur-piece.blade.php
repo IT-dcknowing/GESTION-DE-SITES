@@ -1,9 +1,11 @@
 <?php
 
 use Modules\Noyau\Commun\Services\NombreDeJours;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
+use Modules\Noyau\Exploitation\Services\SuppressionDUnePieceFournisseur;
 use Modules\Noyau\Imports\Modeles\FactureFne;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Modeles\ReglementFournisseur;
@@ -33,7 +35,7 @@ use function Livewire\Volt\{computed, mount, state};
  * dirait. Une ligne saisie à la main n'a pas cette contrainte : aucun fichier ne viendra la
  * revendiquer.
  */
-state(['id' => null, 'enModification' => false]);
+state(['id' => null, 'enModification' => false, 'suppressionDemandee' => false]);
 
 state([
     'fournisseur' => '', 'numeroPiece' => '', 'naturePiece' => '',
@@ -83,6 +85,18 @@ $piece = computed(function () {
 });
 
 $peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()));
+
+/*
+ * Modifier et Supprimer suivent les habilitations de la Maintenance — 26/10. Au départ, modifier
+ * appartient aux rôles qui écrivent (`peutEcrire`) et supprimer au gérant ; le Super admin en
+ * donne ou en retire le geste. « Régler » reste aux rôles qui écrivent.
+ */
+$peutModifier = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'pieces_fournisseurs', 'modifier'));
+
+$peutSupprimer = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'pieces_fournisseurs', 'supprimer'));
+
+/** Ce qui empêche d'effacer la pièce affichée, dit en une phrase — ou null. */
+$refusDeSuppression = computed(fn () => $this->piece === null ? null : SuppressionDUnePieceFournisseur::refus(auth()->user(), $this->piece));
 
 $verrouilles = computed(fn () => $this->piece === null
     ? []
@@ -171,7 +185,7 @@ $regler = function () {
 };
 
 $modifier = function () {
-    if (! EtatDesFournisseurs::peutEcrire(auth()->user()) || $this->piece === null) {
+    if (! HabilitationsDActions::accorde(auth()->user(), 'pieces_fournisseurs', 'modifier') || $this->piece === null) {
         abort(403);
     }
 
@@ -205,7 +219,7 @@ $enregistrer = function () {
      * ce qui sait parler à Livewire. Et le périmètre se relit à chaque geste, sur
      * l'identité du lecteur — jamais sur l'identifiant reçu.
      */
-    if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
+    if (! HabilitationsDActions::accorde(auth()->user(), 'pieces_fournisseurs', 'modifier')) {
         abort(403);
     }
 
@@ -294,6 +308,38 @@ $enregistrer = function () {
     $this->dispatch('annonce', texte: 'La pièce est à jour.', ton: 'succes');
 };
 
+$demanderLaSuppression = function () {
+    $this->suppressionDemandee = true;
+};
+
+$annulerLaSuppression = function () {
+    $this->suppressionDemandee = false;
+};
+
+/**
+ * Efface la pièce — 26/10. Le service repose ses verrous (habilitation, rien de réglé, rien
+ * d'importé) : la pièce relue est celle du périmètre, jamais un identifiant reçu.
+ */
+$confirmerLaSuppression = function () {
+    $p = $this->piece;
+
+    if ($p === null) {
+        abort(404);
+    }
+
+    try {
+        $numero = SuppressionDUnePieceFournisseur::effacer(auth()->user(), $p);
+    } catch (\RuntimeException $e) {
+        $this->suppressionDemandee = false;
+        $this->dispatch('annonce', texte: $e->getMessage());
+
+        return;
+    }
+
+    session()->flash('message', 'Pièce '.($numero !== '' ? $numero.' ' : '').'supprimée. Le journal en garde le contenu.');
+    $this->redirectRoute('fournisseurs', navigate: true);
+};
+
 ?>
 
 <div>
@@ -320,8 +366,21 @@ $enregistrer = function () {
                 @if ($this->peutEcrire && ! $enReglement && montant_de($p->reste_a_payer) !== 0)
                     <button type="button" wire:click="ouvrirReglement" class="bouton">Régler</button>
                 @endif
-                @if ($this->peutEcrire && ! $enModification)
+                @if ($this->peutModifier && ! $enModification)
                     <button type="button" wire:click="modifier" class="bouton bouton-secondaire">Modifier</button>
+                @endif
+                {{-- Supprimer — 26/10 : à qui la Maintenance l'a donné. La question se pose sur place. --}}
+                @if ($this->peutSupprimer && ! $enModification)
+                    @if ($suppressionDemandee)
+                        <span style="align-self:center; font-size:12.5px; color:#C8102E; font-weight:700;">Effacer cette pièce ?</span>
+                        <button type="button" wire:click="confirmerLaSuppression" class="bouton" style="background:#C8102E; border-color:#C8102E;">Oui, effacer</button>
+                        <button type="button" wire:click="annulerLaSuppression" class="bouton bouton-secondaire">Non</button>
+                    @elseif ($this->refusDeSuppression === null)
+                        <button type="button" wire:click="demanderLaSuppression" class="bouton bouton-secondaire" style="color:#C8102E; border-color:#C8102E;">Supprimer</button>
+                    @else
+                        {{-- Le refus se lit plutôt qu'un bouton grisé : sans raison, il se prend pour une panne. --}}
+                        <span title="{{ $this->refusDeSuppression }}" style="align-self:center; font-size:12px; color:#6B6E76;">non supprimable</span>
+                    @endif
                 @endif
             </div>
         </x-titre-ecran>

@@ -2,7 +2,7 @@
 
 *Document de présentation à transmettre à un tiers (prestataire, auditeur, partenaire, autre
 équipe). Il dit ce qu'est l'application, comment elle fonctionne, et s'attarde sur les deux
-sujets qui en font la difficulté : **les importations** et **les charges**. État au 23 octobre 2026.*
+sujets qui en font la difficulté : **les importations** et **les charges**. État au 26 octobre 2026.*
 
 > Aucun identifiant, mot de passe ni adresse de serveur ne figure ici. Les noms de classes
 > sont cités pour qu'un développeur retrouve le code ; un lecteur non technique peut les sauter.
@@ -157,6 +157,14 @@ engage l'entreprise reste réservée aux rôles du métier. Le rôle **Trésorer
 ces rôles, défini d'office (`CatalogueDesPages`). Les **rôles du métier** figurent sur la même page,
 avec ce qu'ils ouvrent, et leurs pages se **modifient** aussi (23/10) — ouvrir ou fermer une page de
 lecture ; leurs droits d'écriture restent ceux du code.
+
+**Les habilitations (26/10).** Dans **Maintenance › Habilitations**, le Super admin donne ou retire
+**Modifier** et **Supprimer** — sur les créances de l'état des impayés et sur les pièces fournisseurs —
+à un rôle (du métier ou configuré) ou à un **compte précis**. Les boutons n'apparaissent que chez ceux
+qui ont le geste, et chaque action le revérifie (`HabilitationsDActions`). Sans rien de dit, le code
+décide comme avant ; ce qui est dit d'un compte l'emporte sur son rôle ; le gérant ne perd jamais un
+geste. L'habilitation ne lève pas les verrous : une créance ou une pièce réglée, ou venue d'un fichier,
+ne se supprime pas.
 
 Chaque accès est vérifié **deux fois** : à la route (qui entre dans le module) et dans l'action
 (jusqu'où il va). Le périmètre est toujours lu sur **l'identité** de l'utilisateur, jamais sur un
@@ -408,30 +416,34 @@ périmètre ; les codes employés sont réservés à ceux qui en décident.
 > les autres sources (suivi, FNE, banque) se lisent à côté, sans s'additionner (§ 7.3 bis). Le
 > **23 octobre**, les versements et transferts sortent des charges, et les débits de banque se
 > lisent par leur libellé. Le propriétaire précise : « les vraies charges devraient être celles du
-> suivi fournisseurs ; pour l'instant on garde la caisse » — un changement annoncé, pas fait.
+> suivi fournisseurs ». **C'est fait le 26 octobre** (§ 7.1) : le suivi fournisseurs compte, les
+> sorties de caisse fournisseurs ne comptent plus.
 
-### 7.1 La règle
+### 7.1 La règle — revue le 26 octobre
 
-**« Toutes les sorties de caisse sont des charges »** — **sauf les versements et transferts**
-(23/10 : « ce ne sont pas des charges, ce sont des indications ; ils peuvent rester, avec un mot pour
-dire qu'ils ne sont pas comptés »). Les fournisseurs, eux, « ne font que retracer : c'est un suivi ».
+« **Le fichier du suivi fournisseurs compte comme charge de l'application** » (26/10). Le choix fait
+avec le propriétaire : **le suivi remplace la caisse pour les fournisseurs**. Les achats se comptent
+par leur pièce ; la caisse ne compte plus que ce qui n'est pas un fournisseur.
 
 | Compte dans les charges | Ne compte pas |
 |---|---|
-| **chaque sortie du journal de caisse** (classeur d'Abidjan ou journal PDF de Bouaké / San-Pédro), qu'elle ait été reprise ou non | **le suivi fournisseurs** (une dette, suivie à côté) |
-| **chaque charge saisie** dans l'application, de type « Charges », qui ne vient pas de la caisse | une charge **reprise** de la caisse : sa sortie compte déjà |
-| | les **versements et transferts** sortis de la caisse (dépôt en banque, appro, caisse centrale, DG…) — montrés, non comptés (23/10) |
+| chaque sortie du journal de caisse **administrative** (salaires, transport, fonctionnement, taxes…, et ce que la règle ne reconnaît pas) | les sorties de caisse **fournisseurs** (achats, règlements, main-d'œuvre…) — montrées, non comptées : le suivi porte l'achat |
+| **chaque charge saisie** dans l'application, de type « Charges », qui ne vient pas de la caisse | une charge **reprise** de la caisse : sa sortie décide |
+| **chaque pièce du suivi fournisseurs** facturée sur la période (importée ou saisie, avoirs compris) | les **versements et transferts** sortis de la caisse — montrés, non comptés (23/10) |
+| | la **FNE** et la **banque** — lues à côté |
 | | les **transferts de trésorerie** vers un autre site et les **décaissements DG** saisis |
 
-Pourquoi cette règle : avec l'ancienne (18/10), les pièces du suivi fournisseurs entraient aussi
-dans les charges, et **une facture payée en espèces comptait deux fois** — par sa pièce et par sa
-sortie de caisse. Désormais, l'argent compte là où il est réellement sorti.
+Pourquoi : une facture payée en espèces est au suivi **et** à la caisse. Avant le 26/10 elle comptait
+par sa sortie de caisse ; désormais par sa pièce — une fois. Le risque qui reste : une sortie
+fournisseurs **sans pièce au suivi** ne compte nulle part ; la page **Décaissements fournisseurs**
+les montre « à suivre », et **Suivre** crée la pièce.
 
 ```
- CHARGES DE LA PÉRIODE  =  Σ sorties du journal de caisse          (importées)
+ CHARGES DE LA PÉRIODE  =  Σ sorties de caisse administratives      (importées)
                          + Σ charges saisies non reprises de la caisse
+                         + Σ pièces du suivi fournisseurs           (date de facture)
 
- Suivi fournisseurs ─────► affiché « à côté », n'entre dans aucun total
+ Caisse fournisseurs, versements, FNE, banque ─► affichés, hors du total
 ```
 
 ### 7.2 D'où viennent les charges
@@ -441,7 +453,7 @@ sortie de caisse. Désormais, l'argent compte là où il est réellement sorti.
 | **Journal de caisse** | import `caisse` (Abidjan) ou `journal-caisse` (PDF, Bouaké / San-Pédro) | l'essentiel des charges en ligne : l'application n'a presque pas de saisie |
 | **Saisie dans l'application** | écran **Décaissements** (caissier) : date, type d'opération, nature, montant, moyen, tiers, atelier, activité | type « Charges » = charge ; « Transfert » et « Décaissement DG » = mouvements de trésorerie, pas des charges |
 | **Importée (fichier)** | charge portant un numéro de lot | rare |
-| *Suivi fournisseurs* | import `fournisseurs`, saisie, ou facture FNE portée | **à côté**, jamais dans le total |
+| **Suivi fournisseurs** | import `fournisseurs`, saisie, ou facture FNE portée | **dans le total depuis le 26/10** ; va à « Autres » de la ventilation (il ne dit pas l'activité) |
 
 ### 7.3 La nature d'une sortie de caisse, lue dans son libellé
 
@@ -487,16 +499,16 @@ La demande du propriétaire : « on a la caisse, le suivi des fournisseurs, la F
 
 | Source | Ce qui est lu | Dans le total des charges ? |
 |---|---|---|
-| Caisse | chaque sortie du journal (dont administratif / fournisseurs) | **oui** |
+| Caisse | chaque sortie du journal (dont administratif / fournisseurs) | **administratif : oui** ; fournisseurs : non (26/10) |
 | Saisies | charges saisies non reprises de la caisse | **oui** |
 | Banque | débits des relevés **dont le libellé dit une charge ou un fournisseur** (23/10) ; les autres (chèque sans objet, transfert…) montrés à part, non retenus | à côté |
 | FNE | toutes les factures d'achat relevées au portail, TTC | à côté |
-| Suivi fournisseurs | les pièces facturées, importées telles quelles (années, centimes) | à côté |
+| Suivi fournisseurs | les pièces facturées, importées telles quelles (années, centimes) | **oui** (26/10) |
 
-**Il n'y a pas encore de lettrage** entre ces sources : une même dépense payée en espèces peut être
-au journal de caisse, au suivi et à la FNE. Les additionner la compterait trois fois ; elles sont
-donc montrées, jamais additionnées, jusqu'au jour où un indicateur commun permettra de retirer les
-doublons.
+**Le lettrage reste partiel** : le suivi et la FNE se rapprochent d'eux-mêmes par le n° FNE porté au
+numéro de pièce (✔ / ✘ et lien des deux côtés, filtre rapprochées / non rapprochées — 26/10) ; la
+caisse et la banque ne se lettrent pas encore. C'est pourquoi la FNE et la banque restent à côté, et
+que la caisse fournisseurs sort du total quand le suivi y entre.
 
 ### 7.4 « Reprendre » une sortie de caisse
 

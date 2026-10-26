@@ -118,6 +118,12 @@ class FactureFournisseur extends Model
         return $this->belongsTo(Ville::class);
     }
 
+    /** La facture FNE rapprochée de cette pièce — par son n° de pièce, au relevé comme au dépôt (26/10). */
+    public function factureFne(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(FactureFne::class, 'facture_fournisseur_id');
+    }
+
     /** La ville qui a reçu la facture, quand ce n'est pas celle qui a commandé. */
     public function recuePar(): BelongsTo
     {

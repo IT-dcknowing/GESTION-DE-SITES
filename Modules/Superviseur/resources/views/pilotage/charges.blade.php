@@ -108,8 +108,12 @@ $caPeriode = computed(fn () => montant_de((clone $this->requeteCa)->sum('montant
  * fournisseurs « ne font que retracer, c'est juste un suivi ». Les charges de la page sont donc
  * les sorties du journal de caisse (reprises ou non) et les charges saisies qui ne viennent pas
  * de la caisse — règle écrite une fois, dans `ChargesDeLaPeriode`, et lue par le CA, l'accueil du
- * gérant et la synthèse par atelier. Le suivi fournisseurs se lit **à côté**, jamais additionné :
- * une facture payée en espèces compte une fois, par sa sortie de caisse.
+ * gérant et la synthèse par atelier.
+ *
+ * **Revue le 26/10** : « le fichier du suivi fournisseurs compte comme charge de l'application ».
+ * Les charges sont désormais les sorties de caisse **administratives**, les charges saisies et
+ * chaque pièce du suivi ; les sorties de caisse fournisseurs se montrent sans compter — le suivi
+ * porte ces achats, une facture payée en espèces compte donc une fois, par sa pièce.
  * ─────────────────────────────────────────────────────────────────────────────────────────
  */
 $charges = computed(function () {
@@ -125,7 +129,7 @@ $totauxCharges = computed(fn () => $this->charges->totaux());
 /** Chaque charge, avec sa nature : lue une fois pour les cartes et le graphique. */
 $lignesCharges = computed(fn () => $this->charges->lignes());
 
-/** Le suivi fournisseurs de la période, pour la carte « à côté » et le genre « fournisseurs » du tableau. */
+/** Le suivi fournisseurs de la période, pour sa carte et le genre « fournisseurs » du tableau (avec la FNE). */
 $chargesFournisseurs = computed(function () {
     [$debut, $fin] = $this->plage;
 
@@ -453,8 +457,8 @@ $reprendreDeLaCaisse = function () {
 /*
  * **Le tableau de toutes les charges — 18/10, revu le 20/10.** Les charges saisies et chaque
  * sortie du journal de caisse, en une requête paginée en base (`ChargesDeLaPeriode::tableau`),
- * avec un filtre de provenance. Le genre « Suivi fournisseurs » montre les pièces du suivi à la
- * place — à côté, jamais additionnées.
+ * avec un filtre de provenance ; les pièces du suivi y entrent le 26/10. Le genre « Suivi
+ * fournisseurs » montre le suivi et la FNE qui n'y est pas encore.
  *
  * Les « autres filtres » visent les colonnes des charges ; ceux qui ont un sens pour toute ligne
  * (libellé = nature, tiers, référence, montant) s'appliquent aussi au tableau entier.
@@ -462,7 +466,7 @@ $reprendreDeLaCaisse = function () {
 $toutesLesCharges = computed(function () {
     $saisies = FiltreLibre::appliquer($this->charges->saisies(), $this->colonnesFiltrables, (array) $this->filtresLibres);
 
-    // Les charges comptées (saisies + sorties de caisse), ou — genre « fournisseurs » — le suivi, à côté.
+    // Les charges comptées (saisies, caisse administrative, suivi), ou — genre « fournisseurs » — suivi et FNE.
     $requete = $this->charges->tableau($saisies, $this->chargesFournisseurs, $this->provenanceFiltre, $this->typeFiltre, $this->rechercheCharges);
 
     $communs = ['charges.libelle' => 'nature', 'charges.tiers' => 'tiers', 'charges.reference_origine' => 'reference', 'charges.montant' => 'montant'];
@@ -525,11 +529,11 @@ $pageCharges = computed(function () {
     <div class="carte" style="margin-bottom:16px;">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">D'où viennent les charges — exercice {{ $exercice }}</h3>
         <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
-            Toutes les sorties du journal de caisse sont des charges, avec celles saisies dans
-            l'application ; la caisse se partage par son libellé entre charges administratives
-            (salaires, transport, fonctionnement…) et charges fournisseurs (pièces, travaux, mécanique,
-            sinistre). Le suivi fournisseurs, la FNE et la banque se lisent à côté, tels qu'ils sont :
-            sans lettrage, une même dépense peut y figurer deux fois, et ils ne s'additionnent pas.
+            <b>Depuis le 26/10, les charges sont</b> : les sorties de caisse <b>administratives</b> (salaires,
+            transport, fonctionnement…), les charges saisies dans l'application, et <b>chaque pièce du suivi
+            fournisseurs</b> — le fichier complet. Les sorties de caisse <b>fournisseurs</b> restent affichées sans
+            compter (le suivi porte ces achats), comme les versements et transferts ; la FNE et la banque se lisent
+            à côté.
         </p>
         @php $src = $this->parSource; @endphp
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;">
@@ -537,10 +541,11 @@ $pageCharges = computed(function () {
                  et dessous, voici le montant des charges administratives, et voici celui des charges
                  fournisseurs ». --}}
             <x-kpi-card label="Charges selon la caisse" :value="ae($src['caisse']['total'])" couleur="#B45309"
-                sub="{{ number_format($src['caisse']['n'], 0, ',', ' ') }} décaissement(s) du journal comptés en charges"
+                sub="{{ number_format($src['caisse']['n'], 0, ',', ' ') }} décaissement(s) administratif(s) comptés en charges"
                 :lignes="array_filter([
                     'Charges administratives ('.number_format($src['caisse']['nAdministratif'], 0, ',', ' ').')' => ae($src['caisse']['administratif']),
-                    'Charges fournisseurs ('.number_format($src['caisse']['nFournisseurs'], 0, ',', ' ').')' => ae($src['caisse']['fournisseurs']),
+                    // 26/10 : le suivi fournisseurs porte ces achats ; la caisse ne les compte plus.
+                    'Charges fournisseurs ('.number_format($src['caisse']['nFournisseurs'], 0, ',', ' ').') — non comptées, le suivi les porte' => ae($src['caisse']['fournisseurs']),
                     // 23/10 : « ce ne sont pas des charges, ce sont des indications ; ils peuvent rester ».
                     'Versements & transferts ('.number_format($src['caisse']['nVersements'], 0, ',', ' ').') — non comptés dans les charges' => $src['caisse']['nVersements'] > 0 ? ae($src['caisse']['versements']) : null,
                 ])" />
@@ -549,8 +554,8 @@ $pageCharges = computed(function () {
             {{-- Le suivi fournisseurs de la période et du filtre, tel qu'importé — 22/10 : « voici le
                  montant du suivi fournisseur, suivant la date sélectionnée ; sans lettrage ». --}}
             <a href="{{ route('fournisseurs') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir la page Fournisseurs">
-                <x-kpi-card label="Suivi fournisseurs" :value="ae($src['suivi']['total'])" couleur="#7C3AED"
-                    sub="{{ number_format($src['suivi']['n'], 0, ',', ' ') }} pièce(s) facturée(s) sur la période — à côté, non additionné ›" />
+                <x-kpi-card label="Suivi fournisseurs — compté en charges" :value="ae($src['suivi']['total'])" couleur="#7C3AED"
+                    sub="{{ number_format($src['suivi']['n'], 0, ',', ' ') }} pièce(s) facturée(s) sur la période — la charge fournisseurs depuis le 26/10 ›" />
             </a>
             <a href="{{ route('fournisseurs.fne') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir les factures FNE">
                 <x-kpi-card label="Factures FNE" :value="ae($src['fne']['total'])" couleur="#7C3AED"
@@ -613,11 +618,11 @@ $pageCharges = computed(function () {
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp
-        <x-kpi-card label="Total charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" sub="Décaissements de caisse et charges saisies — hors versements, transferts et décaissements DG"
+        <x-kpi-card label="Total charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" sub="Caisse administrative, charges saisies et suivi fournisseurs — hors versements, transferts et décaissements DG"
             :mecanique="$ventile ? ae($this->kpis['totalVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['totalVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['totalVentile']['nonVentile'] ? ae($this->kpis['totalVentile']['nonVentile']) : null"
-            autres="Autres : les décaissements de caisse (le journal ne dit jamais mécanique ou sinistre) et les charges saisies sans activité."
+            autres="Autres : les décaissements de caisse et les pièces du suivi fournisseurs (ni l'un ni l'autre ne dit mécanique ou sinistre), et les charges saisies sans activité."
             autres-action="voirLaCaisse" />
         @foreach (['pieces' => 'Achats pièces', 'salaires' => 'Salaires & personnel', 'fonctionnement' => 'Fonctionnement', 'autres' => 'Autres décaissements'] as $cle => $libelle)
             <x-kpi-card :label="$libelle" :value="ae($this->kpis[$cle])"
@@ -696,10 +701,9 @@ $pageCharges = computed(function () {
         @else
             @php $provenances = \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::PROVENANCES; @endphp
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-                {{-- Une seule liste depuis le 23/10 : les deux premières valeurs sont des charges, les trois
-                     du suivi se lisent à côté, non additionnées. --}}
+                {{-- Une seule liste depuis le 23/10 ; le 26/10, le suivi y compte, seule la FNE reste à côté. --}}
                 <select wire:model.live="provenanceFiltre" class="champ" style="width:auto;" aria-label="Provenance">
-                    <option value="">Toutes les charges (décaissements de caisse et saisies)</option>
+                    <option value="">Toutes les charges (caisse administrative, saisies et suivi fournisseurs)</option>
                     @foreach ($provenances as $cle => $libelle)
                         <option value="{{ $cle }}">{{ $libelle }}{{ in_array($cle, \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::PROVENANCES_DU_SUIVI, true) ? ' — à côté, non additionné' : '' }}</option>
                     @endforeach

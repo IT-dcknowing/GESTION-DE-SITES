@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 22 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 26 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -50,7 +50,41 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 23 octobre 2026
+## 3. Où l'on en est — 26 octobre 2026
+
+**Le 26/10**, même branche `claude/compassionate-galileo-tly6ai`, fusionnée dans `main` et poussée
+sur les deux dépôts. **Une migration additive** : `2026_10_26_000001` (table neuve
+`habilitations_actions` — vide, elle ne change rien). Tests toujours non lancés dans le conteneur
+(réseau) : un fichier neuf, `LesHabilitationsOuvrentModifierEtSupprimerTest`, et cinq adaptés
+(`LesChargesSeLisentParSourceTest`, `LesChargesSontLaCaisseEtLesSaisiesTest`,
+`UneChargeSeReprendDeLaCaisseTest`, `LesDecaissementsFournisseursSeSuiventTest`, et le test du
+rapprochement ajouté au premier). **À lancer sur le poste avant le déploiement.**
+
+### Fait le 26/10 — le suivi compte en charges, le rapprochement se voit, les habilitations
+
+- **Les charges changent de règle** (choix du propriétaire, 26/10 : « le fichier du suivi
+  fournisseurs compte comme charge de l'application ») : **charges = sorties de caisse
+  administratives + charges saisies + chaque pièce du suivi fournisseurs.** Les sorties de caisse
+  *fournisseurs* (achats, règlements, main-d'œuvre…) restent affichées, **non comptées** — le suivi
+  porte ces achats, une facture payée en espèces compte une fois. Versements et transferts : toujours
+  hors charges. Règle écrite une fois (`ChargesDeLaPeriode::sortiesDeCaisse` / `suivi`), lue par la
+  page Charges, le CA, l'accueil du gérant et `ChargesParSource` (`retenu` = le même total). Le suivi va
+  à « Autres » de la ventilation (il ne dit pas l'activité) ; un filtre d'activité l'écarte.
+  ⚠️ **Les montants de charges en ligne vont monter** (le suivi pèse plus que la caisse) : c'est la
+  règle voulue, pas une erreur.
+- **Rapprochement suivi ↔ FNE, visible des deux côtés.** Il était déjà automatique (`AchatsFne::rapprocher`,
+  au relevé FNE et après chaque import du suivi : le n° FNE lu dans le n° de pièce ou les observations).
+  Désormais : colonne **FNE** au tableau des charges fournisseurs (✔ + lien vers la facture FNE, ou ✘),
+  colonne **Rapprochée du suivi** à la page FNE (✔ + lien vers la pièce, ou ✘ « non rapprochée » +
+  Porter au suivi) ; **filtres** « rapprochées / non rapprochées » des deux côtés.
+- **Maintenance › Habilitations — modifier et supprimer** : le Super admin donne ou retire **Modifier**
+  et **Supprimer** à un **rôle** (du métier ou configuré) ou à un **compte précis**, sur les **créances**
+  (état des impayés) et les **pièces fournisseurs**. Les boutons suivent (`HabilitationsDActions::accorde`),
+  et chaque action se revérifie. Table vide = règle d'avant (modifier une créance : les rôles de la page ;
+  supprimer : gérant ; modifier une pièce : gérant, superviseur de ville, comptabilité). Ce qui est dit
+  d'un compte l'emporte sur son rôle ; le gérant ne perd jamais un geste.
+- **Supprimer une pièce fournisseur** existe (n'existait pas) : gérant ou habilité, pièce **saisie** et
+  **sans règlement** ; la FNE rapprochée est détachée, pas effacée ; le journal garde la ligne.
 
 **Le 23/10**, sur la même branche `claude/compassionate-galileo-tly6ai`, fusionnée dans `main` et
 poussée sur les deux dépôts. **Aucune migration.** Les tests ne tournent toujours pas dans le
@@ -456,6 +490,14 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     du **gestionnaire des fournisseurs** (Maintenance › Rôles et pages) pour qu'on y branche les
     notifications.
 
+22. **Le 26/10** : `php artisan test` sur le poste (un fichier neuf, cinq adaptés), puis en ligne
+    `git pull` et `php artisan app:deployer` (migration `2026_10_26_000001`, table neuve
+    `habilitations_actions` ; vide, elle ne change aucun bouton). **Le total des charges montera** :
+    le suivi fournisseurs y entre, les sorties fournisseurs de la caisse en sortent — règle choisie le
+    26/10. Ensuite : **Décaissements fournisseurs (caisse)**, suivre les sorties encore « à suivre »
+    (sans pièce au suivi, elles ne comptent plus nulle part) ; **Maintenance › Habilitations**, donner
+    modifier / supprimer à qui doit les avoir.
+
 ### En attente d'un accord, pas d'un travail
 
 - **Correspondances — quatre choix faits sans confirmation**, chacun réversible en une ligne :
@@ -477,15 +519,18 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 - **Notifications fournisseurs** (23/10) : à chaque décaissement fournisseur de la caisse et à chaque
   facture FNE relevée, prévenir « celui qui gère les fournisseurs » — **le rôle sera créé par le
   propriétaire** (il peut l'être par Maintenance › Rôles et pages) ; à brancher ensuite.
-- **Les vraies charges = le suivi fournisseurs** : annoncé le 23/10 (« pour l'instant on garde la
-  caisse ; dans le futur, on verra comment changer ça »). Rien n'est fait.
+- ~~Les vraies charges = le suivi fournisseurs~~ — **fait le 26/10** (§ 3).
+- **Habilitations, autres écrans** (26/10) : seules les créances et les pièces fournisseurs passent par
+  `HabilitationsDActions`. Charges saisies, caisse, encaissements gardent leurs règles : les ajouter à
+  `HabilitationsDActions::DOMAINES` puis brancher le bouton et l'action, écran par écran.
 - **« Classer des sorties de caisse »** : à réformer (retirée de l'écran le 23/10, code gardé).
 
 - **Lettrage des sources de charges** : caisse, suivi fournisseurs, FNE et banque se lisent côte à
   côte sans retrait des doublons (22/10). Quand un indicateur commun existera (n° FNE porté dans la
   caisse, référence de règlement…), retirer les doublons dans `ChargesParSource`.
-- **Rôles configurés en écriture** : aujourd'hui ils lisent seulement. Ouvrir une écriture à l'un
-  d'eux demanderait de passer chaque `peutEcrire()` / `hasAnyRole` des actions par le catalogue.
+- **Rôles configurés en écriture** : ils lisent seulement, **sauf** modifier/supprimer une créance ou
+  une pièce fournisseur, qui s'accordent depuis le 26/10 (Maintenance › Habilitations). Le reste des
+  écritures demanderait de passer chaque `peutEcrire()` / `hasAnyRole` des actions par une habilitation.
 
 - **Accueil du gérant, « Encaissé » et « Trésorerie nette »** (synthèse par atelier) lisent encore
   les règlements, pas `TresorerieReelle` comme la page Trésorerie depuis le 20/10 : à aligner (par
@@ -552,6 +597,11 @@ pas en théorie :
    sur les relevés en ligne.
 
 Chacun se change en une ligne dans `CategorieDeSortie` (`CATEGORIES_FOURNISSEURS`).
+
+**Depuis le 26/10 ce partage décide de ce qui compte** : une sortie rangée en fournisseurs ne compte
+plus (le suivi la porte). Le risque : **une sortie fournisseurs qui n'a pas sa pièce au suivi** sort des
+charges sans rien en face. La page *Décaissements fournisseurs* les montre « à suivre » — **Suivre**
+crée la pièce, qui compte. À regarder en ligne après le déploiement.
 
 ---
 

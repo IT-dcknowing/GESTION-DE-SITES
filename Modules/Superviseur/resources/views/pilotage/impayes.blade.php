@@ -9,6 +9,7 @@ use Modules\Noyau\Commun\Modeles\Referentiel;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Banque;
@@ -526,7 +527,10 @@ $creanceASupprimer = computed(fn () => $this->suppressionDemandee === null ? nul
 )->find((int) $this->suppressionDemandee));
 
 /** Vrai si ce compte peut, en principe, effacer une créance — le bouton n'apparaît pas sinon. */
-$peutSupprimer = computed(fn () => auth()->user()->hasRole('gerant'));
+$peutSupprimer = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'creances', 'supprimer'));
+
+/** Le bouton Modifier : les rôles de l'écran par défaut, ce que la Maintenance en a fait depuis — 26/10. */
+$peutModifier = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'creances', 'modifier'));
 
 $demanderLaSuppression = function (int $id) {
     $this->suppressionDemandee = $id;
@@ -574,6 +578,12 @@ $confirmerLaSuppression = function () {
 };
 
 $modifier = function (int $id) {
+    if (! $this->peutModifier) {
+        $this->dispatch('annonce', texte: "Vous n'êtes pas habilité à modifier une créance.");
+
+        return;
+    }
+
     $this->viderLeFormulaire();
     $this->enModification = $id;
     unset($this->ligneModifiee, $this->verrouilles);
@@ -624,6 +634,13 @@ $enregistrer = function () {
     $ligne = null;
 
     if ($this->enModification !== null) {
+        // Revérifié à l'enregistrement : le formulaire a pu s'ouvrir avant que l'habilitation tombe.
+        if (! $this->peutModifier) {
+            $this->addError('fNumero', "Vous n'êtes pas habilité à modifier une créance.");
+
+            return;
+        }
+
         unset($this->ligneModifiee, $this->verrouilles);
         $ligne = $this->ligneModifiee;
 
@@ -1276,8 +1293,10 @@ $basculerPortage = function () {
                                 {{-- Le détail a sa page : il se lit au large, et se rouvre dans un autre onglet. --}}
                                 <a href="{{ route('impayes.detail', $ligne->id) }}" wire:navigate class="bouton bouton-secondaire"
                                     style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
-                                <button type="button" wire:click="modifier({{ $ligne->id }})" class="bouton"
-                                    style="padding:4px 10px; font-size:12px;">Modifier</button>
+                                @if ($this->peutModifier)
+                                    <button type="button" wire:click="modifier({{ $ligne->id }})" class="bouton"
+                                        style="padding:4px 10px; font-size:12px;">Modifier</button>
+                                @endif
 
                                 @if ($this->peutSupprimer)
                                     @php $empeche = SuppressionDUneCreance::refus(auth()->user(), $ligne); @endphp
