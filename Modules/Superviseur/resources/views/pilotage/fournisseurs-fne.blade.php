@@ -171,9 +171,11 @@ $deposer = function () {
 /**
  * « Actualiser » — relève le portail maintenant, sans attendre l'heure pleine.
  *
- * Le script part détaché (un relevé dure des dizaines de secondes) ; la page interroge ensuite
- * toutes les cinq secondes (`verifier`) et range le fichier dès qu'il arrive. Le même verrou que le
- * passage horaire : cliquer dix fois n'ouvre pas dix sessions sur le portail de l'État.
+ * **Depuis le 26/10, la page ne lance plus le navigateur** : lancé par le processus web, il mettait
+ * tout le site en « 503 Service Unavailable » pendant le relevé. Elle dépose une demande, que la
+ * tâche planifiée prend dans la minute (`fne:actualiser --si-demande`) ; la page interroge ensuite
+ * toutes les cinq secondes (`verifier`) et range le fichier dès qu'il arrive. Une demande en attente
+ * ou un relevé en route suffisent : cliquer dix fois n'ouvre pas dix sessions sur le portail.
  */
 $actualiser = function () {
     if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
@@ -190,27 +192,23 @@ $actualiser = function () {
         return;
     }
 
-    if (! LanceurDeReleveFne::verrouiller()) {
-        $this->messageActualisation = 'Un relevé est déjà en cours : le résultat apparaîtra ici dès son arrivée.';
-        $this->attenteDepuis ??= now()->timestamp;
-
-        return;
-    }
-
-    // Le premier relevé est complet (depuis 2023) ; les suivants ne reprennent que les derniers jours.
+    // Le premier relevé est complet ; les suivants ne reprennent que les derniers jours.
     $complet = ! ReleveFne::query()->exists();
     $ncc = trim((string) auth()->user()->entreprise?->ncc);
 
     try {
-        LanceurDeReleveFne::detacher($complet, $ncc !== '' ? $ncc : null);
+        LanceurDeReleveFne::verifierLeLancement($complet, $ncc !== '' ? $ncc : null);
     } catch (\RuntimeException $e) {
-        LanceurDeReleveFne::deverrouiller();
         $this->messageActualisation = $e->getMessage();
 
         return;
     }
 
-    $this->attenteDepuis = now()->timestamp;
+    if (LanceurDeReleveFne::enCours() || ! LanceurDeReleveFne::demander($complet, $ncc !== '' ? $ncc : null, auth()->id())) {
+        $this->messageActualisation = 'Un relevé est déjà demandé ou en cours : le résultat apparaîtra ici dès son arrivée.';
+    }
+
+    $this->attenteDepuis ??= now()->timestamp;
 };
 
 /** Appelée par `wire:poll` : le fichier est-il arrivé ? Le range, ou renonce passé le délai. */
@@ -229,9 +227,9 @@ $verifier = function () {
             $bilan = $lu['deja'] ? $bilan : $lu;
         }
 
+        // Le verrou appartient à la tâche planifiée, qui le lève elle-même à la fin.
         $this->bilan = $bilan;
         $this->attenteDepuis = null;
-        LanceurDeReleveFne::deverrouiller();
         unset($this->kpi, $this->lignes, $this->nombreLignes, $this->releves, $this->exercices);
 
         return;
@@ -239,7 +237,15 @@ $verifier = function () {
 
     if (now()->timestamp - (int) $this->attenteDepuis > (int) config('fne.delai_secondes')) {
         $this->attenteDepuis = null;
-        LanceurDeReleveFne::deverrouiller();
+
+        // La demande n'a jamais été prise : ce n'est pas le portail, c'est la tâche planifiée.
+        if (LanceurDeReleveFne::prendreLaDemande() !== null) {
+            $this->messageActualisation = "La demande n'a pas été prise : la tâche planifiée ne tourne pas. Dans cPanel → Tâches Cron, "
+                .'la ligne « artisan schedule:run » doit exister, toutes les minutes (avec une espace après artisan).';
+
+            return;
+        }
+
         $this->messageActualisation = "Le relevé n'est pas arrivé après ".((int) config('fne.delai_secondes') / 60).' minutes. La cause est dans storage/logs/fne-scraper.log (accès refusés, portail injoignable…).';
     }
 };

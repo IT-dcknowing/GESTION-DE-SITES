@@ -504,6 +504,10 @@ Puis, une fois, dans `SCRAPER-PORTAIL-FNE/.env` (hors de git) : `ACHATS_DEPUIS=2
 les années ». Le relevé complet de la nuit repart de là ; la page FNE dit ensuite la plus ancienne
 facture que le portail a rendue.
 
+**Le bouton « Actualiser depuis la FNE »** ne lance plus le navigateur depuis la page (il mettait le
+site en 503) : il dépose une demande que `schedule:run` sert dans la minute. La ligne Cron
+`artisan schedule:run`, **toutes les minutes**, est donc indispensable.
+
 Ce qui change à l'écran :
 
 - **les charges** sont désormais les sorties de caisse **administratives**, les charges saisies et

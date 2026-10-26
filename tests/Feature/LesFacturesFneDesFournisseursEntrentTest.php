@@ -254,6 +254,35 @@ class LesFacturesFneDesFournisseursEntrentTest extends TestCase
         \Modules\Noyau\Imports\Services\LanceurDeReleveFne::deverrouiller();
     }
 
+    /** 26/10 : la page ne lance plus le navigateur (503 du site) ; elle dépose une demande que la tâche planifiée sert. */
+    public function test_actualiser_depose_une_demande_sans_rien_lancer(): void
+    {
+        config()->set('fne.actif', true);
+        config()->set('fne.node', PHP_BINARY);
+        // Un faux scraper « installé » : le bouton vérifie Node, le script et node_modules, sans rien lancer.
+        $dossier = storage_path('framework/testing/scraper-fne');
+        @mkdir($dossier.'/node_modules', 0775, true);
+        file_put_contents($dossier.'/achats.js', '');
+        config()->set('fne.script', $dossier.'/achats.js');
+        \Modules\Noyau\Imports\Services\LanceurDeReleveFne::prendreLaDemande();
+
+        Volt::actingAs($this->compte('gerant'))->test('pilotage.fournisseurs-fne')
+            ->call('actualiser')
+            ->assertNotSet('attenteDepuis', null);
+
+        $demande = \Modules\Noyau\Imports\Services\LanceurDeReleveFne::demandeEnAttente();
+        $this->assertNotNull($demande);
+        $this->assertFalse(\Modules\Noyau\Imports\Services\LanceurDeReleveFne::enCours(), 'La page ne pose plus le verrou : la tâche planifiée le fait.');
+
+        // Un second clic ne double pas la demande.
+        $this->assertFalse(\Modules\Noyau\Imports\Services\LanceurDeReleveFne::demander(false));
+        \Modules\Noyau\Imports\Services\LanceurDeReleveFne::prendreLaDemande();
+
+        // Sans demande, le passage de chaque minute ne fait rien.
+        $this->artisan('fne:actualiser --si-demande')->assertSuccessful();
+        $this->assertFalse(\Modules\Noyau\Imports\Services\LanceurDeReleveFne::enCours());
+    }
+
     public function test_la_page_range_le_fichier_des_qu_il_arrive(): void
     {
         $dossier = \Modules\Noyau\Imports\Services\LanceurDeReleveFne::dossierDesReleves();

@@ -27,3 +27,11 @@ Schedule::command('fne:actualiser')->hourly()
     ->withoutOverlapping(15)->runInBackground();
 Schedule::command('fne:actualiser --complet')->dailyAt(config('fne.heure_complet', '02:30'))
     ->withoutOverlapping(30)->runInBackground();
+
+/*
+ * La demande du bouton « Actualiser » (26/10) : servie dans la minute, par la tâche planifiée et non
+ * par la page — lancé depuis le web, le navigateur du relevé mettait le site en 503. Sans demande, le
+ * passage ne fait rien.
+ */
+Schedule::command('fne:actualiser --si-demande')->everyMinute()
+    ->withoutOverlapping(15)->runInBackground();

@@ -312,6 +312,16 @@ function optionDepuis() {
   return valeur;
 }
 
+/**
+ * Ce que le relevé n'a pas besoin de télécharger : images, polices, médias. Le portail se lit par
+ * son API ; ces ressources ne servaient qu'à l'écran, et pesaient sur la mémoire du compte (26/10).
+ */
+async function alleger(contexte) {
+  await contexte.route('**/*', route => (
+    ['image', 'font', 'media'].includes(route.request().resourceType()) ? route.abort() : route.continue()
+  ));
+}
+
 /** La date du jour, en AAAA-MM-JJ — le format qu'attend l'API. */
 function aujourdHui() {
   const d = new Date();
@@ -426,6 +436,7 @@ async function lireLeTableau(page) {
  */
 async function reconnaitre(navigateur, login, motDePasse) {
   const contexte = await navigateur.newContext({ acceptDownloads: true });
+  await alleger(contexte);
   const page = await contexte.newPage();
   const captures = ecouterLesReponses(page);
   const autorisation = capterLAutorisation(page);
@@ -581,6 +592,7 @@ async function releverUnLogin(navigateur, login, motDePasse, dossier) {
   // Un contexte neuf par login : deux entreprises ne partagent jamais une
   // session, sous peine de ranger les factures de l'une chez l'autre.
   const contexte = await navigateur.newContext({ acceptDownloads: true });
+  await alleger(contexte);
   const page = await contexte.newPage();
   const autorisation = capterLAutorisation(page);
 
@@ -674,9 +686,16 @@ async function passage() {
   if (relevables.length) {
     // `--single-process --no-zygote` : voir fne.js, même correction, même
     // constat le 15/09/2026 sur l'hébergement mutualisé de production.
+    // 26/10 : les 503 du site pendant un relevé — l'hébergement mutualisé compte la mémoire du
+    // navigateur avec celle du site. Le moins de mémoire possible : pas de GPU, pas de /dev/shm,
+    // un tas JavaScript borné, et (plus bas, `alleger`) ni images, ni polices, ni médias.
     const navigateur = await chromium.launch({
       headless: process.env.FNE_HEADLESS !== 'false',
-      args: ['--no-sandbox', '--single-process', '--no-zygote'],
+      args: [
+        '--no-sandbox', '--single-process', '--no-zygote',
+        '--disable-gpu', '--disable-dev-shm-usage', '--disable-extensions', '--mute-audio',
+        '--disable-background-networking', '--js-flags=--max-old-space-size=192',
+      ],
       env: environnementDuNavigateur(),
     });
 

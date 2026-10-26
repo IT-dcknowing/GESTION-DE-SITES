@@ -17,7 +17,9 @@ use Modules\Noyau\Imports\Services\LanceurDeReleveFne;
  */
 class ActualiserLesAchatsFne extends Command
 {
-    protected $signature = 'fne:actualiser {--complet : relève tout l’historique, pas seulement les derniers jours}';
+    protected $signature = 'fne:actualiser
+        {--complet : relève tout l’historique, pas seulement les derniers jours}
+        {--si-demande : ne relève que si le bouton « Actualiser » l’a demandé (passage de chaque minute)}';
 
     protected $description = 'Relève les achats du portail FNE puis les range (relevé horaire, ou complet avec --complet)';
 
@@ -29,7 +31,29 @@ class ActualiserLesAchatsFne extends Command
             return self::SUCCESS;
         }
 
-        // Le verrou du bouton « Actualiser » : un relevé en route n'est pas doublé.
+        $complet = (bool) $this->option('complet');
+        $login = null;
+
+        /*
+         * Le bouton « Actualiser » (26/10) : il dépose une demande, ce passage de chaque minute la
+         * sert. Rien de demandé : rien à faire, et rien n'est écrit au journal.
+         */
+        if ($this->option('si-demande')) {
+            if (LanceurDeReleveFne::demandeEnAttente() === null || LanceurDeReleveFne::enCours()) {
+                return self::SUCCESS;
+            }
+
+            $demande = LanceurDeReleveFne::prendreLaDemande();
+
+            if ($demande === null) {
+                return self::SUCCESS;
+            }
+
+            $complet = (bool) ($demande['complet'] ?? false);
+            $login = ($demande['login'] ?? null) ?: null;
+        }
+
+        // Le verrou : un relevé en route n'est pas doublé.
         if (! LanceurDeReleveFne::verrouiller()) {
             $this->line('Un relevé est déjà en route : rien lancé.');
 
@@ -37,7 +61,7 @@ class ActualiserLesAchatsFne extends Command
         }
 
         try {
-            [$reussi, $sortie] = LanceurDeReleveFne::executer((bool) $this->option('complet'));
+            [$reussi, $sortie] = LanceurDeReleveFne::executer($complet, $login);
         } catch (\RuntimeException $e) {
             $this->error($e->getMessage());
 

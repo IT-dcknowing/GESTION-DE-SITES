@@ -60,6 +60,26 @@ sur les deux dépôts. **Une migration additive** : `2026_10_26_000001` (table n
 `UneChargeSeReprendDeLaCaisseTest`, `LesDecaissementsFournisseursSeSuiventTest`, et le test du
 rapprochement ajouté au premier). **À lancer sur le poste avant le déploiement.**
 
+### Fait le 26/10 (fin de journée) — « Actualiser depuis la FNE » mettait le site en 503
+
+- **Constat** (captures du propriétaire, 16 h 15) : un clic sur « Actualiser depuis la FNE » → tout le
+  site répond « 503 Service Unavailable … while trying to use an ErrorDocument » pendant plus de dix
+  minutes, puis « le relevé n'est pas arrivé ». Le `laravel.log` joint n'a **rien** le 26/10 : la panne
+  est celle de l'hébergeur (ressources du compte épuisées), pas de l'application. Cause : le bouton
+  lançait Chromium **depuis le processus web** ; sa mémoire s'ajoutait à celle du site.
+- **Corrigé** : le bouton **dépose une demande** (`LanceurDeReleveFne::demander`), la tâche planifiée la
+  sert dans la minute (`fne:actualiser --si-demande`, chaque minute, sans rien faire s'il n'y a rien) ;
+  le navigateur tourne en **priorité basse** (`nice -n 19`) avec moins de mémoire (pas de GPU, tas JS
+  borné, ni images ni polices ni médias). Si la demande n'est pas prise en dix minutes, l'écran dit que
+  le Cron ne tourne pas.
+- **Toutes les années** : confirmé par la page — interrogé depuis le 01/01/2023, la plus ancienne facture
+  reçue date du **08/09/2025**. Le portail ne rend rien avant : l'entreprise n'a pas de FNE plus ancienne.
+  Le sélecteur « Personnaliser » du portail (capture 5) choisit une plage en deux clics — mois de début,
+  puis mois de fin — sans bouton de confirmation.
+- **À surveiller** : le relevé horaire et celui de la nuit tournent toujours sur le même compte
+  d'hébergement. Si des 503 reviennent à l'heure pile, réduire la cadence (`FNE_HEURE_DEBUT/FIN`) ou
+  demander à l'hébergeur la limite mémoire (LVE) du compte.
+
 ### Fait le 26/10 (suite) — portefeuille clients des commerciaux, flux de trésorerie, FNE
 
 - **Portefeuille clients des commerciaux** (nouvelle logique) : le gérant, le superviseur de ville et le

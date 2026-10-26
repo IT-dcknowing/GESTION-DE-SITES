@@ -14,8 +14,15 @@ use Symfony\Component\Process\Process;
  *
  * - **le planificateur** (`fne:actualiser`) : le lance et **attend** sa fin, puis range ce qu'il a
  *   déposé ;
- * - **le bouton « Actualiser »** : le lance **détaché** — un relevé dure des dizaines de secondes,
- *   l'écran ne doit pas rester figé dessus — et la page va ensuite voir si le fichier est arrivé.
+ * - **le bouton « Actualiser »** : depuis le 26/10, il ne lance plus rien lui-même. Il **dépose une
+ *   demande** (`demander`), que le planificateur prend dans la minute (`fne:actualiser --si-demande`) ;
+ *   la page va ensuite voir si le fichier est arrivé.
+ *
+ * **Pourquoi plus de lancement depuis la page — 26/10.** Lancé par le processus web, le navigateur
+ * vivait dans le même compte d'hébergement que le site : sa mémoire s'ajoutait à celle des pages, et
+ * l'hébergeur répondait « 503 Service Unavailable » à tout le monde pendant plus de dix minutes — le
+ * relevé lui-même finissait coupé. Lancé par la tâche planifiée, en priorité basse (`nice`), il ne
+ * retient aucun processus web. `detacher` reste pour le poste de développement (Windows).
  *
  * Un verrou empêche deux navigateurs sur le portail en même temps : le bouton cliqué dix fois, ou
  * pressé pendant le passage horaire, ne rouvre pas dix sessions avec le mot de passe de l'entreprise.
@@ -23,6 +30,50 @@ use Symfony\Component\Process\Process;
 final class LanceurDeReleveFne
 {
     public const VERROU = 'fne_releve_achats';
+
+    /** La demande du bouton « Actualiser », en attente de la tâche planifiée. */
+    public const DEMANDE = 'fne_releve_demande';
+
+    /** Dépose une demande de relevé ; vrai si elle est nouvelle (une demande en attente suffit). */
+    public static function demander(bool $complet, ?string $login = null, ?int $par = null): bool
+    {
+        return Cache::add(self::DEMANDE, [
+            'complet' => $complet, 'login' => $login, 'par' => $par, 'le' => now()->timestamp,
+        ], now()->addSeconds((int) config('fne.delai_secondes')));
+    }
+
+    /** La demande en attente, sans la prendre — pour dire à l'écran que la tâche ne l'a pas encore lue. */
+    public static function demandeEnAttente(): ?array
+    {
+        $demande = Cache::get(self::DEMANDE);
+
+        return is_array($demande) ? $demande : null;
+    }
+
+    /** Prend la demande : elle n'est servie qu'une fois. */
+    public static function prendreLaDemande(): ?array
+    {
+        $demande = Cache::pull(self::DEMANDE);
+
+        return is_array($demande) ? $demande : null;
+    }
+
+    /**
+     * Vérifie que Node et le script existent, sans rien lancer : le bouton le dit tout de suite
+     * plutôt que d'attendre dix minutes une tâche qui échouera.
+     *
+     * @throws RuntimeException
+     */
+    public static function verifierLeLancement(bool $complet, ?string $login = null): void
+    {
+        self::verifier(self::commande($complet, $login));
+    }
+
+    /** Vrai si un relevé tourne (verrou posé par la tâche planifiée). */
+    public static function enCours(): bool
+    {
+        return Cache::has(self::VERROU);
+    }
 
     public static function actif(): bool
     {
@@ -110,6 +161,13 @@ final class LanceurDeReleveFne
     {
         $arguments = self::commande($complet, $login);
         self::verifier($arguments);
+
+        // En priorité basse quand `nice` existe : le site passe avant le navigateur du relevé (26/10).
+        $nice = \PHP_OS_FAMILY === 'Windows' ? null : (new ExecutableFinder)->find('nice');
+
+        if ($nice !== null) {
+            $arguments = [$nice, '-n', '19', ...$arguments];
+        }
 
         $processus = new Process($arguments, dirname((string) config('fne.script')), null, null, (float) config('fne.delai_secondes'));
         $processus->run();

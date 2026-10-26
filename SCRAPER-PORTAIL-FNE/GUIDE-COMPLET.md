@@ -88,7 +88,7 @@ FNE_LIBS=/home/cp2255957p00/local-libs/usr/lib64:/home/cp2255957p00/local-libs/l
 | `php artisan fne:releve-achats` | range seulement les fichiers déjà déposés |
 | `storage/app/portail-fne/achats/` | les fichiers JSON déposés par le relevé |
 | `storage/logs/fne-scraper.log` | le journal du relevé |
-| **Fournisseurs › Factures FNE** | l'écran : les pièces, « Actualiser depuis la FNE », « Lire le relevé », « Porter au suivi » |
+| **Fournisseurs › Factures FNE** | l'écran : les pièces, « Actualiser depuis la FNE » (depuis le 26/10 : dépose une demande, servie par `schedule:run` dans la minute — plus de navigateur lancé par la page, qui mettait le site en 503), « Lire le relevé », « Porter au suivi » |
 | **Charges** | la carte « Achats normalisés — factures fournisseurs FNE » (à côté des charges, jamais additionnée) |
 | **Gérant › Paramètres** | le **NCC** de l'entreprise : c'est par lui que le fichier retrouve son entreprise |
 
