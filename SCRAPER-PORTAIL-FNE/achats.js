@@ -119,8 +119,10 @@ const CHEMIN_API = '/ws/invoices';
  * La FNE n'a pas d'histoire antérieure à son entrée en service ; remonter plus
  * loin ne rendrait rien de plus et ferait tourner la pagination pour rien.
  */
-// Le CA de l'entreprise remonte à 2023 : le relevé complet part de là (ACHATS_DEPUIS pour le changer).
-const DEPUIS_PAR_DEFAUT = process.env.ACHATS_DEPUIS || '2023-01-01';
+// « Toutes les années » (26/10) : le relevé complet part du 01/01/2020, avant toute facture
+// possible. L'API filtre par date, une borne plus ancienne ne coûte aucune page de plus.
+// ACHATS_DEPUIS pour la changer.
+const DEPUIS_PAR_DEFAUT = process.env.ACHATS_DEPUIS || '2020-01-01';
 
 /* ------------------------------ Le mouchard ------------------------------- */
 

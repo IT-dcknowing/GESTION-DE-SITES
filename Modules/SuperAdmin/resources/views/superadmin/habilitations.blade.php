@@ -212,57 +212,35 @@ $effacer = function (int $id) {
 
     <form wire:submit="enregistrer">
         <h3 style="font-size:14.5px; font-weight:700; margin:0 0 8px;">Donner ou retirer une habilitation</h3>
-        <div class="bloc-saisie" style="background:#fff; border-style:solid; margin-bottom:12px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-            <div>
-                <label for="hab-sens">Geste</label>
-                <select id="hab-sens" wire:model="sens">
-                    <option value="accorder">Accorder</option>
-                    <option value="retirer">Retirer</option>
-                </select>
-            </div>
-            <div>
-                <label for="hab-beneficiaire">À</label>
-                <select id="hab-beneficiaire" wire:model.live="beneficiaire">
-                    <option value="role">un rôle</option>
-                    <option value="compte">un compte précis</option>
-                </select>
-            </div>
+        {{-- Les champs de la maison (`x-champ`) : libellé au-dessus, même cadre que partout — 26/10,
+             « le style n'y est pas ». --}}
+        <div class="bloc-saisie" style="background:#fff; border-style:solid; margin-bottom:12px;">
+            <x-champ label="Geste" model="sens" type="select" width="150" :options="['accorder' => 'Accorder', 'retirer' => 'Retirer']" />
+            <x-champ label="À" model="beneficiaire" type="select" :live="true" width="190" :options="['role' => 'Un rôle', 'compte' => 'Un compte précis']" />
             @if ($beneficiaire === 'role')
-                <div>
-                    <label for="hab-role">Rôle</label>
-                    <select id="hab-role" wire:model="role">
-                        <option value="">— à choisir —</option>
-                        @foreach ($this->roles as $nom => $libelle)
-                            <option value="{{ $nom }}">{{ $libelle }}</option>
-                        @endforeach
-                    </select>
-                    @error('role') <div style="color:#C8102E; font-size:12px;">{{ $message }}</div> @enderror
-                </div>
+                <x-champ label="Rôle" model="role" type="select" width="240" vide="— à choisir —" :options="$this->roles" requis />
             @else
-                <div style="flex:1 1 320px; max-width:460px;">
+                <div style="flex:1 1 300px; max-width:420px;">
                     <x-select-cherchable id="hab-compte" label="Compte" model="compte" :valeur="$compte"
                         :options="$this->comptes" vide="— choisir le compte —" placeholder="Rechercher par le nom ou le courriel…" :seuil="0" />
-                    @error('compte') <div style="color:#C8102E; font-size:12px;">{{ $message }}</div> @enderror
+                    @error('compte') <span class="champ-erreur">{{ $message }}</span> @enderror
                 </div>
             @endif
-            <div>
-                <label for="hab-domaine">Sur</label>
-                <select id="hab-domaine" wire:model="domaine">
-                    @foreach (HabilitationsDActions::DOMAINES as $cle => $def)
-                        <option value="{{ $cle }}">{{ $def['libelle'] }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div style="display:flex; gap:12px; padding-bottom:8px;">
-                <label style="display:flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
-                    <input type="checkbox" wire:model="actions" value="modifier"> Modifier
-                </label>
-                <label style="display:flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
-                    <input type="checkbox" wire:model="actions" value="supprimer"> Supprimer
-                </label>
+            <x-champ label="Sur" model="domaine" type="select" width="280"
+                :options="collect(HabilitationsDActions::DOMAINES)->map(fn ($d) => $d['libelle'])->all()" />
+            <div style="display:flex; flex-direction:column;">
+                <label class="champ-libelle">Gestes<span style="color:var(--th-accent);"> *</span></label>
+                <div style="display:flex; gap:14px; align-items:center; min-height:38px;">
+                    <label style="display:flex; gap:6px; align-items:center; font-size:13.5px; cursor:pointer;">
+                        <input type="checkbox" wire:model="actions" value="modifier"> Modifier
+                    </label>
+                    <label style="display:flex; gap:6px; align-items:center; font-size:13.5px; cursor:pointer;">
+                        <input type="checkbox" wire:model="actions" value="supprimer"> Supprimer
+                    </label>
+                </div>
             </div>
         </div>
-        @error('actions') <p style="margin:0 0 8px; color:#C8102E; font-size:12.5px;">{{ $message }}</p> @enderror
+        @error('actions') <p class="champ-erreur" style="margin:0 0 8px;">{{ $message }}</p> @enderror
         <button type="submit" class="bouton">Enregistrer</button>
     </form>
 </div>

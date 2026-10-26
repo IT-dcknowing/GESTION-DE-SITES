@@ -492,12 +492,17 @@ l'écran, et qu'il faut savoir avant d'ouvrir les pages :
 
 Une migration additive — `2026_10_26_000001_une_habilitation_ouvre_modifier_et_supprimer` : une table
 neuve, `habilitations_actions`. Rien n'est lu ni écrit ailleurs ; vide, elle laisse chaque bouton tel
-qu'avant. `php artisan app:deployer` la passe.
+qu'avant. Une seconde, `2026_10_26_000002_un_commercial_suit_ses_clients` : deux tables neuves,
+`clients_commerciaux` et `relances_commerciales`. `php artisan app:deployer` les passe.
 
 ```bash
 git pull
 php artisan app:deployer
 ```
+
+Puis, une fois, dans `SCRAPER-PORTAIL-FNE/.env` (hors de git) : `ACHATS_DEPUIS=2020-01-01` — « toutes
+les années ». Le relevé complet de la nuit repart de là ; la page FNE dit ensuite la plus ancienne
+facture que le portail a rendue.
 
 Ce qui change à l'écran :
 
@@ -509,7 +514,10 @@ Ce qui change à l'écran :
 - **rapprochement suivi ↔ FNE** : colonne ✔ / ✘ avec lien des deux côtés, filtre « rapprochées / non
   rapprochées » ;
 - **Super admin › Maintenance › Habilitations** : donner ou retirer *Modifier* et *Supprimer* (créances,
-  pièces fournisseurs) à un rôle ou à un compte précis.
+  pièces fournisseurs) à un rôle ou à un compte précis ;
+- **Portefeuilles clients** (gérant, superviseur de ville, responsable commercial) et **Mes clients**
+  (chaque commercial) : clients affectés, relances, prochaine relance ;
+- l'accueil du gérant : **Flux de trésorerie** lit enfin le journal de caisse et les relevés.
 
 ### Les deux réglages qui font le plus pour la vitesse
 

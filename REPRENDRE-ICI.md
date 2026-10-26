@@ -60,6 +60,29 @@ sur les deux dépôts. **Une migration additive** : `2026_10_26_000001` (table n
 `UneChargeSeReprendDeLaCaisseTest`, `LesDecaissementsFournisseursSeSuiventTest`, et le test du
 rapprochement ajouté au premier). **À lancer sur le poste avant le déploiement.**
 
+### Fait le 26/10 (suite) — portefeuille clients des commerciaux, flux de trésorerie, FNE
+
+- **Portefeuille clients des commerciaux** (nouvelle logique) : le gérant, le superviseur de ville et le
+  responsable commercial **affectent des clients** à un commercial (**Indicateurs › Portefeuilles
+  clients**, `/portefeuilles-clients`) — un nom des factures, devis ou prospections, ou un nom nouveau ;
+  ses **clients prospectés** s'affectent d'un clic (ou tous). Un client n'a qu'un commercial (réaffecter
+  le déplace). Le commercial a sa page **Mes clients** (`/mes-clients`) : ses clients, leur CA facturé et
+  leurs devis, la dernière relance, **à relancer aujourd'hui** ; il saisit une **relance** (objet, canal,
+  interlocuteur, résultat, **prochaine relance**, statut) comme au recouvrement, et reprend lui-même ses
+  clients prospectés que personne ne suit. `PortefeuilleCommercial`, tables `clients_commerciaux` et
+  `relances_commerciales` (migration additive `2026_10_26_000002`).
+- **Accueil du gérant, « Flux de trésorerie »** : vide en ligne, il ne lisait que les saisies ; il lit
+  désormais `TresorerieReelle` (journal de caisse, relevés, saisies), comme la page Trésorerie.
+- **Maintenance › Habilitations** : le formulaire prend les champs de la maison (`x-champ`).
+- **FNE, « toutes les années »** : le relevé complet interrogeait déjà le portail depuis le 01/01/2023
+  (2 728 factures, toutes de 2025-2026 : le portail n'a rien avant). La borne passe au 01/01/2020 et la
+  page FNE dit désormais la date demandée, la plus ancienne facture reçue et les années présentes.
+  ⚠️ Sur le serveur, `SCRAPER-PORTAIL-FNE/.env` porte `ACHATS_DEPUIS=2023-01-01` : le passer à
+  `2020-01-01` (l'`.env` n'est pas dans git).
+- **« try catch » / erreurs 500** : déjà en place depuis septembre (`bootstrap/app.php`) — expliqué au
+  propriétaire : l'utilisateur voit une page de panne avec une référence `ERR-XXXXXX`, le détail n'est
+  montré qu'au Super admin / fondateur, et va au journal et aux incidents de la Maintenance.
+
 ### Fait le 26/10 — le suivi compte en charges, le rapprochement se voit, les habilitations
 
 - **Les charges changent de règle** (choix du propriétaire, 26/10 : « le fichier du suivi
@@ -492,11 +515,13 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 
 22. **Le 26/10** : `php artisan test` sur le poste (un fichier neuf, cinq adaptés), puis en ligne
     `git pull` et `php artisan app:deployer` (migration `2026_10_26_000001`, table neuve
-    `habilitations_actions` ; vide, elle ne change aucun bouton). **Le total des charges montera** :
+    `habilitations_actions` ; vide, elle ne change aucun bouton ; et `2026_10_26_000002`, tables neuves
+    `clients_commerciaux` et `relances_commerciales`). **Le total des charges montera** :
     le suivi fournisseurs y entre, les sorties fournisseurs de la caisse en sortent — règle choisie le
     26/10. Ensuite : **Décaissements fournisseurs (caisse)**, suivre les sorties encore « à suivre »
     (sans pièce au suivi, elles ne comptent plus nulle part) ; **Maintenance › Habilitations**, donner
-    modifier / supprimer à qui doit les avoir.
+    modifier / supprimer à qui doit les avoir ; **Portefeuilles clients**, affecter les clients aux
+    commerciaux ; dans `SCRAPER-PORTAIL-FNE/.env`, `ACHATS_DEPUIS=2020-01-01`.
 
 ### En attente d'un accord, pas d'un travail
 

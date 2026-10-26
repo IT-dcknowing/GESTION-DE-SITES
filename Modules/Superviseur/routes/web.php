@@ -38,6 +38,15 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
 });
 
 /*
+ * Les portefeuilles clients des commerciaux — 26/10 : qui affecte un client à un commercial. Le
+ * gérant, le superviseur de ville et le responsable commercial, qui encadrent les vendeurs ; pas le
+ * responsable de site. Voir `PortefeuilleCommercial`.
+ */
+Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_commercial'])->group(function () {
+    Volt::route('/portefeuilles-clients', 'pilotage.portefeuilles-clients')->name('portefeuilles-clients');
+});
+
+/*
  * **Le chiffre d'affaires, sans le responsable commercial — décidé le 12/10** : « les
  * commerciaux ne doivent pas voir la page chiffre d'affaires ». Elle porte le CA de toute
  * l'entreprise, ses charges et son résultat net : ce n'est pas l'écran d'une équipe de vente,

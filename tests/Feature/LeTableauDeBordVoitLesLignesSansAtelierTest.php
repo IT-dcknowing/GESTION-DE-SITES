@@ -79,6 +79,22 @@ class LeTableauDeBordVoitLesLignesSansAtelierTest extends TestCase
         $this->assertSame(400_000, array_sum($flux['datasets'][0]['data']));
     }
 
+    /** « Flux de trésorerie : le graphique est toujours vide » (26/10) : il lit aussi le journal de caisse importé. */
+    public function test_la_courbe_des_flux_lit_le_journal_de_caisse(): void
+    {
+        foreach ([[\Modules\Noyau\Imports\Modeles\MouvementCaisse::ENTREE, 'VERSEMENT CLIENT', 300_000], [\Modules\Noyau\Imports\Modeles\MouvementCaisse::SORTIE, 'AVANCE SALAIRE', 50_000.5]] as [$sens, $libelle, $montant]) {
+            \Modules\Noyau\Imports\Modeles\MouvementCaisse::withoutGlobalScopes()->create([
+                'entreprise_id' => $this->entreprise->id, 'ville_id' => $this->abidjan->id, 'site_id' => null,
+                'date' => now()->toDateString(), 'sens' => $sens, 'libelle' => $libelle, 'montant' => $montant,
+            ]);
+        }
+
+        $flux = Volt::actingAs($this->gerant())->test('gerant.tableau-de-bord')->get('graphiqueFlux');
+
+        $this->assertSame(700_000, array_sum($flux['datasets'][0]['data']));
+        $this->assertSame(50_000.5, array_sum($flux['datasets'][1]['data']));
+    }
+
     public function test_le_filtre_ville_ecarte_les_lignes_d_une_autre_ville(): void
     {
         $ecran = Volt::actingAs($this->gerant())->test('gerant.tableau-de-bord')

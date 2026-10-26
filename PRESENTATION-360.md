@@ -140,8 +140,8 @@ Trois idées tiennent l'ensemble :
 | `gerant` | la direction | toute l'entreprise | tout voir, tout importer, paramétrer (barèmes, objectifs), arbitrer |
 | `responsable_ville` | superviseur de ville | sa ville | pilotage : CA, charges, trésorerie, caisse, fournisseurs, impayés, accès sous lui |
 | `responsable_site` | responsable d'atelier | son atelier | saisie du jour, prospections, pilotage limité à son lieu |
-| `responsable_commercial` | chef des ventes | équipe commerciale | suivi des commerciaux, correspondances |
-| `commercial` | le terrain | ses affaires | prospections, performance, notes, correspondances |
+| `responsable_commercial` | chef des ventes | équipe commerciale | suivi des commerciaux, correspondances, **portefeuilles clients** (affecter des clients, lire les relances — 26/10) |
+| `commercial` | le terrain | ses affaires | prospections, performance, notes, correspondances, **mes clients** et leurs relances (26/10) |
 | `caissier` | comptabilité de ville | sa ville | encaissements, décaissements, caisse, reprise des sorties de caisse |
 | `superviseur_recouvrement` | chef du recouvrement | — | relances jusqu'au niveau 4, synthèse |
 | `agent_recouvrement` | agent | — | saisie des relances jusqu'au niveau 3 |

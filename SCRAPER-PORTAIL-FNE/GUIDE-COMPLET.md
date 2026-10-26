@@ -62,7 +62,7 @@ FNE_URL=https://www.services.fne.dgi.gouv.ci/fr/login
 LOGIN=2197588Q
 PASSWORD=le mot de passe du portail
 FNE_HEADLESS=true
-ACHATS_DEPUIS=2023-01-01
+ACHATS_DEPUIS=2020-01-01
 UPLOAD_PATH_FOLDER=
 FNE_LIBS=/home/cp2255957p00/local-libs/usr/lib64:/home/cp2255957p00/local-libs/lib64
 ```
@@ -73,7 +73,7 @@ FNE_LIBS=/home/cp2255957p00/local-libs/usr/lib64:/home/cp2255957p00/local-libs/l
 | `LOGIN` | le **NCC** de l'entreprise (2197588Q — attention à la faute de frappe 21975888Q déjà rencontrée) |
 | `PASSWORD` | le mot de passe du portail |
 | `FNE_HEADLESS` | `true` = navigateur invisible (toujours sur un serveur) |
-| `ACHATS_DEPUIS` | date de début du relevé complet |
+| `ACHATS_DEPUIS` | date de début du relevé complet — 2020-01-01 depuis le 26/10 (« toutes les années ») : le portail ne rend que ce qu'il a ; la page FNE dit la plus ancienne facture reçue |
 | `UPLOAD_PATH_FOLDER` | laisser **vide** : le fichier va alors dans `storage/app/portail-fne/achats` de l'application |
 | `FNE_LIBS` | où trouver les bibliothèques qui manquent au serveur (voir § 4, étape 5) |
 

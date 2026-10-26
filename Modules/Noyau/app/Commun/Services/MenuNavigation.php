@@ -69,6 +69,8 @@ class MenuNavigation
             return self::construire([
                 ['label' => 'Ma performance individuelle', 'route' => 'ma-performance'],
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
+                // Les clients qu'il suit, et ses relances — 26/10.
+                ['label' => 'Mes clients', 'route' => 'mes-clients'],
                 // Les prospections de toute l'équipe (14/10) : pour ne pas refaire celles d'un collègue.
                 ['label' => 'Affichage général', 'route' => 'affichage-general'],
                 // En tête et non sous « Paramètres » : c'est là qu'il réclame ses factures,
@@ -96,10 +98,12 @@ class MenuNavigation
             return self::construire([
                 ['label' => 'Saisie du jour', 'route' => 'saisie-du-jour'],
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
+                ['label' => 'Mes clients', 'route' => 'mes-clients'],
                 ['label' => 'Affichage général', 'route' => 'affichage-general'],
                 ['label' => 'Correspondances', 'route' => 'correspondances'],
                 ['label' => 'Mon équipe', 'groupe' => [
                     ['label' => 'Commerciaux', 'route' => 'commerciaux'],
+                    ['label' => 'Portefeuilles clients', 'route' => 'portefeuilles-clients'],
                     ['label' => 'Prospects', 'route' => 'prospects'],
                     ['label' => 'Devis', 'route' => 'devis'],
                     // Plus de « Chiffre d'affaires » depuis le 12/10 : réservé à la direction.
@@ -295,6 +299,9 @@ class MenuNavigation
                  * La page garde son adresse, et s'ouvre des boutons de la page Charges.
                  */
                 ['label' => 'Commerciaux', 'route' => 'commerciaux'],
+                // Les clients que suit chaque commercial, et leurs relances — 26/10.
+                ...(\Modules\Noyau\Exploitation\Services\PortefeuilleCommercial::peutAffecter($utilisateur)
+                    ? [['label' => 'Portefeuilles clients', 'route' => 'portefeuilles-clients']] : []),
             ],
         ];
 
@@ -318,6 +325,8 @@ class MenuNavigation
          */
         if (RolesCommerciaux::enFaitPartie($utilisateur)) {
             $general[] = ['label' => 'Ma performance individuelle', 'route' => 'ma-performance'];
+            // Ses clients et ses relances — 26/10.
+            $general[] = ['label' => 'Mes clients', 'route' => 'mes-clients'];
         }
 
         $onglets[] = [

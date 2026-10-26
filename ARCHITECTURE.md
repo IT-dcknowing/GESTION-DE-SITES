@@ -178,6 +178,16 @@ cochées (`pagesDuModule`) — le Noyau ne les appelle jamais, la règle de dép
 **lit** : aucune action d'écriture ne le connaît. Les définitions vivent dans la table
 `roles_configures` ; le rôle Spatie de chaque entreprise se crée au premier accès qui le porte.
 
+### Le portefeuille clients des commerciaux (26/10)
+
+`PortefeuilleCommercial` (Noyau) : `clients_commerciaux` (un client = un commercial, unique sur le nom
+normalisé `Tiers::normaliser`) et `relances_commerciales` (sur le modèle de `relances_recouvrement`,
+avec une *prochaine relance* au lieu des niveaux). Les chiffres d'un client (factures du CA, devis,
+prospections) se lisent sur son nom, filtrés en SQL et regroupés en PHP — `upper()` ne traite pas les
+accents pareil sous SQLite et MySQL. Deux écrans : `commercial.mes-clients` (module Commercial, tous ceux
+qui vendent) et `pilotage.portefeuilles-clients` (Superviseur : gérant, superviseur de ville, responsable
+commercial).
+
 ### Les habilitations : qui voit Modifier et Supprimer (26/10)
 
 `HabilitationsDActions` (Noyau, `Entreprises/Support`) dit si un compte a un geste — `modifier`,

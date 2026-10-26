@@ -25,6 +25,8 @@ use Livewire\Volt\Volt;
  */
 Route::middleware(['auth', 'role:'.RolesCommerciaux::pourMiddleware()])->group(function () {
     Volt::route('/ma-performance', 'commercial.ma-performance')->name('ma-performance');
+    // Les clients qu'il suit et ses relances — 26/10 : tous ceux qui vendent ont un portefeuille.
+    Volt::route('/mes-clients', 'commercial.mes-clients')->name('mes-clients');
 });
 
 /*

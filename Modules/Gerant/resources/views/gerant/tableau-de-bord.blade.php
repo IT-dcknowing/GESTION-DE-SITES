@@ -10,7 +10,6 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
 use Modules\Noyau\Exploitation\Modeles\SaisieJournaliere;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
-use Modules\Noyau\Commun\Services\SerieParPoint;
 use Modules\Noyau\Commun\Services\VentilationActivite;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
@@ -308,10 +307,16 @@ $graphiqueSites = computed(fn () => [
     ],
 ]);
 
-/** Flux de trésorerie hebdomadaire : entrées, sorties et cumul net. */
+/**
+ * Flux de trésorerie hebdomadaire : entrées, sorties et cumul net.
+ *
+ * **Lu comme la page Trésorerie — 26/10** (« le graphique est toujours vide ») : il ne lisait que
+ * les règlements et les charges saisis, presque absents en ligne où tout est importé. Il lit
+ * désormais `TresorerieReelle` : journal de caisse, relevés bancaires, et les saisies non reprises
+ * — sans rien compter deux fois. Six agrégats pour toute la courbe, jamais un par point.
+ */
 $graphiqueFlux = computed(function () {
     [$debut, $fin] = $this->plage;
-    $idsSites = $this->sitesRetenus->pluck('id');
     $points = PeriodeCalculateur::points($debut, $fin);
 
     $labels = [];
@@ -320,26 +325,16 @@ $graphiqueFlux = computed(function () {
     $cumul = [];
     $total = 0;
 
-    // Deux requêtes pour la courbe, et non deux par point — c'est l'écran d'accueil du
-    // gérant, celui qu'on paie à chaque connexion. Voir `SerieParPoint`.
-    // Aucune borne de date ici, et c'est voulu : les points hebdomadaires commencent au
-    // lundi, donc parfois **avant** le début de la plage. Borner au début rognerait le
-    // premier point. `SerieParPoint` borne à l'union exacte des points, ce qui ne retire
-    // rien et laisse l'index servir.
-    $activite = fn ($requete) => $requete
-        ->when($this->activiteFiltre, fn ($q) => $q->where('activite', $this->activiteFiltre));
-
-    // Les entrées se placent comme dans le tableau : atelier, sinon ville de la facture.
-    $sommesEntrees = SerieParPoint::sommes(
-        $activite(PerimetreDeTresorerie::encaissements(Encaissement::query(), $idsSites->all(), $this->idsVilles)),
-        $points, 'encaissements.date', 'encaissements.montant',
-    );
-    $sommesSorties = SerieParPoint::sommes($activite(Charge::query()->whereIn('site_id', $idsSites)), $points, 'date', 'montant');
+    $serie = (new \Modules\Noyau\Exploitation\Services\TresorerieReelle(
+        $this->sitesRetenus->pluck('id')->all(), $this->idsVilles, $debut, $fin, (string) $this->activiteFiltre,
+    ))->serie($points);
+    $sommesEntrees = $serie['entrees'];
+    $sommesSorties = $serie['sorties'];
 
     foreach ($points as $rang => $point) {
-        $e = $sommesEntrees[$rang];
-        $s = $sommesSorties[$rang];
-        $total += $e - $s;
+        $e = $sommesEntrees[$rang] ?? 0;
+        $s = $sommesSorties[$rang] ?? 0;
+        $total = montant_de($total + $e - $s);
 
         $labels[] = $point['label'];
         $entrees[] = $e;

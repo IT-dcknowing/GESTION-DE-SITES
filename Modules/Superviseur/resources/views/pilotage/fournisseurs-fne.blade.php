@@ -133,6 +133,17 @@ $suiviSansFne = computed(fn () => $this->filtre !== 'suivi_sans_fne' ? collect()
 
 $releves = computed(fn () => ReleveFne::query()->latest('id')->limit(5)->get());
 
+/*
+ * Jusqu'où remonte l'historique — 26/10 : « le relevé n'a pris que deux années ; il faut toutes les
+ * années ». Le relevé complet de la nuit interroge le portail depuis le 01/01/2020 ; ce bloc dit ce
+ * qui a été demandé et la plus ancienne facture rendue, pour qu'on voie si le portail en a d'autres.
+ */
+$historiqueFne = computed(fn () => [
+    'demande_depuis' => ReleveFne::query()->whereNotNull('periode_du')->min('periode_du'),
+    'plus_ancienne' => FactureFne::query()->min('date_facture'),
+    'annees' => FactureFne::query()->whereNotNull('exercice')->distinct()->orderBy('exercice')->pluck('exercice')->all(),
+]);
+
 $deposer = function () {
     if (! EtatDesFournisseurs::peutEcrire(auth()->user())) {
         abort(403);
@@ -311,6 +322,15 @@ $porter = function (int $id) {
             @endif
             @if ($this->releves->isNotEmpty())
                 <span style="color:#6B6E76;">Dernier relevé : {{ $this->releves->first()->created_at?->format('d/m/Y H:i') }} ({{ $this->releves->first()->factures }} factures).</span>
+            @endif
+            @php $h = $this->historiqueFne; @endphp
+            @if ($h['plus_ancienne'])
+                <br><span style="color:#6B6E76;">
+                    Historique : le portail a été interrogé depuis le
+                    <b>{{ \Illuminate\Support\Carbon::parse($h['demande_depuis'] ?? $h['plus_ancienne'])->format('d/m/Y') }}</b> ;
+                    la plus ancienne facture reçue date du <b>{{ \Illuminate\Support\Carbon::parse($h['plus_ancienne'])->format('d/m/Y') }}</b>
+                    — années présentes : {{ implode(', ', $h['annees']) }}. Ce que le portail ne rend pas avant cette date, il ne l'a pas.
+                </span>
             @endif
         </p>
     </div>
