@@ -119,11 +119,11 @@ class Registre
 
     /** Les formats importables, prêts pour une liste déroulante. */
     /**
-     * Les formats retirés de la liste du dépôt — 27/10 : « tous les fichiers de banque sont tenus à
-     * la main, rien n'est importé du logiciel ». Ils restent lisibles (les dépôts d'avant gardent
-     * leur type au journal), ils ne se proposent plus.
+     * Les formats retirés de la liste du dépôt, tout en restant lisibles. « Banque — pièces du
+     * logiciel » y a passé quelques heures le 27/10 ; le propriétaire l'a fait remettre : « non,
+     * laisse-le ». La liste est vide, et reste là pour le jour où un format se retirera.
      */
-    public const HORS_DE_LA_LISTE = ['banque'];
+    public const HORS_DE_LA_LISTE = [];
 
     /**
      * Les formats qui décrivent la même chose sous deux documents : quand le fichier déposé est

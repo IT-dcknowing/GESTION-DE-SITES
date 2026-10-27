@@ -69,9 +69,8 @@ class LeReleveBancaireSeDeposeParCompteTest extends TestCase
     public function test_le_releve_bancaire_est_un_type_deposable(): void
     {
         $this->assertTrue(Registre::connait('banque'));
-        // 27/10 : « tous les fichiers de banque sont tenus à la main » — le type des pièces du
-        // logiciel reste lisible, il ne se propose plus ; le relevé tenu à la main, si.
-        $this->assertArrayNotHasKey('banque', Registre::options());
+        // Retiré quelques heures le 27/10, remis à la demande du propriétaire : les deux se proposent.
+        $this->assertArrayHasKey('banque', Registre::options());
         $this->assertArrayHasKey('releve-banque', Registre::options());
         $this->assertSame(FormatDesPiecesBancaires::class, Registre::classe('banque'));
 

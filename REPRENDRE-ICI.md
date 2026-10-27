@@ -62,8 +62,10 @@ rapprochement ajouté au premier). **À lancer sur le poste avant le déploiemen
 
 ### Fait le 27/10 (suite) — imports sans accroc, affectations libres, écritures comptables
 
-- **Imports** : « tous les fichiers de banque sont tenus à la main » — le type *Banque — pièces du
-  logiciel* quitte la liste du dépôt (il reste lisible pour les anciens dépôts). Les **formats frères** se
+- **Imports** : le type *Banque — pièces du logiciel* a quitté la liste quelques heures, puis y est
+  revenu à la demande du propriétaire (« non, laisse-le ») ; `Registre::HORS_DE_LA_LISTE` est vide. Les
+  colonnes sans titre des relevés BGFI ne servent à rien pour lui : vides, elles sont ignorées (la colonne G
+  de 2026, mesurée pleine le 07/10, se lit en « nature » si elle porte quelque chose). Les **formats frères** se
   reconnaissent seuls (`Registre::FRERES`, `DepotController::formatFrere`) : un fichier annoncé « Caisse —
   classeur » qui est l'état « CAISSE DU … AU … » (ou l'inverse), ou un relevé annoncé sous l'autre type de
   banque, s'importe sous le bon type. Les deux caisses sont nommées par leurs colonnes. BGFI 2023 (5
@@ -82,8 +84,11 @@ rapprochement ajouté au premier). **À lancer sur le poste avant le déploiemen
   pièces, avoirs, TVA, caisse, virements internes, **chaque banque**, **chaque nature de charge**) et code
   de chaque journal (VE, AC, CA, OD, BQ1…). Propositions SYSCOHADA marquées « proposé », **à valider par
   le comptable**. Table `comptes_comptables` (migration additive `2026_10_27_000002`), `PlanComptable`.
-  **Reste à faire** : la génération des écritures (journal des ventes, caisse, banques) et leur export —
-  attend la validation des comptes et le format attendu par le logiciel du comptable (Sage ?).
+  **Ce n'est que le début du module** (27/10, le propriétaire) : il faudra poser les comptes sur le CA,
+  puis sur les achats et les charges (« le plus gros problème »), et **déverser les écritures dans
+  ComptaFlow par API**, selon ses règles et sa nomenclature — la comptabilité de L'Artisan y existe déjà.
+  **On attend les fichiers de règles** (des écritures, et de l'application ComptaFlow) avant d'aller plus
+  loin ; le module reste tel quel d'ici là.
 
 ### Fait le 27/10 — fusion / correction des clients, l'avoir par son bouton, import AFG
 
@@ -107,6 +112,11 @@ rapprochement ajouté au premier). **À lancer sur le poste avant le déploiemen
   comme libellé de l'opération ; les dates « 29 mai 2026 » se lisent.
 - **« AUJOURD&#039;HUI »** (tableau de bord de la comptabilité, et partout où un libellé de composant
   contenait une apostrophe calculée) : échappé deux fois. `texte_d_attribut()` dans les composants.
+- **FNE en production** (27/10) : le propriétaire installe le relevé sur la production. Une fois en
+  service, **éteindre celui de gestion-dev** (`FNE_SCRAPER_ACTIF=false` dans son `.env` puis
+  `app:deployer`) : deux sites qui relèvent le même NCC à la même heure ouvrent deux sessions sur le portail
+  et deux navigateurs sur le même compte d'hébergement — d'où les 503. Les Cron `queue:work` lancés chaque
+  minute avec `--timeout=3600` peuvent s'empiler : les envelopper de `flock -n`.
 - **FNE** : le propriétaire a vérifié sur le portail, les factures commencent en 2025 ; `ACHATS_DEPUIS`
   reste à 2020-01-01. La capture du 503 à 16 h 43 précède le déploiement du correctif du bouton.
 
