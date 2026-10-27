@@ -2601,6 +2601,7 @@ dépôts. Aucune migration.
 | 122 | Module Écritures comptables : paramétrer les numéros de compte, la configuration | ✅ 27/10 pour le paramétrage ; ⏳ génération et export des écritures (format à confirmer) |
 | 123 | Relevé FNE en production : marche à suivre point par point | ✅ 27/10 — en service (piège : `.env` du relevé doublé par le modèle) ; mot de passe à changer ; gestion-dev à éteindre ; `flock` sur les `queue:work` |
 | 124 | Données 2023 importées visibles dans les KPI de 2026 (page Banques) ; « le système doit bien ranger » | ✅ 27/10 — année propre aux pages Banques et Caisse ; solde annoncé borné à la période |
+| 125 | Page Banques : « le tableau est vide, on ne retrouve pas les lignes » du relevé | ✅ 27/10 — tableau *Opérations du relevé* (par défaut) à côté de *Règlements* |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
 

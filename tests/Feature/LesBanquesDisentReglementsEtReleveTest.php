@@ -231,6 +231,10 @@ class LesBanquesDisentReglementsEtReleveTest extends TestCase
         $ecran->set('annee', 2023);
         $this->assertSame(33_829_456, $ecran->instance()->releveRegarde['solde']);
         $this->assertSame(50_000, $ecran->instance()->releveRegarde['credits']);
+
+        // « Le tableau est vide, on ne retrouve pas les lignes » : les opérations du relevé ont leur tableau.
+        $this->assertSame(1, $ecran->instance()->nombreOperations);
+        $ecran->assertSet('vueTableau', 'releve')->assertSee('Opérations du relevé (1)')->assertSee('REMISE CHEQUE NSIA');
     }
 
     private function mouvement(Banque $banque, int $credit, int $solde): MouvementBancaire

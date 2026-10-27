@@ -68,6 +68,14 @@ state(['origineFiltre' => ''])->url(except: '');
 state(['portefeuilleFiltre' => ''])->url(except: '');
 state(['recherche' => '']);
 state(['page' => 1]);
+
+/*
+ * Les opérations du relevé, en tableau — 27/10 : « le tableau est vide, on ne retrouve pas les
+ * lignes ». Le tableau ne listait que les règlements ; les 1 382 opérations du relevé BGFI ne
+ * servaient qu'aux cartes. Deux boutons choisissent ce qu'il montre ; le relevé d'abord, puisque
+ * toutes les banques sont tenues à la main.
+ */
+state(['vueTableau' => 'releve', 'rechercheReleve' => '', 'pageReleve' => 1]);
 state(['filtresLibres' => []]);
 
 /* La période, comme sur les autres écrans d'argent. */
@@ -164,10 +172,11 @@ $updatedAnnee = function () {
 };
 
 $updatedVilleFiltre = function () { $this->page = 1; };
-$updatedSupportFiltre = function () { $this->page = 1; };
 $updatedOrigineFiltre = function () { $this->page = 1; };
 $updatedPortefeuilleFiltre = function () { $this->page = 1; };
 $updatedRecherche = function () { $this->page = 1; };
+$updatedRechercheReleve = function () { $this->pageReleve = 1; };
+$updatedSupportFiltre = function () { $this->page = 1; $this->pageReleve = 1; };
 $updatedFiltresLibres = function () { $this->page = 1; };
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; $this->page = 1; };
 $updatedSemaineFiltre = function () { $this->jourFiltre = ''; $this->page = 1; };
@@ -652,6 +661,26 @@ $lignes = computed(fn () => (clone $this->requete)
 /* Le même nombre que `kpis['nombre']` : le relire coûterait une seconde lecture entière. */
 $total = computed(fn () => $this->kpis['nombre']);
 
+/** Les opérations du relevé des banques regardées, sur la période — telles que la banque les dit. */
+$operationsQ = computed(function () {
+    [$debut, $fin] = $this->plage;
+    $terme = trim((string) $this->rechercheReleve);
+
+    return \Modules\Noyau\Imports\Modeles\MouvementBancaire::query()
+        ->with('banque:id,nom')
+        ->whereIn('banque_id', $this->banquesRegardees)
+        ->whereBetween('date_operation', [$debut->toDateString(), $fin->toDateString()])
+        ->when($terme !== '', fn ($q) => $q->where(fn ($r) => $r
+            ->where('libelle', 'like', '%'.$terme.'%')->orWhere('motif', 'like', '%'.$terme.'%')
+            ->orWhere('contrepartie', 'like', '%'.$terme.'%')->orWhere('nature', 'like', '%'.$terme.'%')));
+});
+
+$nombreOperations = computed(fn () => \App\Support\SchemaDisponible::table('mouvements_bancaires') ? (clone $this->operationsQ)->count() : 0);
+
+$operations = computed(fn () => $this->nombreOperations === 0 ? collect() : (clone $this->operationsQ)
+    ->orderBy('date_operation')->orderBy('lot_import_id')->orderBy('rang')
+    ->forPage(max(1, (int) $this->pageReleve), 25)->get());
+
 // ------------------------------------------------------------------ déclarer une banque
 
 $ouvrirLaDeclaration = function (?string $nomPropose = null, ?string $type = null) {
@@ -1119,6 +1148,65 @@ $declarerLaBanque = function () {
         </div>
     @endif
 
+    {{-- Deux tableaux, un bouton chacun — 27/10. --}}
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+        <button type="button" wire:click="$set('vueTableau', 'releve')" class="bouton {{ $vueTableau === 'releve' ? '' : 'bouton-secondaire' }}">
+            Opérations du relevé ({{ montant_nombre($this->nombreOperations) }})
+        </button>
+        <button type="button" wire:click="$set('vueTableau', 'reglements')" class="bouton {{ $vueTableau === 'reglements' ? '' : 'bouton-secondaire' }}">
+            Règlements ({{ montant_nombre($this->total) }})
+        </button>
+    </div>
+
+    @if ($vueTableau === 'releve')
+    <div class="carte">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0;">
+                Opérations du relevé ({{ montant_nombre($this->nombreOperations) }})
+            </h3>
+            <input type="search" wire:model.live.debounce.400ms="rechercheReleve" placeholder="Libellé, motif, contrepartie…" class="champ"
+                style="width:auto; min-width:0; flex:0 1 260px;">
+        </div>
+
+        <div class="tableau-conteneur">
+            <table class="tableau">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        @if (count($this->banquesRegardees) > 1)<th>Banque</th>@endif
+                        <th>Libellé de l'opération</th>
+                        <th>Contrepartie</th>
+                        <th>Nature</th>
+                        <th style="text-align:right;">Débit</th>
+                        <th style="text-align:right;">Crédit</th>
+                        <th class="colonne-collee" style="text-align:right;">Solde annoncé</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($this->operations as $op)
+                        <tr wire:key="op-{{ $op->id }}">
+                            <td style="white-space:nowrap;">{{ $op->date_operation?->format('d/m/Y') ?? '—' }}</td>
+                            @if (count($this->banquesRegardees) > 1)<td>{{ $op->banque?->nom }}</td>@endif
+                            <td>
+                                {{ $op->libelle }}
+                                @if ($op->motif)<div style="font-size:11.5px; color:#6B6E76; white-space:pre-line;">{{ $op->motif }}</div>@endif
+                            </td>
+                            <td style="font-size:12.5px;">{{ $op->contrepartie ?: '—' }}</td>
+                            <td style="font-size:12.5px; color:#6B6E76;">{{ $op->nature ?: '—' }}</td>
+                            <td style="text-align:right; white-space:nowrap; color:#C8102E;">{{ montant_de($op->debit) != 0 ? ae(montant_de($op->debit)) : '' }}</td>
+                            <td style="text-align:right; white-space:nowrap; color:#0E9F6E;">{{ montant_de($op->credit) != 0 ? ae(montant_de($op->credit)) : '' }}</td>
+                            <td class="colonne-collee" style="text-align:right; white-space:nowrap; font-weight:700;">{{ $op->solde_annonce === null ? '—' : ae(montant_de($op->solde_annonce)) }}</td>
+                        </tr>
+                    @empty
+                        <x-table-vide :colspan="8" texte="Aucune opération de relevé sur cette période pour ce compte. Choisissez l'année du relevé déposé." />
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        <x-pagination :page="$pageReleve" :total="$this->nombreOperations" prop="pageReleve" :par-page="25" />
+    </div>
+    @else
     <div class="carte">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
             <h3 style="font-size:15px; font-weight:700; margin:0;">
@@ -1179,4 +1267,5 @@ $declarerLaBanque = function () {
 
         <x-pagination :page="$page" :total="$this->total" prop="page" :par-page="25" />
     </div>
+    @endif
 </div>

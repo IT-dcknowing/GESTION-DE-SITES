@@ -75,6 +75,10 @@ rapprochement ajouté au premier). **À lancer sur le poste avant le déploiemen
   opération **de la période** (`RapprochementDeTresorerie::releves`) : il remontait jusqu'en 2023. Les
   données étaient bien rangées à leur date : c'est l'affichage qui débordait. La trésorerie et les autres
   pages restent à l'exercice du bandeau.
+- **Banques : les opérations du relevé ont leur tableau** (« le tableau est vide, on ne retrouve pas les
+  lignes ») : deux boutons, *Opérations du relevé* (par défaut — date, libellé et motif, contrepartie,
+  nature, débit, crédit, solde annoncé, recherche, pagination) et *Règlements*. Le relevé ne servait
+  qu'aux cartes.
 
 ### Fait le 27/10 (suite) — imports sans accroc, affectations libres, écritures comptables
 
