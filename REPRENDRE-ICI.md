@@ -69,6 +69,8 @@ rapprochement ajouté au premier). **À lancer sur le poste avant le déploiemen
   aussi. Corrigé : `FormatDesFournisseurs::AUTRES_TITRES` lit ces intitulés ; les pièces bancaires exigent
   désormais « CODE PIECE » **et** « MONTANT PIECE ». Le type s'appelle maintenant **« Fichier suivi
   fournisseurs (FSF) — factures et ce que nous devons »**. Test ajouté dans `LeSuiviFournisseurEntreEnEntierTest`.
+- **Lignes rapprochées en vert** sur Charges fournisseurs (27/10) : une ligne du suivi reliée à sa facture FNE
+  a un fond vert clair et un liseré vert à gauche.
 
 ### Fait le 27/10 (soir) — le relevé FNE en production, chaque année à sa place
 

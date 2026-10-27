@@ -1345,8 +1345,13 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                 $ligne,
                                 ConditionsFournisseur::fiche($this->fiches, $ligne),
                             );
+                            // 27/10 : « pour ceux qui sont rapprochés, mets la ligne en vert ». En style
+                            // écrit sur la ligne, pour passer devant l'alternance des lignes du tableau.
+                            $rapprochee = $ligne->relationLoaded('factureFne') && $ligne->factureFne;
+                            $fondRapprochee = $rapprochee ? ' background:#E7F6EE;' : '';
                         @endphp
-                        <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);">
+                        <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);{{ $fondRapprochee }}{{ $rapprochee ? ' box-shadow:inset 3px 0 0 #0E9F6E;' : '' }}"
+                            @if ($rapprochee) title="Rapprochée de sa facture FNE" @endif>
                             <td>
                                 {{ $ligne->fournisseur ?: '—' }}
                                 @if ($ligne->recuePar)
@@ -1401,7 +1406,7 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                        color:{{ $ligne->reste_a_payer > 0 ? '#C8102E' : '#6B6E76' }};">
                                 {{ ae(montant_de($ligne->reste_a_payer)) }}
                             </td>
-                            <td class="colonne-collee" style="text-align:right;">
+                            <td class="colonne-collee" style="text-align:right;{{ $fondRapprochee }}">
                                 <a href="{{ route('fournisseurs.piece', $ligne) }}" wire:navigate
                                     class="bouton bouton-secondaire" style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
                             </td>
