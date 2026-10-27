@@ -81,13 +81,16 @@ class PeriodeCalculateur
         ?int $moisFiltre = null,
         ?int $semaineFiltre = null,
         ?int $jourFiltre = null,
+        // L'année propre à une page — 27/10 : la page Banques lit les années de ses relevés
+        // (2023 importé) sans que l'exercice ait été créé. Null : l'exercice du bandeau.
+        ?int $anneePropre = null,
     ): array {
         $aujourdhui = Carbon::today();
 
         // L'année regardée gouverne aussi les valeurs par défaut du mode « période » :
         // sans bornes saisies, on prend l'exercice consulté en entier plutôt que l'année
         // civile, sans quoi passer sur 2025 laisserait des bornes restées en 2026.
-        $anneeRegardee = ExerciceDeTravail::annee() ?? $aujourdhui->year;
+        $anneeRegardee = $anneePropre ?? ExerciceDeTravail::annee() ?? $aujourdhui->year;
         $courante = $anneeRegardee === $aujourdhui->year;
 
         if ($periode === 'periode') {
@@ -115,7 +118,7 @@ class PeriodeCalculateur
         // l'exercice 2025 ramenait donc mars 2026, c'est-à-dire un mois vide, sans que rien
         // ne le signale : l'écran affichait zéro, et on en concluait qu'il ne s'était rien
         // passé cette année-là.
-        $annee = ExerciceDeTravail::annee() ?? $aujourdhui->year;
+        $annee = $anneePropre ?? ExerciceDeTravail::annee() ?? $aujourdhui->year;
 
         if (! $moisFiltre) {
             // « Tous les mois » : l'exercice complet (1er janvier au 31 décembre), pas

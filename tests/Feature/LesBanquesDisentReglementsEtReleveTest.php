@@ -211,6 +211,28 @@ class LesBanquesDisentReglementsEtReleveTest extends TestCase
         ]);
     }
 
+    /**
+     * « J'ai importé des données de 2023, elles apparaissent dans les KPI de 2026 » — 27/10. Un
+     * relevé de 2023 ne donne pas son solde à 2026 ; on le lit en choisissant 2023 sur la page.
+     */
+    public function test_un_releve_d_une_autre_annee_se_lit_dans_son_annee(): void
+    {
+        $bgfi = $this->banque('BGFI');
+        $ancien = $this->mouvement($bgfi, 50_000, 33_829_456);
+        $ancien->forceFill(['date_operation' => '2023-12-29'])->save();
+
+        $ecran = Volt::actingAs($this->compte())->test('pilotage.banques')->set('supportFiltre', 'b'.$bgfi->id);
+
+        $this->assertSame(now()->year, (int) $ecran->get('annee'));
+        $this->assertNull($ecran->instance()->releveRegarde['solde'], 'Aucun relevé cette année : pas de solde annoncé.');
+        $this->assertSame(0, $ecran->instance()->releveRegarde['credits']);
+        $this->assertContains(2023, $ecran->instance()->annees);
+
+        $ecran->set('annee', 2023);
+        $this->assertSame(33_829_456, $ecran->instance()->releveRegarde['solde']);
+        $this->assertSame(50_000, $ecran->instance()->releveRegarde['credits']);
+    }
+
     private function mouvement(Banque $banque, int $credit, int $solde): MouvementBancaire
     {
         return MouvementBancaire::withoutGlobalScopes()->create([

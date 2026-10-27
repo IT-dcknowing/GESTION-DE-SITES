@@ -119,10 +119,49 @@ state([
  */
 state(['libelleAAffecter' => '', 'banqueAffectee' => '']);
 
+/*
+ * L'année de la page — 27/10 : « j'ai importé des données de 2023, elles apparaissent dans les KPI
+ * de 2026 ; dans la page Banque, on doit avoir l'année comme pour la FNE ». La page choisit son
+ * année parmi celles de ses données, sans attendre que l'exercice soit créé ; elle part de
+ * l'exercice du bandeau. La trésorerie, elle, reste à l'exercice.
+ */
+state(['annee' => null]);
+
 mount(function () {
+    $this->annee ??= \Modules\Noyau\Entreprises\Services\ExerciceDeTravail::annee() ?? now()->year;
     $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
     $this->dateFin ??= now()->format('Y-m-d');
 });
+
+/** Les années des relevés et des règlements, et celle de l'exercice : de la plus récente à la plus ancienne. */
+$annees = computed(function () {
+    $bornes = collect();
+
+    if (\App\Support\SchemaDisponible::table('mouvements_bancaires')) {
+        $r = \Modules\Noyau\Imports\Modeles\MouvementBancaire::query()->selectRaw('min(date_operation) as d, max(date_operation) as f')->toBase()->first();
+        $bornes->push($r?->d, $r?->f);
+    }
+
+    $e = \Modules\Noyau\Exploitation\Modeles\Encaissement::query()->selectRaw('min(date) as d, max(date) as f')->toBase()->first();
+    $bornes->push($e?->d, $e?->f);
+
+    $ans = $bornes->filter()->map(fn ($d) => (int) substr((string) $d, 0, 4))->filter(fn ($a) => $a >= 2000);
+    $exercice = \Modules\Noyau\Entreprises\Services\ExerciceDeTravail::annee() ?? now()->year;
+    $de = min($ans->min() ?? $exercice, $exercice);
+    $a = max($ans->max() ?? $exercice, $exercice);
+
+    return range($a, $de);
+});
+
+/** Changer d'année repart de l'année entière : un mois choisi en 2026 n'a rien à dire de 2023. */
+$updatedAnnee = function () {
+    $this->moisFiltre = '';
+    $this->semaineFiltre = '';
+    $this->jourFiltre = '';
+    $this->dateDebut = ((int) $this->annee).'-01-01';
+    $this->dateFin = ((int) $this->annee).'-12-31';
+    $this->page = 1;
+};
 
 $updatedVilleFiltre = function () { $this->page = 1; };
 $updatedSupportFiltre = function () { $this->page = 1; };
@@ -140,6 +179,7 @@ $updatedDateFin = function () { $this->page = 1; };
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin,
     $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null,
+    $this->annee !== null && $this->annee !== '' ? (int) $this->annee : null,
 ));
 
 /* Les villes **en modèles** : `x-filtre-periode` lit `$ville->id`. */
@@ -866,7 +906,7 @@ $declarerLaBanque = function () {
         </div>
     @endif
 
-    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin"
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :annee="$annee" :annees="$this->annees"
         :villes="$this->mesVilles" :ville-unique="$this->villeUnique" :ville-filtre="$villeFiltre"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre"
         masquer-activite />

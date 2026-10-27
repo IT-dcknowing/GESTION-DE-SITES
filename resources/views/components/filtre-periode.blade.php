@@ -13,6 +13,12 @@
      * derrière la demande d'un filtre « du … au … » : il existait, il ne s'ouvrait pas.
      */
     'dateDebut' => null, 'dateFin' => null,
+    /*
+     * L'année propre à la page — 27/10. Une page qui la passe (Banques) montre « Année » en liste
+     * déroulante, avec les années de ses données, à la place de « Exercice » ; les mois, semaines et
+     * jours se calculent alors sur elle. Sans elle, l'exercice du bandeau, comme avant.
+     */
+    'annee' => null, 'annees' => null,
 ])
 
 @php
@@ -39,7 +45,9 @@
     // L'année de référence des mois, semaines et jours est **celle qu'on regarde**,
     // pas celle du calendrier : sinon, choisir « Mars » en consultant 2025 afficherait
     // les semaines de mars 2026.
-    $anneeEnCours = \Modules\Noyau\Entreprises\Services\ExerciceDeTravail::annee() ?? Carbon::today()->year;
+    $anneeEnCours = $annee !== null && $annee !== ''
+        ? (int) $annee
+        : (\Modules\Noyau\Entreprises\Services\ExerciceDeTravail::annee() ?? Carbon::today()->year);
 
     $semainesDuMois = $moisFiltre
         ? PeriodeCalculateur::semainesDuMois(Carbon::create($anneeEnCours, (int) $moisFiltre, 1))
@@ -117,7 +125,15 @@
 
 @if ($periode === 'calendrier')
     <div style="display:flex; gap:12px; align-items:center; margin:-4px 0 20px; font-size:14px; flex-wrap:wrap;">
-        <span style="color:var(--th-gris,#6B6E76); font-weight:600;">Exercice {{ $anneeEnCours }}</span>
+        @if ($annees !== null)
+            <select wire:model.live="annee" class="champ" style="width:auto; font-weight:700;" aria-label="Année">
+                @foreach ($annees as $a)
+                    <option value="{{ $a }}" @selected((int) $a === (int) $anneeEnCours)>Année {{ $a }}</option>
+                @endforeach
+            </select>
+        @else
+            <span style="color:var(--th-gris,#6B6E76); font-weight:600;">Exercice {{ $anneeEnCours }}</span>
+        @endif
 
         <select wire:model.live="moisFiltre" class="champ" style="width:auto;">
             <option value="" @selected($moisFiltre === '')>Tous les mois</option>

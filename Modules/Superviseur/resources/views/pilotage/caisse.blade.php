@@ -98,10 +98,37 @@ state([
     'filtresLibres' => [],
 ]);
 
+/*
+ * L'année de la page — 27/10, comme la page Banques : un journal de caisse de 2023 importé se lit
+ * en choisissant 2023 ici, sans que l'exercice soit créé, et ne paraît pas dans les chiffres de
+ * 2026. Le solde d'avant la période, lui, reste un report : c'est ce qu'il y avait dans la caisse.
+ */
+state(['annee' => null]);
+
 mount(function () {
+    $this->annee ??= \Modules\Noyau\Entreprises\Services\ExerciceDeTravail::annee() ?? now()->year;
     $this->dateDebut ??= now()->startOfYear()->format('Y-m-d');
     $this->dateFin ??= now()->format('Y-m-d');
 });
+
+/** Les années du journal de caisse et celle de l'exercice, de la plus récente à la plus ancienne. */
+$annees = computed(function () {
+    $r = MouvementCaisse::query()->selectRaw('min(date) as d, max(date) as f')->toBase()->first();
+    $ans = collect([$r?->d, $r?->f])->filter()->map(fn ($d) => (int) substr((string) $d, 0, 4))->filter(fn ($a) => $a >= 2000);
+    $exercice = \Modules\Noyau\Entreprises\Services\ExerciceDeTravail::annee() ?? now()->year;
+
+    return range(max($ans->max() ?? $exercice, $exercice), min($ans->min() ?? $exercice, $exercice));
+});
+
+/** Changer d'année repart de l'année entière. */
+$updatedAnnee = function () {
+    $this->moisFiltre = '';
+    $this->semaineFiltre = '';
+    $this->jourFiltre = '';
+    $this->dateDebut = ((int) $this->annee).'-01-01';
+    $this->dateFin = ((int) $this->annee).'-12-31';
+    $this->pageDetail = 1;
+};
 
 $updatedMoisFiltre = function () { $this->semaineFiltre = ''; $this->jourFiltre = ''; $this->pageDetail = 1; };
 $updatedSemaineFiltre = function () { $this->jourFiltre = ''; $this->pageDetail = 1; };
@@ -113,6 +140,7 @@ $updatedRecherche = function () { $this->pageDetail = 1; };
 $plage = computed(fn () => PeriodeCalculateur::plage(
     $this->periode, $this->dateDebut, $this->dateFin,
     $this->moisFiltre ?: null, $this->semaineFiltre ?: null, $this->jourFiltre ?: null,
+    $this->annee !== null && $this->annee !== '' ? (int) $this->annee : null,
 ));
 
 $mesVilles = computed(fn () => PerimetreSites::optionsVilles(auth()->user()));
@@ -859,7 +887,7 @@ $mouvements = computed(function () {
         </div>
     </x-titre-ecran>
 
-    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
+    <x-filtre-periode :periode="$periode" :date-debut="$dateDebut" :date-fin="$dateFin" :annee="$annee" :annees="$this->annees" :villes="$this->mesVilles" :ville-unique="$this->villeUnique"
         :ville-filtre="$villeFiltre" :sites="null" :site-filtre="null"
         :mois-filtre="$moisFiltre" :semaine-filtre="$semaineFiltre" :jour-filtre="$jourFiltre" />
 

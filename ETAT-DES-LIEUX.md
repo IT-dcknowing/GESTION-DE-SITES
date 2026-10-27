@@ -199,6 +199,7 @@ Voir `LecteurPdf`.
 | 26/10 (fin) | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Relevé FNE sans 503** : le bouton « Actualiser » dépose une demande servie par `schedule:run` (`fne:actualiser --si-demande`, chaque minute), plus de navigateur lancé depuis le web ; Chromium en `nice -n 19`, sans images/polices/médias, tas JS borné |
 | 27/10 | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Fusion / correction des clients de l'état des impayés** (`FusionDesClients`, page `impayes-fusion`, habilitation `clients_impayes.fusionner`). **Avoir par son bouton** (`pilotage.impayes-avoir`, plafond = facture moins avoirs déjà faits, migration additive `2026_10_27_000001` `factures.avoir_de_id`) ; le formulaire de créance refuse un négatif neuf ; faux « règlement dépasse le reste (0 F) » corrigé. Import : compte bancaire gardé par « Importer quand même », « Description » = libellé, dates en lettres. Apostrophes doublement échappées (`texte_d_attribut`). Tests écrits, non lancés |
 | 27/10 (suite) | voir `git log` | **claude/compassionate-galileo-tly6ai** | Imports : formats frères reconnus seuls (caisse ↔ état de caisse, relevé ↔ banque), « Banque — pièces du logiciel » hors de la liste. Avoir : n° non modifiable. Affectations : *Tous les clients* (prospecté par, suivi par, affecter à qui l'on veut). **Écritures comptables — paramétrage** (`PlanComptable`, `comptes_comptables`, migration additive `2026_10_27_000002`) |
+| 27/10 (soir) | voir `git log` | **claude/compassionate-galileo-tly6ai** | Banques et Caisse : sélecteur **Année** tiré des données (`PeriodeCalculateur::plage` gagne `$anneePropre`) ; solde annoncé borné à la période (`RapprochementDeTresorerie::releves`). Relevé FNE en service sur la production ; type « Banque — pièces du logiciel » remis dans la liste |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -2598,6 +2599,8 @@ dépôts. Aucune migration.
 | 120 | Avoir : clients = ceux des impayés ; n° d'avoir non modifiable | ✅ 27/10 |
 | 121 | Affectations : tous les clients, qui a prospecté, affecter à qui l'on veut | ✅ 27/10 — *Tous les clients* sur Portefeuilles clients |
 | 122 | Module Écritures comptables : paramétrer les numéros de compte, la configuration | ✅ 27/10 pour le paramétrage ; ⏳ génération et export des écritures (format à confirmer) |
+| 123 | Relevé FNE en production : marche à suivre point par point | ✅ 27/10 — en service (piège : `.env` du relevé doublé par le modèle) ; mot de passe à changer ; gestion-dev à éteindre ; `flock` sur les `queue:work` |
+| 124 | Données 2023 importées visibles dans les KPI de 2026 (page Banques) ; « le système doit bien ranger » | ✅ 27/10 — année propre aux pages Banques et Caisse ; solde annoncé borné à la période |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
 

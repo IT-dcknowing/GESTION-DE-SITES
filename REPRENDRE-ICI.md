@@ -60,6 +60,22 @@ sur les deux dépôts. **Une migration additive** : `2026_10_26_000001` (table n
 `UneChargeSeReprendDeLaCaisseTest`, `LesDecaissementsFournisseursSeSuiventTest`, et le test du
 rapprochement ajouté au premier). **À lancer sur le poste avant le déploiement.**
 
+### Fait le 27/10 (soir) — le relevé FNE en production, chaque année à sa place
+
+- **Relevé FNE en service sur la production** (27/10, le propriétaire). Piège rencontré : le `.env` du
+  relevé, créé par `cp .env.exemple .env`, gardait **sous** les lignes collées les `LOGIN=` et `PASSWORD=`
+  vides du modèle — la dernière occurrence gagne, d'où « Rien à relever ». Contrôle sans montrer le mot de
+  passe : `node -e "require('dotenv').config({path:'.env'}); console.log(process.env.LOGIN, (process.env.PASSWORD||'').length)"`.
+  ⚠️ Le mot de passe du portail a paru dans une capture de la conversation : **à changer** (production et
+  gestion-dev). Reste à éteindre le relevé de gestion-dev et à poser `flock -n` devant les `queue:work`.
+- **Banques et Caisse ont leur année** (« des données de 2023 importées apparaissent dans les KPI de
+  2026 ») : un sélecteur **Année** à la place de « Exercice », avec les années présentes dans les données,
+  sans attendre que l'exercice soit créé (`PeriodeCalculateur::plage(…, $anneePropre)`, props `annee` /
+  `annees` de `x-filtre-periode`). Le **solde annoncé** d'une banque est désormais celui de la dernière
+  opération **de la période** (`RapprochementDeTresorerie::releves`) : il remontait jusqu'en 2023. Les
+  données étaient bien rangées à leur date : c'est l'affichage qui débordait. La trésorerie et les autres
+  pages restent à l'exercice du bandeau.
+
 ### Fait le 27/10 (suite) — imports sans accroc, affectations libres, écritures comptables
 
 - **Imports** : le type *Banque — pièces du logiciel* a quitté la liste quelques heures, puis y est
