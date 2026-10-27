@@ -104,6 +104,40 @@ class LeReleveDeLaCaissiereSImporteTest extends TestCase
         $this->assertSame(8, MouvementBancaire::withoutGlobalScopes()->count());
     }
 
+    /**
+     * L'extrait AFG — 27/10 : « les montants ne sont pas conformes ». Il va du plus récent au plus
+     * ancien, et finit par « SOLDE DE CLOTURE » qui porte les totaux du mois : la ligne n'est pas une
+     * opération, et le rang suit le temps quel que soit le sens du fichier.
+     */
+    public function test_l_extrait_afg_se_lit_a_l_envers_sans_son_solde_de_cloture(): void
+    {
+        $afg = $this->banque('AFG');
+        $this->importer($afg, ['Table 1' => [
+            [],
+            [null, "EXTRAIT DE COMPTE AFG BANK MOIS D'AOÛT 2026"],
+            [],
+            [null, null, null, null, "SOLDE D'OUVERTURE", null, 885_753],
+            ['Date', 'Description', 'Date de Valeur', 'Numéro de référence', 'Débit', 'Crédit', 'Solde', 'Libellé'],
+            ['31 août 2026', '001TXTCXOF000001 PRELEVEMENT TOB', '01 sept 2026', '001TXTCXOF000001', '1 276,00 XOF', null, '1 000 000,00 XOF', 'frais bancaires AFG'],
+            ['12 août 2026', '0990lt0262150368 CHEQUE EMIS', '12 août 2026', '0990lt0262150368', null, '200 000,00 XOF', '1 001 276,00 XOF', 'WAFA'],
+            ['03 août 2026', '085CQWL262170505 RETRAIT', '04 août 2026', '085CQWL262170505', '84 477,00 XOF', null, '801 276,00 XOF', 'SHACMAN CI'],
+            [null, 'SOLDE DE CLOTURE', null, null, 85_753, 200_000, 1_000_000],
+        ]]);
+
+        $ops = MouvementBancaire::withoutGlobalScopes()->orderBy('rang')->get();
+        $this->assertCount(3, $ops, 'Le solde de clôture n\'est pas une opération.');
+        $this->assertSame(['2026-08-03', '2026-08-12', '2026-08-31'], $ops->map(fn ($o) => $o->date_operation->toDateString())->all());
+        $this->assertSame('WAFA', $ops[1]->contrepartie);
+
+        $soldes = \Modules\Noyau\Exploitation\Services\RapprochementDeTresorerie::soldesDuReleve(
+            [$afg->id], \Illuminate\Support\Carbon::parse('2026-08-01'), \Illuminate\Support\Carbon::parse('2026-08-31'));
+        $this->assertSame(885_753, $soldes['ouverture']);
+        $this->assertSame(200_000, $soldes['entrees']);
+        $this->assertSame(85_753, $soldes['sorties']);
+        $this->assertSame(1_000_000, $soldes['fin'], 'Le solde de fin est celui de la dernière opération dans le temps.');
+        $this->assertSame(0, $soldes['ecart']);
+    }
+
     public function test_le_depot_exige_le_compte_pour_ce_type_aussi(): void
     {
         $this->assertSame(FormatDuReleveBancaire::class, Registre::classe('releve-banque'));

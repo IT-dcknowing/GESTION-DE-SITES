@@ -75,6 +75,15 @@ rapprochement ajouté au premier). **À lancer sur le poste avant le déploiemen
   opération **de la période** (`RapprochementDeTresorerie::releves`) : il remontait jusqu'en 2023. Les
   données étaient bien rangées à leur date : c'est l'affichage qui débordait. La trésorerie et les autres
   pages restent à l'exercice du bandeau.
+- **AFG : montants faux** (« après avoir importé AFG août, les montants ne sont pas conformes ») — deux
+  causes, corrigées dans `FormatDuReleveBancaire` : la ligne **« SOLDE DE CLOTURE »** (totaux du mois au
+  débit et au crédit, sans date) était lue comme une opération et doublait le mois ; et l'extrait AFG va **du
+  plus récent au plus ancien** — le rang est désormais retourné pour un fichier descendant, pour que « la
+  dernière opération » soit la dernière dans le temps. ⚠️ **Chaque extrait AFG déjà déposé porte une fausse
+  opération « SOLDE DE CLOTURE »** : l'annuler (Import › Journal › *Annuler cet import*) puis le redéposer.
+- **Page Banques : KPI du relevé importé en tête** — solde à l'ouverture, entrées, sorties, ce qui reste
+  (solde de fin annoncé, avec le contrôle ouverture + entrées − sorties), solde à la fin du mois précédent et
+  de l'année précédente quand un relevé le dit (`RapprochementDeTresorerie::soldesDuReleve`).
 - **Banques : les opérations du relevé ont leur tableau** (« le tableau est vide, on ne retrouve pas les
   lignes ») : deux boutons, *Opérations du relevé* (par défaut — date, libellé et motif, contrepartie,
   nature, débit, crédit, solde annoncé, recherche, pagination) et *Règlements*. Le relevé ne servait

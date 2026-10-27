@@ -2,6 +2,7 @@
 
 namespace Modules\Noyau\Imports\Formats;
 
+use Illuminate\Support\Facades\DB;
 use Modules\Noyau\Imports\Modeles\CorrespondanceImport;
 use Modules\Noyau\Imports\Modeles\LotImport;
 use Modules\Noyau\Imports\Modeles\MouvementBancaire;
@@ -52,6 +53,25 @@ class FormatDuReleveBancaire extends Format
     private ?string $derniereDate = null;
 
     private int $rang = 0;
+
+    /**
+     * Le sens du fichier — 27/10 : l'extrait AFG va du plus récent au plus ancien (31 août en haut),
+     * BGFI du plus ancien au plus récent. `rang` doit toujours croître avec le temps, sans quoi « la
+     * dernière opération d'un jour » est la première : null tant que deux dates n'ont pas parlé.
+     */
+    private ?bool $descendant = null;
+
+    private ?string $premiereDate = null;
+
+    /** Au-delà, un rang « retourné » reste positif et garde l'ordre : un fichier n'a pas un million de lignes. */
+    private const RETOURNEMENT = 1_000_000;
+
+    /**
+     * Les lignes de pied ou d'en-tête qui portent des montants sans être des opérations — 27/10 :
+     * « SOLDE DE CLOTURE » d'AFG porte le total des débits et des crédits du mois, et comptait le mois
+     * deux fois. Reconnues à leur libellé **et** à l'absence de date.
+     */
+    private const LIGNES_DE_TOTAL = '/^(SOLDE\s+(DE\s+|D\W?)?(CLOTURE|CLÔTURE|OUVERTURE|INITIAL|FINAL|DEBUT|DÉBUT|FIN)|TOTAL|TOTAUX|SOUS[\s-]TOTAL)\b/iu';
 
     public static function cle(): string
     {
@@ -191,7 +211,13 @@ class FormatDuReleveBancaire extends Format
             return 'ignore';
         }
 
-        $date = self::date($ligne['date'] ?? null)?->toDateString() ?? $this->derniereDate;
+        $dateLue = self::date($ligne['date'] ?? null)?->toDateString();
+
+        if ($dateLue === null && $libelle !== null && preg_match(self::LIGNES_DE_TOTAL, $libelle)) {
+            return 'ignore';
+        }
+
+        $date = $dateLue ?? $this->derniereDate;
 
         if ($date === null) {
             // Aucune opération ne la précède dans le fichier : rien ne la situe dans le temps.
@@ -199,6 +225,7 @@ class FormatDuReleveBancaire extends Format
         }
 
         $this->derniereDate = $date;
+        $this->reconnaitreLeSens($date, $lotId);
         // Les montants sont gardés tels que donnés ; la CLÉ de l'opération, elle, reste celle d'avant le
         // 13/10 (montants arrondis), pour qu'un redépôt retrouve les lignes déjà en base et mette à jour
         // leurs centimes au lieu de les doubler.
@@ -223,7 +250,7 @@ class FormatDuReleveBancaire extends Format
             'solde_annonce' => $solde,
             'contrepartie' => self::texte($ligne['contrepartie'] ?? null, 160),
             'nature' => self::texte($ligne['nature'] ?? null, 160),
-            'rang' => ++$this->rang,
+            'rang' => $this->descendant === true ? self::RETOURNEMENT - (++$this->rang) : ++$this->rang,
         ];
 
         // Une opération de la base ne sert qu'une fois par dépôt (14/10) : la même ligne répétée
@@ -255,6 +282,35 @@ class FormatDuReleveBancaire extends Format
         ]));
 
         return 'cree';
+    }
+
+    /**
+     * Le sens du fichier, dit par ses deux premières dates différentes. Un fichier descendant voit
+     * ses lignes déjà écrites retournées d'un coup (`rang` = 1 000 000 − rang), puis les suivantes
+     * écrites ainsi : l'ordre de `rang` suit alors le temps dans les deux cas.
+     */
+    private function reconnaitreLeSens(string $date, ?int $lotId): void
+    {
+        if ($this->descendant !== null) {
+            return;
+        }
+
+        if ($this->premiereDate === null) {
+            $this->premiereDate = $date;
+
+            return;
+        }
+
+        if ($date === $this->premiereDate) {
+            return;
+        }
+
+        $this->descendant = $date < $this->premiereDate;
+
+        if ($this->descendant && $lotId !== null) {
+            MouvementBancaire::withoutGlobalScopes()->where('lot_import_id', $lotId)
+                ->update(['rang' => DB::raw(self::RETOURNEMENT.' - rang')]);
+        }
     }
 
     /** Le compte déclaré au dépôt, lu une fois pour tout le fichier — comme pour l'autre relevé. */

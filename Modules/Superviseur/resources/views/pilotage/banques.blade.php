@@ -556,6 +556,13 @@ $banquesRegardees = computed(function () {
  *
  * @return array{credits: int, debits: int, nombre: int, solde: ?int, date: ?string}
  */
+/** Le relevé importé des banques regardées : ouverture, entrées, sorties, fin, et les soldes d'avant — 27/10. */
+$soldesReleve = computed(function () {
+    [$debut, $fin] = $this->plage;
+
+    return RapprochementDeTresorerie::soldesDuReleve($this->banquesRegardees, $debut, $fin);
+});
+
 $releveRegarde = computed(function () {
     [$debut, $fin] = $this->plage;
     $ids = $this->banquesRegardees;
@@ -1009,6 +1016,38 @@ $declarerLaBanque = function () {
     <livewire:commun.doublons-d-import :formats="['releve-banque', 'banque']" :ids-sites="$this->idsSites" :ids-villes="\Modules\Noyau\Exploitation\Services\EtatDesImpayes::villesDesSites($this->idsSites)"
         :debut="$this->plage[0]->toDateString()" :fin="$this->plage[1]->toDateString()"
         :wire:key="'doublons-banques-'.md5(json_encode([$this->idsSites, $this->plage[0]->toDateString(), $this->plage[1]->toDateString()]))" />
+
+    {{-- ─────────────────────────────── le relevé importé, d'abord — 27/10
+         « Les KPI doivent parler de ce qui a été importé : entré, sorti, ce qui reste ; ajoute le
+         solde du mois précédent et de l'année précédente si disponible. » Tels que la banque les
+         dit, jamais recalculés ; le contrôle seul refait le calcul, pour signaler un écart. --}}
+    @php
+        $sr = $this->soldesReleve;
+        $nomReleve = $supportFiltre === '' ? 'toutes les banques' : ($this->compteChoisi['libelle'] ?? '');
+        $jj = fn (?string $d) => $d ? \Illuminate\Support\Carbon::parse($d)->format('d/m/Y') : null;
+        $ecartReel = $sr['ecart'] !== null && abs($sr['ecart']) >= 1;
+    @endphp
+    @if ($this->banquesRegardees !== [])
+        <div class="carte" style="margin-bottom:16px;">
+            <h3 style="font-size:15px; font-weight:700; margin:0 0 4px;">Le relevé importé — {{ $nomReleve }}</h3>
+            <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76;">
+                Ce que disent les relevés déposés, sur la période choisie : {{ montant_nombre($sr['nombre']) }} opération(s).
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px;">
+                <x-kpi-card label="Solde à l'ouverture" :value="$sr['ouverture'] === null ? '—' : ae($sr['ouverture'])"
+                    sub="Au début de la période" />
+                <x-kpi-card label="Entrées" :value="ae($sr['entrees'])" couleur="#0E9F6E" sub="Crédits du relevé" />
+                <x-kpi-card label="Sorties" :value="ae($sr['sorties'])" couleur="#C8102E" sub="Débits du relevé" />
+                <x-kpi-card label="Ce qui reste — solde de fin" :value="$sr['fin'] === null ? '—' : ae($sr['fin'])"
+                    :couleur="$ecartReel ? '#C8102E' : '#191B20'"
+                    :sub="$sr['fin'] === null ? 'Aucun relevé sur la période' : ('Annoncé au '.$jj($sr['date_fin']).($sr['ecart'] === null ? '' : ($ecartReel ? ' · écart de '.ae($sr['ecart']).' avec ouverture + entrées − sorties' : ' · ouverture + entrées − sorties : juste')))" />
+                <x-kpi-card label="Solde du mois précédent" :value="$sr['mois_precedent'] === null ? '—' : ae($sr['mois_precedent'])"
+                    :sub="'Au '.$jj($sr['date_mois_precedent']).($sr['mois_precedent'] === null ? ' — non disponible' : '')" />
+                <x-kpi-card label="Solde de l'année précédente" :value="$sr['annee_precedente'] === null ? '—' : ae($sr['annee_precedente'])"
+                    :sub="'Au '.$jj($sr['date_annee_precedente']).($sr['annee_precedente'] === null ? ' — non disponible' : '')" />
+            </div>
+        </div>
+    @endif
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-bottom:16px;">
         <x-kpi-card label="Encaissé — {{ $this->compteChoisi['libelle'] ?? 'tous les comptes' }}"
