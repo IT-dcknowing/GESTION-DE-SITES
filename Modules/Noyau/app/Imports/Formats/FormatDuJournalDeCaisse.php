@@ -97,7 +97,9 @@ class FormatDuJournalDeCaisse extends Format
          * lecture ne peut pas se tromper de colonne, la seconde le peut. L'ordre des mots
          * dit donc lequel apporter quand on a le choix.
          */
-        return 'Caisse — le journal du logiciel (Excel ou PDF)';
+        // 27/10 : décrit par ce qu'on voit en tête du fichier — « CAISSE DU … AU … », DATE, LIBELLE
+        // DE LA TRANSACTION, ENTREE, SORTIE, SOLDE.
+        return 'Caisse — état « CAISSE DU … AU … » (DATE, LIBELLE DE LA TRANSACTION, ENTREE, SORTIE, SOLDE), Excel ou PDF';
     }
 
     /**

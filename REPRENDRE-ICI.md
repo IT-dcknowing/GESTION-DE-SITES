@@ -60,6 +60,31 @@ sur les deux dépôts. **Une migration additive** : `2026_10_26_000001` (table n
 `UneChargeSeReprendDeLaCaisseTest`, `LesDecaissementsFournisseursSeSuiventTest`, et le test du
 rapprochement ajouté au premier). **À lancer sur le poste avant le déploiement.**
 
+### Fait le 27/10 (suite) — imports sans accroc, affectations libres, écritures comptables
+
+- **Imports** : « tous les fichiers de banque sont tenus à la main » — le type *Banque — pièces du
+  logiciel* quitte la liste du dépôt (il reste lisible pour les anciens dépôts). Les **formats frères** se
+  reconnaissent seuls (`Registre::FRERES`, `DepotController::formatFrere`) : un fichier annoncé « Caisse —
+  classeur » qui est l'état « CAISSE DU … AU … » (ou l'inverse), ou un relevé annoncé sous l'autre type de
+  banque, s'importe sous le bon type. Les deux caisses sont nommées par leurs colonnes. BGFI 2023 (5
+  colonnes), BGFI 2025 (+ « Libellé »), BGFI 2026 (+ colonne G) et AFG (Description, dates en lettres) se
+  lisent par le même relevé. ⚠️ L'image « CAISSE DU 17/03/26 AU 25/09/26 » est l'**état du logiciel**
+  (journal), pas le classeur mensuel ; c'est celui qui se dépose sous « Caisse — état CAISSE DU … AU … ».
+- **Avoir** : les clients proposés sont ceux des lignes de l'état des impayés (factures positives du
+  périmètre) ; le **n° d'avoir n'est plus modifiable** : AV-n° de facture, suivi d'un rang si la facture a
+  déjà un avoir, calculé par le serveur.
+- **Affectations** : *Portefeuilles clients › Tous les clients* — tous les noms (prospections, factures,
+  devis, portefeuille), « prospecté par », « suivi par », et un choix de commercial **libre** par ligne
+  (affecter ou réaffecter) ; filtres prospectés / pas encore affectés / déjà affectés
+  (`PortefeuilleCommercial::annuaire`).
+- **Écritures comptables — paramétrage** (`/ecritures-comptables/parametrage`, gérant et comptabilité) :
+  numéro et intitulé de chaque rôle (clients, assurances, fournisseurs, ventes mécanique / sinistre /
+  pièces, avoirs, TVA, caisse, virements internes, **chaque banque**, **chaque nature de charge**) et code
+  de chaque journal (VE, AC, CA, OD, BQ1…). Propositions SYSCOHADA marquées « proposé », **à valider par
+  le comptable**. Table `comptes_comptables` (migration additive `2026_10_27_000002`), `PlanComptable`.
+  **Reste à faire** : la génération des écritures (journal des ventes, caisse, banques) et leur export —
+  attend la validation des comptes et le format attendu par le logiciel du comptable (Sage ?).
+
 ### Fait le 27/10 — fusion / correction des clients, l'avoir par son bouton, import AFG
 
 - **Fusion / correction des clients de l'état des impayés** (urgent) : page `/impayes/fusion-correction`
@@ -557,6 +582,10 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     **Décaissements fournisseurs (caisse)**, suivre les sorties ; créer, quand il le souhaite, le rôle
     du **gestionnaire des fournisseurs** (Maintenance › Rôles et pages) pour qu'on y branche les
     notifications.
+
+24. **Le 27/10 (suite)** : `php artisan test`, puis `git pull` et `php artisan app:deployer` (migration
+    `2026_10_27_000002`, table neuve `comptes_comptables`). Faire valider par le comptable les comptes de
+    **Général › Écritures comptables** ; dire dans quel format il attend les écritures.
 
 23. **Le 27/10** : `php artisan test` (deux fichiers neufs : `LaFusionRemetLesFacturesSousLeBonClientTest`,
     et l'avoir dans `LesDecaissementsFournisseursSeSuiventTest`), puis en ligne `git pull` et

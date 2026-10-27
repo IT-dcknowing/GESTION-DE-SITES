@@ -81,6 +81,17 @@ $choisies = computed(fn () => $this->factures->whereIn('id', array_map('intval',
 /** Le plafond de l'avoir : ce qui reste avoirable sur les factures choisies. */
 $plafond = computed(fn () => montant_de($this->choisies->sum('avoirable')));
 
+/** « AV-n° de la facture », suivi d'un rang quand la facture a déjà reçu un avoir : AV-F12, AV-F12-2… */
+$numeroDeLAvoir = protect(function (?Facture $facture): string {
+    if ($facture === null) {
+        return '';
+    }
+
+    $deja = Facture::query()->where('avoir_de_id', $facture->id)->count();
+
+    return 'AV-'.$facture->n_facture.($deja > 0 ? '-'.($deja + 1) : '');
+});
+
 $updatedClient = function () {
     $this->cochees = [];
     $this->numero = '';
@@ -91,7 +102,7 @@ $updatedClient = function () {
 $updatedCochees = function () {
     unset($this->choisies, $this->plafond);
     $premiere = $this->choisies->first();
-    $this->numero = $premiere ? 'AV-'.$premiere->n_facture : '';
+    $this->numero = $premiere ? $this->numeroDeLAvoir($premiere) : '';
 };
 
 $enregistrer = function () {
@@ -107,7 +118,6 @@ $enregistrer = function () {
         'client' => ['required', 'string'],
         'cochees' => ['required', 'array', 'min:1'],
         'date' => ['required', 'date'],
-        'numero' => ['required', 'string', 'max:60'],
         // Positif à la saisie : le signe est affiché devant le champ, et posé à l'écriture.
         'montant' => ['required', 'numeric', 'gt:0'],
         'commentaire' => ['nullable', 'string', 'max:2000'],
@@ -116,6 +126,9 @@ $enregistrer = function () {
 
     $choisies = $this->choisies;
     $montant = montant_de($donnees['montant']);
+    // Le n° ne se saisit pas (27/10 : « le numéro de l'avoir ne doit pas être modifiable ») : il se
+    // tire de la facture, relu ici — ce qu'envoie le navigateur n'y est pour rien.
+    $donnees['numero'] = $this->numeroDeLAvoir($choisies->first());
 
     if ($choisies->isEmpty()) {
         $this->addError('cochees', "Cochez la ou les factures sur lesquelles porte l'avoir.");
@@ -250,7 +263,8 @@ $enregistrer = function () {
                 </div>
                 <div class="bloc-saisie" style="background:#fff; border-style:solid;">
                     <x-champ label="Date de l'avoir" model="date" type="date" width="155" requis />
-                    <x-champ label="N° de l'avoir" model="numero" width="170" requis />
+                    {{-- Tiré de la facture, non modifiable — 27/10. --}}
+                    <x-champ label="N° de l'avoir" model="numero" width="170" :disabled="true" />
                     <div style="display:flex; flex-direction:column; width:190px;">
                         <label class="champ-libelle">Montant de l'avoir<span style="color:var(--th-accent);"> *</span></label>
                         {{-- Le signe est là, visible, et ne se tape pas : un avoir est toujours négatif. --}}

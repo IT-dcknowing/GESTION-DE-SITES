@@ -20,3 +20,11 @@ Route::middleware(['auth', 'role:caissier'])
         Volt::route('/encaissements', 'comptabilite.encaissements')->name('encaissements');
         Volt::route('/decaissements', 'comptabilite.decaissements')->name('decaissements');
     });
+
+/*
+ * Les écritures comptables — 27/10 : « on va paramétrer les numéros de compte, faire la
+ * configuration ». Le gérant et la comptabilité. Voir `PlanComptable`.
+ */
+Route::middleware(['auth', 'role:gerant|caissier'])->group(function () {
+    Volt::route('/ecritures-comptables/parametrage', 'comptabilite.ecritures-parametrage')->name('ecritures.parametrage');
+});

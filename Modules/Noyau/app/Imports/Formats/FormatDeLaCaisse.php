@@ -61,7 +61,9 @@ class FormatDeLaCaisse extends Format
         // état imprimé par le logiciel d'atelier pour Bouaké et San-Pédro. Les libellés
         // le disent maintenant dans les mêmes mots, sur le même modèle, pour qu'on choisisse
         // par ce qu'on a en main plutôt qu'en devinant lequel est lequel (24/09).
-        return 'Caisse — le classeur tenu à la main (Excel)';
+        // Décrit par ses colonnes depuis le 27/10 : les deux caisses se tiennent dans Excel, et
+        // « à la main » ne suffisait plus à les distinguer.
+        return 'Caisse — classeur par onglets mensuels (Libellé, Entrées, sorties, Bénéficiaire)';
     }
 
     public static function colonnes(): array

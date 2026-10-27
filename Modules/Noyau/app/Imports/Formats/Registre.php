@@ -118,11 +118,30 @@ class Registre
     }
 
     /** Les formats importables, prêts pour une liste déroulante. */
+    /**
+     * Les formats retirés de la liste du dépôt — 27/10 : « tous les fichiers de banque sont tenus à
+     * la main, rien n'est importé du logiciel ». Ils restent lisibles (les dépôts d'avant gardent
+     * leur type au journal), ils ne se proposent plus.
+     */
+    public const HORS_DE_LA_LISTE = ['banque'];
+
+    /**
+     * Les formats qui décrivent la même chose sous deux documents : quand le fichier déposé est
+     * celui de l'autre, le dépôt prend l'autre de lui-même — 27/10, « au niveau des imports, on ne
+     * doit plus avoir de problème ».
+     */
+    public const FRERES = [
+        'caisse' => ['journal-caisse'],
+        'journal-caisse' => ['caisse'],
+        'releve-banque' => ['banque'],
+        'banque' => ['releve-banque'],
+    ];
+
     public static function options(): array
     {
         $options = [];
 
-        foreach (self::DISPONIBLES as $cle => $classe) {
+        foreach (array_diff_key(self::DISPONIBLES, array_flip(self::HORS_DE_LA_LISTE)) as $cle => $classe) {
             $options[$cle] = $classe::libelle();
         }
 

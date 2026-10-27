@@ -138,6 +138,12 @@ class DepotController
         // même si quelqu'un le glisse dans la requête.
         $banqueId = in_array($format, Registre::formatsParCompte(), true) ? (int) $requete->input('banque') : null;
 
+        // Le fichier d'un format frère (les deux caisses, les deux banques) : pris tel qu'il est.
+        if (! $requete->boolean('confirme')) {
+            $format = $this->formatFrere($fichier, $entrepriseId, $format, $villeId, $requete);
+            $banqueId = in_array($format, Registre::formatsParCompte(), true) ? (int) $requete->input('banque') : null;
+        }
+
         if (! $requete->boolean('confirme')) {
             // Avec « toutes les villes », il n'y a pas de ville annoncée à contredire : le
             // contrôle se limite alors au type de fichier.
@@ -227,6 +233,41 @@ class DepotController
         ]);
 
         return back()->withInput($requete->except('fichier'));
+    }
+
+    /**
+     * Le format frère quand le fichier est le sien — 27/10.
+     *
+     * « Caisse — classeur » annoncé pour l'état « CAISSE DU … AU … » (ou l'inverse) refusait le
+     * fichier, alors que les deux écrivent la même caisse. Si le format annoncé ne reconnaît pas
+     * ses colonnes et qu'un format frère les reconnaît toutes, c'est lui qu'on prend — sans rien
+     * demander, et en le disant à l'arrivée. Hors des frères, rien ne change : un mauvais type
+     * reste signalé.
+     */
+    private function formatFrere(UploadedFile $fichier, int $entrepriseId, string $format, ?int $villeId, Request $requete): string
+    {
+        $chemin = $fichier->getRealPath();
+
+        if ($chemin === false || ! is_file($chemin) || (Registre::FRERES[$format] ?? []) === []) {
+            return $format;
+        }
+
+        $controle = new ControlePrealable($entrepriseId);
+
+        if ($controle->examiner($chemin, $format, $villeId)['format_conforme']) {
+            return $format;
+        }
+
+        foreach (Registre::FRERES[$format] as $frere) {
+            if ($controle->examiner($chemin, $frere, $villeId)['format_conforme']) {
+                $requete->session()->flash('format-frere', 'Ce fichier est un « '.Registre::libelle($frere)
+                    .' » : il a été importé comme tel (vous aviez choisi « '.Registre::libelle($format).' »).');
+
+                return $frere;
+            }
+        }
+
+        return $format;
     }
 
     /** Le fichier mis de côté au contrôle précédent, s'il est toujours là. */

@@ -29,6 +29,11 @@ state([
     // La ligne dont on change le commercial, et vers qui.
     'reaffectation' => null,
     'versCommercial' => '',
+    // « Tous les clients » — 27/10 : recherche, filtre, page, et le commercial choisi ligne par ligne.
+    'annuaireRecherche' => '',
+    'annuaireFiltre' => '',
+    'annuairePage' => 1,
+    'choix' => [],
 ]);
 
 $garder = protect(function () {
@@ -51,6 +56,31 @@ $lignes = computed(function () {
 
     return PortefeuilleCommercial::clients($ids, (string) $this->recherche);
 });
+
+/** Tous les clients, avec qui les a prospectés et qui les suit — voir `PortefeuilleCommercial::annuaire`. */
+$annuaire = computed(fn () => ! PortefeuilleCommercial::disponible() ? ['lignes' => collect(), 'total' => 0]
+    : PortefeuilleCommercial::annuaire((string) $this->annuaireRecherche, (string) $this->annuaireFiltre, (int) $this->annuairePage));
+
+$updatedAnnuaireRecherche = function () { $this->annuairePage = 1; };
+$updatedAnnuaireFiltre = function () { $this->annuairePage = 1; };
+
+/** Affecte un client de la liste à qui l'on veut — qu'il l'ait prospecté ou non, et même s'il est suivi ailleurs. */
+$affecterA = function (string $client, string $cle) {
+    $this->garder();
+
+    $commercial = $this->commercialDuPerimetre($this->choix[$cle] ?? '');
+
+    if ($commercial === null) {
+        $this->dispatch('annonce', texte: 'Choisissez d\'abord, sur la ligne, le commercial de votre périmètre.');
+
+        return;
+    }
+
+    $ligne = PortefeuilleCommercial::affecter($commercial, $client, auth()->user(), 'affectation');
+    unset($this->choix[$cle]);
+    unset($this->annuaire, $this->lignes, $this->prospectes);
+    $this->dispatch('annonce', ton: 'succes', texte: '« '.$ligne->client.' » est affecté à '.$commercial->nom.'.');
+};
 
 $nomsConnus = computed(fn () => PortefeuilleCommercial::nomsConnus());
 
@@ -205,6 +235,50 @@ $retirer = function (int $id) {
                     </div>
                 </div>
             @endif
+        </div>
+
+        {{-- ════════════════ Tous les clients — 27/10
+             « Une méthode où tous les clients sont, où l'on voit qui a prospecté chacun, mais où l'on peut
+             l'affecter à qui l'on veut. » --}}
+        @php $annuaire = $this->annuaire; @endphp
+        <div class="carte" style="margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                <h3 style="font-size:14.5px; font-weight:700; margin:0;">Tous les clients ({{ number_format($annuaire['total'], 0, ',', ' ') }})</h3>
+                <div class="bloc-saisie" style="margin:0;">
+                    <x-champ label="Rechercher" model="annuaireRecherche" :live="true" width="220" placeholder="Nom du client…" />
+                    <x-champ label="Afficher" model="annuaireFiltre" type="select" :live="true" width="210"
+                        :options="['' => 'Tous les clients', 'prospectes' => 'Prospectés', 'non_suivis' => 'Pas encore affectés', 'suivis' => 'Déjà affectés']" />
+                </div>
+            </div>
+            <div class="tableau-conteneur">
+                <table class="tableau">
+                    <thead><tr><th>Client</th><th>Prospecté par</th><th>Suivi par</th><th>Affecter à</th></tr></thead>
+                    <tbody>
+                        @forelse ($annuaire['lignes'] as $c)
+                            @php $cle = md5($c->cle); @endphp
+                            <tr wire:key="an-{{ $cle }}">
+                                <td><b>{{ $c->nom }}</b></td>
+                                <td style="font-size:12px;">{{ $c->prospecte_par === [] ? '—' : implode(', ', $c->prospecte_par) }}</td>
+                                <td style="font-size:12px;">{{ $c->suivi_par ?? '—' }}</td>
+                                <td style="white-space:nowrap;">
+                                    <select wire:model="choix.{{ $cle }}" class="champ" style="width:auto; display:inline-block;" aria-label="Commercial pour {{ $c->nom }}">
+                                        <option value="">— commercial —</option>
+                                        @foreach ($this->commerciaux as $id => $nom)
+                                            <option value="{{ $id }}">{{ $nom }}</option>
+                                        @endforeach
+                                    </select>
+                                    <button type="button" wire:click="affecterA(@js($c->nom), '{{ $cle }}')" class="bouton" style="padding:4px 10px; font-size:12px;">
+                                        {{ $c->suivi_id ? 'Réaffecter' : 'Affecter' }}
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <x-table-vide :colspan="4" texte="Aucun client ne répond à la recherche." />
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <x-pagination :page="$annuairePage" :total="$annuaire['total']" prop="annuairePage" :par-page="30" />
         </div>
 
         <div class="carte" style="margin-bottom:16px;">

@@ -123,6 +123,8 @@ class MenuNavigation
                 ['label' => 'Tableau de bord', 'route' => 'caissier.tableau-de-bord'],
                 ['label' => 'Encaissements', 'route' => 'caissier.encaissements'],
                 ['label' => 'Décaissements', 'route' => 'caissier.decaissements'],
+                // Le paramétrage des comptes et des journaux — 27/10.
+                ['label' => 'Écritures comptables', 'route' => 'ecritures.parametrage'],
                 // La comptabilité encaisse ce que le recouvrement poursuit : elle
                 // décrochait le téléphone sans pouvoir lire ce qu'un client devait.
                 // Consultation seulement — voir AccesRecouvrement.
@@ -312,6 +314,8 @@ class MenuNavigation
         // Le barème décide de ce qu'un commercial touche à la fin du mois : il n'est
         // proposé qu'au gérant, comme l'écran lui-même.
         if ($utilisateur->hasRole('gerant')) {
+            // Les comptes et journaux des écritures — 27/10.
+            $general[] = ['label' => 'Écritures comptables', 'route' => 'ecritures.parametrage'];
             $general[] = ['label' => 'Barème de commission', 'route' => 'bareme-commission'];
             $general[] = ['label' => "Objectifs mensuels de l'entreprise", 'route' => 'objectifs-mensuels'];
         }

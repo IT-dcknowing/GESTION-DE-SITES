@@ -488,6 +488,13 @@ l'écran, et qu'il faut savoir avant d'ouvrir les pages :
   s'ouvre depuis la page **Charges** (bouton « Charges fournisseurs › » et « + Ajouter une pièce ») ;
 - deux pages neuves : **Grand livre fournisseur** et **Décaissements fournisseurs (caisse)**.
 
+### Une seule fois, après la mise à jour du 27 octobre 2026 (suite)
+
+Une migration additive — `2026_10_27_000002_les_ecritures_comptables_se_parametrent` : une table neuve,
+`comptes_comptables`. Nouvelle page **Général › Écritures comptables** (gérant, comptabilité). À l'import,
+le type « Banque — pièces du logiciel » n'est plus proposé, et un fichier de caisse ou de banque déposé
+sous le type voisin s'importe sous le bon.
+
 ### Une seule fois, après la mise à jour du 27 octobre 2026
 
 Une migration additive — `2026_10_27_000001_un_avoir_dit_sa_facture` : une colonne nullable,

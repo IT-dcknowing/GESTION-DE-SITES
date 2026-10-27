@@ -69,7 +69,10 @@ class LeReleveBancaireSeDeposeParCompteTest extends TestCase
     public function test_le_releve_bancaire_est_un_type_deposable(): void
     {
         $this->assertTrue(Registre::connait('banque'));
-        $this->assertArrayHasKey('banque', Registre::options());
+        // 27/10 : « tous les fichiers de banque sont tenus à la main » — le type des pièces du
+        // logiciel reste lisible, il ne se propose plus ; le relevé tenu à la main, si.
+        $this->assertArrayNotHasKey('banque', Registre::options());
+        $this->assertArrayHasKey('releve-banque', Registre::options());
         $this->assertSame(FormatDesPiecesBancaires::class, Registre::classe('banque'));
 
         // Et il n'est plus annoncé comme à venir : une entrée ne peut pas être les deux.
@@ -87,7 +90,8 @@ class LeReleveBancaireSeDeposeParCompteTest extends TestCase
             // Le type s'appelle « Banque » dans la liste du dépôt — raccourci le 01/10 :
             // la liste est lue d'un coup d'œil, et « Relevé bancaire — pièces d'un compte »
             // y tenait trois fois la place des autres.
-            ->assertSee('Banque', false)
+            // Depuis le 27/10, seul le relevé tenu à la main est proposé.
+            ->assertSee('Relevé bancaire', false)
             ->assertSeeHtml('id="champ-banque"')
             ->assertSee('BGFI', false);
     }
