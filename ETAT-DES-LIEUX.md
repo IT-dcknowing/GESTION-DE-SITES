@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **26 octobre 2026** (39e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **27 octobre 2026** (40e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -197,6 +197,7 @@ Voir `LecteurPdf`.
 | 26/10 | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Retours du 26/10.** **Charges = sorties de caisse administratives + charges saisies + chaque pièce du suivi fournisseurs** (choix du propriétaire) : les sorties de caisse fournisseurs se montrent sans compter (`ChargesDeLaPeriode::sortiesDeCaisse` / `suivi`, `ChargesParSource::tout()['retenu']` = le même total ; page Charges, CA, accueil du gérant). **Rapprochement suivi ↔ FNE visible** : colonne ✔/✘ et lien vers la contrepartie des deux côtés, filtres rapprochées / non rapprochées (le rapprochement lui-même était déjà automatique, `AchatsFne::rapprocher`). **Maintenance › Habilitations** : modifier / supprimer accordés ou retirés à un rôle ou à un compte (`HabilitationsDActions`, créances et pièces fournisseurs) ; **supprimer une pièce fournisseur** (saisie, sans règlement ; FNE détachée). Migration additive `2026_10_26_000001` (table neuve `habilitations_actions`). Tests écrits, non lancés (réseau du conteneur) |
 | 26/10 (suite) | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Portefeuille clients des commerciaux** : affectation (gérant, superviseur de ville, responsable commercial — `/portefeuilles-clients`), clients prospectés repris, un client = un commercial ; page **Mes clients** du commercial avec relances (objet, canal, résultat, prochaine relance, statut) — `PortefeuilleCommercial`, migration additive `2026_10_26_000002` (`clients_commerciaux`, `relances_commerciales`). **Flux de trésorerie** de l'accueil du gérant sur `TresorerieReelle`. Formulaire des habilitations aux champs de la maison. FNE : borne du relevé complet au 01/01/2020, la page dit la plus ancienne facture reçue. Tests écrits, non lancés |
 | 26/10 (fin) | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Relevé FNE sans 503** : le bouton « Actualiser » dépose une demande servie par `schedule:run` (`fne:actualiser --si-demande`, chaque minute), plus de navigateur lancé depuis le web ; Chromium en `nice -n 19`, sans images/polices/médias, tas JS borné |
+| 27/10 | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Fusion / correction des clients de l'état des impayés** (`FusionDesClients`, page `impayes-fusion`, habilitation `clients_impayes.fusionner`). **Avoir par son bouton** (`pilotage.impayes-avoir`, plafond = facture moins avoirs déjà faits, migration additive `2026_10_27_000001` `factures.avoir_de_id`) ; le formulaire de créance refuse un négatif neuf ; faux « règlement dépasse le reste (0 F) » corrigé. Import : compte bancaire gardé par « Importer quand même », « Description » = libellé, dates en lettres. Apostrophes doublement échappées (`texte_d_attribut`). Tests écrits, non lancés |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -2588,6 +2589,10 @@ dépôts. Aucune migration.
 | 112 | Maintenance › Habilitations : « le style n'y est pas » | ✅ 26/10 — champs `x-champ`, libellés au-dessus |
 | 113 | « Actualiser depuis la FNE » : 503 sur tout le site pendant plus de 10 minutes, puis « relevé pas arrivé » (`laravel.log` joint, rien le 26/10) | ✅ 26/10 — cause : Chromium lancé par le processus web, sur le même compte d'hébergement. Le bouton dépose une demande, la tâche planifiée la sert chaque minute (`fne:actualiser --si-demande`), en `nice -n 19`, navigateur allégé (images, polices, médias bloqués, tas JS borné) |
 | 114 | Portail FNE : « Personnaliser » n'a pas de bouton de confirmation ; toutes les années | ✅ 26/10 — plage en deux clics (début, fin). La page dit : interrogé depuis le 01/01/2023, plus ancienne facture **08/09/2025** — rien d'antérieur au portail |
+| 115 | « AUJOURD&#039;HUI » sur les cartes | ✅ 27/10 — double échappement des attributs de composant ; `texte_d_attribut()` dans kpi-card, champ, carte-section, titre-ecran, table-vide, a-venir, select-cherchable |
+| 116 | Import du relevé bancaire tenu à la main (AFG) : « il manque Libellé de l'opération », « Le champ banque est obligatoire » | ✅ 27/10 — « Description » acceptée ; la banque repart avec « Importer quand même » ; dates en lettres |
+| 117 | **Urgent** — page Fusion / correction des clients de l'état des impayés, attribuable depuis le Super admin | ✅ 27/10 — voir § 4 ; attribution par Maintenance › Habilitations |
+| 118 | Avoir : bouton dédié, client → factures → montant (≤ factures choisies), « − » visible non saisi, commentaire ; diminue la créance | ✅ 27/10 |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
 

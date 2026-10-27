@@ -83,7 +83,9 @@ class FormatDuReleveBancaire extends Format
         'debit' => ['Débit', 'Debit'],
         'credit' => ['Crédit', 'Credit'],
         'solde' => ['Solde'],
-        'libelle' => ["Libellé de l'operation", 'Libellé opération'],
+        // L'extrait AFG retraité (27/10) : « Date · Description · Date de valeur · Numéro de référence ·
+        // Débit · Crédit · Solde · Libellé » — la description est le libellé de l'opération.
+        'libelle' => ["Libellé de l'operation", 'Libellé opération', 'Description'],
     ];
 
     public static function colonnesObligatoires(): array

@@ -37,11 +37,11 @@
 @endphp
 
 <div class="carte carte-kpi {{ $accent ? 'est-alerte' : ($bon ? 'est-bon' : '') }}">
-    <div class="kpi-libelle">{{ $label }}</div>
+    <div class="kpi-libelle">{{ texte_d_attribut($label) }}</div>
     <div class="kpi-valeur {{ $accent ? 'est-alerte' : ($bon ? 'est-bon' : '') }}"
         @if ($couleur) style="color:{{ $couleur }};" @endif>{{ $value }}</div>
     @if ($sub)
-        <div class="kpi-sous">{{ $sub }}</div>
+        <div class="kpi-sous">{{ texte_d_attribut($sub) }}</div>
     @endif
     @if ($lignes)
         <div style="margin-top:7px; padding-top:7px; border-top:1px solid var(--th-ligne,#E2E0D8); display:flex; flex-direction:column; gap:3px;">

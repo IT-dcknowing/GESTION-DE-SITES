@@ -18,11 +18,11 @@
 <div {{ $attributes->merge(['style' => 'margin-bottom:18px;']) }}>
     <h1 style="font-family:'Barlow Condensed',sans-serif; font-size:26px; font-weight:700;
                text-transform:uppercase; letter-spacing:1px; margin:0; color:var(--th-steel,#2A2E35);">
-        {{ $titre }}
+        {{ texte_d_attribut($titre) }}
     </h1>
 
     @if ($sousTitre)
-        <div style="color:var(--th-gris,#6B6E76); font-size:13.5px; margin-top:3px;">{{ $sousTitre }}</div>
+        <div style="color:var(--th-gris,#6B6E76); font-size:13.5px; margin-top:3px;">{{ texte_d_attribut($sousTitre) }}</div>
     @endif
 
     {{ $slot }}

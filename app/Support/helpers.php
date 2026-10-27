@@ -42,3 +42,19 @@ if (! function_exists('an')) {
         return number_format($taux * 100, 1, ',', ' ').' %';
     }
 }
+
+if (! function_exists('texte_d_attribut')) {
+    /**
+     * Un texte reçu d'un attribut de composant, rendu à sa forme lisible — 27/10 (« Encaissé
+     * aujourd&#039;hui » sur le tableau de bord de la comptabilité).
+     *
+     * `label="Encaissé {{ $jour }}"` échappe déjà `$jour` en passant l'attribut ; le composant
+     * l'échappait une seconde fois en l'affichant, et l'apostrophe devenait `&#039;`. Le texte est
+     * ramené ici à ses caractères, puis le composant l'échappe une fois, normalement : rien
+     * n'entre jamais non échappé dans la page.
+     */
+    function texte_d_attribut(mixed $texte): string
+    {
+        return html_entity_decode((string) $texte, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+}

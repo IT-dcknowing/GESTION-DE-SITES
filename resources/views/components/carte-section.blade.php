@@ -21,7 +21,7 @@
                  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
                  style="flex:0 0 auto;">{!! $trace !!}</svg>
         @endif
-        {{ $titre }}
+        {{ texte_d_attribut($titre) }}
     </h2>
     {{ $slot }}
 </div>

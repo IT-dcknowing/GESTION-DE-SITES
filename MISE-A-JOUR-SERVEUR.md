@@ -488,6 +488,18 @@ l'écran, et qu'il faut savoir avant d'ouvrir les pages :
   s'ouvre depuis la page **Charges** (bouton « Charges fournisseurs › » et « + Ajouter une pièce ») ;
 - deux pages neuves : **Grand livre fournisseur** et **Décaissements fournisseurs (caisse)**.
 
+### Une seule fois, après la mise à jour du 27 octobre 2026
+
+Une migration additive — `2026_10_27_000001_un_avoir_dit_sa_facture` : une colonne nullable,
+`factures.avoir_de_id`. Rien n'est réécrit ; `php artisan app:deployer` la passe. Ce qui change :
+
+- **État des impayés** : bouton **Avoir** (client → factures → montant, le « − » affiché) ; un avoir ne se
+  saisit plus comme une créance ;
+- **Fusion / correction des clients** (`/impayes/fusion-correction`) : à donner dans **Maintenance ›
+  Habilitations** (geste « Fusion / correction des clients », le gérant l'a d'office) ;
+- **Import** : « Importer quand même » garde le compte bancaire ; l'extrait AFG (« Description »,
+  dates en lettres) se lit.
+
 ### Une seule fois, après la mise à jour du 26 octobre 2026
 
 Une migration additive — `2026_10_26_000001_une_habilitation_ouvre_modifier_et_supprimer` : une table

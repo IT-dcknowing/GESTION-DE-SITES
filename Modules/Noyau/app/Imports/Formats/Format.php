@@ -1078,6 +1078,16 @@ abstract class Format
             return null;
         }
 
+        // « 29 mai 2026 », « 1er juin 2026 », « 3 févr. 2026 » : l'extrait AFG passé par un PDF (27/10)
+        // écrit ses dates en toutes lettres.
+        if (preg_match('/^(\d{1,2})(?:er)?\s+([[:alpha:]éû\.]+)\s+(\d{4})$/iu', $texte, $m)) {
+            $mois = self::moisEnLettres($m[2]);
+
+            if ($mois !== null && checkdate($mois, (int) $m[1], (int) $m[3])) {
+                return Carbon::create((int) $m[3], $mois, (int) $m[1])->startOfDay();
+            }
+        }
+
         foreach (['d/m/Y', 'd-m-Y', 'Y-m-d', 'd/m/y', 'd.m.Y'] as $motif) {
             try {
                 $date = Carbon::createFromFormat($motif, $texte);
@@ -1089,6 +1099,22 @@ abstract class Format
             // silencieusement sur un jour valide si on ne le vérifiait pas.
             if ($date && $date->format($motif) === $texte) {
                 return $date->startOfDay();
+            }
+        }
+
+        return null;
+    }
+
+    /** Le numéro d'un mois écrit en français, en entier ou abrégé — null s'il n'en est pas un. */
+    private static function moisEnLettres(string $mot): ?int
+    {
+        $mot = rtrim(mb_strtolower($mot), '.');
+        $mot = strtr($mot, ['é' => 'e', 'û' => 'u', 'è' => 'e']);
+
+        foreach (['janv' => 1, 'fev' => 2, 'mars' => 3, 'avr' => 4, 'mai' => 5, 'juin' => 6, 'juil' => 7,
+            'aout' => 8, 'sept' => 9, 'oct' => 10, 'nov' => 11, 'dec' => 12] as $debut => $numero) {
+            if (str_starts_with($mot, $debut)) {
+                return $numero;
             }
         }
 

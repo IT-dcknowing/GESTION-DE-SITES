@@ -241,6 +241,9 @@ $abandonner = function () {
                         <input type="hidden" name="format" value="{{ old('format') }}">
                         <input type="hidden" name="ville" value="{{ old('ville') }}">
                         <input type="hidden" name="site" value="{{ old('site') }}">
+                        {{-- Le compte choisi repart avec le fichier (27/10) : sans lui, « Importer quand même »
+                             d'un relevé bancaire répondait « Le champ banque est obligatoire ». --}}
+                        <input type="hidden" name="banque" value="{{ old('banque') }}">
                         <button type="submit" class="imp-btn r">Importer quand même</button>
                     </form>
 

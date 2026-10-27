@@ -54,6 +54,11 @@ $comptes = computed(fn () => User::query()->withoutGlobalScopes()
 
 $lignes = computed(fn () => HabilitationsDActions::lignes());
 
+// Les gestes cochés appartiennent au domaine : en changer les remet à vide.
+$updatedDomaine = function () {
+    $this->actions = [];
+};
+
 $enregistrer = function () {
     $this->garder();
 
@@ -65,7 +70,7 @@ $enregistrer = function () {
         'role' => ['required_if:beneficiaire,role'],
         'compte' => ['required_if:beneficiaire,compte'],
     ], [
-        'actions.required' => 'Cochez au moins un geste : modifier ou supprimer.',
+        'actions.required' => 'Cochez au moins un geste.',
         'role.required_if' => 'Choisissez le rôle.',
         'compte.required_if' => 'Choisissez le compte.',
     ]);
@@ -150,7 +155,7 @@ $effacer = function (int $id) {
 <div>
     <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
         Qui voit les boutons <b>Modifier</b> et <b>Supprimer</b> sur les créances de l'état des impayés et sur les
-        pièces fournisseurs. Au départ, le code les donne aux rôles qui les avaient déjà ; ici, on les donne à un autre
+        pièces fournisseurs, et qui ouvre la page <b>Fusion / correction</b> des clients de l'état des impayés. Au départ, le code les donne aux rôles qui les avaient déjà ; ici, on les donne à un autre
         rôle ou à un compte précis, ou on les retire. Ce qui est dit d'un compte l'emporte sur son rôle ; le gérant
         garde toujours ses gestes. L'habilitation ouvre le geste sans lever les verrous de l'écran : une pièce réglée ou
         venue d'un fichier ne se supprime pas, quel que soit le compte.
@@ -226,17 +231,17 @@ $effacer = function (int $id) {
                     @error('compte') <span class="champ-erreur">{{ $message }}</span> @enderror
                 </div>
             @endif
-            <x-champ label="Sur" model="domaine" type="select" width="280"
+            <x-champ label="Sur" model="domaine" type="select" :live="true" width="280"
                 :options="collect(HabilitationsDActions::DOMAINES)->map(fn ($d) => $d['libelle'])->all()" />
             <div style="display:flex; flex-direction:column;">
                 <label class="champ-libelle">Gestes<span style="color:var(--th-accent);"> *</span></label>
+                {{-- Les gestes du domaine choisi (27/10 : la page Fusion / correction en est un). --}}
                 <div style="display:flex; gap:14px; align-items:center; min-height:38px;">
-                    <label style="display:flex; gap:6px; align-items:center; font-size:13.5px; cursor:pointer;">
-                        <input type="checkbox" wire:model="actions" value="modifier"> Modifier
-                    </label>
-                    <label style="display:flex; gap:6px; align-items:center; font-size:13.5px; cursor:pointer;">
-                        <input type="checkbox" wire:model="actions" value="supprimer"> Supprimer
-                    </label>
+                    @foreach (HabilitationsDActions::DOMAINES[$domaine]['actions'] ?? [] as $cle => $def)
+                        <label wire:key="geste-{{ $domaine }}-{{ $cle }}" style="display:flex; gap:6px; align-items:center; font-size:13.5px; cursor:pointer;">
+                            <input type="checkbox" wire:model="actions" value="{{ $cle }}"> {{ $def['libelle'] }}
+                        </label>
+                    @endforeach
                 </div>
             </div>
         </div>

@@ -56,7 +56,7 @@
      data-sel-vide="{{ $vide }}" data-sel-invite="{{ $placeholder }}">
 
     @if ($label)
-        <label for="{{ $id }}">{{ $label }}</label>
+        <label for="{{ $id }}">{{ texte_d_attribut($label) }}</label>
     @endif
 
     @if ($source)

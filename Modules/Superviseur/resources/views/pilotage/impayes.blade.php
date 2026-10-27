@@ -183,6 +183,7 @@ state([
     // pilotage.impayes-porter. On ne garde ici que son ouverture, et la facture avec
     // laquelle il s'ouvre quand on arrive d'une autre page.
     'porterOuvert' => false,
+    'avoirOuvert' => false,
     'porterFacture' => null,
 
     /*
@@ -221,6 +222,20 @@ mount(function () {
         $this->fDate = now()->toDateString();
     }
 });
+
+on(['avoir-enregistre' => function (int $exercice, string $texte) {
+    $this->avoirOuvert = false;
+    $this->exercice = $exercice;
+    $this->page = 1;
+    unset($this->pageLignes, $this->totaux, $this->exercices);
+    $this->dispatch('annonce', ton: 'succes', texte: $texte);
+}]);
+
+$basculerAvoir = function () {
+    $this->avoirOuvert = ! $this->avoirOuvert;
+    $this->porterOuvert = false;
+    $this->formulaireOuvert = false;
+};
 
 on(['facture-portee' => function (int $exercice, string $texte) {
     $this->porterOuvert = false;
@@ -745,6 +760,14 @@ $enregistrer = function () {
     $montant = montant_de($donnees['fMontant']);
     $regle = montant_de(($donnees['fRegle'] ?? '') ?: 0);
 
+    // L'avoir se saisit par le bouton « Avoir », sur la facture qu'il corrige — 27/10. Un avoir déjà
+    // en base (saisi avant, ou importé) se corrige encore ici.
+    if ($montant < 0 && ($ligne === null || ! $ligne->est_avoir)) {
+        $this->addError('fMontant', 'Un avoir se saisit par le bouton « Avoir » : on y choisit le client et la facture qu\'il corrige.');
+
+        return;
+    }
+
     // Un avoir diminue ce que le client doit : il ne se règle pas.
     if ($montant < 0 && $regle != 0) {
         $this->addError('fRegle', 'Un avoir (montant négatif) ne se règle pas : laissez le règlement vide.');
@@ -847,7 +870,9 @@ $enregistrer = function () {
             ])->save();
         }
 
-        if ($regle > $montant - $encaisse) {
+        // Seul un règlement se compare au reste : sans règlement, rien à refuser (27/10 — un avoir
+        // recevait « Le règlement dépasse le reste à payer (0 F) »).
+        if ($regle > 0 && $regle > $montant - $encaisse) {
             return ['fRegle', 'Le règlement dépasse le reste à payer ('.ae(max(0, $montant - $encaisse)).').'];
         }
 
@@ -934,7 +959,14 @@ $basculerPortage = function () {
     @include('components.select-cherchable-ressources')
 
     <x-titre-ecran titre="État des impayés"
-        sous-titre="Les factures déposées chez le client et leurs règlements, année par année. Ce qui n'est pas soldé se reporte de lui-même sur l'année suivante." />
+        sous-titre="Les factures déposées chez le client et leurs règlements, année par année. Ce qui n'est pas soldé se reporte de lui-même sur l'année suivante.">
+        {{-- Fusion / correction des clients — 27/10 : à qui la Maintenance a donné la page. --}}
+        @if (HabilitationsDActions::accorde(auth()->user(), 'clients_impayes', 'fusionner'))
+            <div style="margin-top:10px;">
+                <a href="{{ route('impayes-fusion') }}" wire:navigate class="bouton bouton-secondaire">Fusion / correction des clients</a>
+            </div>
+        @endif
+    </x-titre-ecran>
 
     {{-- Le bandeau : l'année regardée, le périmètre, et les boutons qui ouvrent la saisie. --}}
     <div class="carte" style="margin-bottom:16px;">
@@ -992,6 +1024,11 @@ $basculerPortage = function () {
                     : ($wire.$set('formulaireOuvert', ! $wire.formulaireOuvert, false), $wire.$set('porterOuvert', false, false))"
                 x-text="$wire.formulaireOuvert && ! $wire.enModification ? 'Fermer le formulaire' : '+ Ajouter une créance'">
                 {{ $formulaireOuvert && $enModification === null ? 'Fermer le formulaire' : '+ Ajouter une créance' }}
+            </button>
+
+            {{-- L'avoir sur une ou plusieurs factures — 27/10 : il ne se saisit plus comme une créance. --}}
+            <button type="button" wire:click="basculerAvoir" class="bouton bouton-secondaire" style="padding:9px 16px; white-space:nowrap;">
+                {{ $avoirOuvert ? 'Fermer l\'avoir' : 'Avoir' }}
             </button>
 
             {{-- Le panneau « Porter », lui, doit être fabriqué par le serveur (il va chercher les
@@ -1070,8 +1107,8 @@ $basculerPortage = function () {
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:flex-start;">
                     <x-champ label="Vehicule" model="fVehicule" width="150" />
                     <x-champ label="Immatriculation" model="fImmatriculation" width="140" :disabled="in_array('immatriculation', $verrou, true)" />
-                    {{-- Un avoir se saisit en négatif (23/10) : « -150000 ». --}}
-                    <x-champ label="montantTTC" model="fMontant" type="number" :requis="true" width="130" :disabled="in_array('montant', $verrou, true)" placeholder="négatif = avoir" />
+                    {{-- L'avoir a son bouton depuis le 27/10 : ici, une créance. --}}
+                    <x-champ label="montantTTC" model="fMontant" type="number" :requis="true" width="130" :disabled="in_array('montant', $verrou, true)" />
                     <x-champ :label="$modif ? 'Nouveau règlement' : 'Montantréglé'" model="fRegle" type="number" width="130" />
                     {{-- Par où le règlement est passé — le même composant que partout
                          ailleurs. Il ne paraît qu'avec un règlement saisi : sans règlement,
@@ -1096,6 +1133,11 @@ $basculerPortage = function () {
             </form>
         </div>
     </div>
+
+    {{-- L'avoir — 27/10 : un composant à part, comme « Porter » ; il prévient l'état quand il a écrit. --}}
+    @if ($avoirOuvert)
+        <livewire:pilotage.impayes-avoir wire:key="avoir" />
+    @endif
 
     {{-- Porter une facture existante : la communication du reste de l'application vers l'état.
          Un composant à part : ses listes déroulantes ne redessinent pas le tableau à chaque choix. --}}

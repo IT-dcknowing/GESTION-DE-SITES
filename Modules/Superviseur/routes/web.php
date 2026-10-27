@@ -38,6 +38,16 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
 });
 
 /*
+ * Fusion / correction des clients de l'état des impayés — 27/10 : « une page que je pourrai
+ * attribuer à partir du Super admin ». Aucun rôle à la route : elle s'ouvre à qui a le geste dans
+ * Maintenance › Habilitations (`clients_impayes.fusionner`, le gérant par défaut) — un rôle ou un
+ * compte précis. Le composant le vérifie à l'ouverture et à chaque action.
+ */
+Route::middleware(['auth'])->group(function () {
+    Volt::route('/impayes/fusion-correction', 'pilotage.impayes-fusion')->name('impayes-fusion');
+});
+
+/*
  * Les portefeuilles clients des commerciaux — 26/10 : qui affecte un client à un commercial. Le
  * gérant, le superviseur de ville et le responsable commercial, qui encadrent les vendeurs ; pas le
  * responsable de site. Voir `PortefeuilleCommercial`.

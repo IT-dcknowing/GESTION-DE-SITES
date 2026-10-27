@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 26 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 27 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -59,6 +59,31 @@ sur les deux dépôts. **Une migration additive** : `2026_10_26_000001` (table n
 (`LesChargesSeLisentParSourceTest`, `LesChargesSontLaCaisseEtLesSaisiesTest`,
 `UneChargeSeReprendDeLaCaisseTest`, `LesDecaissementsFournisseursSeSuiventTest`, et le test du
 rapprochement ajouté au premier). **À lancer sur le poste avant le déploiement.**
+
+### Fait le 27/10 — fusion / correction des clients, l'avoir par son bouton, import AFG
+
+- **Fusion / correction des clients de l'état des impayés** (urgent) : page `/impayes/fusion-correction`
+  (bouton sur l'état des impayés), **attribuée depuis Maintenance › Habilitations** — geste « Fusion /
+  correction des clients » (`clients_impayes.fusionner`), le gérant par défaut, à donner à un rôle ou à un
+  compte. **Fusion** : client de départ (l'erreur) → ses factures (tout cocher d'un bouton) → client de
+  dépôt ; « Fusionner et supprimer le client de départ » efface le nom faux quand plus aucune facture ne le
+  porte (ses relances du recouvrement passent au bon client, son code tiers s'efface). **Correction** : même
+  parcours, rien n'est supprimé. Départ ≠ arrivée. Seul le nom change (colonne Client par défaut ; Assureur,
+  Courtier, Déposé chez au choix), avec le tiers recopié sur les règlements ; tout est tracé
+  (`FusionDesClients`).
+- **L'avoir a son bouton** (« Avoir » sur l'état des impayés, composant `pilotage.impayes-avoir`) : client
+  (liste filtrable) → facture(s) → montant **positif à la saisie, « − » affiché devant**, jamais au-dessus
+  du montant des factures choisies (avoirs déjà faits déduits), commentaire facultatif ; une ligne d'avoir
+  négative par facture, qui dit sa facture (`factures.avoir_de_id`, migration additive
+  `2026_10_27_000001`). Le formulaire de créance refuse désormais un montant négatif neuf. Corrigé au
+  passage : « Le règlement dépasse le reste à payer (0 F) » sur un avoir sans règlement.
+- **Import du relevé AFG tenu à la main** : « Importer quand même » perdait le compte bancaire choisi
+  (« Le champ banque est obligatoire ») — il repart maintenant avec le fichier ; « Description » est lue
+  comme libellé de l'opération ; les dates « 29 mai 2026 » se lisent.
+- **« AUJOURD&#039;HUI »** (tableau de bord de la comptabilité, et partout où un libellé de composant
+  contenait une apostrophe calculée) : échappé deux fois. `texte_d_attribut()` dans les composants.
+- **FNE** : le propriétaire a vérifié sur le portail, les factures commencent en 2025 ; `ACHATS_DEPUIS`
+  reste à 2020-01-01. La capture du 503 à 16 h 43 précède le déploiement du correctif du bouton.
 
 ### Fait le 26/10 (fin de journée) — « Actualiser depuis la FNE » mettait le site en 503
 
@@ -532,6 +557,12 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     **Décaissements fournisseurs (caisse)**, suivre les sorties ; créer, quand il le souhaite, le rôle
     du **gestionnaire des fournisseurs** (Maintenance › Rôles et pages) pour qu'on y branche les
     notifications.
+
+23. **Le 27/10** : `php artisan test` (deux fichiers neufs : `LaFusionRemetLesFacturesSousLeBonClientTest`,
+    et l'avoir dans `LesDecaissementsFournisseursSeSuiventTest`), puis en ligne `git pull` et
+    `php artisan app:deployer` (migration `2026_10_27_000001` : une colonne nullable `factures.avoir_de_id`).
+    Ensuite **Maintenance › Habilitations** : donner « Fusion / correction des clients » à qui doit faire le
+    ménage des doublons ; redéposer l'extrait AFG (« Importer quand même » garde désormais le compte).
 
 22. **Le 26/10** : `php artisan test` sur le poste (un fichier neuf, cinq adaptés), puis en ligne
     `git pull` et `php artisan app:deployer` (migration `2026_10_26_000001`, table neuve

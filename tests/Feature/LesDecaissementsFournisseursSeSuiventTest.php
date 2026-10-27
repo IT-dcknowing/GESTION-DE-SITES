@@ -141,33 +141,46 @@ class LesDecaissementsFournisseursSeSuiventTest extends TestCase
         $this->assertNotNull($piece);
     }
 
-    /** « Ajouter une créance qui est un avoir : le signe négatif doit être pris en compte. » */
-    public function test_un_avoir_se_saisit_en_negatif_a_l_etat_des_impayes(): void
+    /**
+     * L'avoir a son bouton — 27/10 : on choisit le client, la facture, et le montant, positif à la
+     * saisie, négatif à l'écriture, jamais au-dessus de la facture. Le formulaire de créance le refuse.
+     */
+    public function test_un_avoir_se_saisit_sur_sa_facture_par_le_bouton_avoir(): void
     {
         $this->actingAs($this->gerant);
 
+        $facture = Facture::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->e->id, 'site_id' => $this->site->id, 'numero' => 'IMP-0001', 'n_facture' => 'F-12',
+            'date' => '2026-03-01', 'date_reception' => '2026-03-02', 'exercice_impayes' => 2026,
+            'client' => 'NSIA', 'assureur' => 'NSIA ASSURANCES', 'montant' => 200_000, 'activite' => 'Sinistre',
+        ]);
+
+        // Le formulaire de créance ne prend plus d'avoir.
         Volt::test('pilotage.impayes')
-            ->set('fDate', '2026-03-10')
-            ->set('fNumero', 'AV-12')
-            ->set('fClient', 'NSIA')
-            ->set('fSiteId', (string) $this->site->id)
-            ->set('fMontant', '-150000.50')
+            ->set('fDate', '2026-03-10')->set('fNumero', 'AV-12')->set('fClient', 'NSIA')
+            ->set('fSiteId', (string) $this->site->id)->set('fMontant', '-150000.50')
             ->set('fDateReception', '2026-03-11')
             ->call('enregistrer')
-            ->assertHasNoErrors();
+            ->assertHasErrors('fMontant');
 
-        $avoir = Facture::withoutGlobalScopes()->where('n_facture', 'AV-12')->sole();
-        $this->assertSame(-150000.5, montant_de($avoir->montant));
-        $this->assertTrue((bool) $avoir->est_avoir);
+        $avoir = Volt::test('pilotage.impayes-avoir')
+            ->set('client', 'NSIA')
+            ->set('cochees', [(string) $facture->id])
+            ->assertSet('numero', 'AV-F-12');
 
-        // Un avoir ne se règle pas.
-        Volt::test('pilotage.impayes')
-            ->set('fDate', '2026-03-10')->set('fNumero', 'AV-13')->set('fClient', 'NSIA')
-            ->set('fSiteId', (string) $this->site->id)->set('fMontant', '-1000')
-            ->set('fDateReception', '2026-03-11')->set('fRegle', '500')
-            ->set('fSupport', 'caisse')->set('fDateReglement', '2026-03-12')
-            ->call('enregistrer')
-            ->assertHasErrors('fRegle');
+        // Jamais au-dessus du montant de la facture.
+        $avoir->set('montant', '250000')->call('enregistrer')->assertHasErrors('montant');
+
+        $avoir->set('date', '2026-03-10')->set('montant', '150000.50')->set('commentaire', 'Remise accordée')
+            ->call('enregistrer')->assertHasNoErrors()->assertDispatched('avoir-enregistre');
+
+        $ligne = Facture::withoutGlobalScopes()->where('avoir_de_id', $facture->id)->sole();
+        $this->assertSame(-150000.5, montant_de($ligne->montant));
+        $this->assertTrue((bool) $ligne->est_avoir);
+        $this->assertSame('NSIA ASSURANCES', $ligne->assureur);
+
+        // Le reste avoirable de la facture tient compte de l'avoir fait.
+        $this->assertSame(49_999.5, Volt::test('pilotage.impayes-avoir')->set('client', 'NSIA')->instance()->factures->first()->avoirable);
     }
 
     public function test_fournisseurs_quitte_le_menu_et_les_autres_s_expliquent(): void

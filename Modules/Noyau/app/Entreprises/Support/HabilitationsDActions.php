@@ -42,6 +42,17 @@ final class HabilitationsDActions
                 ],
             ],
         ],
+        // La page « Fusion / correction » des clients de l'état des impayés — 27/10 : « une page que je
+        // pourrai attribuer à partir du Super admin ». Elle déplace des factures d'un nom à l'autre.
+        'clients_impayes' => [
+            'libelle' => "Clients de l'état des impayés",
+            'actions' => [
+                'fusionner' => [
+                    'libelle' => 'Fusion / correction des clients',
+                    'defaut' => ['gerant'],
+                ],
+            ],
+        ],
         'pieces_fournisseurs' => [
             'libelle' => 'Pièces fournisseurs — charges fournisseurs',
             'actions' => [

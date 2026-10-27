@@ -21,12 +21,12 @@
 @if ($type === 'checkbox')
     <label style="font-size:13.5px; display:flex; gap:6px; align-items:center; padding-bottom:9px; white-space:nowrap;">
         <input type="checkbox" {{ $wire }}="{{ $model }}">
-        {{ $label }}
+        {{ texte_d_attribut($label) }}
     </label>
 @else
     <div style="display:flex; flex-direction:column; {{ $largeur }}">
         <label class="champ-libelle">
-            {{ $label }}@if ($requis)<span style="color:var(--th-accent);"> *</span>@endif
+            {{ texte_d_attribut($label) }}@if ($requis)<span style="color:var(--th-accent);"> *</span>@endif
         </label>
         @if ($type === 'select')
             <select {{ $wire }}="{{ $model }}" class="champ" @if ($disabled) disabled @endif>
@@ -42,17 +42,17 @@
                 @endforeach
             </select>
         @elseif ($type === 'textarea')
-            <textarea {{ $wire }}="{{ $model }}" rows="2" placeholder="{{ $placeholder }}" class="champ" style="resize:vertical;" @if ($disabled) disabled @endif></textarea>
+            <textarea {{ $wire }}="{{ $model }}" rows="2" placeholder="{{ texte_d_attribut($placeholder) }}" class="champ" style="resize:vertical;" @if ($disabled) disabled @endif></textarea>
         @elseif ($type === 'password')
             {{-- Bouton œil : bascule entre texte masqué et texte lisible. --}}
             <div class="champ-mot-de-passe">
-                <input type="password" {{ $wire }}="{{ $model }}" placeholder="{{ $placeholder }}" class="champ">
+                <input type="password" {{ $wire }}="{{ $model }}" placeholder="{{ texte_d_attribut($placeholder) }}" class="champ">
                 <x-oeil-mot-de-passe />
             </div>
         @else
             {{-- Un e-mail n'est plus `type="email"` : le navigateur refusait une adresse juste qui
                  portait un caractère invisible (12/10). Voir `x-nettoyer-courriels`. --}}
-            <input type="{{ $type === 'email' ? 'text' : $type }}" {{ $wire }}="{{ $model }}" placeholder="{{ $placeholder }}" class="champ"
+            <input type="{{ $type === 'email' ? 'text' : $type }}" {{ $wire }}="{{ $model }}" placeholder="{{ texte_d_attribut($placeholder) }}" class="champ"
                 @if ($type === 'email') inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" @endif
                 {{-- Un nombre accepte ses décimales (18/10, piège 17) : sans `step="any"`, le navigateur
                      refusait 82 096,62 ou un avoir FNE porté au suivi. --}}
