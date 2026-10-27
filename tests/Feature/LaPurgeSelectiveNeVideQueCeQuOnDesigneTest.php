@@ -339,6 +339,36 @@ class LaPurgeSelectiveNeVideQueCeQuOnDesigneTest extends TestCase
         $this->assertSame([], $ecran->instance()->depotsRetenus);
     }
 
+    /** « Au niveau de la banque, on veut savoir quelle banque vider » — 27/10 : un relevé, une case. */
+    public function test_choisir_une_banque_ne_vide_que_son_releve(): void
+    {
+        $banque = fn (string $nom) => \Modules\Noyau\Exploitation\Modeles\Banque::withoutGlobalScopes()->create([
+            'entreprise_id' => $this->entreprise->id, 'nom' => $nom, 'nom_normalise' => \Modules\Noyau\Exploitation\Modeles\Banque::clePour($nom),
+        ]);
+        $afg = $banque('AFG');
+        $bgfi = $banque('BGFI');
+
+        foreach ([[$afg, 'a1'], [$afg, 'a2'], [$bgfi, 'b1']] as [$b, $cle]) {
+            \Modules\Noyau\Imports\Modeles\MouvementBancaire::withoutGlobalScopes()->create([
+                'entreprise_id' => $this->entreprise->id, 'banque_id' => $b->id, 'date_operation' => '2026-08-03',
+                'libelle' => 'OPERATION '.$cle, 'debit' => 100, 'credit' => 0, 'sens' => 'debit', 'rang' => 1, 'cle' => $cle,
+            ]);
+        }
+
+        $ecran = Volt::actingAs($this->superAdmin())->test('superadmin.maintenance')
+            ->set('choixId', (string) $this->entreprise->id);
+        $this->assertCount(2, $ecran->get('relevesBanques'));
+
+        $ecran->set('banquesChoisies.'.$afg->id, true);
+        $this->assertStringContainsString('Relevé bancaire AFG : 2 opération(s)', implode(' ', $ecran->instance()->recapitulatif['lignes']));
+
+        $ecran->set('confirmationChoix', 'Alpha')->call('viderLesChoisis')->assertHasNoErrors();
+
+        $this->assertSame(0, DB::table('mouvements_bancaires')->where('banque_id', $afg->id)->count());
+        $this->assertSame(1, DB::table('mouvements_bancaires')->where('banque_id', $bgfi->id)->count());
+        $this->assertSame(2, DB::table('banques')->where('entreprise_id', $this->entreprise->id)->count(), 'La banque reste déclarée.');
+    }
+
     // ------------------------------------------------------------------ le décor
 
     private ?Commercial $commercial = null;

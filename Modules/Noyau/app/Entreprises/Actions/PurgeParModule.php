@@ -310,6 +310,61 @@ class PurgeParModule
     }
 
     /**
+     * Les relevés bancaires d'une entreprise, banque par banque — 27/10 : « au niveau de la
+     * banque, on veut savoir quelle banque vider : fais des sélections comme pour les fichiers ».
+     *
+     * @return array<int, array{id: int, nom: string, operations: int, du: ?string, au: ?string}>
+     */
+    public static function relevesParBanque(int $entrepriseId): array
+    {
+        if (! Schema::hasTable('mouvements_bancaires') || ! Schema::hasTable('banques')) {
+            return [];
+        }
+
+        return DB::table('mouvements_bancaires')
+            ->join('banques', 'banques.id', '=', 'mouvements_bancaires.banque_id')
+            ->where('mouvements_bancaires.entreprise_id', $entrepriseId)
+            ->groupBy('banques.id', 'banques.nom')
+            ->orderBy('banques.nom')
+            ->selectRaw('banques.id as id, banques.nom as nom, count(*) as n, min(mouvements_bancaires.date_operation) as du, max(mouvements_bancaires.date_operation) as au')
+            ->get()
+            ->map(fn ($l) => ['id' => (int) $l->id, 'nom' => (string) $l->nom, 'operations' => (int) $l->n,
+                'du' => $l->du ? substr((string) $l->du, 0, 10) : null, 'au' => $l->au ? substr((string) $l->au, 0, 10) : null])
+            ->all();
+    }
+
+    /**
+     * Vide les relevés des banques désignées — leurs opérations seulement. La banque reste
+     * déclarée, ses règlements gardent leur compte ; le relevé se redépose ensuite.
+     *
+     * Les identifiants reçus sont relus ici, bornés à l'entreprise : une banque d'ailleurs ne
+     * désigne rien.
+     *
+     * @param  array<int, int|string>  $ids
+     * @return array<string, int>
+     */
+    public function executerReleves(Entreprise $entreprise, array $ids): array
+    {
+        $banques = DB::table('banques')->where('entreprise_id', $entreprise->id)
+            ->whereIn('id', array_map('intval', $ids))->pluck('nom', 'id');
+
+        if ($banques->isEmpty()) {
+            throw new RuntimeException('Aucune banque de cette entreprise n’a été choisie.');
+        }
+
+        return DB::transaction(function () use ($entreprise, $banques) {
+            $bilan = [];
+
+            foreach ($banques as $id => $nom) {
+                $bilan['Relevé '.$nom] = DB::table('mouvements_bancaires')
+                    ->where('entreprise_id', $entreprise->id)->where('banque_id', $id)->delete();
+            }
+
+            return $bilan;
+        });
+    }
+
+    /**
      * Efface les dépôts désignés — eux, leurs rejets, leurs corrections et leur fichier.
      *
      * **Les identifiants reçus ne commandent rien seuls** : ils reviennent du navigateur, et

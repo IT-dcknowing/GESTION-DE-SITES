@@ -81,6 +81,10 @@ rapprochement ajouté au premier). **À lancer sur le poste avant le déploiemen
   plus récent au plus ancien** — le rang est désormais retourné pour un fichier descendant, pour que « la
   dernière opération » soit la dernière dans le temps. ⚠️ **Chaque extrait AFG déjà déposé porte une fausse
   opération « SOLDE DE CLOTURE »** : l'annuler (Import › Journal › *Annuler cet import*) puis le redéposer.
+- **Maintenance › purge : le relevé bancaire banque par banque** (« on veut savoir quelle banque vider ;
+  fais des sélections comme pour les fichiers ») — sous « Relevés bancaires », une case par banque avec son
+  nombre d'opérations et ses dates ; seules ses opérations partent, la banque reste déclarée
+  (`PurgeParModule::relevesParBanque` / `executerReleves`). Utile pour refaire les extraits AFG.
 - **Page Banques : KPI du relevé importé en tête** — solde à l'ouverture, entrées, sorties, ce qui reste
   (solde de fin annoncé, avec le contrôle ouverture + entrées − sorties), solde à la fin du mois précédent et
   de l'année précédente quand un relevé le dit (`RapprochementDeTresorerie::soldesDuReleve`).

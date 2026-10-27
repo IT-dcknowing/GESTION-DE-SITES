@@ -77,6 +77,9 @@ state([
      */
     'depots' => [],
     'depotsChoisis' => [],
+    // Les relevés bancaires, banque par banque — 27/10 : « fais des sélections comme pour les fichiers ».
+    'relevesBanques' => [],
+    'banquesChoisies' => [],
     'confirmationChoix' => '',
     'resultatChoix' => null,
 ]);
@@ -169,6 +172,19 @@ $depotsRetenus = computed(function () {
         ->keys()->map(fn ($id) => (int) $id)->values()->all();
 });
 
+/** Les banques cochées une à une — sans objet quand « Relevés bancaires » entier est coché. */
+$banquesRetenues = computed(function () {
+    if (in_array('mouvements_bancaires', $this->lotsRetenus, true)) {
+        return [];
+    }
+
+    $connues = collect($this->relevesBanques)->pluck('id')->all();
+
+    return collect($this->banquesChoisies)
+        ->filter(fn ($coche, $id) => $coche && in_array((int) $id, $connues, true))
+        ->keys()->map(fn ($id) => (int) $id)->values()->all();
+});
+
 $lotsRetenus = computed(function () {
     $volumes = $this->volumesParLot;
 
@@ -213,6 +229,11 @@ $recapitulatif = computed(function () {
         $entraines[] = $lots['lots']['entraine'];
     }
 
+    foreach (collect($this->relevesBanques)->whereIn('id', $this->banquesRetenues) as $banque) {
+        $lignes[] = 'Relevé bancaire '.$banque['nom'].' : '.number_format($banque['operations'], 0, ',', ' ').' opération(s)';
+        $total += $banque['operations'];
+    }
+
     return ['lignes' => $lignes, 'entraines' => array_values(array_unique($entraines)), 'total' => $total];
 });
 
@@ -239,9 +260,11 @@ $updatedChoixId = function () {
     // n'ont aucun sens pour une autre, et les garder ferait supprimer ailleurs.
     $this->lotsChoisis = [];
     $this->depotsChoisis = [];
+    $this->banquesChoisies = [];
     $this->confirmationChoix = '';
     $this->resultatChoix = null;
     $this->depots = $this->choixId ? PurgeParModule::depots((int) $this->choixId) : [];
+    $this->relevesBanques = $this->choixId ? PurgeParModule::relevesParBanque((int) $this->choixId) : [];
 
     // Les vingt et un comptages se font ici, et seulement ici : changer d'entreprise est le
     // seul geste de cet écran qui change ce qu'il y a à compter.
@@ -274,10 +297,11 @@ $viderLesChoisis = function (PurgeParModule $action) {
      */
     $this->volumesLots = PurgeParModule::volumes((int) $this->choixId);
     $this->depots = PurgeParModule::depots((int) $this->choixId);
-    unset($this->volumesParLot, $this->lotsRetenus, $this->depotsRetenus, $this->recapitulatif);
+    $this->relevesBanques = PurgeParModule::relevesParBanque((int) $this->choixId);
+    unset($this->volumesParLot, $this->lotsRetenus, $this->depotsRetenus, $this->banquesRetenues, $this->recapitulatif);
 
-    if ($this->lotsRetenus === [] && $this->depotsRetenus === []) {
-        $this->addError('lotsChoisis', 'Cochez au moins un ensemble ou un dépôt qui porte des données.');
+    if ($this->lotsRetenus === [] && $this->depotsRetenus === [] && $this->banquesRetenues === []) {
+        $this->addError('lotsChoisis', 'Cochez au moins un ensemble, un dépôt ou une banque qui porte des données.');
 
         return;
     }
@@ -291,6 +315,7 @@ $viderLesChoisis = function (PurgeParModule $action) {
     $this->resultatChoix = array_merge(
         $this->lotsRetenus !== [] ? $action->executer($cible, $this->lotsRetenus) : [],
         $this->depotsRetenus !== [] ? $action->executerDepots($cible, $this->depotsRetenus) : [],
+        $this->banquesRetenues !== [] ? $action->executerReleves($cible, $this->banquesRetenues) : [],
     );
 
     activity()
@@ -299,12 +324,13 @@ $viderLesChoisis = function (PurgeParModule $action) {
         ->withProperties($this->resultatChoix)
         ->log('Purge sélective des données');
 
-    $this->reset(['lotsChoisis', 'depotsChoisis', 'confirmationChoix']);
+    $this->reset(['lotsChoisis', 'depotsChoisis', 'banquesChoisies', 'confirmationChoix']);
 
     // Ce qui vient de partir n'est plus à compter : on relève de nouveau, une fois.
     $this->volumesLots = PurgeParModule::volumes((int) $this->choixId);
     $this->depots = PurgeParModule::depots((int) $this->choixId);
-    unset($this->depotsRetenus, $this->recapitulatif);
+    $this->relevesBanques = PurgeParModule::relevesParBanque((int) $this->choixId);
+    unset($this->depotsRetenus, $this->banquesRetenues, $this->recapitulatif);
 
     unset($this->volumesParLot, $this->volumes);
 };
@@ -576,6 +602,30 @@ $declarerRegle = function (string $reference) {
                                     @endif
                                 </span>
                             </label>
+
+                            {{-- Les relevés banque par banque, sous la case qui les prend tous — 27/10. --}}
+                            @if ($cle === 'mouvements_bancaires' && $this->relevesBanques !== [])
+                                <div style="grid-column:1 / -1; border:1px dashed var(--th-ligne,#E2E0D8); border-radius:8px; padding:9px 11px;">
+                                    <div style="font-size:12.5px; font-weight:700; margin-bottom:6px;">
+                                        Ou seulement le relevé de ces banques — la banque reste déclarée, le relevé se redépose ensuite :
+                                    </div>
+                                    <div style="display:grid; gap:4px;">
+                                        @foreach ($this->relevesBanques as $banque)
+                                            <label wire:key="purge-banque-{{ $banque['id'] }}" style="display:flex; align-items:center; gap:9px; font-size:12.5px; cursor:pointer;">
+                                                <input type="checkbox" wire:model.live="banquesChoisies.{{ $banque['id'] }}"
+                                                    @disabled(! empty($lotsChoisis['mouvements_bancaires']))>
+                                                <span>
+                                                    <b>{{ $banque['nom'] }}</b>
+                                                    <span style="color:#6B6E76;">
+                                                        · {{ number_format($banque['operations'], 0, ',', ' ') }} opération(s)
+                                                        @if ($banque['du']) · du {{ \Illuminate\Support\Carbon::parse($banque['du'])->format('d/m/Y') }} au {{ \Illuminate\Support\Carbon::parse($banque['au'])->format('d/m/Y') }} @endif
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
 
                             {{-- Les dépôts un par un, sous la case qui les prend tous. Ils ne se
                                  cochent plus quand « tous » l'est : elle les emporte déjà. --}}
