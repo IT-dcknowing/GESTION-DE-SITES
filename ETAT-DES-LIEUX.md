@@ -2605,6 +2605,7 @@ dépôts. Aucune migration.
 | 126 | AFG août importé : montants non conformes | ✅ 27/10 — « SOLDE DE CLOTURE » n'est plus une opération ; fichier descendant reconnu (rang retourné). **Annuler et redéposer les extraits AFG déjà importés** |
 | 127 | Banques : KPI sur l'importé — entré, sorti, ce qui reste, solde du mois et de l'année précédents | ✅ 27/10 — bloc « Le relevé importé » en tête de la page, avec contrôle de la chaîne |
 | 128 | Maintenance : choisir quelle banque vider, comme pour les fichiers | ✅ 27/10 — une case par banque sous « Relevés bancaires » ; la banque reste déclarée |
+| 129 | FSF 2023 à 2026 pris pour « Banque — pièces du logiciel d'atelier » ; nommer clairement le type | ✅ 27/10 — « FOURNISSEUR/ BENEFICIAIRE » et « HT » reconnus ; pièces bancaires exigent aussi « MONTANT PIECE » ; type renommé « Fichier suivi fournisseurs (FSF) » |
 
 #### 15. Lettrage et rapprochement — comment ils se font, réellement (07/10)
 

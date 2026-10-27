@@ -60,6 +60,16 @@ sur les deux dépôts. **Une migration additive** : `2026_10_26_000001` (table n
 `UneChargeSeReprendDeLaCaisseTest`, `LesDecaissementsFournisseursSeSuiventTest`, et le test du
 rapprochement ajouté au premier). **À lancer sur le poste avant le déploiement.**
 
+### Fait le 27/10 (nuit) — le fichier suivi fournisseurs 2023 à 2026 se reconnaît
+
+- **« FICHIER SUIVI FOURNISSEURS -FSF L2A-2023 A 2026.xlsm » refusé** : le contrôle disait « les colonnes
+  sont celles de Banque — pièces du logiciel d'atelier ». Deux causes : la feuille DETAIL titre sa colonne
+  **« FOURNISSEUR/ BENEFICIAIRE »** (et « HT » au lieu de « MONTANT HT »), donc l'indispensable « FOURNISSEUR »
+  manquait ; et le format des pièces bancaires ne demandait que « CODE PIECE », colonne que ce classeur porte
+  aussi. Corrigé : `FormatDesFournisseurs::AUTRES_TITRES` lit ces intitulés ; les pièces bancaires exigent
+  désormais « CODE PIECE » **et** « MONTANT PIECE ». Le type s'appelle maintenant **« Fichier suivi
+  fournisseurs (FSF) — factures et ce que nous devons »**. Test ajouté dans `LeSuiviFournisseurEntreEnEntierTest`.
+
 ### Fait le 27/10 (soir) — le relevé FNE en production, chaque année à sa place
 
 - **Relevé FNE en service sur la production** (27/10, le propriétaire). Piège rencontré : le `.env` du
@@ -628,6 +638,9 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     **Décaissements fournisseurs (caisse)**, suivre les sorties ; créer, quand il le souhaite, le rôle
     du **gestionnaire des fournisseurs** (Maintenance › Rôles et pages) pour qu'on y branche les
     notifications.
+
+25. **Le 27/10 (nuit)** : `php artisan test`, `git pull`, `php artisan app:deployer` (aucune migration), puis
+    redéposer le « FICHIER SUIVI FOURNISSEURS -FSF L2A-2023 A 2026 » en choisissant « Fichier suivi fournisseurs (FSF) ».
 
 24. **Le 27/10 (suite)** : `php artisan test`, puis `git pull` et `php artisan app:deployer` (migration
     `2026_10_27_000002`, table neuve `comptes_comptables`). Faire valider par le comptable les comptes de

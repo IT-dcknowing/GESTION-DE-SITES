@@ -70,8 +70,10 @@ class FormatDesPiecesBancaires extends Format
     public static function colonnesObligatoires(): array
     {
         // Sans code de pièce, on ne saurait ni créer la ligne ni la retrouver au dépôt
-        // suivant : le fichier se redéposerait en doublant tout.
-        return ['code_piece'];
+        // suivant : le fichier se redéposerait en doublant tout. Le montant de la pièce aussi,
+        // depuis le 27/10 : « CODE PIECE » seule se trouve dans le fichier suivi fournisseurs, qui
+        // passait alors pour un export bancaire.
+        return ['code_piece', 'montant'];
     }
 
     /** Un export comptable ne porte aucun code de saisie : rien à ventiler par là. */

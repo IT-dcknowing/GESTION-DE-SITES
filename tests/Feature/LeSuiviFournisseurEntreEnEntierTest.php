@@ -11,6 +11,7 @@ use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
 use Modules\Noyau\Imports\Formats\FormatDesFournisseurs;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Modeles\LotImport;
+use Modules\Noyau\Imports\Services\ControlePrealable;
 use Modules\Noyau\Imports\Services\Executeur;
 use Tests\ConstruitDesClasseurs;
 use Tests\TestCase;
@@ -247,6 +248,34 @@ class LeSuiviFournisseurEntreEnEntierTest extends TestCase
         $this->assertSame(0, $lot->fresh()->lignes_rejetees);
     }
 
+    /**
+     * Le classeur 2023 à 2026 (27/10) : sa colonne fournisseur s'intitule « FOURNISSEUR/
+     * BENEFICIAIRE ». Faute de la reconnaître, le format ne se disait plus suffisant, et le
+     * contrôle préférait « Banque — pièces du logiciel d'atelier », qui ne demandait qu'un
+     * « CODE PIECE » — colonne que ce classeur porte aussi.
+     */
+    public function test_le_classeur_2023_a_2026_est_reconnu_comme_un_suivi_fournisseur(): void
+    {
+        $chemin = $this->classeurXlsx(['DETAIL' => array_merge(
+            $this->preambuleDuClasseur(),
+            [$this->enTete2023A2026()],
+            [$this->ligne2023A2026()],
+        )]);
+
+        $rapport = (new ControlePrealable($this->entreprise->id))->examiner($chemin, 'fournisseurs', $this->ville->id);
+
+        $this->assertTrue($rapport['format_conforme']);
+        $this->assertSame('fournisseurs', $rapport['format_probable']);
+
+        $this->importer(array_merge(
+            $this->preambuleDuClasseur(),
+            [$this->enTete2023A2026()],
+            [$this->ligne2023A2026()],
+        ));
+
+        $this->assertSame('SOCIDA', FactureFournisseur::withoutGlobalScopes()->first()?->fournisseur);
+    }
+
     public function test_une_ligne_sans_fournisseur_est_rejetee_et_le_dit(): void
     {
         $anonyme = $this->ligneAbidjan();
@@ -355,6 +384,39 @@ class LeSuiviFournisseurEntreEnEntierTest extends TestCase
         $ligne[19] = 240000;                   // RESTE A PAYER
 
         return $ligne;
+    }
+
+    /** L'en-tête du classeur « FSF L2A 2023 A 2026 », à la lettre — quarante-deux colonnes. */
+    private function enTete2023A2026(): array
+    {
+        return [
+            'MOIS', 'DATE DE REGLEMENT', 'DATE FACTURE/BC', 'DATE RECEPTION FACTURE', 'SITE',
+            'SECTION', 'N° BC', 'NATURE PIECE', 'N° PIECE', 'MONTANT', 'TVA', 'TVA 2',
+            'MONTANT REFACTURE', 'DIFFERENCE', 'HT', 'FOURNISSEUR/ BENEFICIAIRE',
+            'TYPE DE TRANSACTION/ SERVICES', 'MODE DE REGLEMENT', "CHEQUE A L'ORDRE DE",
+            'MONTANT REGLE', 'RESTE A PAYER', 'IMPUTATION', 'VEHICULE', 'IMMAT',
+            'délais de règlement', 'Date Echéance', 'N° FACTURE (FA)', 'DATE CONTRÔLE',
+            'QTE TOTAL', 'QTE REFACT', 'CODE PIECE', 'MONTANT NET ACHAT', 'MONTANT NET VENTE',
+            'MARGE', 'TAUX', 'RESULTAT INDICATIF', 'OBSERVATIONS ', 'NUMERO FACTURE CLIENT',
+            null, 'OBSERVATIONS SUR LA FACTURARTION CLIENT', 'COMMENTAIRES',
+            'Actions à mener 06/09/2024',
+        ];
+    }
+
+    private function ligne2023A2026(): array
+    {
+        return [
+            11, '2026-01-20', '2026-02-15', '2026-02-16', 'ABIDJAN',
+            'Carrosserie', 'BC-N° L2A001183', 'Facture', '24347E0100/0001180', 260000, 21600, 0,
+            150000, -110000, 238400, 'SOCIDA',
+            'Achat de pièces', 'CHEQUE N°486448', 'SOCIDA',
+            20000, 240000, 'Achat de pièces', 'SUZUKI DZIRE', '1258KJ01',
+            '30 jours', '2026-03-15', 'FA-0099', null,
+            4, 2, 'CP-77', 120000, 150000,
+            30000, 0.25, 'Marge positive', 'Pièce reçue complète', 'FC-2026-0011',
+            null, 'Refacturé au client', 'Pièce conforme',
+            'Vérifier le montant',
+        ];
     }
 
     private function importer(array $lignes): LotImport

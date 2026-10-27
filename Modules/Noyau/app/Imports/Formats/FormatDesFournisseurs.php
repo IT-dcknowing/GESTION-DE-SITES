@@ -58,7 +58,8 @@ class FormatDesFournisseurs extends Format
 
     public static function libelle(): string
     {
-        return 'Factures fournisseurs — ce que nous devons';
+        // « Met clairement fichier suivi fournisseur » — 27/10 : c'est le nom du classeur qu'on dépose.
+        return 'Fichier suivi fournisseurs (FSF) — factures et ce que nous devons';
     }
 
     /**
@@ -130,6 +131,42 @@ class FormatDesFournisseurs extends Format
     public static function colonnesObligatoires(): array
     {
         return ['fournisseur', 'montant'];
+    }
+
+    /**
+     * Les autres façons dont le classeur écrit les mêmes titres — 27/10.
+     *
+     * Le « FICHIER SUIVI FOURNISSEURS -FSF L2A-2023 A 2026 » titre sa colonne
+     * **« FOURNISSEUR/ BENEFICIAIRE »**, et non « FOURNISSEUR » : sans elle, la colonne
+     * indispensable manquait, et le contrôle prenait le fichier pour celui des pièces bancaires —
+     * qui ne demande que « CODE PIECE », présente ici aussi. De même « HT » pour « MONTANT HT ».
+     */
+    private const AUTRES_TITRES = [
+        'fournisseur' => ['FOURNISSEUR/ BENEFICIAIRE', 'FOURNISSEUR/BENEFICIAIRE', 'FOURNISSEUR / BENEFICIAIRE', 'FOURNISSEURS', 'BENEFICIAIRE'],
+        'montant_ht' => ['HT'],
+    ];
+
+    protected function correspondance(array $cellules): array
+    {
+        $trouvees = parent::correspondance($cellules);
+
+        foreach (self::AUTRES_TITRES as $cle => $titres) {
+            if (isset($trouvees[$cle])) {
+                continue;
+            }
+
+            $attendus = array_map(fn ($t) => CorrespondanceImport::normaliser($t), $titres);
+
+            foreach ($cellules as $position => $valeur) {
+                if (is_string($valeur) && in_array(CorrespondanceImport::normaliser($valeur), $attendus, true)) {
+                    $trouvees[$cle] = $position;
+
+                    break;
+                }
+            }
+        }
+
+        return $trouvees;
     }
 
     /**
