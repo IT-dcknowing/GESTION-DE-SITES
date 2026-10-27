@@ -87,7 +87,10 @@ rapprochement ajouté au premier). **À lancer sur le poste avant le déploiemen
   (`PurgeParModule::relevesParBanque` / `executerReleves`). Utile pour refaire les extraits AFG.
 - **Page Banques : KPI du relevé importé en tête** — solde à l'ouverture, entrées, sorties, ce qui reste
   (solde de fin annoncé, avec le contrôle ouverture + entrées − sorties), solde à la fin du mois précédent et
-  de l'année précédente quand un relevé le dit (`RapprochementDeTresorerie::soldesDuReleve`).
+  de l'année précédente quand un relevé le dit (`RapprochementDeTresorerie::soldesDuReleve`). Le mois
+  précédent est celui **du dernier relevé de la période** (août → juillet), et sa carte ne paraît que s'il y
+  a un relevé ce mois-là ; même règle pour l'année. Constat en ligne du 27/10 : écart de −8 567 232 F sur
+  AFG 2026 = la fausse ligne « SOLDE DE CLOTURE » d'août encore en base — vider AFG et redéposer.
 - **Banques : les opérations du relevé ont leur tableau** (« le tableau est vide, on ne retrouve pas les
   lignes ») : deux boutons, *Opérations du relevé* (par défaut — date, libellé et motif, contrepartie,
   nature, débit, crédit, solde annoncé, recherche, pagination) et *Règlements*. Le relevé ne servait

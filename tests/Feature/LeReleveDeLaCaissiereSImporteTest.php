@@ -136,6 +136,16 @@ class LeReleveDeLaCaissiereSImporteTest extends TestCase
         $this->assertSame(85_753, $soldes['sorties']);
         $this->assertSame(1_000_000, $soldes['fin'], 'Le solde de fin est celui de la dernière opération dans le temps.');
         $this->assertSame(0, $soldes['ecart']);
+
+        // Pas de relevé en juillet ni en 2025 : rien à dire du mois ni de l'année d'avant.
+        $this->assertNull($soldes['mois_precedent']);
+        $this->assertNull($soldes['annee_precedente']);
+
+        // Sur l'année entière, le mois de référence est celui du dernier relevé (août), pas décembre.
+        $annee = \Modules\Noyau\Exploitation\Services\RapprochementDeTresorerie::soldesDuReleve(
+            [$afg->id], \Illuminate\Support\Carbon::parse('2026-01-01'), \Illuminate\Support\Carbon::parse('2026-12-31'));
+        $this->assertSame('2026-07-31', $annee['date_mois_precedent']);
+        $this->assertNull($annee['mois_precedent'], 'Le solde d\'août n\'est pas celui du mois précédent.');
     }
 
     public function test_le_depot_exige_le_compte_pour_ce_type_aussi(): void

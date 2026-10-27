@@ -1041,10 +1041,15 @@ $declarerLaBanque = function () {
                 <x-kpi-card label="Ce qui reste — solde de fin" :value="$sr['fin'] === null ? '—' : ae($sr['fin'])"
                     :couleur="$ecartReel ? '#C8102E' : '#191B20'"
                     :sub="$sr['fin'] === null ? 'Aucun relevé sur la période' : ('Annoncé au '.$jj($sr['date_fin']).($sr['ecart'] === null ? '' : ($ecartReel ? ' · écart de '.ae($sr['ecart']).' avec ouverture + entrées − sorties' : ' · ouverture + entrées − sorties : juste')))" />
-                <x-kpi-card label="Solde du mois précédent" :value="$sr['mois_precedent'] === null ? '—' : ae($sr['mois_precedent'])"
-                    :sub="'Au '.$jj($sr['date_mois_precedent']).($sr['mois_precedent'] === null ? ' — non disponible' : '')" />
-                <x-kpi-card label="Solde de l'année précédente" :value="$sr['annee_precedente'] === null ? '—' : ae($sr['annee_precedente'])"
-                    :sub="'Au '.$jj($sr['date_annee_precedente']).($sr['annee_precedente'] === null ? ' — non disponible' : '')" />
+                {{-- Affichés seulement quand un relevé les dit — 27/10 : « s'il est là on l'affiche, sinon non ». --}}
+                @if ($sr['mois_precedent'] !== null)
+                    <x-kpi-card :label="'Solde de fin '.\Illuminate\Support\Carbon::parse($sr['date_mois_precedent'])->translatedFormat('F Y')"
+                        :value="ae($sr['mois_precedent'])" sub="Le mois précédent, selon son relevé" />
+                @endif
+                @if ($sr['annee_precedente'] !== null)
+                    <x-kpi-card :label="'Solde de fin '.substr($sr['date_annee_precedente'], 0, 4)"
+                        :value="ae($sr['annee_precedente'])" sub="L'année précédente, selon son relevé" />
+                @endif
             </div>
         </div>
     @endif
