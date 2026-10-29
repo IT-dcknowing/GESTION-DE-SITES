@@ -8,7 +8,7 @@ use Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement;
 use Modules\Noyau\Exploitation\Services\PortefeuilleCommercial;
 use Modules\Recouvrement\Support\AccesRecouvrement;
 
-use function Livewire\Volt\{computed, protect, state};
+use function Livewire\Volt\{computed, mount, protect, state};
 
 /*
 |--------------------------------------------------------------------------
@@ -17,9 +17,18 @@ use function Livewire\Volt\{computed, protect, state};
 | « On désire affecter à chaque commercial un ou plusieurs clients — leurs clients prospectés, on
 | peut aussi les affecter. Ils pourront se faire des relances directement, comme le recouvrement. »
 |
-| Ici le gérant, le superviseur de ville et le responsable commercial affectent, réaffectent ou
-| retirent un client, et lisent les relances de l'équipe. Les commerciaux proposés sont ceux du
-| périmètre du compte (sa ville, ou toutes). Le commercial travaille, lui, sur « Mes clients ».
+| Ici le gérant, le superviseur de ville, le responsable commercial et le responsable de site
+| affectent, réaffectent ou retirent un client, et lisent les relances de l'équipe. Les commerciaux
+| proposés sont ceux du périmètre du compte (sa ville, ou toutes).
+|
+| **Le commercial y entre depuis le 29/10, en lecture** (« par défaut, les commerciaux et tous ceux
+| qui sont à la base des commerciaux doivent avoir les portefeuilles clients ») : il voit qui suit
+| quoi et les relances de l'équipe ; il n'affecte pas — un client n'a qu'un commercial, et il ne
+| prend pas d'office celui d'un collègue. Les gestes se revérifient (`garder`).
+|
+| **Trois boutons, un tableau à la fois — 29/10** : « au lieu de faire ces trois tableaux les uns à
+| la suite des autres, fais trois boutons cliquables qui changent le tableau de façon dynamique ».
+| La vue choisie voyage dans l'adresse (`?vue=`), et seul le tableau affiché est calculé.
 */
 
 state([
@@ -38,14 +47,49 @@ state([
     'choix' => [],
 ]);
 
+/** Le tableau affiché : « tous » (tous les clients), « relances » (de l'équipe) ou « suivis ». */
+state(['vue' => 'tous'])->url(except: 'tous');
+
+/** Les trois vues, dans l'ordre des boutons. */
+$vues = protect(fn (): array => ['tous' => 'Tous les clients', 'relances' => "Relances récentes de l'équipe", 'suivis' => 'Clients suivis']);
+
+$choisirVue = function (string $vue) {
+    $this->vue = array_key_exists($vue, $this->vues()) ? $vue : 'tous';
+};
+
+// Une vue inconnue dans l'adresse retombe sur « tous » plutôt que de n'afficher aucun tableau.
+mount(function () {
+    if (! array_key_exists((string) $this->vue, $this->vues())) {
+        $this->vue = 'tous';
+    }
+});
+
+/** Affecter, réaffecter, retirer : l'encadrement seul. Le commercial lit. */
+$peutAffecter = computed(fn () => PortefeuilleCommercial::peutAffecter(auth()->user()));
+
 $garder = protect(function () {
     abort_unless(PortefeuilleCommercial::peutAffecter(auth()->user()), 403);
 });
 
-/** Les commerciaux du périmètre : sa ville, ou toutes pour qui les voit toutes. */
-$commerciaux = computed(fn () => Commercial::actifs()->where('est_spontane', false)
-    ->when(! auth()->user()->voitToutesLesVilles(), fn ($q) => $q->whereIn('ville_id', PerimetreSites::idsVillesRetenus(auth()->user(), '')))
-    ->orderBy('nom')->pluck('nom', 'id')->all());
+/**
+ * Les commerciaux du périmètre : sa ville, ou toutes pour qui les voit toutes.
+ *
+ * La ville du compte et celle de sa fiche commerciale s'ajoutent à celles de ses ateliers (29/10) :
+ * `Site::visiblesPour()` ne rend rien à un responsable de site ou à un commercial sans atelier
+ * rattaché, et la liste restait vide — même règle que `CorrespondancesDeFactures::perimetre()`.
+ */
+$commerciaux = computed(function () {
+    $compte = auth()->user();
+    $villes = $compte->voitToutesLesVilles() ? null : array_values(array_filter(array_unique([
+        ...PerimetreSites::idsVillesRetenus($compte, ''),
+        $compte->ville_id,
+        PortefeuilleCommercial::commercialDe($compte)?->ville_id,
+    ])));
+
+    return Commercial::actifs()->where('est_spontane', false)
+        ->when($villes !== null, fn ($q) => $q->whereIn('ville_id', $villes))
+        ->orderBy('nom')->pluck('nom', 'id')->all();
+});
 
 $lignes = computed(function () {
     if (! PortefeuilleCommercial::disponible()) {
@@ -77,10 +121,12 @@ $impayes = computed(function () {
         return [];
     }
 
-    $noms = [
-        ...$this->lignes->pluck('client')->all(),
-        ...$this->annuaire['lignes']->whereNotNull('suivi_id')->pluck('nom')->all(),
-    ];
+    // Seulement les noms du tableau affiché : les deux autres ne sont pas calculés.
+    $noms = match ($this->vue) {
+        'suivis' => $this->lignes->pluck('client')->all(),
+        'tous' => $this->annuaire['lignes']->whereNotNull('suivi_id')->pluck('nom')->all(),
+        default => [],
+    };
 
     return PerimetreCommercialDuRecouvrement::impayesDesClients($noms);
 });
@@ -155,7 +201,10 @@ $affecter = function () {
 
     $ligne = PortefeuilleCommercial::affecter($commercial, $this->client, auth()->user(), 'affectation', $this->telephone, $this->note);
 
-    $this->reset('client', 'telephone', 'note');
+    // Par affectation et non par `reset()`, qui remet un état Volt à null (piège 25).
+    $this->client = '';
+    $this->telephone = '';
+    $this->note = '';
     unset($this->lignes, $this->prospectes);
     $this->dispatch('annonce', ton: 'succes', texte: '« '.$ligne->client.' » est affecté à '.$commercial->nom.'.');
 };
@@ -231,6 +280,7 @@ $retirer = function (int $id) {
     @if (! PortefeuilleCommercial::disponible())
         <div class="carte"><p style="margin:0; color:#B45309;">La mise à jour du serveur n'est pas encore passée (migration du 26/10).</p></div>
     @else
+        @if ($this->peutAffecter)
         <div class="carte" style="margin-bottom:16px;">
             <h3 style="font-size:14.5px; font-weight:700; margin:0 0 8px;">Affecter un client</h3>
             <form wire:submit="affecter">
@@ -268,7 +318,23 @@ $retirer = function (int $id) {
                 </div>
             @endif
         </div>
+        @endif
 
+        {{-- ════════════════ Les trois tableaux, un à la fois — 29/10 ════════════════ --}}
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
+            @foreach ($this->vues() as $cleVue => $libelleVue)
+                <button type="button" wire:click="choisirVue('{{ $cleVue }}')" wire:key="vue-{{ $cleVue }}"
+                    class="bouton {{ $vue === $cleVue ? '' : 'bouton-secondaire' }}" style="padding:9px 16px;"
+                    aria-pressed="{{ $vue === $cleVue ? 'true' : 'false' }}">{{ $libelleVue }}</button>
+            @endforeach
+            @if ($vue !== 'tous')
+                <div style="margin-left:auto;">
+                    <x-champ label="Commercial" model="commercialChoisi" type="select" :live="true" width="220" vide="— toute l'équipe —" :options="$this->commerciaux" />
+                </div>
+            @endif
+        </div>
+
+        @if ($vue === 'tous')
         {{-- ════════════════ Tous les clients — 27/10
              « Une méthode où tous les clients sont, où l'on voit qui a prospecté chacun, mais où l'on peut
              l'affecter à qui l'on veut. » --}}
@@ -284,7 +350,7 @@ $retirer = function (int $id) {
             </div>
             <div class="tableau-conteneur">
                 <table class="tableau">
-                    <thead><tr><th>Client</th><th>Prospecté par</th><th>Suivi par</th>@if ($this->recouvrementOuvert)<th style="text-align:right;">Impayés</th>@endif<th>Affecter à</th></tr></thead>
+                    <thead><tr><th>Client</th><th>Prospecté par</th><th>Suivi par</th>@if ($this->recouvrementOuvert)<th style="text-align:right;">Impayés</th>@endif @if ($this->peutAffecter)<th>Affecter à</th>@endif</tr></thead>
                     <tbody>
                         @forelse ($annuaire['lignes'] as $c)
                             @php $cle = md5($c->cle); @endphp
@@ -305,6 +371,7 @@ $retirer = function (int $id) {
                                         @endif
                                     </td>
                                 @endif
+                                @if ($this->peutAffecter)
                                 <td style="white-space:nowrap;">
                                     <select wire:model="choix.{{ $cle }}" class="champ" style="width:auto; display:inline-block;" aria-label="Commercial pour {{ $c->nom }}">
                                         <option value="">— commercial —</option>
@@ -316,16 +383,19 @@ $retirer = function (int $id) {
                                         {{ $c->suivi_id ? 'Réaffecter' : 'Affecter' }}
                                     </button>
                                 </td>
+                                @endif
                             </tr>
                         @empty
-                            <x-table-vide :colspan="$this->recouvrementOuvert ? 5 : 4" texte="Aucun client ne répond à la recherche." />
+                            <x-table-vide :colspan="3 + ($this->recouvrementOuvert ? 1 : 0) + ($this->peutAffecter ? 1 : 0)" texte="Aucun client ne répond à la recherche." />
                         @endforelse
                     </tbody>
                 </table>
             </div>
             <x-pagination :page="$annuairePage" :total="$annuaire['total']" prop="annuairePage" :par-page="30" />
         </div>
+        @endif
 
+        @if ($vue === 'suivis')
         <div class="carte" style="margin-bottom:16px;">
             <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
                 <h3 style="font-size:14.5px; font-weight:700; margin:0;">
@@ -366,7 +436,9 @@ $retirer = function (int $id) {
                                             <a href="{{ route('recouvrement.saisie', ['relance' => $t]) }}" wire:navigate class="bouton" style="padding:4px 10px; font-size:12px;">Relancer</a>
                                         @endif
                                     @endif
-                                    @if ((int) $reaffectation === (int) $l->id)
+                                    @if (! $this->peutAffecter)
+                                        {{-- Le commercial lit : ni réaffecter ni retirer. --}}
+                                    @elseif ((int) $reaffectation === (int) $l->id)
                                         <select wire:model="versCommercial" class="champ" style="width:auto; display:inline-block;" aria-label="Nouveau commercial">
                                             <option value="">— vers —</option>
                                             @foreach ($this->commerciaux as $id => $nom)
@@ -389,7 +461,9 @@ $retirer = function (int $id) {
                 </table>
             </div>
         </div>
+        @endif
 
+        @if ($vue === 'relances')
         <x-carte-section titre="Relances récentes de l'équipe">
             <div class="tableau-conteneur">
                 <table class="tableau">
@@ -413,5 +487,6 @@ $retirer = function (int $id) {
                 </table>
             </div>
         </x-carte-section>
+        @endif
     @endif
 </div>

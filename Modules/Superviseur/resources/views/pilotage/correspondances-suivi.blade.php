@@ -275,7 +275,8 @@ $annuler = function (int $correspondance) {
                                 @endif
                             </td>
                             <td class="colonne-collee" style="white-space:nowrap;">
-                                @unless ($correspondance->estAnnulee())
+                                {{-- Annuler : les responsables seuls ; le commercial lit (29/10). --}}
+                                @unless ($correspondance->estAnnulee() || ! \Modules\Noyau\Exploitation\Services\CorrespondancesDeFactures::estResponsable(auth()->user()))
                                     <button type="button" class="bouton bouton-secondaire" style="padding:3px 9px; font-size:11.5px;"
                                         wire:click="annuler({{ $correspondance->id }})"
                                         data-confirmer="Annuler l'affectation de la facture {{ $facture?->n_facture ?: $facture?->numero }} ?"

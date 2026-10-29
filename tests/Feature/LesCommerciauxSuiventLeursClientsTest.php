@@ -141,9 +141,16 @@ class LesCommerciauxSuiventLeursClientsTest extends TestCase
         $this->assertSame(1, RelanceCommerciale::withoutGlobalScopes()->count());
     }
 
+    /**
+     * Depuis le 29/10, le commercial ouvre « Portefeuilles clients », en lecture : il n'y affecte pas
+     * (voir aussi `LesCommerciauxOntLeursPagesParDefautTest`).
+     */
     public function test_seuls_ceux_qui_encadrent_affectent(): void
     {
-        $this->actingAs($this->vendeurA)->get(route('portefeuilles-clients'))->assertForbidden();
+        $this->actingAs($this->vendeurA)->get(route('portefeuilles-clients'))->assertOk()->assertDontSee('Affecter un client');
+        Volt::actingAs($this->vendeurA)->test('pilotage.portefeuilles-clients')
+            ->set('commercialChoisi', (string) $this->a->id)->set('client', 'NSIA')->call('affecter')->assertForbidden();
+        $this->assertSame(0, ClientCommercial::withoutGlobalScopes()->count());
         $this->actingAs($this->vendeurA)->get(route('mes-clients'))->assertOk();
         $this->actingAs($this->gerant)->get(route('portefeuilles-clients'))->assertOk();
 
