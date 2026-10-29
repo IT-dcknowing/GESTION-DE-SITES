@@ -25,6 +25,10 @@ class RecouvrementServiceProvider extends ServiceProvider
         // Le catalogue des rôles (Maintenance) lit ici quelles pages chaque rôle du métier a (23/10).
         \Modules\Noyau\Entreprises\Support\CatalogueDesPages::declarerUnModuleAPages('recouvrement.', fn (string $role) => \Modules\Recouvrement\Support\AccesRecouvrement::pagesDuRole($role));
 
+        // Qui ne lit que ses clients (28/10) : le Noyau borne les créances, le module dit qui.
+        \Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement::declarer(
+            fn ($compte) => \Modules\Recouvrement\Support\AccesRecouvrement::estCommercialBorne($compte));
+
         // La coquille (bandeau et barre latérale de la section) est un composant anonyme :
         // <x-recouvrement::coquille>. Sans cet enregistrement, Blade la chercherait dans
         // resources/views/components de l'application et ne la trouverait pas.

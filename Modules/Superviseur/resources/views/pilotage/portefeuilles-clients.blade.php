@@ -4,7 +4,9 @@ use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\ClientCommercial;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\RelanceCommerciale;
+use Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement;
 use Modules\Noyau\Exploitation\Services\PortefeuilleCommercial;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 
 use function Livewire\Volt\{computed, protect, state};
 
@@ -60,6 +62,36 @@ $lignes = computed(function () {
 /** Tous les clients, avec qui les a prospectés et qui les suit — voir `PortefeuilleCommercial::annuaire`. */
 $annuaire = computed(fn () => ! PortefeuilleCommercial::disponible() ? ['lignes' => collect(), 'total' => 0]
     : PortefeuilleCommercial::annuaire((string) $this->annuaireRecherche, (string) $this->annuaireFiltre, (int) $this->annuairePage));
+
+/*
+ * **Les impayés des clients suivis — 28/10** : « le but est de voir les impayés de ces clients ;
+ * au tableau où un client a quelqu'un qui le suit, un bouton qui ramène vers ses pages ». Une passe
+ * sur les créances ouvertes pour les deux tableaux de la page (`impayesDesClients`) ; le bouton
+ * ouvre le dossier du recouvrement du tiers à relancer, si le module est ouvert à qui regarde — et,
+ * pour un responsable commercial, si le tiers est dans sa propre vue.
+ */
+$recouvrementOuvert = computed(fn () => AccesRecouvrement::ouvertA(auth()->user()));
+
+$impayes = computed(function () {
+    if (! $this->recouvrementOuvert) {
+        return [];
+    }
+
+    $noms = [
+        ...$this->lignes->pluck('client')->all(),
+        ...$this->annuaire['lignes']->whereNotNull('suivi_id')->pluck('nom')->all(),
+    ];
+
+    return PerimetreCommercialDuRecouvrement::impayesDesClients($noms);
+});
+
+/** Le tiers à ouvrir pour ce client, s'il y en a un et que le lecteur peut l'ouvrir. */
+$tiersAOuvrir = protect(function (string $client): ?string {
+    $tiers = $this->impayes[PortefeuilleCommercial::cle($client)]['tiers'] ?? null;
+    $perimetre = PerimetreCommercialDuRecouvrement::courant();
+
+    return $tiers !== null && ($perimetre === null || $perimetre->retient($tiers)) ? $tiers : null;
+});
 
 $updatedAnnuaireRecherche = function () { $this->annuairePage = 1; };
 $updatedAnnuaireFiltre = function () { $this->annuairePage = 1; };
@@ -252,7 +284,7 @@ $retirer = function (int $id) {
             </div>
             <div class="tableau-conteneur">
                 <table class="tableau">
-                    <thead><tr><th>Client</th><th>Prospecté par</th><th>Suivi par</th><th>Affecter à</th></tr></thead>
+                    <thead><tr><th>Client</th><th>Prospecté par</th><th>Suivi par</th>@if ($this->recouvrementOuvert)<th style="text-align:right;">Impayés</th>@endif<th>Affecter à</th></tr></thead>
                     <tbody>
                         @forelse ($annuaire['lignes'] as $c)
                             @php $cle = md5($c->cle); @endphp
@@ -260,6 +292,19 @@ $retirer = function (int $id) {
                                 <td><b>{{ $c->nom }}</b></td>
                                 <td style="font-size:12px;">{{ $c->prospecte_par === [] ? '—' : implode(', ', $c->prospecte_par) }}</td>
                                 <td style="font-size:12px;">{{ $c->suivi_par ?? '—' }}</td>
+                                @if ($this->recouvrementOuvert)
+                                    @php $imp = $c->suivi_id ? ($this->impayes[PortefeuilleCommercial::cle($c->nom)] ?? null) : null; $t = $c->suivi_id ? $this->tiersAOuvrir($c->nom) : null; @endphp
+                                    <td style="text-align:right; white-space:nowrap; font-size:12px;">
+                                        @if (! $c->suivi_id)
+                                            <span style="color:#9A9DA5;">—</span>
+                                        @else
+                                            <span style="{{ ($imp['reste'] ?? 0) > 0 ? 'color:#C8102E; font-weight:700;' : 'color:#6B6E76;' }}">{{ ($imp['factures'] ?? 0) > 0 ? ae($imp['reste']) : 'aucun' }}</span>
+                                            @if ($t)
+                                                <a href="{{ route('recouvrement.dossier', ['tiers' => $t]) }}" wire:navigate class="bouton bouton-secondaire" style="padding:3px 8px; font-size:11.5px; margin-left:4px;">Recouvrement</a>
+                                            @endif
+                                        @endif
+                                    </td>
+                                @endif
                                 <td style="white-space:nowrap;">
                                     <select wire:model="choix.{{ $cle }}" class="champ" style="width:auto; display:inline-block;" aria-label="Commercial pour {{ $c->nom }}">
                                         <option value="">— commercial —</option>
@@ -273,7 +318,7 @@ $retirer = function (int $id) {
                                 </td>
                             </tr>
                         @empty
-                            <x-table-vide :colspan="4" texte="Aucun client ne répond à la recherche." />
+                            <x-table-vide :colspan="$this->recouvrementOuvert ? 5 : 4" texte="Aucun client ne répond à la recherche." />
                         @endforelse
                     </tbody>
                 </table>
@@ -293,7 +338,8 @@ $retirer = function (int $id) {
                 <table class="tableau">
                     <thead>
                         <tr><th>Client</th><th>Commercial</th><th>Origine</th><th style="text-align:right;">CA facturé</th>
-                            <th style="text-align:right;">Relances</th><th>Dernière relance</th><th>Prochaine</th><th></th></tr>
+                            <th style="text-align:right;">Relances</th><th>Dernière relance</th><th>Prochaine</th>
+                            @if ($this->recouvrementOuvert)<th style="text-align:right;">Impayés</th>@endif<th></th></tr>
                     </thead>
                     <tbody>
                         @forelse ($this->lignes as $l)
@@ -306,7 +352,20 @@ $retirer = function (int $id) {
                                 <td style="text-align:right;">{{ number_format($l->nb_relances, 0, ',', ' ') }}</td>
                                 <td style="font-size:12px;">{{ $d ? $d->date?->format('d/m/Y').' — '.$d->statut : '—' }}</td>
                                 <td style="font-size:12px; {{ PortefeuilleCommercial::aRelancer($l) ? 'color:#C8102E; font-weight:700;' : '' }}">{{ $d?->prochaine_relance?->format('d/m/Y') ?? '—' }}</td>
+                                @if ($this->recouvrementOuvert)
+                                    @php $imp = $this->impayes[PortefeuilleCommercial::cle($l->client)] ?? null; @endphp
+                                    <td style="text-align:right; white-space:nowrap; {{ ($imp['reste'] ?? 0) > 0 ? 'color:#C8102E; font-weight:700;' : 'color:#6B6E76;' }}">
+                                        {{ ($imp['factures'] ?? 0) > 0 ? ae($imp['reste']) : '—' }}
+                                    </td>
+                                @endif
                                 <td style="white-space:nowrap; text-align:right;">
+                                    {{-- Vers le recouvrement de ce client (28/10). --}}
+                                    @if ($this->recouvrementOuvert && ($t = $this->tiersAOuvrir($l->client)))
+                                        <a href="{{ route('recouvrement.dossier', ['tiers' => $t]) }}" wire:navigate class="bouton bouton-secondaire" style="padding:4px 10px; font-size:12px;">Recouvrement</a>
+                                        @if (AccesRecouvrement::peutSaisir(auth()->user()))
+                                            <a href="{{ route('recouvrement.saisie', ['relance' => $t]) }}" wire:navigate class="bouton" style="padding:4px 10px; font-size:12px;">Relancer</a>
+                                        @endif
+                                    @endif
                                     @if ((int) $reaffectation === (int) $l->id)
                                         <select wire:model="versCommercial" class="champ" style="width:auto; display:inline-block;" aria-label="Nouveau commercial">
                                             <option value="">— vers —</option>
@@ -324,7 +383,7 @@ $retirer = function (int $id) {
                                 </td>
                             </tr>
                         @empty
-                            <x-table-vide :colspan="8" texte="Aucun client affecté." />
+                            <x-table-vide :colspan="$this->recouvrementOuvert ? 9 : 8" texte="Aucun client affecté." />
                         @endforelse
                     </tbody>
                 </table>

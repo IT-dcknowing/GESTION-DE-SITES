@@ -15,7 +15,8 @@ use Modules\Noyau\Exploitation\Services\ReglementGlobal;
 use Modules\Noyau\Exploitation\Services\SupportDeReglement;
 use Modules\Recouvrement\Support\PeriodeDeTravail;
 use Modules\Recouvrement\Support\AccesRecouvrement;
-use function Livewire\Volt\{computed, protect, state};
+use Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement;
+use function Livewire\Volt\{computed, mount, protect, state};
 
 /*
 |--------------------------------------------------------------------------
@@ -221,7 +222,39 @@ $sites = computed(fn () => Site::where('est_actif', true)->orderBy('nom')->pluck
 
 $peutRediger = computed(fn () => AccesRecouvrement::peutCreerUneFacture(auth()->user()));
 
-$nombreRelances = computed(fn () => RelanceRecouvrement::count());
+/*
+ * **Le commercial ne voit que la relance — 28/10** : « saisie : on doit voir uniquement la
+ * relance ». Ni encaissement ni création de tiers : l'écran ne les montre pas, et les deux
+ * actions se revérifient (`AccesRecouvrement::peutEncaisser`).
+ */
+$peutEncaisser = computed(fn () => AccesRecouvrement::peutEncaisser(auth()->user()));
+
+$perimetre = computed(fn () => PerimetreCommercialDuRecouvrement::courant());
+
+// Le commercial compte les relances des seuls tiers de sa vue (28/10).
+$nombreRelances = computed(fn () => $this->perimetre === null
+    ? RelanceRecouvrement::count()
+    : RelanceRecouvrement::query()->pluck('tiers')->filter(fn ($t) => $this->perimetre->retient((string) $t))->count());
+
+/*
+ * **Arriver sur la relance d'un tiers — 28/10** : « le bouton Relancer ouvre la page saisie pour
+ * afficher la relance ». « Mes clients » et le tableau de bord ouvrent `/recouvrement?relance=…` :
+ * le tiers est choisi, ses factures ouvertes s'affichent, le niveau suggéré est posé. Un nom qui
+ * ne doit plus rien — ou hors de la vue du commercial — n'est pas retenu : la liste ne le propose
+ * pas, et le formulaire le refuserait.
+ */
+state(['relance' => ''])->url(except: '');
+
+mount(function () {
+    $demande = trim((string) ($this->relance ?: request()->query('relance', '')));
+    // Lu une fois, à l'arrivée : il ne doit pas revenir choisir le tiers après une relance enregistrée.
+    $this->relance = '';
+
+    if ($demande !== '' && array_key_exists($demande, $this->tiersOuverts)) {
+        $this->relTiers = $demande;
+        $this->relNiveau = max(1, $this->niveauRequis ?: 1);
+    }
+});
 
 /**
  * Les tiers dont le nom ressemble à celui qu'on s'apprête à créer.
@@ -374,6 +407,9 @@ $updatedRelTiers = function () {
 |--------------------------------------------------------------------------
 */
 $enregistrerEncaissement = function () {
+    // Le commercial n'encaisse pas d'ici (28/10) : la carte lui est cachée, la méthode refuse.
+    abort_unless(AccesRecouvrement::peutEncaisser(auth()->user()), 403);
+
     /*
      * **Un versement, une ou plusieurs factures.** C'était une facture et une seule, et
      * cela ne correspondait pas au geste réel : un client remet un chèque pour ce qu'il
@@ -710,6 +746,13 @@ $enregistrerRelance = function () {
     ], [], ['relTiers' => 'tiers', 'relNiveau' => 'niveau', 'relCanal' => 'canal',
         'relDate' => 'date de la relance']);
 
+    // Un commercial ne relance qu'un tiers de sa vue (28/10) : la valeur revient du navigateur.
+    if ($this->perimetre !== null && ! $this->perimetre->retient($donnees['relTiers'])) {
+        $this->addError('relTiers', "Ce tiers n'est pas parmi les clients que vous suivez.");
+
+        return;
+    }
+
     /*
      * Tous les niveaux sont ouverts à tous les rôles du module, N4 et N5 compris.
      *
@@ -1030,8 +1073,16 @@ $annulerLeTiers = function () {
          Ici chaque colonne empile ses cartes pour son propre compte : rien ne s'aligne sur
          la voisine, il n'y a plus de trou. Sous 980 points la page revient à une colonne
          unique et les quatre cartes se suivent. --}}
-    <div class="rec-g2" style="align-items:start;">
+    {{-- Le commercial (28/10) n'a que la relance : une colonne, la carte de relance seule. --}}
+    @if (! $this->peutEncaisser)
+        <div class="rec-hint" style="margin-bottom:12px;">
+            Vous voyez les seuls clients que vous suivez, et les tiers qui paient pour eux. Ici, vous tracez vos relances ;
+            les encaissements restent à la comptabilité et au recouvrement.
+        </div>
+    @endif
+    <div class="rec-g2" style="align-items:start; {{ $this->peutEncaisser ? '' : 'grid-template-columns:minmax(0, 760px);' }}">
 
+        @if ($this->peutEncaisser)
         <div class="rec-col">
 
         {{-- ─────────────── Encaissement ─────────────── --}}
@@ -1461,6 +1512,7 @@ $annulerLeTiers = function () {
         @endif
 
         </div>
+        @endif
 
         <div class="rec-col">
 
@@ -1675,6 +1727,7 @@ $annulerLeTiers = function () {
         </div>
 
         {{-- ─────────────── Tiers ─────────────── --}}
+        @if ($this->peutEncaisser)
         <div class="rec-carte">
             <h2>Créer un client / tiers <span class="chip">Superviseur · Gérant</span></h2>
 
@@ -1775,6 +1828,7 @@ $annulerLeTiers = function () {
                 </div>
             @endif
         </div>
+        @endif
 
         </div>
     </div>

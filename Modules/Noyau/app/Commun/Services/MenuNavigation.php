@@ -71,6 +71,8 @@ class MenuNavigation
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
                 // Les clients qu'il suit, et ses relances — 26/10.
                 ['label' => 'Mes clients', 'route' => 'mes-clients'],
+                // Leurs impayés (28/10) : le recouvrement borné aux clients qu'il suit.
+                ['label' => 'Recouvrement', 'route' => 'recouvrement.tableau-de-bord', 'actifPattern' => 'recouvrement.'],
                 // Les prospections de toute l'équipe (14/10) : pour ne pas refaire celles d'un collègue.
                 ['label' => 'Affichage général', 'route' => 'affichage-general'],
                 // En tête et non sous « Paramètres » : c'est là qu'il réclame ses factures,
@@ -91,14 +93,17 @@ class MenuNavigation
          *
          * Son bandeau s'arrête à la chaîne de vente. Ni Charges, ni Trésorerie, ni Caisse,
          * ni Fournisseurs : ces écrans lui répondraient par un refus, et un onglet qui mène
-         * à un 403 vaut moins qu'un onglet absent. Ni Recouvrement ni Import non plus —
-         * encadrer des vendeurs n'a aucun rapport avec la poursuite d'une créance.
+         * à un 403 vaut moins qu'un onglet absent. Ni Import non plus. Le Recouvrement, lui,
+         * y entre le 28/10, borné aux clients qu'il suit : « le but d'affecter un client est de
+         * voir ses impayés » (`PerimetreCommercialDuRecouvrement`).
          */
         if ($utilisateur->hasRole('responsable_commercial')) {
             return self::construire([
                 ['label' => 'Saisie du jour', 'route' => 'saisie-du-jour'],
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
                 ['label' => 'Mes clients', 'route' => 'mes-clients'],
+                // Les impayés des clients qu'il suit (28/10) — les siens, pas ceux de l'équipe.
+                ['label' => 'Recouvrement', 'route' => 'recouvrement.tableau-de-bord', 'actifPattern' => 'recouvrement.'],
                 ['label' => 'Affichage général', 'route' => 'affichage-general'],
                 ['label' => 'Correspondances', 'route' => 'correspondances'],
                 ['label' => 'Mon équipe', 'groupe' => [

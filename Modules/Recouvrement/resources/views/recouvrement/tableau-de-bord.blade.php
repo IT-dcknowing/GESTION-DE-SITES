@@ -320,6 +320,20 @@ $lien = function (array $changements = []): string {
         </x-recouvrement::periode>
     </x-slot:filtres>
 
+    {{-- Le commercial (28/10) lit ses seuls clients : on le lui dit, et l'on dit pourquoi l'écran est
+         vide quand personne ne lui a encore affecté de client. --}}
+    @php $perimetreCommercial = \Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement::courant(); @endphp
+    @if ($perimetreCommercial !== null)
+        <div class="rec-hint {{ $perimetreCommercial->estVide() ? 'warn' : '' }}" style="margin-bottom:12px;">
+            @if ($perimetreCommercial->estVide())
+                Aucun client ne vous est encore affecté : votre responsable vous en confie depuis « Portefeuilles clients »,
+                ou reprenez vos clients prospectés depuis « Mes clients ». Leurs impayés s'afficheront ici.
+            @else
+                Les impayés des {{ count($perimetreCommercial->clients) }} client(s) que vous suivez, et des tiers qui paient pour eux.
+            @endif
+        </div>
+    @endif
+
     @php $r = $this->reperes; @endphp
 
     {{-- ───────────────────────────── les chiffres de tête ───────────────────────────── --}}
@@ -607,6 +621,13 @@ $lien = function (array $changements = []): string {
                                    class="rec-btn o" style="text-decoration:none; padding:4px 10px; font-size:11px; white-space:nowrap;">
                                     Détail
                                 </a>
+                                {{-- « Relancer » ouvre la saisie sur la relance, ce tiers choisi (28/10). --}}
+                                @if (AccesRecouvrement::peutSaisir(auth()->user()))
+                                    <a href="{{ route('recouvrement.saisie', ['relance' => $ligne['tiers']]) }}" wire:navigate
+                                       class="rec-btn r" style="text-decoration:none; padding:4px 10px; font-size:11px; white-space:nowrap;">
+                                        Relancer
+                                    </a>
+                                @endif
                             </td>
                         </tr>
                     @empty

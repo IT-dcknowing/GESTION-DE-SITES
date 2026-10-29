@@ -229,11 +229,19 @@ class RecouvrementTest extends TestCase
             ->assertSee('EXTRAIT DE COMPTE');
     }
 
-    public function test_le_module_est_ferme_aux_roles_etrangers(): void
+    /**
+     * Le commercial entre depuis le 28/10 — cinq écrans, sur les seuls clients qu'il suit (voir
+     * `LeCommercialVoitLesImpayesDeSesClientsTest`). Le reste du module lui reste fermé.
+     */
+    public function test_le_module_ne_s_ouvre_au_commercial_que_sur_cinq_ecrans(): void
     {
         $commercial = $this->compte('commercial');
 
-        $this->actingAs($commercial)->get(route('recouvrement.saisie'))->assertRedirect();
+        $this->actingAs($commercial)->get(route('recouvrement.saisie'))->assertOk()->assertDontSee('Enregistrer un encaissement');
+
+        foreach (['synthese', 'clients', 'relances', 'encaissements', 'audit'] as $page) {
+            $this->actingAs($commercial)->get(route('recouvrement.'.$page))->assertRedirect();
+        }
     }
 
     /*

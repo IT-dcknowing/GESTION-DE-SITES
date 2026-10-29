@@ -1,11 +1,15 @@
-@props(['page', 'actions' => null])
+@props(['page', 'actions' => null, 'titre' => null, 'sousTitre' => null])
 
 @php
     use Modules\Recouvrement\Support\AccesRecouvrement;
 
     $utilisateur = auth()->user();
     $ouvertes = AccesRecouvrement::pagesDe($utilisateur);
-    $roleLisible = \Modules\Noyau\Entreprises\Support\LibellesRoles::de(AccesRecouvrement::role($utilisateur));
+    // Le commercial (28/10) n'a pas de rôle du recouvrement : on dit le sien, plutôt qu'un tiret.
+    $roleLisible = \Modules\Noyau\Entreprises\Support\LibellesRoles::de(AccesRecouvrement::role($utilisateur)
+        ?? (AccesRecouvrement::estCommercialBorne($utilisateur) ? $utilisateur->getRoleNames()->first() : null));
+    // La fusion des tiers (28/10) n'est pas une des neuf pages : elle s'ouvre par l'habilitation.
+    $fusionOuverte = \Modules\Noyau\Entreprises\Support\HabilitationsDActions::accorde($utilisateur, 'tiers_recouvrement', 'fusionner');
 @endphp
 
 {{--
@@ -63,6 +67,11 @@
                     </a>
                 @endif
             @endforeach
+            @if ($fusionOuverte)
+                <a href="{{ route('recouvrement.fusion') }}" wire:navigate class="{{ $page === 'fusion' ? 'on' : '' }}">
+                    <span class="ic">⇆</span>Fusion des tiers
+                </a>
+            @endif
         </nav>
 
         <div class="rec-foot">
@@ -79,8 +88,8 @@
             <div style="display:flex; align-items:flex-start; gap:12px;">
                 <x-replier-barre cible="rec" quoi="le menu du recouvrement" style="margin-top:4px;" />
                 <div>
-                    <h1>{{ AccesRecouvrement::PAGES[$page]['libelle'] }}</h1>
-                    <div class="sub">{{ AccesRecouvrement::SOUS_TITRES[$page] }}</div>
+                    <h1>{{ $titre ?? AccesRecouvrement::PAGES[$page]['libelle'] }}</h1>
+                    <div class="sub">{{ $sousTitre ?? AccesRecouvrement::SOUS_TITRES[$page] }}</div>
                 </div>
             </div>
             {{-- La ville regardée, à côté de la date d'arrêté : ce sont les deux réglages

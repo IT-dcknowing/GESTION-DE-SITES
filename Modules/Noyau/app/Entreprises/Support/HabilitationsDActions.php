@@ -42,13 +42,26 @@ final class HabilitationsDActions
                 ],
             ],
         ],
-        // La page « Fusion / correction » des clients de l'état des impayés — 27/10 : « une page que je
-        // pourrai attribuer à partir du Super admin ». Elle déplace des factures d'un nom à l'autre.
+        // La page « Correction des clients » de l'état des impayés — 27/10 : « une page que je pourrai
+        // attribuer à partir du Super admin ». Elle déplace des factures d'un nom à l'autre.
+        // **La clé reste `fusionner`** quand la page n'est plus que la correction (28/10) : les
+        // habilitations déjà accordées en ligne la portent, et la renommer les effacerait.
         'clients_impayes' => [
             'libelle' => "Clients de l'état des impayés",
             'actions' => [
                 'fusionner' => [
-                    'libelle' => 'Fusion / correction des clients',
+                    'libelle' => 'Correction des clients (état des impayés)',
+                    'defaut' => ['gerant'],
+                ],
+            ],
+        ],
+        // La fusion des tiers du recouvrement — 28/10 : « la fusion concerne le recouvrement, donc les
+        // données du recouvrement ; mets-la dans le module recouvrement, fais une page pour ça ».
+        'tiers_recouvrement' => [
+            'libelle' => 'Tiers du recouvrement',
+            'actions' => [
+                'fusionner' => [
+                    'libelle' => 'Fusion des tiers (recouvrement)',
                     'defaut' => ['gerant'],
                 ],
             ],
