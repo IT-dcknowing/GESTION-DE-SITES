@@ -170,7 +170,10 @@ class LeCommercialVoitLesImpayesDeSesClientsTest extends TestCase
         $this->assertNull(PerimetreCommercialDuRecouvrement::courant());
         $this->assertSame(2_050_000, montant_de(Volt::test('recouvrement.tableau-de-bord')->instance()->reperes['encours']));
 
+        // « Tous les clients » mène au dossier ; « Clients suivis » ajoute la relance (trois boutons, 29/10).
         Volt::test('pilotage.portefeuilles-clients')
+            ->assertSee(route('recouvrement.dossier', ['tiers' => 'ASCOMA']), false)
+            ->call('choisirVue', 'suivis')
             ->assertSee(route('recouvrement.dossier', ['tiers' => 'ASCOMA']), false)
             ->assertSee(route('recouvrement.saisie', ['relance' => 'SOTRA TRANSPORTS']), false);
     }

@@ -5,6 +5,7 @@ use Livewire\Volt\Volt;
 use Modules\Noyau\Commun\Controleurs\TelechargerAnnuaire;
 use Modules\Noyau\Commun\Services\Exportateur;
 use Modules\Noyau\Exploitation\Services\CorrespondancesDeFactures;
+use Modules\Noyau\Exploitation\Services\PortefeuilleCommercial;
 use Modules\Superviseur\Http\Controllers\AccesController;
 use Modules\Superviseur\Http\Controllers\OuvrirLaFicheParSonNumero;
 use Modules\Superviseur\Http\Controllers\TelechargerLesFournisseurs;
@@ -52,11 +53,12 @@ Route::middleware(['auth'])->group(function () {
 });
 
 /*
- * Les portefeuilles clients des commerciaux — 26/10 : qui affecte un client à un commercial. Le
- * gérant, le superviseur de ville et le responsable commercial, qui encadrent les vendeurs ; pas le
- * responsable de site. Voir `PortefeuilleCommercial`.
+ * Les portefeuilles clients des commerciaux — 26/10. Depuis le 29/10 (« par défaut, les commerciaux et
+ * tous ceux qui sont à la base des commerciaux doivent l'avoir »), tous ceux qui vendent l'ouvrent :
+ * l'encadrement — responsable de site compris — y affecte, le commercial y lit. Voir
+ * `PortefeuilleCommercial::ROLES_DE_LA_PAGE` et `peutAffecter`.
  */
-Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_commercial'])->group(function () {
+Route::middleware(['auth', 'role:'.implode('|', PortefeuilleCommercial::ROLES_DE_LA_PAGE)])->group(function () {
     Volt::route('/portefeuilles-clients', 'pilotage.portefeuilles-clients')->name('portefeuilles-clients');
 });
 
@@ -84,8 +86,9 @@ Route::middleware(['auth', 'role:'.CorrespondancesDeFactures::rolesPourMiddlewar
     Volt::route('/correspondances/miennes', 'pilotage.mes-correspondances')->name('correspondances.miennes');
 });
 
-// Le suivi d'ensemble, et l'annulation : les responsables seuls.
-Route::middleware(['auth', 'role:'.implode('|', CorrespondancesDeFactures::ROLES_RESPONSABLES)])->group(function () {
+// Le suivi d'ensemble : les responsables, et le commercial depuis le 29/10. L'annulation reste aux
+// responsables (`CorrespondancesDeFactures::annuler`).
+Route::middleware(['auth', 'role:'.implode('|', CorrespondancesDeFactures::ROLES_DU_SUIVI)])->group(function () {
     Volt::route('/correspondances/suivi', 'pilotage.correspondances-suivi')->name('correspondances.suivi');
 });
 

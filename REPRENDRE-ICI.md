@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 28 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 29 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -50,7 +50,39 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 28 octobre 2026
+## 3. Où l'on en est — 29 octobre 2026
+
+**Le 29/10**, branche `portefeuilles-et-pages-des-commerciaux`. **Aucune migration.** Le travail du
+28/10 est en ligne sur **IT-dcknowing** (`main` = `5907ef9`) ; le dépôt **meledje** a refusé l'envoi
+(jeton sans droit d'écriture) — à remettre à jour depuis IT. Suite complète : **26 échecs, tous
+antérieurs** (un des 27 du 28/10, `LesCommerciauxSuiventLeursClientsTest`, passe désormais).
+
+### Fait le 29/10 — portefeuilles en trois boutons, les pages des commerciaux par défaut
+
+- **Portefeuilles clients : trois boutons, un tableau à la fois** (« au lieu de faire ces trois
+  tableaux les uns à la suite des autres, fais trois boutons cliquables qui changent le tableau de façon
+  dynamique ») : *Tous les clients* (par défaut), *Relances récentes de l'équipe*, *Clients suivis*. La vue
+  voyage dans l'adresse (`?vue=tous|relances|suivis`, une valeur inconnue retombe sur `tous`) ; seul le
+  tableau affiché est calculé, et les impayés ne se lisent que pour lui. Un filtre *Commercial* accompagne
+  les deux derniers.
+- **Par défaut, le commercial, le responsable commercial et le responsable de site ont** (« tous ceux qui
+  sont à la base des commerciaux ») : *Portefeuilles clients des commerciaux*, *Correspondances (et mes
+  correspondances)*, *Suivi des correspondances* — les trois pages cochées d'office dans Maintenance ›
+  Rôles et pages (`CatalogueDesPages::rolesDuMetier`, lu sur les routes) :
+  - route `portefeuilles-clients` ouverte à `PortefeuilleCommercial::ROLES_DE_LA_PAGE` ; **le responsable
+    de site affecte** (`peutAffecter`) ; **le commercial lit** — ni « Affecter un client », ni « Affecter
+    à », ni réaffecter / retirer, et les actions se revérifient (choix fait le 29/10, § 5) ;
+  - route `correspondances.suivi` ouverte à `CorrespondancesDeFactures::ROLES_DU_SUIVI` (responsables +
+    commercial) ; le bouton « Suivi des correspondances » (ex-« Les correspondances ») est sur la page des
+    correspondances ; **annuler reste aux responsables** (bouton caché, `annuler()` refuse) ;
+  - menus : « Portefeuilles clients » au bandeau du commercial, et dans les Indicateurs du responsable de
+    site.
+  - La liste des commerciaux des portefeuilles ajoute la ville du compte et celle de sa fiche : sans
+    elles, un responsable de site sans atelier rattaché voyait une liste vide (piège du `visiblesPour`).
+- Tests : `LesCommerciauxOntLeursPagesParDefautTest` ; `LesCommerciauxSuiventLeursClientsTest`,
+  `LesCommerciauxCochentLeursFacturesTest` et `LeCommercialVoitLesImpayesDeSesClientsTest` adaptés.
+
+## 3 ter. Le 28 octobre 2026
 
 **Le 28/10**, branche `recouvrement-des-commerciaux`. **Aucune migration.** **La suite de tests a
 enfin tourné dans le conteneur** (Composer a pu s'installer) : 1 282 tests, **27 échecs, tous déjà
@@ -763,8 +795,7 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
   `FileNotFoundException`, un fichier d'essai manque ; `UnRoleSeDefinitParSesPagesTest` (4) ; un chacun
   pour `EtatDesImpayesTest`, `FiltrerAuJourEtSupprimerTest`, `LaSyntheseParAtelierCoutCinqRequetesTest`,
   `LeReleveDeLaCaissiereSImporteTest`, `LeSuiviFournisseurSeTientParAnneeTest`,
-  `LesChargesSeLisentParSourceTest`, `LesCommerciauxSuiventLeursClientsTest` (302 au lieu de 403),
-  `LesDecaissementsFournisseursSeSuiventTest`, `LesEcrituresComptablesSeParametrentTest`,
+  `LesChargesSeLisentParSourceTest`, `LesDecaissementsFournisseursSeSuiventTest`, `LesEcrituresComptablesSeParametrentTest`,
   `LogoEntrepriseTest`, `PeriodeEtExportsTest`, `UneChargeSeReprendDeLaCaisseTest`. Écrits les 22–27/10
   sans pouvoir être lancés : à diagnostiquer un par un (le test ou le code ?).
 - **`reset()` Volt sur d'autres écrans** (piège 25) : `impayes-avoir` (`cochees`), Maintenance
@@ -811,6 +842,12 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 ---
 
 ## 5. Les questions ouvertes, et ce qu'on sait déjà
+
+### 00. Les portefeuilles du commercial — un choix fait le 29/10, à confirmer
+
+Le commercial ouvre « Portefeuilles clients » **en lecture** : il voit qui suit quoi et les relances de
+l'équipe, mais n'affecte pas — un client n'a qu'un commercial, et il ne prend pas d'office celui d'un
+collègue (règle du 26/10). S'il doit affecter, ajouter `commercial` à `PortefeuilleCommercial::peutAffecter`.
 
 ### 0. Le recouvrement des commerciaux — cinq choix faits le 28/10, à confirmer
 

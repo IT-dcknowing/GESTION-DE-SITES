@@ -328,9 +328,10 @@ $annuler = function (int $correspondance) {
                 <a href="{{ route('correspondances.miennes') }}" wire:navigate class="bouton bouton-sombre"
                     style="padding:9px 16px; text-decoration:none;">Mes correspondances</a>
             @endif
-            @if ($this->estResponsable)
+            {{-- Le suivi s'ouvre aussi au commercial depuis le 29/10, en lecture. --}}
+            @if (\Modules\Noyau\Exploitation\Services\CorrespondancesDeFactures::peutVoirLeSuivi(auth()->user()))
                 <a href="{{ route('correspondances.suivi') }}" wire:navigate class="bouton bouton-secondaire"
-                    style="padding:9px 16px; text-decoration:none;">Les correspondances</a>
+                    style="padding:9px 16px; text-decoration:none;">Suivi des correspondances</a>
             @endif
         </div>
     @endif

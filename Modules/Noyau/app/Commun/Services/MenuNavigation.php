@@ -71,6 +71,8 @@ class MenuNavigation
                 ['label' => 'Mes prospections', 'route' => 'mes-prospections'],
                 // Les clients qu'il suit, et ses relances — 26/10.
                 ['label' => 'Mes clients', 'route' => 'mes-clients'],
+                // Qui suit quoi dans l'équipe (29/10), en lecture.
+                ['label' => 'Portefeuilles clients', 'route' => 'portefeuilles-clients'],
                 // Leurs impayés (28/10) : le recouvrement borné aux clients qu'il suit.
                 ['label' => 'Recouvrement', 'route' => 'recouvrement.tableau-de-bord', 'actifPattern' => 'recouvrement.'],
                 // Les prospections de toute l'équipe (14/10) : pour ne pas refaire celles d'un collègue.
@@ -306,7 +308,8 @@ class MenuNavigation
                  * La page garde son adresse, et s'ouvre des boutons de la page Charges.
                  */
                 ['label' => 'Commerciaux', 'route' => 'commerciaux'],
-                // Les clients que suit chaque commercial, et leurs relances — 26/10.
+                // Les clients que suit chaque commercial, et leurs relances — 26/10 ; le responsable de
+                // site aussi depuis le 29/10.
                 ...(\Modules\Noyau\Exploitation\Services\PortefeuilleCommercial::peutAffecter($utilisateur)
                     ? [['label' => 'Portefeuilles clients', 'route' => 'portefeuilles-clients']] : []),
             ],

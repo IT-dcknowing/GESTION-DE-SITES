@@ -256,7 +256,8 @@ class LesCommerciauxCochentLeursFacturesTest extends TestCase
             ->assertDontSee('F-502');
     }
 
-    public function test_les_correspondances_sont_fermees_au_commercial_et_filtrent_par_commercial(): void
+    /** Le suivi s'ouvre au commercial depuis le 29/10, en lecture : il n'y annule rien. */
+    public function test_le_suivi_s_ouvre_au_commercial_en_lecture_et_filtre_par_commercial(): void
     {
         $koffi = $this->vendeur('Koffi Yao', $this->abidjan);
         $awa = $this->vendeur('Awa Traoré', $this->abidjan);
@@ -266,15 +267,16 @@ class LesCommerciauxCochentLeursFacturesTest extends TestCase
 
         $this->actingAs($koffi);
         CorrespondancesDeFactures::cocher($koffi, [$f1->id]);
-        // Refusé par le rôle : l'application renvoie vers l'aiguillage, comme partout.
-        $this->get(route('correspondances.suivi'))->assertRedirect();
-        $this->get(route('correspondances'))->assertOk()->assertSee('Mes correspondances')->assertDontSee('Les correspondances');
+        $this->get(route('correspondances.suivi'))->assertOk()->assertSee('F-600')->assertDontSee('>Annuler</button>', false);
+        $this->get(route('correspondances'))->assertOk()->assertSee('Mes correspondances')->assertSee('Suivi des correspondances');
+        $this->assertNotNull(CorrespondancesDeFactures::annuler($koffi, \Modules\Noyau\Exploitation\Modeles\CorrespondanceFacture::query()->value('id')),
+            'Annuler reste aux responsables.');
 
         $this->actingAs($awa);
         CorrespondancesDeFactures::cocher($awa, [$f2->id]);
 
         $this->actingAs($gerant);
-        $this->get(route('correspondances'))->assertOk()->assertSee('Les correspondances');
+        $this->get(route('correspondances'))->assertOk()->assertSee('Suivi des correspondances');
         $this->get(route('correspondances.suivi'))->assertOk();
 
         Volt::test('pilotage.correspondances-suivi')
