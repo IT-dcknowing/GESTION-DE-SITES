@@ -77,12 +77,12 @@ Route::middleware(['auth', 'role:gerant|superviseur_recouvrement|agent_recouvrem
     });
 
 /*
- * La fusion des tiers du recouvrement — 28/10 : « la fusion concerne le recouvrement ; mets-la dans
- * le module recouvrement, fais une page pour ça ». Comme la correction de l'état des impayés,
- * aucun rôle à la route : elle s'ouvre à qui a le geste dans Maintenance › Habilitations
- * (`tiers_recouvrement.fusionner`, le gérant par défaut), un rôle ou un compte précis. Le composant
- * le vérifie à l'ouverture et à chaque action.
+ * La correction des clients, sur les données du recouvrement — 28/10 : « la correction part dans le
+ * recouvrement, car elle doit puiser dans les données du recouvrement ». Comme la fusion de l'état
+ * des impayés, aucun rôle à la route : elle s'ouvre à qui a le geste dans Maintenance ›
+ * Habilitations (`tiers_recouvrement.corriger`, le gérant par défaut), un rôle ou un compte précis.
+ * Le composant le vérifie à l'ouverture et à chaque action.
  */
 Route::middleware(['auth'])->prefix('recouvrement')->name('recouvrement.')->group(function () {
-    Volt::route('/fusion-des-tiers', 'recouvrement.fusion')->name('fusion');
+    Volt::route('/correction-des-clients', 'recouvrement.correction')->name('correction');
 });
