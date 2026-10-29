@@ -7,9 +7,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
+use Modules\Noyau\Entreprises\Modeles\HabilitationAction;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
@@ -18,13 +20,13 @@ use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
- * Correction des clients de l'état des impayés — 27/10, réduite à la correction le 28/10.
+ * Fusion des clients de l'état des impayés — 27/10, réduite à la fusion le 28/10.
  *
- * « Des clients justes, mais des factures pas sous le bon — correction. Un client de départ ne
- * doit pas être un client d'arrivée. » La fusion est passée au module Recouvrement : voir
- * `LaFusionDesTiersSeFaitAuRecouvrementTest`.
+ * « Pour un client, deux noms : l'un correct, l'autre une erreur, dont les factures sont vraies et
+ * à remettre au premier — fusion. Un client de départ ne doit pas être un client d'arrivée. » La
+ * correction est passée au module Recouvrement : voir `LaCorrectionSePuiseDansLeRecouvrementTest`.
  */
-class LaCorrectionRemetLesFacturesSousLeBonClientTest extends TestCase
+class LaFusionRemetLesFacturesSousLeBonClientTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -44,61 +46,61 @@ class LaCorrectionRemetLesFacturesSousLeBonClientTest extends TestCase
         $this->site = Site::create(['entreprise_id' => $this->e->id, 'ville_id' => $this->ville->id, 'code' => 'A1', 'nom' => 'Abidjan — Site 1', 'est_actif' => true]);
     }
 
-    public function test_corriger_ne_deplace_que_les_factures_cochees_et_ne_supprime_rien(): void
+    public function test_fusionner_deplace_les_factures_et_supprime_le_nom_faux(): void
     {
         $gerant = $this->compte('gerant');
-        $this->creance('F-1', 'ORANGE CI');
-        $mal = $this->creance('F-2', 'MTN CI');
-        $this->creance('F-3', 'MTN CI');
+        $a = $this->creance('F-1', 'SANLAM VIE');
+        $b = $this->creance('F-2', 'SANLAM VIEE');
+        $c = $this->creance('F-3', 'SANLAM VIEE');
         Encaissement::withoutGlobalScopes()->create([
-            'entreprise_id' => $this->e->id, 'site_id' => $this->site->id, 'facture_id' => $mal->id, 'date' => '2026-03-05',
-            'type' => 'Client', 'moyen' => 'Virement', 'montant' => 10_000, 'client' => 'MTN CI',
+            'entreprise_id' => $this->e->id, 'site_id' => $this->site->id, 'facture_id' => $b->id, 'date' => '2026-03-05',
+            'type' => 'Client', 'moyen' => 'Virement', 'montant' => 10_000, 'client' => 'SANLAM VIEE',
         ]);
         RelanceRecouvrement::withoutGlobalScopes()->create([
-            'entreprise_id' => $this->e->id, 'responsable' => 'Agent', 'date' => '2026-03-06', 'tiers' => 'MTN CI',
+            'entreprise_id' => $this->e->id, 'responsable' => 'Agent', 'date' => '2026-03-06', 'tiers' => 'SANLAM VIEE',
             'niveau' => 1, 'canal' => 'E-mail',
         ]);
 
-        $ecran = Volt::actingAs($gerant)->test('pilotage.impayes-correction')
-            ->set('depart', 'MTN CI');
+        $ecran = Volt::actingAs($gerant)->test('pilotage.impayes-fusion')
+            ->set('depart', 'SANLAM VIEE');
         $this->assertSame(2, $ecran->instance()->factures->count());
         // L'arrivée ne propose jamais le départ.
-        $this->assertArrayNotHasKey('MTN CI', $ecran->instance()->optionsArrivee);
+        $this->assertArrayNotHasKey('SANLAM VIEE', $ecran->instance()->optionsArrivee);
 
-        $ecran->set('cochees', [(string) $mal->id])->set('arrivee', 'ORANGE CI')
-            ->call('corriger')->assertHasNoErrors();
+        $ecran->call('toutCocher')->assertSet('cochees', [(string) $b->id, (string) $c->id])
+            ->set('arrivee', 'SANLAM VIE')
+            ->call('executer', true)->assertHasNoErrors()
+            ->assertSet('depart', '')->assertSet('cochees', []);
 
-        $this->assertSame('ORANGE CI', $mal->fresh()->client);
-        $this->assertSame('ORANGE CI', Encaissement::withoutGlobalScopes()->sole()->client);
-        $this->assertSame(1, Facture::withoutGlobalScopes()->where('client', 'MTN CI')->count());
-        // Rien n'est supprimé : les relances restent au nom de départ.
-        $this->assertSame('MTN CI', RelanceRecouvrement::withoutGlobalScopes()->sole()->tiers);
-        $this->assertSame(200_000, montant_de($mal->fresh()->montant), 'Seul le nom change.');
+        $this->assertSame(3, Facture::withoutGlobalScopes()->where('client', 'SANLAM VIE')->count());
+        $this->assertSame(0, Facture::withoutGlobalScopes()->where('client', 'SANLAM VIEE')->count());
+        $this->assertSame('SANLAM VIE', Encaissement::withoutGlobalScopes()->sole()->client);
+        $this->assertSame('SANLAM VIE', RelanceRecouvrement::withoutGlobalScopes()->sole()->tiers);
+        $this->assertSame(200_000, montant_de($a->fresh()->montant), 'Seul le nom change.');
     }
 
     /**
      * **La panne du 28/10** — « count(): Argument #1 ($value) must be of type Countable|array, null
-     * given » (impayes-fusion.blade.php, KOUASSI VANESSA, 09:37 et 09:50). `reset('cochees')` d'un état
-     * Volt le remettait à null ; le client de départ gardant une facture, la page se rendait aussitôt
-     * avec `count(null)`.
+     * given » (KOUASSI VANESSA, 09:37 et 09:50). `reset('cochees')` d'un état Volt le remettait à null ;
+     * le client de départ gardant une facture, la page se rendait aussitôt avec `count(null)`.
      */
-    public function test_la_page_se_rend_apres_une_correction_et_un_changement_de_colonne(): void
+    public function test_la_page_se_rend_apres_une_fusion_partielle_et_un_changement_de_colonne(): void
     {
         $gerant = $this->compte('gerant');
         $this->creance('F-1', 'ORANGE CI');
-        $mal = $this->creance('F-2', 'MTN CI');
-        $this->creance('F-3', 'MTN CI');
+        $mal = $this->creance('F-2', 'ORANGE  C.I');
+        $this->creance('F-3', 'ORANGE  C.I');
 
-        $ecran = Volt::actingAs($gerant)->test('pilotage.impayes-correction')
-            ->set('depart', 'MTN CI')->set('cochees', [(string) $mal->id])->set('arrivee', 'ORANGE CI')
-            ->call('corriger')->assertHasNoErrors()
-            // Le départ porte encore F-3 : la page se rend avec lui, cases vides.
-            ->assertSet('depart', 'MTN CI')->assertSet('cochees', [])
+        $ecran = Volt::actingAs($gerant)->test('pilotage.impayes-fusion')
+            ->set('depart', 'ORANGE  C.I')->set('cochees', [(string) $mal->id])->set('arrivee', 'ORANGE CI')
+            ->call('executer', true)->assertHasNoErrors()
+            // Le départ porte encore F-3 : il n'est pas supprimé, la page se rend avec lui, cases vides.
+            ->assertSet('depart', 'ORANGE  C.I')->assertSet('cochees', [])
             ->assertSee('0 facture(s) cochée(s)');
 
         $ecran->call('toutCocher')->assertSee('1 facture(s) cochée(s)')
             ->set('colonne', 'assureur')->assertSet('cochees', [])->assertSet('depart', '')
-            ->set('colonne', 'client')->set('depart', 'MTN CI')->assertSee('Factures de « MTN CI » (1)');
+            ->set('colonne', 'client')->set('depart', 'ORANGE  C.I')->assertSee('(1)');
 
         // Une valeur nulle renvoyée par le navigateur ne fait plus tomber la page.
         $ecran->set('cochees', null)->assertSee('0 facture(s) cochée(s)');
@@ -109,9 +111,9 @@ class LaCorrectionRemetLesFacturesSousLeBonClientTest extends TestCase
         $gerant = $this->compte('gerant');
         $f = $this->creance('F-1', 'AXA');
 
-        Volt::actingAs($gerant)->test('pilotage.impayes-correction')
+        Volt::actingAs($gerant)->test('pilotage.impayes-fusion')
             ->set('depart', 'AXA')->set('cochees', [(string) $f->id])->set('arrivee', ' axa ')
-            ->call('corriger')->assertHasErrors('arrivee');
+            ->call('executer', false)->assertHasErrors('arrivee');
 
         $this->assertSame('AXA', $f->fresh()->client);
     }
@@ -119,16 +121,16 @@ class LaCorrectionRemetLesFacturesSousLeBonClientTest extends TestCase
     public function test_la_page_s_attribue_depuis_la_maintenance_et_l_ancienne_adresse_y_mene(): void
     {
         $caissier = $this->compte('caissier');
-        $this->actingAs($caissier)->get(route('impayes-correction'))->assertForbidden();
+        $this->actingAs($caissier)->get(route('impayes-fusion'))->assertForbidden();
 
-        \Modules\Noyau\Entreprises\Modeles\HabilitationAction::query()->create([
+        HabilitationAction::query()->create([
             'domaine' => 'clients_impayes', 'action' => 'fusionner', 'user_id' => $caissier->id, 'accorde' => true,
         ]);
-        \Modules\Noyau\Entreprises\Support\HabilitationsDActions::oublier();
+        HabilitationsDActions::oublier();
 
-        $this->actingAs($caissier)->get(route('impayes-correction'))->assertOk()
-            ->assertSee('Correction des clients')->assertDontSee('Fusionner et supprimer');
-        $this->actingAs($caissier)->get('/impayes/fusion-correction')->assertRedirect('/impayes/correction-des-clients');
+        $this->actingAs($caissier)->get(route('impayes-fusion'))->assertOk()
+            ->assertSee('Fusion des clients')->assertDontSee('Corriger : déplacer');
+        $this->actingAs($caissier)->get('/impayes/fusion-correction')->assertRedirect('/impayes/fusion-des-clients');
     }
 
     /** L'extrait AFG retraité écrit ses dates en toutes lettres — 27/10. */

@@ -8,8 +8,8 @@
     // Le commercial (28/10) n'a pas de rôle du recouvrement : on dit le sien, plutôt qu'un tiret.
     $roleLisible = \Modules\Noyau\Entreprises\Support\LibellesRoles::de(AccesRecouvrement::role($utilisateur)
         ?? (AccesRecouvrement::estCommercialBorne($utilisateur) ? $utilisateur->getRoleNames()->first() : null));
-    // La fusion des tiers (28/10) n'est pas une des neuf pages : elle s'ouvre par l'habilitation.
-    $fusionOuverte = \Modules\Noyau\Entreprises\Support\HabilitationsDActions::accorde($utilisateur, 'tiers_recouvrement', 'fusionner');
+    // La correction des clients (28/10) n'est pas une des neuf pages : elle s'ouvre par l'habilitation.
+    $correctionOuverte = \Modules\Noyau\Entreprises\Support\HabilitationsDActions::accorde($utilisateur, 'tiers_recouvrement', 'corriger');
 @endphp
 
 {{--
@@ -67,9 +67,9 @@
                     </a>
                 @endif
             @endforeach
-            @if ($fusionOuverte)
-                <a href="{{ route('recouvrement.fusion') }}" wire:navigate class="{{ $page === 'fusion' ? 'on' : '' }}">
-                    <span class="ic">⇆</span>Fusion des tiers
+            @if ($correctionOuverte)
+                <a href="{{ route('recouvrement.correction') }}" wire:navigate class="{{ $page === 'correction' ? 'on' : '' }}">
+                    <span class="ic">⇆</span>Correction des clients
                 </a>
             @endif
         </nav>

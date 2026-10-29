@@ -62,7 +62,7 @@ présents sur `main` avant la séance** — vérifié en rejouant les mêmes cla
 commité en local et livré au propriétaire sous forme de *bundle* git et de *patch*, à pousser depuis
 son poste sur **les deux dépôts** (`origin` porte les deux URL de push) — voir § 4, point 26.
 
-### Fait le 28/10 — trois pannes, la fusion au recouvrement, le recouvrement des commerciaux
+### Fait le 28/10 — trois pannes, la correction au recouvrement, le recouvrement des commerciaux
 
 - **Panne `/devis/4010`** (12/10, YAPI CHRISTIAN, « Class `Modules\Noyau\Tracabilite\Services\PisteDeLaFiche`
   not found ») : `devis-detail.blade.php` importait la classe d'un mauvais espace de noms
@@ -75,19 +75,23 @@ son poste sur **les deux dépôts** (`origin` porte les deux URL de push) — vo
   `null`, pas au `[]` déclaré** (la valeur de départ n'est posée qu'au montage). Après une correction
   qui laissait des factures au client de départ, ou un changement de colonne, le rendu comptait `null`.
   Les états sont désormais remis par affectation, et les cases relues par `lesCochees()`. → **Piège 25**.
-- **La fusion quitte l'état des impayés pour le Recouvrement** (« je me suis trompé : la fusion concerne
-  le recouvrement, la correction les impayés ») :
-  - **Correction des clients** (`/impayes/correction-des-clients`, route `impayes-correction`, vue
-    `pilotage.impayes-correction`) : la correction seule, rien n'est supprimé. L'ancienne adresse
-    `/impayes/fusion-correction` y renvoie. Habilitation inchangée (`clients_impayes.fusionner` — la clé
-    reste, pour ne pas perdre les accords déjà donnés en ligne), libellé « Correction des clients ».
-  - **Fusion des tiers** (`/recouvrement/fusion-des-tiers`, route `recouvrement.fusion`, vue
-    `recouvrement.fusion`, service `FusionDesTiers`) : le tiers en erreur est remplacé **dans les quatre
-    colonnes où il se lit** (client, assureur, courtier, déposé chez) ; « Fusionner et supprimer » fait
-    passer ses relances, efface sa place au référentiel des tiers et son code, et renomme la ligne du
-    portefeuille du commercial qui le suivait (supprimée si un collègue suit déjà le bon nom).
-    Habilitation **neuve** `tiers_recouvrement.fusionner` (« Fusion des tiers (recouvrement) »), **le
-    gérant par défaut** ; lien dans la barre latérale du module pour qui l'a.
+- **La page fusion / correction se partage** — décision du propriétaire, le 28/10, après une première
+  version dans l'autre sens : « la fusion reste dans l'état des impayés avec sa même logique ; la
+  correction part dans le recouvrement, car elle doit puiser dans les données du recouvrement et non
+  dans celles des impayés — toujours avec la logique initiale de correction » :
+  - **Fusion des clients** (état des impayés, `/impayes/fusion-des-clients`, route `impayes-fusion`
+    inchangée, vue `pilotage.impayes-fusion`, service `FusionDesClients` inchangé) : la fusion seule,
+    telle qu'au 27/10 (colonne choisie, « Fusionner et supprimer le client de départ », relances et
+    code tiers qui suivent). L'ancienne adresse `/impayes/fusion-correction` y renvoie. Habilitation
+    inchangée (`clients_impayes.fusionner`), libellé « Fusion des clients (état des impayés) ».
+  - **Correction des clients** (Recouvrement, `/recouvrement/correction-des-clients`, route
+    `recouvrement.correction`, service `CorrectionDesTiers`) : la logique initiale — départ, factures
+    cochées, arrivée, **rien n'est supprimé** — sur les **tiers du recouvrement** (`Recouvrement::requete()`,
+    les quatre colonnes client / assureur / courtier / déposé chez, plus les tiers qui n'ont que des
+    relances ou une place au référentiel). Le nom est remplacé dans la colonne où il se lit ; le tiers est
+    recopié sur les règlements ; relances, référentiel, codes et portefeuilles ne bougent pas.
+    Habilitation **neuve** `tiers_recouvrement.corriger`, **le gérant seul par défaut** (le propriétaire :
+    pas le superviseur du recouvrement d'office) ; lien dans la barre latérale du module pour qui l'a.
 - **Le recouvrement des commerciaux** (« le but d'affecter des clients à un commercial est de voir leurs
   impayés ») :
   - Le **commercial, le responsable commercial et le responsable de site** (qui vendent, sans rôle du
@@ -110,8 +114,8 @@ son poste sur **les deux dépôts** (`origin` porte les deux URL de push) — vo
     bouton **Recouvrement** sur les clients suivis (« Tous les clients » et « Clients suivis »), plus
     **Relancer**. Tableau de bord du recouvrement : bouton **Relancer** sur chaque tiers.
   - Menu « Recouvrement » au bandeau du commercial et du responsable commercial.
-  - Tests : `LeCommercialVoitLesImpayesDeSesClientsTest`, `LaFusionDesTiersSeFaitAuRecouvrementTest`,
-    `LaCorrectionRemetLesFacturesSousLeBonClientTest` ; `RecouvrementTest` et `ResponsableCommercialTest`
+  - Tests : `LeCommercialVoitLesImpayesDeSesClientsTest`, `LaCorrectionSePuiseDansLeRecouvrementTest`,
+    `LaFusionRemetLesFacturesSousLeBonClientTest` ; `RecouvrementTest` et `ResponsableCommercialTest`
     adaptés à la règle nouvelle (le commercial entre, sur ses clients).
 
 ## 3 bis. Les séances du 23 au 27 octobre 2026
@@ -708,8 +712,8 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 26. **Le 28/10** : pousser la branche `recouvrement-des-commerciaux` puis `main` sur **les deux dépôts**
     (le bundle livré : `git fetch <bundle> recouvrement-des-commerciaux:recouvrement-des-commerciaux`).
     En ligne : `git pull` puis `php artisan app:deployer` (**aucune migration**). Ensuite :
-    **Maintenance › Habilitations** — donner « Fusion des tiers (recouvrement) » à qui faisait la fusion
-    (KOUASSI VANESSA l'utilisait le 28/10 : elle ne l'a pas d'office, seul le gérant l'a) ; vérifier que
+    **Maintenance › Habilitations** — la fusion garde ses accords ; donner « Correction des clients
+    (recouvrement) » à qui doit corriger (seul le gérant l'a d'office) ; vérifier que
     chaque commercial a sa **fiche commercial** et ses **clients affectés** (Portefeuilles clients) — sans
     eux, son recouvrement est vide, et l'écran le lui dit.
 
@@ -812,14 +816,15 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 
 Chacun se change en une ligne :
 
-1. **Qui entre** : le commercial, le responsable commercial **et le responsable de site**
-   (`AccesRecouvrement::ROLES_DU_PORTEFEUILLE`) — tous ceux qui ont une fiche commercial et peuvent
-   suivre des clients. Le responsable de ville garde tout le portefeuille (rôle du module).
+1. **Qui entre** : le commercial, le responsable commercial **et le responsable de site** —
+   **confirmé par le propriétaire le 28/10** (`AccesRecouvrement::ROLES_DU_PORTEFEUILLE`). Le
+   responsable de ville garde tout le portefeuille (rôle du module).
 2. **« Ses clients »** = les noms de son portefeuille lus dans les **quatre colonnes** de la facture. Le
    payeur d'une de ses factures (assureur, courtier) entre dans sa vue, **avec ses seules factures**.
 3. **« Relancer » de Mes clients** ouvre la saisie du recouvrement ; la relance commerciale d'avant
    reste, renommée « Relance commerciale ».
-4. **La fusion des tiers** est donnée **au seul gérant par défaut** ; à attribuer depuis la Maintenance.
+4. **La correction des clients (recouvrement)** : **au seul gérant par défaut — confirmé le 28/10**
+   (« non » au superviseur du recouvrement d'office) ; à attribuer depuis la Maintenance.
 5. **Les exports** du commercial : balance, courtiers, extrait, portefeuille (bornés) ; ni l'annuaire des
    tiers ni les journaux.
 
