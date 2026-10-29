@@ -34,6 +34,11 @@ state(['semaineFiltre' => ''])->url(except: '');
 state(['jourFiltre' => ''])->url(except: '');
 
 mount(function (string $tiers) {
+    // Un commercial n'ouvre que le dossier d'un tiers de sa vue (28/10) : le tiers voyage dans
+    // l'adresse, et une adresse s'écrit à la main.
+    $perimetre = \Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement::courant();
+    abort_if($perimetre !== null && ! $perimetre->retient($tiers), 404);
+
     $this->tiers = $tiers;
 });
 

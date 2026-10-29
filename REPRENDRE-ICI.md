@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 27 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 28 octobre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -50,7 +50,71 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 26 octobre 2026
+## 3. Où l'on en est — 28 octobre 2026
+
+**Le 28/10**, branche `recouvrement-des-commerciaux`. **Aucune migration.** **La suite de tests a
+enfin tourné dans le conteneur** (Composer a pu s'installer) : 1 282 tests, **27 échecs, tous déjà
+présents sur `main` avant la séance** — vérifié en rejouant les mêmes classes sur une copie propre de
+`main` (même liste, mêmes messages). Ils sont listés au § 4, « Côté code, prêt à prendre ». Aucun
+échec n'est dû au travail du 28/10.
+
+⚠️ **Poussée** : la session n'avait pas le droit d'écrire sur GitHub (lecture seule). Le travail est
+commité en local et livré au propriétaire sous forme de *bundle* git et de *patch*, à pousser depuis
+son poste sur **les deux dépôts** (`origin` porte les deux URL de push) — voir § 4, point 26.
+
+### Fait le 28/10 — trois pannes, la fusion au recouvrement, le recouvrement des commerciaux
+
+- **Panne `/devis/4010`** (12/10, YAPI CHRISTIAN, « Class `Modules\Noyau\Tracabilite\Services\PisteDeLaFiche`
+  not found ») : `devis-detail.blade.php` importait la classe d'un mauvais espace de noms
+  (`Tracabilite` au lieu d'`Exploitation`). Elle n'était appelée que pour un devis qui porte un n° de
+  fiche de réception : la page s'ouvrait pour les uns, tombait pour les autres. Corrigé ; test
+  `LeDetailDuDevisSOuvreAvecSaFicheTest` (il échoue sur l'ancien code). Un balayage de tous les `use`
+  et `Classe::` des modules ne trouve plus aucune classe introuvable.
+- **Pannes de la page fusion / correction** (28/10, KOUASSI VANESSA, 09:37 et 09:50, « count(): Argument
+  #1 must be of type Countable|array, null given ») : **`reset('cochees')` d'un état Volt le remet à
+  `null`, pas au `[]` déclaré** (la valeur de départ n'est posée qu'au montage). Après une correction
+  qui laissait des factures au client de départ, ou un changement de colonne, le rendu comptait `null`.
+  Les états sont désormais remis par affectation, et les cases relues par `lesCochees()`. → **Piège 25**.
+- **La fusion quitte l'état des impayés pour le Recouvrement** (« je me suis trompé : la fusion concerne
+  le recouvrement, la correction les impayés ») :
+  - **Correction des clients** (`/impayes/correction-des-clients`, route `impayes-correction`, vue
+    `pilotage.impayes-correction`) : la correction seule, rien n'est supprimé. L'ancienne adresse
+    `/impayes/fusion-correction` y renvoie. Habilitation inchangée (`clients_impayes.fusionner` — la clé
+    reste, pour ne pas perdre les accords déjà donnés en ligne), libellé « Correction des clients ».
+  - **Fusion des tiers** (`/recouvrement/fusion-des-tiers`, route `recouvrement.fusion`, vue
+    `recouvrement.fusion`, service `FusionDesTiers`) : le tiers en erreur est remplacé **dans les quatre
+    colonnes où il se lit** (client, assureur, courtier, déposé chez) ; « Fusionner et supprimer » fait
+    passer ses relances, efface sa place au référentiel des tiers et son code, et renomme la ligne du
+    portefeuille du commercial qui le suivait (supprimée si un collègue suit déjà le bon nom).
+    Habilitation **neuve** `tiers_recouvrement.fusionner` (« Fusion des tiers (recouvrement) »), **le
+    gérant par défaut** ; lien dans la barre latérale du module pour qui l'a.
+- **Le recouvrement des commerciaux** (« le but d'affecter des clients à un commercial est de voir leurs
+  impayés ») :
+  - Le **commercial, le responsable commercial et le responsable de site** (qui vendent, sans rôle du
+    recouvrement) entrent dans le module sur **cinq écrans** : tableau de bord, saisie, balance âgée,
+    courtiers, extrait de compte (`AccesRecouvrement::PAGES_DU_COMMERCIAL`, `estCommercialBorne`). Le
+    responsable de ville garde son rôle du module et tout le portefeuille.
+  - **Bornés à leurs clients** : `PerimetreCommercialDuRecouvrement` (Noyau, déclaré par le module au
+    démarrage) restreint `Recouvrement::requete()`, `encaissementsDeLaVilleRegardee()` et `courtiers()` aux
+    factures où un nom de son portefeuille figure (quatre colonnes, à la casse et aux espaces près). Le
+    payeur d'une de ses factures (assureur, courtier) entre dans sa vue **avec ses seules factures à lui**.
+    Relances du tableau de bord, dossier, extrait et exports suivent ; un tiers hors de sa vue → 404.
+  - **Saisie : la relance seule** (ni encaissement ni création de tiers, cartes cachées et méthodes
+    refusées — `peutEncaisser`). Une relance sur un tiers hors de sa vue est refusée.
+  - **`/recouvrement?relance=TIERS`** ouvre la saisie sur la relance, tiers choisi, niveau suggéré.
+  - **Mes clients** : colonne **Impayés**, boutons **Impayés** (dossier du recouvrement) et **Relancer**
+    (la saisie sur la relance) ; l'ancienne relance commerciale reste, sous « Relance commerciale ».
+    Le tiers à relancer est le client s'il paie, sinon le payeur unique de ses factures
+    (`PerimetreCommercialDuRecouvrement::impayesDesClients`, une passe pour toute la liste).
+  - **Portefeuilles clients** (gérant, superviseur de ville, responsable commercial) : colonne Impayés et
+    bouton **Recouvrement** sur les clients suivis (« Tous les clients » et « Clients suivis »), plus
+    **Relancer**. Tableau de bord du recouvrement : bouton **Relancer** sur chaque tiers.
+  - Menu « Recouvrement » au bandeau du commercial et du responsable commercial.
+  - Tests : `LeCommercialVoitLesImpayesDeSesClientsTest`, `LaFusionDesTiersSeFaitAuRecouvrementTest`,
+    `LaCorrectionRemetLesFacturesSousLeBonClientTest` ; `RecouvrementTest` et `ResponsableCommercialTest`
+    adaptés à la règle nouvelle (le commercial entre, sur ses clients).
+
+## 3 bis. Les séances du 23 au 27 octobre 2026
 
 **Le 26/10**, même branche `claude/compassionate-galileo-tly6ai`, fusionnée dans `main` et poussée
 sur les deux dépôts. **Une migration additive** : `2026_10_26_000001` (table neuve
@@ -641,6 +705,14 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
     du **gestionnaire des fournisseurs** (Maintenance › Rôles et pages) pour qu'on y branche les
     notifications.
 
+26. **Le 28/10** : pousser la branche `recouvrement-des-commerciaux` puis `main` sur **les deux dépôts**
+    (le bundle livré : `git fetch <bundle> recouvrement-des-commerciaux:recouvrement-des-commerciaux`).
+    En ligne : `git pull` puis `php artisan app:deployer` (**aucune migration**). Ensuite :
+    **Maintenance › Habilitations** — donner « Fusion des tiers (recouvrement) » à qui faisait la fusion
+    (KOUASSI VANESSA l'utilisait le 28/10 : elle ne l'a pas d'office, seul le gérant l'a) ; vérifier que
+    chaque commercial a sa **fiche commercial** et ses **clients affectés** (Portefeuilles clients) — sans
+    eux, son recouvrement est vide, et l'écran le lui dit.
+
 25. **Le 27/10 (nuit)** : `php artisan test`, `git pull`, `php artisan app:deployer` (aucune migration), puis
     redéposer le « FICHIER SUIVI FOURNISSEURS -FSF L2A-2023 A 2026 » en choisissant « Fichier suivi fournisseurs (FSF) ».
 
@@ -682,6 +754,20 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 
 ### Côté code, prêt à prendre
 
+- **Les 27 tests en échec sur `main`** (constatés le 28/10, première suite complète lancée dans le
+  conteneur ; antérieurs à la séance) : `DepotFormulaireTest` (8) et `DepotToutesVillesTest` (3) —
+  `FileNotFoundException`, un fichier d'essai manque ; `UnRoleSeDefinitParSesPagesTest` (4) ; un chacun
+  pour `EtatDesImpayesTest`, `FiltrerAuJourEtSupprimerTest`, `LaSyntheseParAtelierCoutCinqRequetesTest`,
+  `LeReleveDeLaCaissiereSImporteTest`, `LeSuiviFournisseurSeTientParAnneeTest`,
+  `LesChargesSeLisentParSourceTest`, `LesCommerciauxSuiventLeursClientsTest` (302 au lieu de 403),
+  `LesDecaissementsFournisseursSeSuiventTest`, `LesEcrituresComptablesSeParametrentTest`,
+  `LogoEntrepriseTest`, `PeriodeEtExportsTest`, `UneChargeSeReprendDeLaCaisseTest`. Écrits les 22–27/10
+  sans pouvoir être lancés : à diagnostiquer un par un (le test ou le code ?).
+- **`reset()` Volt sur d'autres écrans** (piège 25) : `impayes-avoir` (`cochees`), Maintenance
+  (`lotsChoisis`, `depotsChoisis`, `banquesChoisies`), Administrateurs (`habilitations`) remettent des
+  listes à `null`. Leurs lectures passent par `(array)`, `collect()` ou `empty()` et tiennent — mesuré à la
+  lecture du code, pas en panne. À remplacer par des affectations au prochain passage.
+
 - **Notifications fournisseurs** (23/10) : à chaque décaissement fournisseur de la caisse et à chaque
   facture FNE relevée, prévenir « celui qui gère les fournisseurs » — **le rôle sera créé par le
   propriétaire** (il peut l'être par Maintenance › Rôles et pages) ; à brancher ensuite.
@@ -721,6 +807,21 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 ---
 
 ## 5. Les questions ouvertes, et ce qu'on sait déjà
+
+### 0. Le recouvrement des commerciaux — cinq choix faits le 28/10, à confirmer
+
+Chacun se change en une ligne :
+
+1. **Qui entre** : le commercial, le responsable commercial **et le responsable de site**
+   (`AccesRecouvrement::ROLES_DU_PORTEFEUILLE`) — tous ceux qui ont une fiche commercial et peuvent
+   suivre des clients. Le responsable de ville garde tout le portefeuille (rôle du module).
+2. **« Ses clients »** = les noms de son portefeuille lus dans les **quatre colonnes** de la facture. Le
+   payeur d'une de ses factures (assureur, courtier) entre dans sa vue, **avec ses seules factures**.
+3. **« Relancer » de Mes clients** ouvre la saisie du recouvrement ; la relance commerciale d'avant
+   reste, renommée « Relance commerciale ».
+4. **La fusion des tiers** est donnée **au seul gérant par défaut** ; à attribuer depuis la Maintenance.
+5. **Les exports** du commercial : balance, courtiers, extrait, portefeuille (bornés) ; ni l'annuaire des
+   tiers ni les journaux.
 
 ### 1. L'écart de 652 917 F sur `/caisse` en ligne — non expliqué
 
@@ -840,6 +941,7 @@ Chacun a coûté une séance. Ils ne sont pas théoriques.
 | **`Site::visiblesPour()` ne rend rien au simple commercial** | `PerimetreSites` lui donne un périmètre vide : il ne verrait que les lignes sans ville. Ajouter la ville de son compte et de sa fiche (`CorrespondancesDeFactures::perimetre()`) |
 | **Deux suites de tests lancées en même temps** | Elles se marchent dessus sur les fichiers temporaires et donnent de faux échecs |
 | **SQLite (tests) accepte ce que MySQL (serveur) refuse** : une sous-requête corrélée dans un `sum()` groupé (ERR-XEYTWV) ; une chaîne plus longue que sa colonne `varchar` | Calculer ligne à ligne dans une sous-requête, regrouper par-dessus (`fromSub`) ; borner la longueur dans le code et la tester explicitement |
+| **`reset()` d'un état Volt le remet à `null`, pas à sa valeur déclarée** (28/10, ERR « count(): null given » sur la fusion / correction) | `state(['cochees' => []])` ne pose `[]` qu'au montage ; `$this->reset('cochees')` rend `null`, et le rendu suivant qui compte, trie ou `in_array` tombe. Remettre par affectation (`$this->cochees = []`) et lire une liste par une méthode qui la garantit (`(array) ($this->cochees ?? [])`) |
 | **Le code d'un écran lit une table neuve avant que le serveur ne l'ait** (ERR-XEYTWV, 09/10) | Une nouveauté qui dépend d'une migration récente passe par `App\Support\SchemaDisponible` ; et `app:deployer` après chaque `git pull` |
 | **Ne jamais arrondir un montant** (13/10, règle du propriétaire : « tel que donné ») | Les colonnes d'argent sont des `decimal(18,4)`. **Jamais `(int)`, `round()`, `number_format(…, 0)` ni `intdiv` sur un montant ou un total** : `montant_de()` pour lire (entier si entier, flottant sinon — MySQL rend les décimaux et leurs `sum()` **en chaînes**), `ae()` / `montant_nombre()` pour écrire, la cast `App\Casts\Montant` + le trait `CompareLesMontants` sur les modèles. Un type `int` sur un paramètre d'argent est un arrondi caché. Seules exceptions voulues : les **clés de rapprochement** (`PontDesFactures`, banque ↔ règlement, clé du relevé bancaire, clé synthétique des impayés) qui restent calculées au franc pour retrouver les lignes d'avant ; les commissions et objectifs (calculés, jamais importés) ; les pourcentages |
 | **La table `factures` mêle les ventes et les créances** (12/10) | Tout KPI de chiffre d'affaires passe par `Facture::scopeDuChiffreDAffaires()` ; une créance de l'état non retrouvée au CATTC n'est pas une vente |

@@ -7,7 +7,9 @@ use Modules\Noyau\Commun\Services\Exportateur;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
+use Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 use Modules\Recouvrement\Support\PortefeuilleDeRecouvrement;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -71,6 +73,12 @@ class TelechargementController
             : 'pdf';
         $arrete = Recouvrement::arrete($requete->query('arrete'));
         $stamp = $arrete->format('d-m-Y');
+
+        // Le commercial (28/10) n'emporte que ce que ses cinq écrans montrent — balance, courtiers,
+        // extrait, portefeuille —, déjà bornés à ses clients. L'annuaire porte tous les tiers
+        // déclarés, et les deux journaux, ceux de toute l'équipe : ils ne lui sont pas ouverts.
+        abort_if(AccesRecouvrement::estCommercialBorne($requete->user())
+            && ! in_array($document, ['balance', 'courtiers', 'extrait', 'portefeuille'], true), 403);
         $au = ' arrêté au '.$arrete->format('d/m/Y').'.';
 
         return match ($document) {
@@ -311,6 +319,10 @@ class TelechargementController
         if ($tiers === '' || ! array_key_exists($tiers, Recouvrement::tiers())) {
             abort(404, 'Aucun tiers désigné.');
         }
+
+        // Un commercial n'emporte l'extrait que d'un tiers de sa vue (28/10).
+        $perimetre = PerimetreCommercialDuRecouvrement::courant();
+        abort_if($perimetre !== null && ! $perimetre->retient($tiers), 404, 'Aucun tiers désigné.');
 
         // Le même filtre que l'écran, par la même méthode : un état inconnu ne filtre rien.
         $etat = (string) $requete->query('reglement', '');

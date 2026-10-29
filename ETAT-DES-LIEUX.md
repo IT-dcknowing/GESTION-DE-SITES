@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **27 octobre 2026** (40e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **28 octobre 2026** (41e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -200,6 +200,7 @@ Voir `LecteurPdf`.
 | 27/10 | voir `git log` | **claude/compassionate-galileo-tly6ai** | **Fusion / correction des clients de l'état des impayés** (`FusionDesClients`, page `impayes-fusion`, habilitation `clients_impayes.fusionner`). **Avoir par son bouton** (`pilotage.impayes-avoir`, plafond = facture moins avoirs déjà faits, migration additive `2026_10_27_000001` `factures.avoir_de_id`) ; le formulaire de créance refuse un négatif neuf ; faux « règlement dépasse le reste (0 F) » corrigé. Import : compte bancaire gardé par « Importer quand même », « Description » = libellé, dates en lettres. Apostrophes doublement échappées (`texte_d_attribut`). Tests écrits, non lancés |
 | 27/10 (suite) | voir `git log` | **claude/compassionate-galileo-tly6ai** | Imports : formats frères reconnus seuls (caisse ↔ état de caisse, relevé ↔ banque), « Banque — pièces du logiciel » hors de la liste. Avoir : n° non modifiable. Affectations : *Tous les clients* (prospecté par, suivi par, affecter à qui l'on veut). **Écritures comptables — paramétrage** (`PlanComptable`, `comptes_comptables`, migration additive `2026_10_27_000002`) |
 | 27/10 (soir) | voir `git log` | **claude/compassionate-galileo-tly6ai** | Banques et Caisse : sélecteur **Année** tiré des données (`PeriodeCalculateur::plage` gagne `$anneePropre`) ; solde annoncé borné à la période (`RapprochementDeTresorerie::releves`). Relevé FNE en service sur la production ; type « Banque — pièces du logiciel » remis dans la liste |
+| 28/10 | voir `git log` | **recouvrement-des-commerciaux** | **Trois pannes** : `/devis/{id}` (classe `PisteDeLaFiche` importée de `Tracabilite` au lieu d'`Exploitation`) ; fusion / correction « count(): null given » (`reset()` Volt remet un état à `null` — piège 25 de REPRENDRE-ICI). **La fusion passe au Recouvrement** : page `recouvrement.fusion` (`FusionDesTiers`, quatre colonnes, relances / référentiel / code / portefeuille suivent ; habilitation neuve `tiers_recouvrement.fusionner`) ; l'état des impayés garde la **correction** seule (`impayes-correction`, ancienne adresse redirigée). **Recouvrement des commerciaux** : commercial, responsable commercial et responsable de site sur cinq écrans (tableau de bord, saisie — relance seule —, balance, courtiers, extrait), bornés à leurs clients (`PerimetreCommercialDuRecouvrement` dans `Recouvrement::requete()`) ; `?relance=` ouvre la saisie sur un tiers ; colonne Impayés et boutons Impayés / Relancer dans Mes clients et Portefeuilles clients. Aucune migration. **Suite complète lancée** : 27 échecs, tous antérieurs (identiques sur `main`) |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -209,7 +210,12 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
 
 ## 5. Le chantier en cours : l'état des impayés
 
-> **Au 26/10, la branche de travail est `claude/compassionate-galileo-tly6ai`**, fusionnée dans
+> **Au 28/10, la branche de travail est `recouvrement-des-commerciaux`** : pannes du devis et de la
+> fusion / correction, fusion des tiers au Recouvrement, recouvrement borné des commerciaux (§ 4, ligne
+> du 28/10 ; § 6, « Le plan du 28/10 »). Aucune migration. Commitée en local : la session n'avait pas
+> l'écriture sur GitHub — à pousser par le propriétaire sur les deux dépôts.
+>
+> **Au 26/10, la branche de travail était `claude/compassionate-galileo-tly6ai`**, fusionnée dans
 > `main` et poussée sur les deux dépôts : charges comptées sur le suivi fournisseurs, rapprochement
 > suivi ↔ FNE visible, habilitations de modification et de suppression (§ 4, ligne du 26/10 ; § 6,
 > lignes 104 à 107). Migration additive `2026_10_26_000001` à passer en ligne (`app:deployer`).
@@ -2660,6 +2666,16 @@ code) : elle ne se situe que lorsque le CATTC la reconnaît (§ 5) et lui apport
   capture, « Abidjan — Site 2 » à 0 F et tout sous « Site 1 » vient du même retard : les factures
   du CA prennent l'atelier que dit leur code, et `factures:situer` corrigera ce qui l'attend.
 - Tests : `LesFacturesSansLieuSeSituentTest`.
+
+### Le plan du 28/10 — trois pannes, la fusion au recouvrement, le recouvrement des commerciaux
+
+| # | Demande du propriétaire | Fait |
+|---|---|---|
+| 108 | Panne `GET /devis/4010` (12/10) — `PisteDeLaFiche` introuvable | ✅ espace de noms corrigé dans `devis-detail` ; `LeDetailDuDevisSOuvreAvecSaFicheTest` ; aucune autre classe introuvable dans les modules (balayage des `use`) |
+| 109 | Pannes de la page fusion / correction (28/10, 09:37 et 09:50) — `count()` sur `null` | ✅ `reset()` Volt remplacé par des affectations, cases relues par `lesCochees()` ; test qui rejoue la séquence |
+| 110 | « La fusion concerne le recouvrement, la correction les impayés : mets la fusion dans le module recouvrement, fais une page » | ✅ `recouvrement.fusion` + `FusionDesTiers` ; `impayes-correction` (correction seule) ; habilitation `tiers_recouvrement.fusionner` (gérant par défaut) |
+| 111 | « Les commerciaux affectés à un client doivent voir ses impayés : tableau de bord, saisie (relance seule), balance âgée, extrait, courtiers — uniquement leurs clients » | ✅ `AccesRecouvrement::PAGES_DU_COMMERCIAL`, `PerimetreCommercialDuRecouvrement` ; saisie sans encaissement ni tiers ; exports bornés |
+| 112 | « Au tableau où un client a quelqu'un qui le suit, un bouton vers ses pages ; Relancer ouvre la saisie sur la relance » | ✅ Mes clients et Portefeuilles clients : Impayés, Recouvrement, Relancer (`/recouvrement?relance=…`) ; Relancer aussi au tableau de bord du recouvrement |
 
 ### Hors chantier, toujours en attente
 

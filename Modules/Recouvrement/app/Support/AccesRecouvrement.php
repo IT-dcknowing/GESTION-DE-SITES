@@ -112,6 +112,23 @@ class AccesRecouvrement
         'gerant' => ['tableau-de-bord', 'saisie', 'synthese', 'balance', 'courtiers', 'clients', 'extrait', 'relances', 'encaissements', 'audit'],
     ];
 
+    /**
+     * Ce que lit un commercial — 28/10 : « au niveau des commerciaux qu'on affecte à un client, le
+     * but est de voir les impayés de ces clients : tableau de bord du recouvrement, saisie (on doit
+     * voir uniquement la relance), balance âgée, extrait de compte, courtiers s'il y a un courtier ».
+     *
+     * Pour qui vend (`RolesCommerciaux`) sans aucun rôle du recouvrement : le commercial, le
+     * responsable commercial, le responsable de site. Le responsable de ville garde son rôle du
+     * module, et tout le portefeuille. **Ce n'est pas tout le module borné, c'est cinq écrans** :
+     * ni synthèse (les objectifs de l'équipe de recouvrement), ni annuaire de tous les tiers, ni
+     * journaux, ni piste d'audit. Et dans ces cinq écrans, les seuls clients qu'il suit — voir
+     * `PerimetreCommercialDuRecouvrement`, appliqué au calcul et non au menu.
+     */
+    public const PAGES_DU_COMMERCIAL = ['tableau-de-bord', 'saisie', 'balance', 'courtiers', 'extrait'];
+
+    /** Les rôles qui entrent dans le module par leur portefeuille de clients, et pour lui seul. */
+    public const ROLES_DU_PORTEFEUILLE = ['commercial', 'responsable_commercial', 'responsable_site'];
+
     /*
      * Il y avait ici un plafond de niveau par rôle — N3 pour l'agent, N4 pour le
      * superviseur, N5 pour le gérant. Il a été retiré sur décision de la direction : les
@@ -149,7 +166,7 @@ class AccesRecouvrement
     public static function pagesDe(?User $utilisateur): array
     {
         $role = $utilisateur ? self::role($utilisateur) : null;
-        $duRole = $role ? self::PAGES_PAR_ROLE[$role] : [];
+        $duRole = $role ? self::PAGES_PAR_ROLE[$role] : (self::estCommercialBorne($utilisateur) ? self::PAGES_DU_COMMERCIAL : []);
         $cochees = $utilisateur ? \Modules\Noyau\Entreprises\Support\CatalogueDesPages::pagesDuModule($utilisateur, 'recouvrement.') : null;
 
         if ($cochees === null) {
@@ -164,7 +181,29 @@ class AccesRecouvrement
     /** @return array<int, string> les pages qu'un rôle du métier a d'office */
     public static function pagesDuRole(string $role): array
     {
-        return self::PAGES_PAR_ROLE[$role] ?? [];
+        return self::PAGES_PAR_ROLE[$role] ?? (in_array($role, self::ROLES_DU_PORTEFEUILLE, true) ? self::PAGES_DU_COMMERCIAL : []);
+    }
+
+    /**
+     * Ce compte lit-il le module par son seul portefeuille de clients ? Un compte qui vend, sans
+     * aucun rôle du recouvrement. Un rôle du recouvrement l'emporte toujours : le responsable de
+     * ville, qui vend aussi, garde tout le portefeuille.
+     */
+    public static function estCommercialBorne(?User $utilisateur): bool
+    {
+        return $utilisateur !== null
+            && self::role($utilisateur) === null
+            && \Modules\Noyau\Entreprises\Support\RolesCommerciaux::enFaitPartie($utilisateur);
+    }
+
+    /**
+     * Qui encaisse et crée des tiers depuis la saisie : tous ceux qui y entrent, **sauf le
+     * commercial**, qui n'y trace que des relances (28/10). L'action se revérifie : une carte
+     * cachée n'a jamais fermé une méthode.
+     */
+    public static function peutEncaisser(?User $utilisateur): bool
+    {
+        return self::peutSaisir($utilisateur) && ! self::estCommercialBorne($utilisateur);
     }
 
     public static function peutVoir(?User $utilisateur, string $page): bool
@@ -229,7 +268,7 @@ class AccesRecouvrement
             'gerant' => 'Habilitation complète · N5 Contentieux',
             'caissier' => 'Comptabilité · Module complet',
             'responsable_ville' => 'Habilitation N1–N4 · Validation',
-            default => '—',
+            default => self::estCommercialBorne($utilisateur) ? 'Ses clients · Relances' : '—',
         };
     }
 

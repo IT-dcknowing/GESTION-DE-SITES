@@ -3,7 +3,7 @@
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Tracabilite\Services\JournalLisible;
-use Modules\Noyau\Tracabilite\Services\PisteDeLaFiche;
+use Modules\Noyau\Exploitation\Services\PisteDeLaFiche;
 use Modules\Noyau\Tracabilite\Services\QuiAAgi;
 use Spatie\Activitylog\Models\Activity;
 

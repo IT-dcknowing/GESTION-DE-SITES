@@ -10,6 +10,7 @@ use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
+use Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 
 /**
@@ -126,6 +127,14 @@ final class PortefeuilleDeRecouvrement
         $this->relancesParTiers = RelanceRecouvrement::query()
             ->orderByDesc('date')->orderByDesc('id')->get()
             ->groupBy('tiers');
+
+        // Le commercial (28/10) : les relances des seuls tiers de sa vue. Sans cela, le compte des
+        // relances et l'activité des agents parleraient de tout le portefeuille, à côté d'un
+        // encours borné à ses clients.
+        if (($perimetre = PerimetreCommercialDuRecouvrement::courant()) !== null) {
+            $this->relancesParTiers = $this->relancesParTiers
+                ->filter(fn ($relances, $tiers) => $perimetre->retient((string) $tiers));
+        }
     }
 
     /**
@@ -629,6 +638,8 @@ final class PortefeuilleDeRecouvrement
     private function facturesPayeesPar(string $tiers): Collection
     {
         return Facture::query()
+            // Le commercial ne lit que les factures de ses clients, même chez un payeur commun (28/10).
+            ->when(PerimetreCommercialDuRecouvrement::courant(), fn ($r, $perimetre) => $perimetre->restreindre($r))
             ->where(fn ($requete) => $requete
                 ->where('depose_chez', $tiers)
                 ->orWhere('courtier', $tiers)

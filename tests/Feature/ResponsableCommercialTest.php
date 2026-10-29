@@ -93,18 +93,19 @@ class ResponsableCommercialTest extends TestCase
          * Charges et trésorerie : animer une équipe de vente ne donne aucun titre à lire
          * ce que l'entreprise dépense.
          *
-         * Recouvrement et import : encadrer des vendeurs n'a aucun rapport avec la
-         * poursuite d'une créance ni avec le versement d'un fichier dans la base.
+         * Import : encadrer des vendeurs n'a aucun rapport avec le versement d'un fichier
+         * dans la base. (Le recouvrement de ses propres clients lui est ouvert depuis le 28/10.)
          */
         // Le chiffre d'affaires lui est fermé depuis le 12/10 : « les commerciaux ne doivent pas
         // voir la page chiffre d'affaires ».
-        foreach (['charges', 'tresorerie', 'recouvrement.tableau-de-bord', 'import.depot', 'chiffre-affaires'] as $ecran) {
+        // Le recouvrement lui est ouvert depuis le 28/10, borné aux clients qu'il suit : plus dans cette liste.
+        foreach (['charges', 'tresorerie', 'import.depot', 'chiffre-affaires'] as $ecran) {
             $this->actingAs($animateur)->get(route($ecran))
                 ->assertStatus(302, "L'écran « $ecran » ne devrait pas lui être ouvert.");
         }
     }
 
-    public function test_son_bandeau_ne_porte_ni_recouvrement_ni_import(): void
+    public function test_son_bandeau_porte_le_recouvrement_de_ses_clients_mais_pas_l_import(): void
     {
         $animateur = $this->animateur((string) $this->abidjan->id);
 
@@ -114,8 +115,9 @@ class ResponsableCommercialTest extends TestCase
         $this->assertContains('Mon équipe', $labels);
         $this->assertContains('Saisie du jour', $labels);
 
-        // Un onglet qui mène à un refus vaut moins qu'un onglet absent.
-        $this->assertNotContains('Recouvrement', $labels);
+        // Un onglet qui mène à un refus vaut moins qu'un onglet absent. Le recouvrement, lui, s'ouvre
+        // depuis le 28/10 sur les impayés des clients qu'il suit.
+        $this->assertContains('Recouvrement', $labels);
         $this->assertNotContains('Import', $labels);
         $this->assertNotContains('Charges', $labels);
         $this->assertNotContains('Trésorerie', $labels);

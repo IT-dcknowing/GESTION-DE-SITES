@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 use Modules\Recouvrement\Http\Controllers\TelechargementController;
 use Modules\Recouvrement\Http\Middleware\VerifiePageRecouvrement;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,7 +20,13 @@ use Modules\Recouvrement\Http\Middleware\VerifiePageRecouvrement;
 | gestes. Le grisé de la barre latérale n'a jamais fermé une adresse.
 */
 
-Route::middleware(['auth', 'role:gerant|superviseur_recouvrement|agent_recouvrement|responsable_ville|caissier'])
+/*
+ * Le commercial, le responsable commercial et le responsable de site entrent depuis le 28/10 :
+ * cinq écrans, sur les seuls clients qu'ils suivent (`AccesRecouvrement::PAGES_DU_COMMERCIAL`,
+ * `PerimetreCommercialDuRecouvrement`).
+ */
+Route::middleware(['auth', 'role:gerant|superviseur_recouvrement|agent_recouvrement|responsable_ville|caissier|'
+    .implode('|', AccesRecouvrement::ROLES_DU_PORTEFEUILLE)])
     ->prefix('recouvrement')->name('recouvrement.')
     ->group(function () {
         /*
@@ -68,3 +75,14 @@ Route::middleware(['auth', 'role:gerant|superviseur_recouvrement|agent_recouvrem
             ->whereIn('document', array_keys(TelechargementController::DOCUMENTS))
             ->middleware(VerifiePageRecouvrement::class.':balance');
     });
+
+/*
+ * La fusion des tiers du recouvrement — 28/10 : « la fusion concerne le recouvrement ; mets-la dans
+ * le module recouvrement, fais une page pour ça ». Comme la correction de l'état des impayés,
+ * aucun rôle à la route : elle s'ouvre à qui a le geste dans Maintenance › Habilitations
+ * (`tiers_recouvrement.fusionner`, le gérant par défaut), un rôle ou un compte précis. Le composant
+ * le vérifie à l'ouverture et à chaque action.
+ */
+Route::middleware(['auth'])->prefix('recouvrement')->name('recouvrement.')->group(function () {
+    Volt::route('/fusion-des-tiers', 'recouvrement.fusion')->name('fusion');
+});

@@ -3,7 +3,9 @@
 use Illuminate\Validation\Rule;
 use Modules\Noyau\Exploitation\Modeles\ClientCommercial;
 use Modules\Noyau\Exploitation\Modeles\RelanceCommerciale;
+use Modules\Noyau\Exploitation\Services\PerimetreCommercialDuRecouvrement;
 use Modules\Noyau\Exploitation\Services\PortefeuilleCommercial;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 
 use function Livewire\Volt\{computed, mount, protect, state};
 
@@ -68,6 +70,17 @@ $compteurs = computed(function () {
             ->where('date', '>=', now()->startOfMonth()->toDateString())->count(),
     ];
 });
+
+/*
+ * **Leurs impayés — 28/10** : « le but d'affecter des clients à un commercial est de voir leurs
+ * impayés ». Une passe sur les créances ouvertes pour toute la liste (`impayesDesClients`), et deux
+ * boutons par client : « Impayés » ouvre son dossier du recouvrement, « Relancer » la saisie, sur la
+ * relance, le tiers déjà choisi. Seulement si le module lui est ouvert.
+ */
+$recouvrementOuvert = computed(fn () => AccesRecouvrement::ouvertA(auth()->user()));
+
+$impayes = computed(fn () => ! $this->recouvrementOuvert || $this->clients->isEmpty() ? []
+    : PerimetreCommercialDuRecouvrement::impayesDesClients($this->clients->pluck('client')->all()));
 
 /** Ses clients prospectés que personne ne suit encore : il peut les reprendre. */
 $prospectes = computed(fn () => $this->commercial === null || ! PortefeuilleCommercial::disponible()
@@ -199,7 +212,9 @@ $enregistrerRelance = function () {
                     <thead>
                         <tr>
                             <th>Client</th><th>Origine</th><th style="text-align:right;">Factures</th><th style="text-align:right;">CA facturé</th>
-                            <th style="text-align:right;">Devis</th><th>Dernière relance</th><th>Prochaine relance</th><th></th>
+                            <th style="text-align:right;">Devis</th>
+                            @if ($this->recouvrementOuvert)<th style="text-align:right;">Impayés</th>@endif
+                            <th>Dernière relance</th><th>Prochaine relance</th><th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -215,6 +230,13 @@ $enregistrerRelance = function () {
                                 <td style="text-align:right;">{{ number_format($c->nb_factures, 0, ',', ' ') }}</td>
                                 <td style="text-align:right; white-space:nowrap;">{{ ae($c->ca) }}</td>
                                 <td style="text-align:right;">{{ number_format($c->nb_devis, 0, ',', ' ') }}</td>
+                                @php $imp = $this->impayes[PortefeuilleCommercial::cle($c->client)] ?? null; @endphp
+                                @if ($this->recouvrementOuvert)
+                                    <td style="text-align:right; white-space:nowrap; {{ ($imp['reste'] ?? 0) > 0 ? 'color:#C8102E; font-weight:700;' : 'color:#6B6E76;' }}">
+                                        {{ ($imp['factures'] ?? 0) > 0 ? ae($imp['reste']) : '—' }}
+                                        @if (($imp['factures'] ?? 0) > 0)<div style="font-size:11px; font-weight:400; color:#6B6E76;">{{ $imp['factures'] }} facture(s) ouverte(s)</div>@endif
+                                    </td>
+                                @endif
                                 <td style="font-size:12px;">
                                     @if ($derniere)
                                         {{ $derniere->date?->format('d/m/Y') }} — {{ $derniere->objet }}
@@ -227,7 +249,22 @@ $enregistrerRelance = function () {
                                     {{ $derniere?->prochaine_relance?->format('d/m/Y') ?? '—' }}
                                 </td>
                                 <td style="white-space:nowrap; text-align:right;">
-                                    <button type="button" wire:click="ouvrirRelance({{ $c->id }})" class="bouton" style="padding:4px 10px; font-size:12px;">Relancer</button>
+                                    {{-- « Relancer » ouvre la saisie du recouvrement sur la relance, le tiers choisi
+                                         (28/10). Le tiers est le client s'il paie, sinon le payeur de ses factures. --}}
+                                    @if ($this->recouvrementOuvert)
+                                        @if ($imp['tiers'] ?? null)
+                                            <a href="{{ route('recouvrement.dossier', ['tiers' => $imp['tiers']]) }}" wire:navigate class="bouton bouton-secondaire" style="padding:4px 10px; font-size:12px;"
+                                                title="Le recouvrement de {{ $imp['tiers'] }}">Impayés</a>
+                                            <a href="{{ route('recouvrement.saisie', ['relance' => $imp['tiers']]) }}" wire:navigate class="bouton" style="padding:4px 10px; font-size:12px;">Relancer</a>
+                                        @else
+                                            <a href="{{ route('recouvrement.tableau-de-bord') }}" wire:navigate class="bouton bouton-secondaire" style="padding:4px 10px; font-size:12px;"
+                                                title="{{ ($imp['factures'] ?? 0) > 0 ? 'Plusieurs tiers paient pour ce client : choisissez-le au tableau de bord' : 'Aucune facture ouverte' }}">Recouvrement</a>
+                                            <a href="{{ route('recouvrement.saisie') }}" wire:navigate class="bouton" style="padding:4px 10px; font-size:12px;">Relancer</a>
+                                        @endif
+                                    @endif
+                                    <button type="button" wire:click="ouvrirRelance({{ $c->id }})" class="bouton {{ $this->recouvrementOuvert ? 'bouton-secondaire' : '' }}" style="padding:4px 10px; font-size:12px;">
+                                        {{ $this->recouvrementOuvert ? 'Relance commerciale' : 'Relancer' }}
+                                    </button>
                                     @if ($c->nb_relances > 0)
                                         <button type="button" wire:click="basculerHistorique({{ $c->id }})" class="bouton bouton-secondaire" style="padding:4px 10px; font-size:12px;">
                                             Historique ({{ $c->nb_relances }})
@@ -238,7 +275,7 @@ $enregistrerRelance = function () {
 
                             @if ((int) $relanceDe === (int) $c->id)
                                 <tr wire:key="relance-{{ $c->id }}">
-                                    <td colspan="8" style="background:#FDF2F4;">
+                                    <td colspan="{{ $this->recouvrementOuvert ? 9 : 8 }}" style="background:#FDF2F4;">
                                         <form wire:submit="enregistrerRelance">
                                             <div class="bloc-saisie" style="background:#fff; border-style:solid;">
                                                 <x-champ label="Date" model="rDate" type="date" width="155" requis />
@@ -263,7 +300,7 @@ $enregistrerRelance = function () {
 
                             @if ((int) $historiqueDe === (int) $c->id)
                                 <tr wire:key="historique-{{ $c->id }}">
-                                    <td colspan="8" style="background:#F7F6F2;">
+                                    <td colspan="{{ $this->recouvrementOuvert ? 9 : 8 }}" style="background:#F7F6F2;">
                                         @foreach ($this->historique as $r)
                                             <div style="font-size:12.5px; padding:4px 0; border-bottom:1px solid #ECEAE3;">
                                                 <b>{{ $r->date?->format('d/m/Y') }}</b> · {{ $r->objet }} · {{ $r->canal }}
@@ -278,7 +315,7 @@ $enregistrerRelance = function () {
                                 </tr>
                             @endif
                         @empty
-                            <x-table-vide :colspan="8" texte="Aucun client suivi pour l'instant : votre responsable vous en affecte, ou reprenez vos clients prospectés ci-dessous." />
+                            <x-table-vide :colspan="$this->recouvrementOuvert ? 9 : 8" texte="Aucun client suivi pour l'instant : votre responsable vous en affecte, ou reprenez vos clients prospectés ci-dessous." />
                         @endforelse
                     </tbody>
                 </table>
