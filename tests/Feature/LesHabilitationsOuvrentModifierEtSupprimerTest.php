@@ -8,12 +8,15 @@ use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\HabilitationAction;
+use Modules\Noyau\Entreprises\Modeles\RoleConfigure;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
+use Modules\Noyau\Entreprises\Support\CatalogueDesPages;
 use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\SuppressionDUneCreance;
+use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Exploitation\Services\SuppressionDUnePieceFournisseur;
 use Modules\Noyau\Imports\Modeles\FactureFne;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
@@ -68,6 +71,57 @@ class LesHabilitationsOuvrentModifierEtSupprimerTest extends TestCase
         $this->assertNotNull(SuppressionDUneCreance::refus($this->compte('responsable_ville'), $creance));
         $this->assertTrue(HabilitationsDActions::accorde($this->compte('responsable_site'), 'creances', 'modifier'));
         $this->assertFalse(HabilitationsDActions::accorde($this->compte('commercial'), 'creances', 'modifier'));
+    }
+
+    public function test_un_role_configure_peut_recevoir_les_habilitations_completes_des_fournisseurs(): void
+    {
+        RoleConfigure::query()->create([
+            'nom' => 'fournisseur_complet',
+            'libelle' => 'Fournisseur complet',
+            'pages' => ['fournisseurs', 'fournisseurs.fne', 'balance-fournisseurs', 'fournisseurs.decaissements', 'reglements-fournisseurs'],
+        ]);
+        CatalogueDesPages::oublier();
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->e->id);
+        Role::firstOrCreate([
+            'name' => 'fournisseur_complet',
+            'guard_name' => 'web',
+            'entreprise_id' => $this->e->id,
+        ]);
+        $compte = User::create([
+            'entreprise_id' => $this->e->id,
+            'name' => 'Fournisseur complet',
+            'email' => 'fournisseur-complet@alpha.test',
+            'password' => Hash::make('motdepasse123'),
+            'ville_id' => $this->ville->id,
+            'site_id' => $this->site->id,
+            'est_actif' => true,
+            'doit_changer_mot_de_passe' => false,
+        ]);
+        $compte->assignRole('fournisseur_complet');
+        $compte = $compte->fresh();
+
+        // Les pages cochées ouvrent la consultation, mais ne donnent pas encore le droit d'écrire.
+        $this->assertTrue(CatalogueDesPages::ouvre($compte, 'fournisseurs'));
+        $this->assertTrue(CatalogueDesPages::ouvre($compte, 'fournisseurs.fne'));
+        $this->assertFalse(EtatDesFournisseurs::peutEcrire($compte));
+
+        // La Maintenance peut accorder en une fois la saisie/traitement et la modification.
+        $this->section([
+            'beneficiaire' => 'role',
+            'role' => 'fournisseur_complet',
+            'domaine' => 'pieces_fournisseurs',
+            'actions' => ['ecrire', 'modifier'],
+        ])->assertHasNoErrors();
+
+        $this->assertTrue(EtatDesFournisseurs::peutEcrire($compte));
+        $this->assertTrue(HabilitationsDActions::accorde($compte, 'pieces_fournisseurs', 'modifier'));
+        Volt::actingAs($compte)->test('pilotage.fournisseurs')
+            ->assertSee('Ajouter une pièce');
+        Volt::actingAs($compte)->test('pilotage.fournisseurs-fne')
+            ->assertSee('Actualiser depuis la FNE');
+        // La suppression reste un geste distinct et n'est pas donnée implicitement.
+        $this->assertFalse(HabilitationsDActions::accorde($compte, 'pieces_fournisseurs', 'supprimer'));
     }
 
     public function test_un_role_recoit_la_suppression_et_le_bouton_apparait(): void

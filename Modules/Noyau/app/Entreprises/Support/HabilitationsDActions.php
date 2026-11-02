@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
 use Modules\Noyau\Entreprises\Modeles\HabilitationAction;
 
 /**
- * Qui peut modifier, qui peut supprimer — 26/10.
+ * Qui peut saisir, modifier, qui peut supprimer — 26/10.
  *
  * « Une section me permettant de donner des habilitations de suppression et de modification à
  * certains rôles déjà créés ou à certains utilisateurs précisément ; les boutons apparaissent chez
@@ -69,6 +69,13 @@ final class HabilitationsDActions
         'pieces_fournisseurs' => [
             'libelle' => 'Pièces fournisseurs — charges fournisseurs',
             'actions' => [
+                // La saisie manuelle, le portage d'une facture FNE, l'actualisation du portail,
+                // le dépôt de secours et l'enregistrement des règlements. Une page cochée dans
+                // un rôle configuré ne suffit pas : ce geste engage réellement l'entreprise.
+                'ecrire' => [
+                    'libelle' => 'Créer, porter, actualiser et régler les factures fournisseurs',
+                    'defaut' => ['gerant', 'responsable_ville', 'caissier'],
+                ],
                 'modifier' => [
                     'libelle' => 'Modifier une pièce',
                     'defaut' => ['gerant', 'responsable_ville', 'caissier'],
