@@ -143,6 +143,21 @@ class LaFusionEtLaCorrectionDuRecouvrementTest extends TestCase
             ->call('executer')->assertHasErrors('arrivee');
     }
 
+    public function test_la_fusion_accepte_deux_noms_distincts_qui_ne_different_que_par_la_ponctuation(): void
+    {
+        $gerant = $this->compte('gerant');
+        $f = $this->creance('F-1', ['client' => 'BIA -CI']);
+        $this->creance('F-2', ['client' => 'BIA-CI']);
+
+        $ecran = Volt::actingAs($gerant)->test('recouvrement.fusion-correction')->set('depart', 'BIA -CI');
+        $this->assertArrayNotHasKey('BIA -CI', $ecran->instance()->optionsArrivee);
+        $this->assertArrayHasKey('BIA-CI', $ecran->instance()->optionsArrivee);
+
+        $ecran->call('toutCocher')->set('arrivee', 'BIA-CI')->call('executer')->assertHasNoErrors();
+
+        $this->assertSame('BIA-CI', $f->fresh()->client);
+    }
+
     public function test_un_client_ne_se_deplace_pas_vers_lui_meme(): void
     {
         $gerant = $this->compte('gerant');
@@ -150,7 +165,7 @@ class LaFusionEtLaCorrectionDuRecouvrementTest extends TestCase
 
         foreach (['fusion', 'correction'] as $section) {
             Volt::actingAs($gerant)->test('recouvrement.fusion-correction')->call('choisirSection', $section)
-                ->set('depart', 'NSIA')->set('cochees', [(string) $f->id])->set('arrivee', ' nsia ')
+                ->set('depart', 'NSIA')->set('cochees', [(string) $f->id])->set('arrivee', 'NSIA')
                 ->call('executer')->assertHasErrors('arrivee');
         }
 
