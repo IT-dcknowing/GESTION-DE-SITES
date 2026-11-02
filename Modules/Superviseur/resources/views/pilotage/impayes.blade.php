@@ -960,11 +960,11 @@ $basculerPortage = function () {
 
     <x-titre-ecran titre="État des impayés"
         sous-titre="Les factures déposées chez le client et leurs règlements, année par année. Ce qui n'est pas soldé se reporte de lui-même sur l'année suivante.">
-        {{-- Fusion des clients — 27/10 : à qui la Maintenance a donné la page. La correction est
-             passée au module Recouvrement le 28/10 : elle puise dans ses données. --}}
+        {{-- Fusion / correction des clients — 27/10 : à qui la Maintenance a donné la page. Les mêmes
+             gestes existent au recouvrement, sur ses données (02/11). --}}
         @if (HabilitationsDActions::accorde(auth()->user(), 'clients_impayes', 'fusionner'))
             <div style="margin-top:10px;">
-                <a href="{{ route('impayes-fusion') }}" wire:navigate class="bouton bouton-secondaire">Fusion des clients</a>
+                <a href="{{ route('impayes-fusion') }}" wire:navigate class="bouton bouton-secondaire">Fusion / correction des clients</a>
             </div>
         @endif
     </x-titre-ecran>

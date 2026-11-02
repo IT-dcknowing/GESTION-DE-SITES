@@ -8,7 +8,7 @@
     // Le commercial (28/10) n'a pas de rôle du recouvrement : on dit le sien, plutôt qu'un tiret.
     $roleLisible = \Modules\Noyau\Entreprises\Support\LibellesRoles::de(AccesRecouvrement::role($utilisateur)
         ?? (AccesRecouvrement::estCommercialBorne($utilisateur) ? $utilisateur->getRoleNames()->first() : null));
-    // La correction des clients (28/10) n'est pas une des neuf pages : elle s'ouvre par l'habilitation.
+    // La fusion / correction des clients (28/10, 02/11) n'est pas une des neuf pages : elle s'ouvre par l'habilitation.
     $correctionOuverte = \Modules\Noyau\Entreprises\Support\HabilitationsDActions::accorde($utilisateur, 'tiers_recouvrement', 'corriger');
 @endphp
 
@@ -68,8 +68,8 @@
                 @endif
             @endforeach
             @if ($correctionOuverte)
-                <a href="{{ route('recouvrement.correction') }}" wire:navigate class="{{ $page === 'correction' ? 'on' : '' }}">
-                    <span class="ic">⇆</span>Correction des clients
+                <a href="{{ route('recouvrement.fusion-correction') }}" wire:navigate class="{{ $page === 'fusion-correction' ? 'on' : '' }}">
+                    <span class="ic">⇆</span>Fusion / correction
                 </a>
             @endif
         </nav>

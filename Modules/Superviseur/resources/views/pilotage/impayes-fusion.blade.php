@@ -9,28 +9,26 @@ use function Livewire\Volt\{computed, mount, protect, state};
 
 /*
 |--------------------------------------------------------------------------
-| Fusion des clients de l'état des impayés — 27/10, réduite à la fusion le 28/10
+| Fusion / correction des clients de l'état des impayés — 27/10, rôles inversés le 02/11
 |--------------------------------------------------------------------------
-| « Fusion : on choisit le client à fusionner (l'erreur), on voit ses factures, on les coche — ou
-| toutes d'un bouton —, puis le client de dépôt ; et un bouton pour fusionner et supprimer le client
-| de départ. Un client de départ ne doit pas être un client d'arrivée. »
+| Deux sections, comme au 27/10 ; le 02/11, le propriétaire a inversé ce qu'elles font et les a mises
+| des deux côtés : « c'est la correction qui doit supprimer le nom de départ ; ajoute les deux des
+| deux côtés, au niveau des impayés et du recouvrement ».
 |
-| **La correction a quitté cette page le 28/10** : « la fusion reste dans l'état des impayés, avec
-| sa même logique ; la correction part dans le recouvrement, car elle doit puiser dans les données
-| du recouvrement ». Elle vit dans le module Recouvrement (`recouvrement.correction`,
-| `CorrectionDesTiers`).
+| **Fusion** : des factures du client de départ passent au client d'arrivée ; rien n'est supprimé.
+| **Correction** : le client de départ est un nom en erreur ; ses factures passent au bon nom, puis le
+| nom faux disparaît dès qu'aucune facture ne le porte plus (relances, référentiel, code tiers et
+| portefeuille suivent). Le même écran existe au recouvrement, sur ses données.
 |
-| Ouverte à qui a le geste (Maintenance › Habilitations, « Fusion des clients ») — le gérant par
-| défaut. Le périmètre est celui du compte. Voir `FusionDesClients`.
+| Ouverte à qui a le geste (Maintenance › Habilitations, « Fusion / correction des clients (état des
+| impayés) ») — le gérant par défaut. Le périmètre est celui du compte. Voir `FusionDesClients`.
 |
-| **La panne du 28/10** (ERR « count(): Argument #1 must be of type Countable|array, null given »,
-| lignes 221 et 270 de la vue compilée). `reset('cochees')` d'un état Volt le remet à **null**, et
-| non au `[]` déclaré : la valeur de départ n'est posée qu'au montage. Changer de colonne ou
-| enregistrer laissait donc `cochees` à null, et le rendu suivant comptait null. Les états sont
-| désormais remis par affectation, et les cases relues par `lesCochees()`, qui rend toujours une liste.
+| **La panne du 28/10** (« count(): null given ») : `reset()` remet un état Volt à null. Les états sont
+| remis par affectation, et les cases relues par `lesCochees()`, qui rend toujours une liste.
 */
 
 state([
+    'section' => 'fusion',
     'colonne' => 'client',
     'depart' => '',
     'arrivee' => '',
@@ -66,11 +64,21 @@ $lesCochees = protect(fn (): array => array_values(array_map('strval', (array) (
 
 $totalCoche = computed(fn () => montant_de($this->factures->whereIn('id', array_map('intval', $this->lesCochees()))->sum('montant')));
 
-$updatedColonne = function () {
-    $this->depart = '';
+$vider = protect(function (bool $garderLeDepart = false) {
+    $this->depart = $garderLeDepart ? (string) $this->depart : '';
     $this->arrivee = '';
     $this->cochees = [];
     unset($this->noms, $this->options, $this->optionsArrivee, $this->factures);
+});
+
+$choisirSection = function (string $section) {
+    $this->section = $section === 'correction' ? 'correction' : 'fusion';
+    $this->vider();
+    $this->resetValidation();
+};
+
+$updatedColonne = function () {
+    $this->vider();
 };
 
 $updatedDepart = function () {
@@ -94,14 +102,17 @@ $toutCocher = function () {
     $this->cochees = count(array_intersect($ids, $this->lesCochees())) === count($ids) ? [] : $ids;
 };
 
-$executer = function (bool $supprimerLeDepart = false) {
+$executer = function () {
     $this->garder();
     $this->resetValidation();
+
+    // La suppression du nom de départ n'appartient qu'à la correction (02/11).
+    $corriger = $this->section === 'correction';
 
     try {
         $bilan = FusionDesClients::deplacer(
             auth()->user(), (string) $this->colonne, (string) $this->depart, (string) $this->arrivee,
-            $this->lesCochees(), $this->idsSites, $this->idsVilles, $supprimerLeDepart,
+            $this->lesCochees(), $this->idsSites, $this->idsVilles, $corriger,
         );
     } catch (\RuntimeException $e) {
         $this->addError('arrivee', $e->getMessage());
@@ -111,16 +122,13 @@ $executer = function (bool $supprimerLeDepart = false) {
 
     $texte = $bilan['deplacees'].' facture(s) passée(s) de « '.$this->depart.' » à « '.$this->arrivee.' ».';
 
-    if ($supprimerLeDepart) {
+    if ($corriger) {
         $texte .= $bilan['supprime']
-            ? ' Le client « '.$this->depart.' » est supprimé.'
-            : ' Le client de départ n\'est pas supprimé : '.$bilan['restantes'].' facture(s) portent encore son nom.';
+            ? ' Le nom « '.$this->depart.' » est supprimé'.($bilan['relances'] > 0 ? ', ses '.$bilan['relances'].' relance(s) passent au bon client.' : '.')
+            : ' Le nom « '.$this->depart.' » reste : des factures le portent encore. Corrigez-les aussi pour qu\'il disparaisse.';
     }
 
-    $this->depart = $bilan['restantes'] > 0 ? $this->depart : '';
-    $this->arrivee = '';
-    $this->cochees = [];
-    unset($this->noms, $this->options, $this->optionsArrivee, $this->factures);
+    $this->vider($bilan['restantes'] > 0);
     $this->dispatch('annonce', ton: 'succes', texte: $texte);
 };
 
@@ -129,23 +137,29 @@ $executer = function (bool $supprimerLeDepart = false) {
 <div>
     @include('components.select-cherchable-ressources')
 
-    <x-titre-ecran titre="Fusion des clients"
-        sous-titre="État des impayés : un client écrit sous un nom faux — ses factures passent au bon client, et le nom faux peut disparaître.">
+    <x-titre-ecran titre="Fusion / correction des clients"
+        sous-titre="État des impayés : regrouper des factures sous un autre client, ou corriger un nom faux.">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
             <a href="{{ route('impayes') }}" wire:navigate class="bouton bouton-secondaire">← État des impayés</a>
+            <button type="button" wire:click="choisirSection('fusion')" class="bouton {{ $section === 'fusion' ? '' : 'bouton-secondaire' }}">Fusion</button>
+            <button type="button" wire:click="choisirSection('correction')" class="bouton {{ $section === 'correction' ? '' : 'bouton-secondaire' }}">Correction</button>
         </div>
     </x-titre-ecran>
 
-    <div class="carte" style="margin-bottom:16px; border-left:3px solid #C8102E;">
+    <div class="carte" style="margin-bottom:16px; border-left:3px solid {{ $section === 'correction' ? '#C8102E' : '#2563EB' }};">
         <p style="margin:0; font-size:13px; color:#4B4E55; line-height:1.5;">
-            <b>Fusion</b> : le client de départ est un nom en erreur, dont les factures sont vraies. Elles passent au bon client ;
-            « Fusionner et supprimer le client de départ » fait disparaître le nom faux — ses relances passent au bon client.
+            @if ($section === 'fusion')
+                <b>Fusion</b> : des factures du client de départ passent au client d'arrivée. Les deux clients restent ; rien n'est supprimé.
+            @else
+                <b>Correction</b> : le client de départ est un nom en erreur. Ses factures passent au bon client, puis le nom faux
+                disparaît dès qu'aucune facture ne le porte plus — ses relances, son code et le portefeuille du commercial passent au bon client.
+            @endif
             Seul le nom change : montants, dates et règlements restent ; chaque facture déplacée est tracée.
         </p>
         @if (HabilitationsDActions::accorde(auth()->user(), 'tiers_recouvrement', 'corriger'))
             <p style="margin:8px 0 0; font-size:12.5px; color:#6B6E76;">
-                Deux clients justes, mais des factures sous le mauvais ? C'est une correction :
-                <a href="{{ route('recouvrement.correction') }}" wire:navigate>Recouvrement › Correction des clients</a>.
+                Les mêmes gestes sur les données du recouvrement :
+                <a href="{{ route('recouvrement.fusion-correction') }}" wire:navigate>Recouvrement › Fusion / correction des clients</a>.
             </p>
         @endif
     </div>
@@ -154,7 +168,7 @@ $executer = function (bool $supprimerLeDepart = false) {
         <div class="bloc-saisie" style="background:#fff; border-style:solid;">
             <x-champ label="Nom porté par" model="colonne" type="select" :live="true" width="170" :options="FusionDesClients::COLONNES" />
             <div style="flex:1 1 320px; max-width:460px;">
-                <x-select-cherchable id="fusion-depart" label="Client à fusionner (l'erreur)"
+                <x-select-cherchable id="impayes-depart" :label="$section === 'correction' ? 'Client à corriger (le nom faux)' : 'Client de départ'"
                     model="depart" :valeur="$depart" :options="$this->options" vide="— choisir le client de départ —"
                     placeholder="Rechercher un client…" :seuil="0" />
             </div>
@@ -178,7 +192,7 @@ $executer = function (bool $supprimerLeDepart = false) {
                     </thead>
                     <tbody>
                         @forelse ($this->factures as $f)
-                            <tr wire:key="ff-{{ $f->id }}">
+                            <tr wire:key="fi-{{ $f->id }}">
                                 <td><input type="checkbox" wire:model.live="cochees" value="{{ $f->id }}" aria-label="Choisir la facture {{ $f->n_facture }}"></td>
                                 <td><a href="{{ route('impayes.detail', $f->id) }}" wire:navigate>{{ $f->n_facture }}</a>@if ($f->est_avoir) <span style="font-size:11px; color:#B45309;">avoir</span>@endif</td>
                                 <td style="font-size:12px;">{{ $f->numero }}</td>
@@ -201,19 +215,22 @@ $executer = function (bool $supprimerLeDepart = false) {
         <div class="carte">
             <div class="bloc-saisie" style="background:#fff; border-style:solid;">
                 <div style="flex:1 1 320px; max-width:460px;">
-                    <x-select-cherchable id="fusion-arrivee" label="Client de dépôt (le bon)"
+                    <x-select-cherchable id="impayes-arrivee" :label="$section === 'correction' ? 'Le bon client' : 'Client d\'arrivée'"
                         model="arrivee" :valeur="$arrivee" :options="$this->optionsArrivee" vide="— choisir le client d'arrivée —"
                         placeholder="Rechercher un client…" :seuil="0" />
                     @error('arrivee') <span class="champ-erreur">{{ $message }}</span> @enderror
                 </div>
             </div>
             <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" wire:click="executer(false)" class="bouton" @disabled($cochees === [] || $arrivee === '')
-                    wire:confirm="Passer les factures cochées au client d'arrivée ?">Fusionner les factures cochées</button>
-                <button type="button" wire:click="executer(true)" class="bouton" style="background:#C8102E; border-color:#C8102E;" @disabled($cochees === [] || $arrivee === '')
-                    wire:confirm="Passer les factures cochées au client d'arrivée, puis supprimer le client de départ s'il ne porte plus aucune facture ?">
-                    Fusionner et supprimer le client de départ
-                </button>
+                @if ($section === 'fusion')
+                    <button type="button" wire:click="executer" class="bouton" @disabled($cochees === [] || $arrivee === '')
+                        wire:confirm="Passer les factures cochées au client d'arrivée ? Rien n'est supprimé.">Fusionner les factures cochées</button>
+                @else
+                    <button type="button" wire:click="executer" class="bouton" style="background:#C8102E; border-color:#C8102E;" @disabled($cochees === [] || $arrivee === '')
+                        wire:confirm="Passer les factures cochées au bon client, puis supprimer le nom faux s'il ne porte plus aucune facture ?">
+                        Corriger et supprimer le nom faux
+                    </button>
+                @endif
             </div>
         </div>
     @endif

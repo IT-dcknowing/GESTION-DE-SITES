@@ -42,26 +42,26 @@ final class HabilitationsDActions
                 ],
             ],
         ],
-        // La page « Fusion des clients » de l'état des impayés — 27/10 : « une page que je pourrai
-        // attribuer à partir du Super admin ». Elle ne fait plus que la fusion depuis le 28/10 ; la clé
-        // reste la même, et avec elle les habilitations déjà accordées en ligne.
+        // La page « Fusion / correction » de l'état des impayés — 27/10 : « une page que je pourrai
+        // attribuer à partir du Super admin ». La clé reste `fusionner` (02/11 : les deux gestes), et
+        // avec elle les habilitations déjà accordées en ligne.
         'clients_impayes' => [
             'libelle' => "Clients de l'état des impayés",
             'actions' => [
                 'fusionner' => [
-                    'libelle' => 'Fusion des clients (état des impayés)',
+                    'libelle' => 'Fusion / correction des clients (état des impayés)',
                     'defaut' => ['gerant'],
                 ],
             ],
         ],
-        // La correction des clients, sur les données du recouvrement — 28/10 : « la correction part dans
-        // le recouvrement, car elle doit puiser dans les données du recouvrement ». Le gérant seul par
-        // défaut (le propriétaire, 28/10 : pas le superviseur du recouvrement d'office).
+        // La fusion / correction des clients, sur les données du recouvrement — 28/10, la fusion ajoutée
+        // le 02/11. La clé reste `corriger`. Le gérant seul par défaut (le propriétaire, 28/10 : pas le
+        // superviseur du recouvrement d'office).
         'tiers_recouvrement' => [
             'libelle' => 'Clients du recouvrement',
             'actions' => [
                 'corriger' => [
-                    'libelle' => 'Correction des clients (recouvrement)',
+                    'libelle' => 'Fusion / correction des clients (recouvrement)',
                     'defaut' => ['gerant'],
                 ],
             ],

@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 29 octobre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 2 novembre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -50,7 +50,36 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 29 octobre 2026
+## 3. Où l'on en est — 2 novembre 2026
+
+**Le 02/11**, branche `fusion-et-correction-des-deux-cotes`. **Aucune migration.** Le travail du 29/10
+est en ligne sur **les deux dépôts** (`main` = `a063898`, poussé par le propriétaire depuis son poste
+le 02/11). **Façon de travailler depuis le 02/11** : les sessions n'ont pas l'écriture sur GitHub ;
+chaque lot est livré en *bundle*, que le propriétaire récupère en local et pousse sur les deux dépôts.
+
+### Fait le 02/11 — fusion et correction, des deux côtés, la correction efface
+
+- **Vérifié** : jusqu'ici, c'était la **fusion** (état des impayés, « Fusionner et supprimer le client de
+  départ ») qui effaçait le nom ; la correction (recouvrement) ne supprimait rien. Le propriétaire :
+  « normalement, c'est la correction qui doit faire ça ; ajoute les deux des deux côtés, impayés et
+  recouvrement ».
+- **Fusion** : des factures du client de départ passent au client d'arrivée ; **rien n'est supprimé**.
+- **Correction** : le client de départ est un nom en erreur ; ses factures passent au bon nom, puis **le
+  nom faux est effacé** dès qu'aucune facture ne le porte plus, dans aucune des quatre colonnes (CA
+  compris) : relances, place au référentiel des tiers, code tiers, portefeuille du commercial passent au
+  bon (`EffacerUnNomDeClient`, écrit une fois pour les deux côtés). Correction partielle : le nom reste,
+  et l'écran le dit.
+- **État des impayés › Fusion / correction des clients** (`/impayes/fusion-correction`, route
+  `impayes-fusion`, `FusionDesClients`) : deux sections, colonne choisie (client, assureur, courtier,
+  déposé chez). `/impayes/fusion-des-clients` y renvoie. Habilitation `clients_impayes.fusionner`.
+- **Recouvrement › Fusion / correction des clients** (`/recouvrement/fusion-correction`, route
+  `recouvrement.fusion-correction`, `FusionCorrectionDesTiers`) : deux sections, sur les tiers du
+  recouvrement (quatre colonnes, nom remplacé là où il se lit) ; la correction efface aussi un nom qui
+  n'a plus que des relances. `/recouvrement/correction-des-clients` y renvoie. Habilitation
+  `tiers_recouvrement.corriger`, gérant seul par défaut.
+- Tests : `LaFusionEtLaCorrectionDesImpayesTest`, `LaFusionEtLaCorrectionDuRecouvrementTest`.
+
+## 3 quater. Le 29 octobre 2026
 
 **Le 29/10**, branche `portefeuilles-et-pages-des-commerciaux`. **Aucune migration.** Le travail du
 28/10 est en ligne sur **IT-dcknowing** (`main` = `5907ef9`) ; le dépôt **meledje** a refusé l'envoi

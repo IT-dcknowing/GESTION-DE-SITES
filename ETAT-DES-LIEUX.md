@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **29 octobre 2026** (42e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **2 novembre 2026** (43e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -202,6 +202,7 @@ Voir `LecteurPdf`.
 | 27/10 (soir) | voir `git log` | **claude/compassionate-galileo-tly6ai** | Banques et Caisse : sélecteur **Année** tiré des données (`PeriodeCalculateur::plage` gagne `$anneePropre`) ; solde annoncé borné à la période (`RapprochementDeTresorerie::releves`). Relevé FNE en service sur la production ; type « Banque — pièces du logiciel » remis dans la liste |
 | 28/10 | voir `git log` | **recouvrement-des-commerciaux** | **Trois pannes** : `/devis/{id}` (classe `PisteDeLaFiche` importée de `Tracabilite` au lieu d'`Exploitation`) ; fusion / correction « count(): null given » (`reset()` Volt remet un état à `null` — piège 25 de REPRENDRE-ICI). **La page se partage** (décision du propriétaire, dans ce sens après une première version inverse) : l'état des impayés garde la **fusion** seule (`impayes-fusion`, logique du 27/10, ancienne adresse redirigée) ; la **correction** passe au Recouvrement, sur ses données (`recouvrement.correction`, `CorrectionDesTiers`, rien n'est supprimé ; habilitation neuve `tiers_recouvrement.corriger`, gérant seul). **Recouvrement des commerciaux** : commercial, responsable commercial et responsable de site sur cinq écrans (tableau de bord, saisie — relance seule —, balance, courtiers, extrait), bornés à leurs clients (`PerimetreCommercialDuRecouvrement` dans `Recouvrement::requete()`) ; `?relance=` ouvre la saisie sur un tiers ; colonne Impayés et boutons Impayés / Relancer dans Mes clients et Portefeuilles clients. Aucune migration. **Suite complète lancée** : 27 échecs, tous antérieurs (identiques sur `main`) |
 | 29/10 | voir `git log` | **portefeuilles-et-pages-des-commerciaux** | **Portefeuilles clients en trois boutons** (tous les clients / relances récentes / clients suivis, un tableau à la fois, `?vue=`). **Pages par défaut des commerciaux** (commercial, responsable commercial, responsable de site) : portefeuilles (le commercial en lecture, le responsable de site affecte), correspondances, **suivi des correspondances** (lecture pour le commercial, annulation aux responsables). Aucune migration. Suite : 26 échecs, tous antérieurs |
+| 02/11 | voir `git log` | **fusion-et-correction-des-deux-cotes** | **Fusion et correction des deux côtés** (état des impayés et recouvrement), **la correction efface le nom faux** (`EffacerUnNomDeClient` : relances, référentiel, code tiers, portefeuille), la fusion ne supprime rien. Pages `impayes-fusion` (`/impayes/fusion-correction`) et `recouvrement.fusion-correction` (`FusionCorrectionDesTiers`), anciennes adresses redirigées. Aucune migration |
 | 23/09 | voir `git diff` | **SuperAdmin / Noyau** | un **commercial peut être rattaché facultativement à un site précis** de sa ville, notamment Abidjan ; le formulaire création/modification propose les sites quand la ville en compte plusieurs, et le serveur vérifie l'appartenance du site à la ville et à l'entreprise |
 
 **Incident du 14/09** : la production a été mise en ligne par zip et a reçu le `.env` local ;
@@ -211,7 +212,11 @@ site tombé une journée. Réparé, et règle 6 posée. Voir MISE-A-JOUR-SERVEUR
 
 ## 5. Le chantier en cours : l'état des impayés
 
-> **Au 29/10, la branche de travail est `portefeuilles-et-pages-des-commerciaux`** : portefeuilles en
+> **Au 02/11, la branche de travail est `fusion-et-correction-des-deux-cotes`** : fusion et correction
+> des deux côtés, la correction efface le nom faux (§ 4, ligne du 02/11 ; § 6, lignes 115 et 116).
+> Livrée en bundle : le propriétaire pousse depuis son poste sur les deux dépôts.
+>
+> **Au 29/10, la branche de travail était `portefeuilles-et-pages-des-commerciaux`** : portefeuilles en
 > trois boutons, pages par défaut des commerciaux (§ 4, ligne du 29/10 ; § 6, lignes 113 et 114).
 >
 > **Au 28/10, la branche de travail était `recouvrement-des-commerciaux`** : pannes du devis et de la
@@ -2687,6 +2692,13 @@ code) : elle ne se situe que lorsque le CATTC la reconnaît (§ 5) et lui apport
 |---|---|---|
 | 113 | « Au lieu de ces trois tableaux les uns à la suite des autres, trois boutons cliquables qui changent le tableau » (Portefeuilles clients) | ✅ boutons *Tous les clients* / *Relances récentes de l'équipe* / *Clients suivis*, `?vue=` |
 | 114 | « Par défaut, commerciaux, responsables commerciaux, responsables de site : Portefeuilles clients, Correspondances (et mes correspondances), Suivi des correspondances » | ✅ routes ouvertes, cochées d'office au catalogue ; commercial en lecture sur les portefeuilles et le suivi |
+
+### Le plan du 02/11 — fusion et correction des deux côtés
+
+| # | Demande du propriétaire | Fait |
+|---|---|---|
+| 115 | « Vérifie si la fusion supprime le nom de départ : normalement, c'est la correction qui doit faire ça » | ✅ vérifié (c'était la fusion) ; inversé : la correction efface (`EffacerUnNomDeClient`), la fusion ne supprime rien |
+| 116 | « Ajoute les deux des deux côtés : fusion et correction, au niveau des impayés et du recouvrement » | ✅ deux sections sur `impayes-fusion` et sur `recouvrement.fusion-correction` |
 
 ### Hors chantier, toujours en attente
 
