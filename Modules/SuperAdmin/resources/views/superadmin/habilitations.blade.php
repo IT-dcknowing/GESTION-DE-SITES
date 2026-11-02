@@ -154,11 +154,12 @@ $effacer = function (int $id) {
 
 <div>
     <p style="margin:0 0 12px; font-size:12.5px; color:#6B6E76; line-height:1.5;">
-        Qui voit les boutons <b>Modifier</b> et <b>Supprimer</b> sur les créances de l'état des impayés et sur les
-        pièces fournisseurs, et qui ouvre la page <b>Fusion / correction</b> des clients de l'état des impayés. Au départ, le code les donne aux rôles qui les avaient déjà ; ici, on les donne à un autre
-        rôle ou à un compte précis, ou on les retire. Ce qui est dit d'un compte l'emporte sur son rôle ; le gérant
-        garde toujours ses gestes. L'habilitation ouvre le geste sans lever les verrous de l'écran : une pièce réglée ou
-        venue d'un fichier ne se supprime pas, quel que soit le compte.
+        Qui peut <b>saisir et traiter les factures fournisseurs</b> (saisie manuelle, portage FNE, actualisation du portail et règlements),
+        voir les boutons <b>Modifier</b> et <b>Supprimer</b> sur les pièces fournisseurs, modifier ou supprimer les créances,
+        et ouvrir les pages <b>Fusion / correction</b>. Au départ, le code donne chaque geste aux rôles qui l'avaient déjà ;
+        ici, on peut l'accorder à un autre rôle ou à un compte précis, ou le retirer. Ce qui est dit d'un compte l'emporte
+        sur son rôle ; le gérant garde toujours ses gestes. L'habilitation ouvre le geste sans lever les verrous de l'écran :
+        une pièce réglée ou venue d'un fichier ne se supprime pas, quel que soit le compte.
     </p>
 
     <div class="tableau-conteneur" style="margin-bottom:16px;">
