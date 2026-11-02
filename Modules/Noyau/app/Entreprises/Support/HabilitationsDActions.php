@@ -69,6 +69,13 @@ final class HabilitationsDActions
         'pieces_fournisseurs' => [
             'libelle' => 'Pièces fournisseurs — charges fournisseurs',
             'actions' => [
+                // La saisie manuelle, le portage d'une facture FNE, l'actualisation du portail,
+                // le dépôt de secours et l'enregistrement des règlements. Une page cochée dans
+                // un rôle configuré ne suffit pas : ce geste engage réellement l'entreprise.
+                'ecrire' => [
+                    'libelle' => 'Saisir et traiter les factures (saisie, portage FNE, actualisation et règlements)',
+                    'defaut' => ['gerant', 'responsable_ville', 'caissier'],
+                ],
                 'modifier' => [
                     'libelle' => 'Modifier une pièce',
                     'defaut' => ['gerant', 'responsable_ville', 'caissier'],
