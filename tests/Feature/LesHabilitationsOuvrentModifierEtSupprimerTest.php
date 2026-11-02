@@ -116,6 +116,10 @@ class LesHabilitationsOuvrentModifierEtSupprimerTest extends TestCase
 
         $this->assertTrue(EtatDesFournisseurs::peutEcrire($compte));
         $this->assertTrue(HabilitationsDActions::accorde($compte, 'pieces_fournisseurs', 'modifier'));
+        Volt::actingAs($compte)->test('pilotage.fournisseurs')
+            ->assertSee('Ajouter une pièce');
+        Volt::actingAs($compte)->test('pilotage.fournisseurs-fne')
+            ->assertSee('Actualiser depuis la FNE');
         // La suppression reste un geste distinct et n'est pas donnée implicitement.
         $this->assertFalse(HabilitationsDActions::accorde($compte, 'pieces_fournisseurs', 'supprimer'));
     }
