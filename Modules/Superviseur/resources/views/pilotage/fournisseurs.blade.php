@@ -1348,7 +1348,7 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                             // 27/10 : « pour ceux qui sont rapprochés, mets la ligne en vert ». En style
                             // écrit sur la ligne, pour passer devant l'alternance des lignes du tableau.
                             $rapprochee = $ligne->relationLoaded('factureFne') && $ligne->factureFne;
-                            $fondRapprochee = $rapprochee ? ' background:#E7F6EE;' : '';
+                            $fondRapprochee = $rapprochee ? ' background:#D1FAE5;' : '';
                         @endphp
                         <tr style="border-bottom:1px solid var(--th-ligne,#E2E0D8);{{ $fondRapprochee }}{{ $rapprochee ? ' box-shadow:inset 3px 0 0 #0E9F6E;' : '' }}"
                             @if ($rapprochee) title="Rapprochée de sa facture FNE" @endif>

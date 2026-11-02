@@ -434,7 +434,7 @@ $porter = function (int $id) {
                     </thead>
                     <tbody>
                         @forelse ($this->lignes as $f)
-                            <tr wire:key="fne-{{ $f->id }}">
+                            <tr wire:key="fne-{{ $f->id }}" style="border-bottom:1px solid var(--th-ligne,#E2E0D8);{{ $f->pieceDuSuivi ? 'background:#D1FAE5; box-shadow:inset 3px 0 0 #0E9F6E;' : '' }}" @if ($f->pieceDuSuivi) title="Rapprochée de sa ligne du suivi fournisseur" @endif>
                                 <td>{{ $f->reference }} @if ($f->est_avoir)<span style="color:#C8102E; font-weight:700;">avoir</span>@endif</td>
                                 <td>{{ $f->date_facture?->format('d/m/Y') ?? '—' }}</td>
                                 <td>{{ $f->emetteur_nom ?: '—' }}<div style="font-size:11px; color:#9A9DA5;">{{ $f->emetteur_ncc }}</div></td>

@@ -113,6 +113,21 @@ class LaFusionEtLaCorrectionDesImpayesTest extends TestCase
         $this->assertSame('AXA C.I', RelanceRecouvrement::withoutGlobalScopes()->sole()->tiers, 'Le nom porte encore F-3 : rien n\'est effacé.');
     }
 
+    public function test_la_fusion_accepte_deux_noms_distincts_qui_ne_different_que_par_la_ponctuation(): void
+    {
+        $gerant = $this->compte('gerant');
+        $f = $this->creance('F-1', 'BIA -CI');
+        $this->creance('F-2', 'BIA-CI');
+
+        $ecran = Volt::actingAs($gerant)->test('pilotage.impayes-fusion')->set('depart', 'BIA -CI');
+        $this->assertArrayNotHasKey('BIA -CI', $ecran->instance()->optionsArrivee);
+        $this->assertArrayHasKey('BIA-CI', $ecran->instance()->optionsArrivee);
+
+        $ecran->call('toutCocher')->set('arrivee', 'BIA-CI')->call('executer')->assertHasNoErrors();
+
+        $this->assertSame('BIA-CI', $f->fresh()->client);
+    }
+
     public function test_un_client_de_depart_n_est_pas_un_client_d_arrivee(): void
     {
         $gerant = $this->compte('gerant');
@@ -120,7 +135,7 @@ class LaFusionEtLaCorrectionDesImpayesTest extends TestCase
 
         foreach (['fusion', 'correction'] as $section) {
             Volt::actingAs($gerant)->test('pilotage.impayes-fusion')->call('choisirSection', $section)
-                ->set('depart', 'AXA')->set('cochees', [(string) $f->id])->set('arrivee', ' axa ')
+                ->set('depart', 'AXA')->set('cochees', [(string) $f->id])->set('arrivee', 'AXA')
                 ->call('executer')->assertHasErrors('arrivee');
         }
 
