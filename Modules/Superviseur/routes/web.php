@@ -39,17 +39,17 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
 });
 
 /*
- * Fusion des clients de l'état des impayés — 27/10 : « une page que je pourrai attribuer à partir
- * du Super admin ». Aucun rôle à la route : elle s'ouvre à qui a le geste dans
+ * Fusion / correction des clients de l'état des impayés — 27/10 : « une page que je pourrai attribuer
+ * à partir du Super admin ». Aucun rôle à la route : elle s'ouvre à qui a le geste dans
  * Maintenance › Habilitations (`clients_impayes.fusionner`, le gérant par défaut) — un rôle ou un
  * compte précis. Le composant le vérifie à l'ouverture et à chaque action.
  *
- * **Le 28/10, la correction en est sortie** pour le module Recouvrement (`recouvrement.correction`) :
- * la page ne fait plus que la fusion. Même nom de route ; l'ancienne adresse y renvoie (favoris).
+ * Le 02/11, les deux gestes reviennent des deux côtés (impayés et recouvrement), la correction
+ * étant celle qui supprime le nom faux. L'adresse du 28/10 y renvoie.
  */
 Route::middleware(['auth'])->group(function () {
-    Volt::route('/impayes/fusion-des-clients', 'pilotage.impayes-fusion')->name('impayes-fusion');
-    Route::redirect('/impayes/fusion-correction', '/impayes/fusion-des-clients');
+    Volt::route('/impayes/fusion-correction', 'pilotage.impayes-fusion')->name('impayes-fusion');
+    Route::redirect('/impayes/fusion-des-clients', '/impayes/fusion-correction');
 });
 
 /*
