@@ -60,6 +60,10 @@ final class HabilitationsDActions
         'tiers_recouvrement' => [
             'libelle' => 'Clients du recouvrement',
             'actions' => [
+                'creer' => [
+                    'libelle' => 'Créer un client / tiers (recouvrement)',
+                    'defaut' => ['gerant', 'superviseur_recouvrement', 'responsable_ville'],
+                ],
                 'corriger' => [
                     'libelle' => 'Fusion / correction des clients (recouvrement)',
                     'defaut' => ['gerant'],
