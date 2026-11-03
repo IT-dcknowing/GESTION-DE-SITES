@@ -18,6 +18,7 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\SuppressionDUneCreance;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Exploitation\Services\SuppressionDUnePieceFournisseur;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 use Modules\Noyau\Imports\Modeles\FactureFne;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Services\AchatsFne;
@@ -71,6 +72,27 @@ class LesHabilitationsOuvrentModifierEtSupprimerTest extends TestCase
         $this->assertNotNull(SuppressionDUneCreance::refus($this->compte('responsable_ville'), $creance));
         $this->assertTrue(HabilitationsDActions::accorde($this->compte('responsable_site'), 'creances', 'modifier'));
         $this->assertFalse(HabilitationsDActions::accorde($this->compte('commercial'), 'creances', 'modifier'));
+    }
+
+    public function test_la_creation_d_un_client_peut_etre_donnee_separement_de_la_fusion(): void
+    {
+        $caissier = $this->compte('caissier');
+
+        // La comptabilité peut lire la saisie, mais ne crée pas de client par défaut.
+        $this->assertFalse(AccesRecouvrement::peutCreerUnTiers($caissier));
+
+        $this->section([
+            'beneficiaire' => 'role',
+            'role' => 'caissier',
+            'domaine' => 'tiers_recouvrement',
+            'actions' => ['creer'],
+        ])->assertHasNoErrors();
+
+        $this->assertTrue(HabilitationsDActions::accorde($caissier, 'tiers_recouvrement', 'creer'));
+        $this->assertFalse(HabilitationsDActions::accorde($caissier, 'tiers_recouvrement', 'corriger'));
+
+        Volt::actingAs($caissier)->test('recouvrement.saisie')
+            ->assertSee('Créer un client / tiers');
     }
 
     public function test_un_role_fournisseur_recoit_automatiquement_les_habilitations_de_base(): void
