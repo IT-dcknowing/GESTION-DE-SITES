@@ -73,7 +73,7 @@ class LesHabilitationsOuvrentModifierEtSupprimerTest extends TestCase
         $this->assertFalse(HabilitationsDActions::accorde($this->compte('commercial'), 'creances', 'modifier'));
     }
 
-    public function test_un_role_configure_peut_recevoir_les_habilitations_completes_des_fournisseurs(): void
+    public function test_un_role_fournisseur_recoit_automatiquement_les_habilitations_de_base(): void
     {
         RoleConfigure::query()->create([
             'nom' => 'fournisseur_complet',
@@ -101,26 +101,19 @@ class LesHabilitationsOuvrentModifierEtSupprimerTest extends TestCase
         $compte->assignRole('fournisseur_complet');
         $compte = $compte->fresh();
 
-        // Les pages cochées ouvrent la consultation, mais ne donnent pas encore le droit d'écrire.
         $this->assertTrue(CatalogueDesPages::ouvre($compte, 'fournisseurs'));
         $this->assertTrue(CatalogueDesPages::ouvre($compte, 'fournisseurs.fne'));
-        $this->assertFalse(EtatDesFournisseurs::peutEcrire($compte));
 
-        // La Maintenance peut accorder en une fois la saisie/traitement et la modification.
-        $this->section([
-            'beneficiaire' => 'role',
-            'role' => 'fournisseur_complet',
-            'domaine' => 'pieces_fournisseurs',
-            'actions' => ['ecrire', 'modifier'],
-        ])->assertHasNoErrors();
-
+        // Les habilitations de base sont automatiques dès que le rôle inclut la page Fournisseurs.
         $this->assertTrue(EtatDesFournisseurs::peutEcrire($compte));
         $this->assertTrue(HabilitationsDActions::accorde($compte, 'pieces_fournisseurs', 'modifier'));
+
         Volt::actingAs($compte)->test('pilotage.fournisseurs')
             ->assertSee('Ajouter une pièce');
         Volt::actingAs($compte)->test('pilotage.fournisseurs-fne')
             ->assertSee('Actualiser depuis la FNE');
-        // La suppression reste un geste distinct et n'est pas donnée implicitement.
+
+        // Les droits sensibles ne sont jamais inclus dans le socle automatique.
         $this->assertFalse(HabilitationsDActions::accorde($compte, 'pieces_fournisseurs', 'supprimer'));
     }
 
