@@ -222,6 +222,8 @@ $sites = computed(fn () => Site::where('est_actif', true)->orderBy('nom')->pluck
 
 $peutRediger = computed(fn () => AccesRecouvrement::peutCreerUneFacture(auth()->user()));
 
+$peutCreerTiers = computed(fn () => AccesRecouvrement::peutCreerUnTiers(auth()->user()));
+
 /*
  * **Le commercial ne voit que la relance — 28/10** : « saisie : on doit voir uniquement la
  * relance ». Ni encaissement ni création de tiers : l'écran ne les montre pas, et les deux
@@ -1727,11 +1729,11 @@ $annulerLeTiers = function () {
         </div>
 
         {{-- ─────────────── Tiers ─────────────── --}}
-        @if ($this->peutEncaisser)
+        @if ($this->peutCreerTiers)
         <div class="rec-carte">
-            <h2>Créer un client / tiers <span class="chip">Superviseur · Gérant</span></h2>
+            <h2>Créer un client / tiers <span class="chip">Habilitation dédiée</span></h2>
 
-            @if ($this->peutRediger)
+            @if ($this->peutCreerTiers)
                 <div class="rec-frm">
                     <div class="rec-fld">
                         <label>Nom du tiers (majuscules)</label>
@@ -1821,12 +1823,6 @@ $annulerLeTiers = function () {
                         <button type="button" class="rec-btn" wire:click="annulerLeTiers">Renoncer</button>
                     @endif
                 </div>
-            @else
-                <div class="rec-lock">
-                    🔒 La création d'un tiers est réservée au superviseur et au gérant, pour garder un
-                    référentiel client unique — deux orthographes du même assureur coupent son encours en deux.
-                </div>
-            @endif
         </div>
         @endif
 
