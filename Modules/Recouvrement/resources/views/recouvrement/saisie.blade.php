@@ -1733,7 +1733,6 @@ $annulerLeTiers = function () {
         <div class="rec-carte">
             <h2>Créer un client / tiers <span class="chip">Habilitation dédiée</span></h2>
 
-            @if ($this->peutCreerTiers)
                 <div class="rec-frm">
                     <div class="rec-fld">
                         <label>Nom du tiers (majuscules)</label>
