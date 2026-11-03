@@ -32,21 +32,24 @@
     /* Le panneau. Il se pose au-dessus du reste et ne pousse rien : un formulaire qui
        se réorganise quand on ouvre une liste fait perdre la ligne qu'on lisait. */
     .sel-ch-pan {
-        position:absolute; z-index:60; left:0; right:0; top:100%; margin-top:3px;
-        background:#fff; border:1px solid var(--th-ligne,#E3E0D8); border-radius:8px;
-        box-shadow:0 10px 26px rgba(25,27,32,.16); overflow:hidden; }
+        position:absolute; z-index:9999; left:0; right:0; top:100%; margin-top:3px;
+        background:#fff; color:#191B20; border:1px solid #C9C5BA; border-radius:8px;
+        box-shadow:0 10px 26px rgba(25,27,32,.20); overflow:hidden; }
     .sel-ch-pan .q {
-        width:100%; box-sizing:border-box; border:0; border-bottom:1px solid var(--th-ligne,#E3E0D8);
-        padding:9px 11px; font-family:inherit; font-size:13.5px; background:#fff;
-        color:var(--th-ink,#191B20); }
+        width:100%; box-sizing:border-box; border:0; border-bottom:1px solid #D8D5CD;
+        padding:10px 11px; font-family:inherit; font-size:13.5px; background:#fff;
+        color:#191B20 !important; opacity:1; }
+    .sel-ch-pan .q::placeholder { color:#687080; opacity:1; }
     .sel-ch-pan .q:focus { outline:0; border-bottom-color:#C8102E; }
-    .sel-ch-pan ul { list-style:none; margin:0; padding:4px; max-height:260px; overflow:auto; }
+    .sel-ch-pan ul { list-style:none; margin:0; padding:4px; max-height:260px; overflow:auto; background:#fff; }
     .sel-ch-pan li {
-        padding:7px 9px; border-radius:5px; font-size:13.5px; cursor:pointer;
+        padding:8px 9px; border-radius:5px; font-size:13.5px; cursor:pointer;
+        color:#191B20 !important; background:#fff; opacity:1;
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sel-ch-pan li:hover, .sel-ch-pan li:focus { background:#F0EEE8; color:#191B20 !important; }
     .sel-ch-pan li[aria-selected="true"] { font-weight:700; }
-    .sel-ch-pan li.sur { background:#191B20; color:#fff; }
-    .sel-ch-pan .rien { padding:10px 11px; font-size:13px; color:var(--th-gris,#6B6E76); }
+    .sel-ch-pan li.sur { background:#191B20; color:#fff !important; }
+    .sel-ch-pan .rien { padding:10px 11px; font-size:13px; color:#687080; background:#fff; }
     .sel-ch-pan .cpt {
         padding:6px 11px; font-size:11px; color:var(--th-gris,#6B6E76);
         border-top:1px solid var(--th-ligne,#E3E0D8); background:#FAF8F2; }

@@ -18,6 +18,7 @@ use Modules\Noyau\Exploitation\Modeles\Commercial;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\RelanceRecouvrement;
+use Modules\Noyau\Exploitation\Services\CodeDuTiers;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -75,6 +76,23 @@ class LaFusionEtLaCorrectionDuRecouvrementTest extends TestCase
         // La fusion ne supprime rien : relance et référentiel restent au nom de départ.
         $this->assertSame('NSIA', RelanceRecouvrement::withoutGlobalScopes()->sole()->tiers);
         $this->assertSame(1, Referentiel::withoutGlobalScopes()->where('valeur', 'NSIA')->count());
+    }
+
+    public function test_les_tiers_crees_sans_facture_apparaissent_dans_les_deux_listes(): void
+    {
+        $gerant = $this->compte('gerant');
+
+        // Créé dans la table des tiers, sans facture ni relance ni entrée au référentiel.
+        CodeDuTiers::attribuer($this->e->id, 'CLIENT SANS FACTURE', 'Client', $gerant->id);
+
+        $ecran = Volt::actingAs($gerant)->test('recouvrement.fusion-correction');
+
+        $this->assertArrayHasKey('CLIENT SANS FACTURE', $ecran->instance()->options);
+        $this->assertArrayHasKey('CLIENT SANS FACTURE', $ecran->instance()->optionsArrivee);
+
+        $ecran->set('depart', 'CLIENT SANS FACTURE');
+        $this->assertArrayNotHasKey('CLIENT SANS FACTURE', $ecran->instance()->optionsArrivee,
+            'Le client de départ ne doit pas être proposé comme client d’arrivée.');
     }
 
     public function test_la_correction_supprime_le_nom_faux_et_ce_qui_le_suit(): void
