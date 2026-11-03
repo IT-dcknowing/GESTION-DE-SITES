@@ -3,6 +3,7 @@
 namespace Modules\Recouvrement\Support;
 
 use App\Models\User;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 
 /**
  * Qui voit quelles pages du recouvrement, et jusqu'à quel niveau de relance.
@@ -244,7 +245,7 @@ class AccesRecouvrement
 
     public static function peutCreerUnTiers(?User $utilisateur): bool
     {
-        return self::peutCreerUneFacture($utilisateur);
+        return HabilitationsDActions::accorde($utilisateur, 'tiers_recouvrement', 'creer');
     }
 
     /** Commenter un écart, c'est expliquer un résultat : cela relève de l'encadrement. */

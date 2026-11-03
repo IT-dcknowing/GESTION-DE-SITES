@@ -18,6 +18,7 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\SuppressionDUneCreance;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Exploitation\Services\SuppressionDUnePieceFournisseur;
+use Modules\Recouvrement\Support\AccesRecouvrement;
 use Modules\Noyau\Imports\Modeles\FactureFne;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Services\AchatsFne;
@@ -73,7 +74,28 @@ class LesHabilitationsOuvrentModifierEtSupprimerTest extends TestCase
         $this->assertFalse(HabilitationsDActions::accorde($this->compte('commercial'), 'creances', 'modifier'));
     }
 
-    public function test_un_role_configure_peut_recevoir_les_habilitations_completes_des_fournisseurs(): void
+    public function test_la_creation_d_un_client_peut_etre_donnee_separement_de_la_fusion(): void
+    {
+        $caissier = $this->compte('caissier');
+
+        // La comptabilité peut lire la saisie, mais ne crée pas de client par défaut.
+        $this->assertFalse(AccesRecouvrement::peutCreerUnTiers($caissier));
+
+        $this->section([
+            'beneficiaire' => 'role',
+            'role' => 'caissier',
+            'domaine' => 'tiers_recouvrement',
+            'actions' => ['creer'],
+        ])->assertHasNoErrors();
+
+        $this->assertTrue(HabilitationsDActions::accorde($caissier, 'tiers_recouvrement', 'creer'));
+        $this->assertFalse(HabilitationsDActions::accorde($caissier, 'tiers_recouvrement', 'corriger'));
+
+        Volt::actingAs($caissier)->test('recouvrement.saisie')
+            ->assertSee('Créer un client / tiers');
+    }
+
+    public function test_un_role_fournisseur_recoit_automatiquement_les_habilitations_de_base(): void
     {
         RoleConfigure::query()->create([
             'nom' => 'fournisseur_complet',
@@ -101,26 +123,19 @@ class LesHabilitationsOuvrentModifierEtSupprimerTest extends TestCase
         $compte->assignRole('fournisseur_complet');
         $compte = $compte->fresh();
 
-        // Les pages cochées ouvrent la consultation, mais ne donnent pas encore le droit d'écrire.
         $this->assertTrue(CatalogueDesPages::ouvre($compte, 'fournisseurs'));
         $this->assertTrue(CatalogueDesPages::ouvre($compte, 'fournisseurs.fne'));
-        $this->assertFalse(EtatDesFournisseurs::peutEcrire($compte));
 
-        // La Maintenance peut accorder en une fois la saisie/traitement et la modification.
-        $this->section([
-            'beneficiaire' => 'role',
-            'role' => 'fournisseur_complet',
-            'domaine' => 'pieces_fournisseurs',
-            'actions' => ['ecrire', 'modifier'],
-        ])->assertHasNoErrors();
-
+        // Les habilitations de base sont automatiques dès que le rôle inclut la page Fournisseurs.
         $this->assertTrue(EtatDesFournisseurs::peutEcrire($compte));
         $this->assertTrue(HabilitationsDActions::accorde($compte, 'pieces_fournisseurs', 'modifier'));
+
         Volt::actingAs($compte)->test('pilotage.fournisseurs')
             ->assertSee('Ajouter une pièce');
         Volt::actingAs($compte)->test('pilotage.fournisseurs-fne')
             ->assertSee('Actualiser depuis la FNE');
-        // La suppression reste un geste distinct et n'est pas donnée implicitement.
+
+        // Les droits sensibles ne sont jamais inclus dans le socle automatique.
         $this->assertFalse(HabilitationsDActions::accorde($compte, 'pieces_fournisseurs', 'supprimer'));
     }
 
