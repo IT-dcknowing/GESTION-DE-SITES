@@ -117,7 +117,21 @@ final class HabilitationsDActions
         $retires = $lignes->whereNull('user_id')->where('accorde', false)->pluck('role')
             ->reject(fn ($role) => $role === self::INAMOVIBLE)->all();
 
-        return array_intersect($roles, array_diff($definition['defaut'], $retires)) !== [];
+        // Un rôle créé dans la Maintenance reçoit les gestes de base du module qu'il a choisi.
+        // Cocher « Fournisseurs » signifie pouvoir créer et traiter les pièces ; aucun détour
+        // par Maintenance → Habilitations n'est nécessaire. Un retrait explicite reste possible.
+        $rolesDeBase = $definition['defaut'];
+
+        if ($domaine === 'pieces_fournisseurs' && in_array($action, ['ecrire', 'modifier'], true)) {
+            foreach ($roles as $role) {
+                if (CatalogueDesPages::estConfigure($role)
+                    && in_array('fournisseurs', CatalogueDesPages::pagesDe($compte), true)) {
+                    $rolesDeBase[] = $role;
+                }
+            }
+        }
+
+        return array_intersect($roles, array_diff(array_unique($rolesDeBase), $retires)) !== [];
     }
 
     /**
