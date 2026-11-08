@@ -102,6 +102,9 @@ final class CatalogueDesPages
             'caisse' => ['libelle' => 'Caisse (et caisse par véhicule)', 'routes' => ['caisse', 'caisse.*']],
             'banques' => ['libelle' => 'Banques', 'routes' => ['banques']],
         ]],
+        'rapport' => ['libelle' => 'Rapport', 'pages' => [
+            'rapport' => ['libelle' => 'Rapport financier (présentation, CA, recouvrement, charges, conclusion, commerciaux, dépôt de fichiers)', 'routes' => ['rapport']],
+        ]],
         'charges' => ['libelle' => 'Charges', 'pages' => [
             'charges' => ['libelle' => 'Charges & décaissements', 'routes' => ['charges']],
         ]],

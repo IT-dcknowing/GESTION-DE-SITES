@@ -448,9 +448,9 @@ $porter = function (int $id) {
                                         <a href="{{ route('fournisseurs.piece', $f->pieceDuSuivi->id) }}" wire:navigate>{{ $f->pieceDuSuivi->numero_piece }}</a>
                                         <div style="font-size:11px; color:#6B6E76;">reste {{ ae(montant_de($f->pieceDuSuivi->reste_a_payer)) }}</div>
                                     @else
-                                        <span style="color:#C8102E; font-weight:800;" title="Aucune ligne du suivi ne porte ce n°">✘ non rapprochée</span>
+                                        <span style="color:#7C3AED; font-weight:800;" title="Aucune ligne du suivi ne porte ce n° : la facture compte déjà directement dans les charges fournisseurs">● comptée en charges</span>
                                         @if ($this->peutEcrire)
-                                            <div style="margin-top:4px;"><a href="{{ route('fournisseurs', ['porter' => $f->id]) }}" wire:navigate class="bouton" style="padding:4px 10px; font-size:12px;">Porter au suivi</a></div>
+                                            <div style="margin-top:4px;"><a href="{{ route('fournisseurs', ['porter' => $f->id, 'regle' => 1]) }}" wire:navigate class="bouton" style="padding:4px 10px; font-size:12px;" title="Même geste que l'ancien « Porter » : le formulaire du suivi s'ouvre prérempli, avec le montant réglé">Réglé</a></div>
                                         @endif
                                     @endif
                                 </td>

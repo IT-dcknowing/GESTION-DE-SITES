@@ -226,6 +226,11 @@ class MenuNavigation
             $parametres = 'parametres';
         }
 
+        // Le module Rapport (06/11) : le gérant et le responsable de ville — la route est fermée aux autres.
+        if ($utilisateur->hasRole('gerant') || $utilisateur->hasRole('responsable_ville')) {
+            $onglets[] = ['label' => 'Rapport', 'route' => 'rapport'];
+        }
+
         if ($utilisateur->hasRole('responsable_ville') || $utilisateur->hasRole('responsable_site')) {
             $onglets[] = ['label' => 'Saisie du jour', 'route' => 'saisie-du-jour'];
         }

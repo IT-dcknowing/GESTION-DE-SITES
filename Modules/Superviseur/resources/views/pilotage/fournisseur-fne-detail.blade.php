@@ -100,7 +100,7 @@ $peutPorter = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()))
             @if ($f->pieceDuSuivi)
                 <a href="{{ route('fournisseurs.piece', $f->pieceDuSuivi->id) }}" wire:navigate class="bouton bouton-secondaire">Au suivi : {{ $f->pieceDuSuivi->numero_piece }}</a>
             @elseif ($this->peutPorter)
-                <a href="{{ route('fournisseurs', ['porter' => $f->id]) }}" wire:navigate class="bouton">Porter au suivi</a>
+                <a href="{{ route('fournisseurs', ['porter' => $f->id, 'regle' => 1]) }}" wire:navigate class="bouton" title="Même geste que l'ancien « Porter » : le formulaire du suivi s'ouvre prérempli, avec le montant réglé">Réglé</a>
             @endif
         </div>
     </x-titre-ecran>

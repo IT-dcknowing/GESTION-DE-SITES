@@ -30,6 +30,17 @@ class FactureFne extends Model
 
     protected $table = 'factures_fne';
 
+    /**
+     * Une facture FNE ne se supprime pas — 06/11. Elle est certifiée par le portail de l'État et compte
+     * directement dans les charges fournisseurs ; l'effacer ferait disparaître une dépense réelle.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (self $facture) {
+            throw new \LogicException('Une facture FNE ne peut pas être supprimée.');
+        });
+    }
+
     protected function casts(): array
     {
         return [

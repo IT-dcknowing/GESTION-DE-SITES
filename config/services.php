@@ -35,6 +35,13 @@ return [
         ],
     ],
 
+    // L'assistant du module Rapport (commentaires et lecture d'une image déposée). Sans clé, le module
+    // fonctionne avec ses seules règles de calcul : l'IA est un plus, jamais une condition.
+    'anthropic' => [
+        'cle' => env('ANTHROPIC_API_KEY'),
+        'modele' => env('ANTHROPIC_MODELE', 'claude-sonnet-5-5'),
+    ],
+
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),

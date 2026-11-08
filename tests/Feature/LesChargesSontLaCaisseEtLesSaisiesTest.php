@@ -28,7 +28,8 @@ use Tests\TestCase;
  *
  * Le décor : une charge saisie (10 000), une sortie de caisse « salaire » sans atelier (20 000),
  * une pièce du suivi dont les observations portent le n° FNE sous un autre nom de fournisseur
- * (118 000), une facture FNE pas encore au suivi (59 000). Charges : 30 000.
+ * (118 000), une facture FNE pas encore au suivi (59 000). Depuis le 26/10 le suivi compte (148 000) ;
+ * depuis le 06/11 la FNE aussi, directement : 207 000.
  */
 class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
 {
@@ -89,11 +90,11 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
         $ecran = $this->charges();
 
         $kpis = $ecran->instance()->kpis;
-        $this->assertSame(148_000, $kpis['total']);
+        $this->assertSame(207_000, $kpis['total'], 'Caisse 20 000 + saisie 10 000 + suivi 118 000 + FNE directe 59 000.');
         $this->assertSame(20_000, $kpis['salaires'], 'La sortie « avance salaire » est une charge de personnel.');
         $this->assertSame(10_000, $kpis['fonctionnement']);
-        $this->assertSame(118_000, $kpis['pieces'], 'La pièce du suivi est un achat de pièces.');
-        $this->assertSame(148_000, $kpis['totalVentile']['nonVentile']);
+        $this->assertSame(177_000, $kpis['pieces'], 'La pièce du suivi et la FNE directe sont des achats de pièces.');
+        $this->assertSame(207_000, $kpis['totalVentile']['nonVentile']);
 
         $origines = $ecran->instance()->origines;
         $this->assertSame(20_000, $origines['caisse']);
@@ -110,8 +111,8 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
     {
         $ecran = $this->charges();
 
-        $this->assertSame(3, $ecran->instance()->nombreCharges);
-        $this->assertSame(148_000, $ecran->instance()->montantCharges);
+        $this->assertSame(4, $ecran->instance()->nombreCharges);
+        $this->assertSame(207_000, $ecran->instance()->montantCharges);
         $ecran->assertSee('AVANCE SALAIRE MARS')->assertSee('Ets Kouassi pièces');
 
         $ecran->set('provenanceFiltre', 'caisse');
@@ -141,15 +142,15 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
     {
         $ca = Volt::actingAs($this->gerant)->test('pilotage.chiffre-affaires')
             ->set('dateDebut', '2026-01-01')->set('dateFin', '2026-12-31');
-        $this->assertSame(148_000, $ca->instance()->chargesPeriode);
-        $this->assertSame(-148_000, $ca->instance()->kpis['resultat']);
+        $this->assertSame(207_000, $ca->instance()->chargesPeriode);
+        $this->assertSame(-207_000, $ca->instance()->kpis['resultat']);
 
         $accueil = Volt::actingAs($this->gerant)->test('gerant.tableau-de-bord')
             ->set('dateDebut', '2026-01-01')->set('dateFin', '2026-12-31');
         $kpis = $accueil->instance()->kpis;
-        $this->assertSame(148_000, $kpis['charges']);
-        $this->assertSame(-148_000, $kpis['resultat']);
-        $this->assertSame(148_000, $kpis['chargesVentilees']['mecanique'] + $kpis['chargesVentilees']['sinistre'] + $kpis['chargesVentilees']['nonVentile']);
+        $this->assertSame(207_000, $kpis['charges']);
+        $this->assertSame(-207_000, $kpis['resultat']);
+        $this->assertSame(207_000, $kpis['chargesVentilees']['mecanique'] + $kpis['chargesVentilees']['sinistre'] + $kpis['chargesVentilees']['nonVentile']);
     }
 
     public function test_details_montre_les_lignes_de_la_facture_fne(): void
@@ -160,7 +161,7 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
             ->assertOk()
             ->assertSee('Lignes de la facture (2)')
             ->assertSee('Plaquettes de frein')
-            ->assertSee('Porter au suivi');
+            ->assertSee('Réglé');
     }
 
     /** « Les champs préremplis doivent être en premier, et ne pas pouvoir être modifiés » — 20/10. */
@@ -199,8 +200,8 @@ class LesChargesSontLaCaisseEtLesSaisiesTest extends TestCase
         $this->assertSame(0, $this->piece->fresh()->reste_a_payer);
 
         // La facture compte une fois, par sa pièce du suivi (26/10) : la sortie « règlement » est une
-        // sortie fournisseurs, montrée sans compter. 10 000 + 20 000 + 118 000.
-        $this->assertSame(148_000, $this->charges()->instance()->kpis['total']);
+        // sortie fournisseurs, montrée sans compter. 10 000 + 20 000 + 118 000 + 59 000 de FNE directe.
+        $this->assertSame(207_000, $this->charges()->instance()->kpis['total']);
 
         $fournisseurs = Volt::actingAs($this->gerant)->test('pilotage.fournisseurs')->set('exercice', 2026);
         $this->assertSame(118_000, $fournisseurs->instance()->normalises['parLaCaisse']);

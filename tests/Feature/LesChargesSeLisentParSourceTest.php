@@ -129,9 +129,10 @@ class LesChargesSeLisentParSourceTest extends TestCase
             ->set('dateDebut', '2026-01-01')->set('dateFin', '2026-12-31')
             ->assertSee('Charges — synthèse par source');
 
-        $this->assertSame(148_000, $accueil->instance()->chargesParSource['retenu']);
+        // 148 000 de suivi, caisse et saisies + 59 000 de FNE comptée directement (06/11).
+        $this->assertSame(207_000, $accueil->instance()->chargesParSource['retenu']);
         // Le KPI « Charges » du haut dit la même chose que la synthèse — 26/10.
-        $this->assertSame(148_000, $accueil->instance()->kpis['charges']);
+        $this->assertSame(207_000, $accueil->instance()->kpis['charges']);
     }
 
     /** « Factures reçues » et « À qui nous devons le plus » : un cadre, deux boutons — 22/10. */

@@ -3487,3 +3487,37 @@ maintenance sur « unexpected end of file ». Seul le commentaire Blade `{{-- --
 | Formats d'import | `Modules/Noyau/app/Imports/Formats/` |
 | Fichiers réels du client | `PLAN/MODULE-2/` |
 | Maquette de l'écran de connexion | `VERSION-2-3/connexion-artisan-automobile (2).html` — **non versionnée** : 3 Mo, et elle ne porte que le logo sur fond noir. Les outils viennent du **rendu**, découpés par `outils/detourer-les-images-du-rendu.py` |
+
+
+---
+
+## 06/11 — Le module Rapport, et la FNE comptée directement
+
+**Demandes du propriétaire.** (1) Un module « Rapport » qui reprend l'Excel du rapport financier : une page de
+présentation, des boutons alignés en haut qui font office de feuilles (CA, recouvrement, charges, conclusion,
+commerciaux, année précédente), un dépôt de fichiers sans doublon, et un assistant IA qui commente. (2) Les factures
+FNE entrent directement dans les charges fournisseurs et sont comptées ; le bouton « Réglé » a le comportement de
+l'ancien « Porter » ; une facture FNE ne se supprime pas. (3) Sur `/charges`, un KPI du montant des charges comptées.
+
+**Ce qui a changé.**
+
+| Quoi | Où |
+|---|---|
+| La FNE pas encore au suivi **compte** dans le total, les lignes, la ventilation par lieu et le tableau de `/charges` (`fneSeules()`) ; une FNE portée compte par sa ligne du suivi, jamais deux fois | `ChargesDeLaPeriode`, `ChargesFournisseurs::PROVENANCES_DU_SUIVI = []` |
+| KPI « Charges comptées » (composition : caisse administrative, saisies, suivi, FNE directe) | `pilotage/charges.blade.php` |
+| « Porter au suivi » devient « Réglé » : même formulaire prérempli (`?porter=<id>&regle=1`), montant réglé prérempli | `fournisseurs-fne`, `fournisseur-fne-detail`, `fournisseurs` |
+| Une FNE ne se supprime pas : garde dans le modèle (`FactureFne::deleting`) et dans `SuppressionDUnePieceFournisseur` (pièce `source_rattachement = 'fne'`) | modèle + service |
+| Module Rapport : services `RapportFinancier`, `DepotDeRapport`, `AssistantDuRapport` ; classes pures `EmpreinteDePiece`, `LectureDesPieces` ; page `pilotage/rapport` ; route `/rapport` | `Modules/Noyau/app/Rapport/`, Superviseur |
+| Migration additive : `depots_rapport`, `pieces_rapport` | `2026_11_06_000001_le_module_rapport_recoit_des_fichiers` |
+
+**Règles du dépôt.** Même fichier (SHA-256) = refusé ; même pièce (nature, statut, référence ou date+tiers, montant)
+= non recréée ; un paiement qui retrouve une sortie de caisse ou un débit de banque du même montant (±3 jours) est
+gardé mais **ne compte pas** ; un récapitulatif (`recap`) ne compte jamais. L'IA ne part qu'au clic, avec des chiffres
+agrégés, et seulement si `ANTHROPIC_API_KEY` est posée.
+
+**Piège évité.** Compter la FNE dans le total sans la retirer quand le suivi la porte aurait doublé la dépense : la
+requête `fneSeules()` exclut les FNE dont `facture_fournisseur_id` est renseigné.
+
+**À vérifier au déploiement.** `php artisan migrate` ; tests `LeModuleRapportEtLaFneDirecteTest`,
+`LesChargesSontLaCaisseEtLesSaisiesTest`, `LesChargesSeLisentParSourceTest` (leurs montants passent de 148 000 à 207 000 :
+la FNE de 59 000 compte).

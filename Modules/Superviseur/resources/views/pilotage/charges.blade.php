@@ -532,8 +532,8 @@ $pageCharges = computed(function () {
             <b>Depuis le 26/10, les charges sont</b> : les sorties de caisse <b>administratives</b> (salaires,
             transport, fonctionnement…), les charges saisies dans l'application, et <b>chaque pièce du suivi
             fournisseurs</b> — le fichier complet. Les sorties de caisse <b>fournisseurs</b> restent affichées sans
-            compter (le suivi porte ces achats), comme les versements et transferts ; la FNE et la banque se lisent
-            à côté.
+            compter (le suivi porte ces achats), comme les versements et transferts. <b>Depuis le 06/11, les factures FNE
+            comptent aussi, directement</b> — sans avoir à les porter ; la banque se lit à côté.
         </p>
         @php $src = $this->parSource; @endphp
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;">
@@ -559,7 +559,7 @@ $pageCharges = computed(function () {
             </a>
             <a href="{{ route('fournisseurs.fne') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir les factures FNE">
                 <x-kpi-card label="Factures FNE" :value="ae($src['fne']['total'])" couleur="#7C3AED"
-                    sub="{{ number_format($src['fne']['n'], 0, ',', ' ') }} facture(s) d'achat relevée(s) au portail — toute l'entreprise, à côté ›" />
+                    sub="{{ number_format($src['fne']['n'], 0, ',', ' ') }} facture(s) d'achat relevée(s) au portail — toute l'entreprise ; celles pas encore au suivi comptent déjà en charges ›" />
             </a>
             <a href="{{ route('banques') }}" wire:navigate style="all:unset; display:block; cursor:pointer;" title="Ouvrir les banques">
                 <x-kpi-card label="Banque — débits des relevés" :value="ae($src['banque']['total'])" couleur="#2563EB"
@@ -618,7 +618,14 @@ $pageCharges = computed(function () {
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:16px;">
         @php $ventile = ! $activiteFiltre; @endphp
-        <x-kpi-card label="Total charges — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" sub="Caisse administrative, charges saisies et suivi fournisseurs — hors versements, transferts et décaissements DG"
+        <x-kpi-card label="Charges comptées — {{ $this->libellePerimetre }}" :value="ae($this->kpis['total'])" couleur="#C8102E"
+            sub="Ce qui compte vraiment : caisse administrative, charges saisies, suivi fournisseurs et factures FNE — hors versements, transferts et décaissements DG"
+            :lignes="array_filter([
+                'Caisse administrative ('.number_format($this->totauxCharges['nCaisse'], 0, ',', ' ').')' => ae($this->totauxCharges['caisse']),
+                'Charges saisies ('.number_format($this->totauxCharges['nSaisies'], 0, ',', ' ').')' => ae($this->totauxCharges['saisies']),
+                'Suivi fournisseurs ('.number_format($this->totauxCharges['nSuivi'], 0, ',', ' ').')' => ae($this->totauxCharges['suivi']),
+                'Factures FNE comptées directement ('.number_format($this->totauxCharges['nFne'], 0, ',', ' ').')' => ae($this->totauxCharges['fne']),
+            ])"
             :mecanique="$ventile ? ae($this->kpis['totalVentile']['mecanique']) : null"
             :sinistre="$ventile ? ae($this->kpis['totalVentile']['sinistre']) : null"
             :non-ventile="$ventile && $this->kpis['totalVentile']['nonVentile'] ? ae($this->kpis['totalVentile']['nonVentile']) : null"
@@ -701,7 +708,7 @@ $pageCharges = computed(function () {
         @else
             @php $provenances = \Modules\Noyau\Exploitation\Services\ChargesFournisseurs::PROVENANCES; @endphp
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-                {{-- Une seule liste depuis le 23/10 ; le 26/10, le suivi y compte, seule la FNE reste à côté. --}}
+                {{-- Une seule liste depuis le 23/10 ; le 26/10, le suivi y compte ; depuis le 06/11 la FNE aussi, directement. --}}
                 <select wire:model.live="provenanceFiltre" class="champ" style="width:auto;" aria-label="Provenance">
                     <option value="">Toutes les charges (caisse administrative, saisies et suivi fournisseurs)</option>
                     @foreach ($provenances as $cle => $libelle)

@@ -162,6 +162,8 @@ state([
 state(['porterFne' => null]);
 // L'adresse `?porter=<id>` que donne le bouton « Porter au suivi » de la page des factures FNE.
 state(['porter' => null])->url(except: null);
+// `&regle=1` : le bouton « Réglé » de la page FNE — même geste que « Porter », avec le montant réglé prérempli (06/11).
+state(['regle' => null])->url(except: null);
 // `?ajouter=1` : le bouton « + Ajouter une pièce » de la page Charges arrive formulaire ouvert (23/10).
 state(['ajouter' => null])->url(except: null);
 
@@ -189,6 +191,8 @@ mount(function () {
 
     $aPorter = (int) ($this->porter ?? 0);
     $this->porter = null;
+    $aRegler = (bool) $this->regle;
+    $this->regle = null;
 
     if ($this->ajouter && EtatDesFournisseurs::peutEcrire(auth()->user())) {
         $this->formulaireOuvert = true;
@@ -223,6 +227,14 @@ mount(function () {
             $this->formulaireOuvert = true;
             $this->prendreLaFactureFne($fne);
             $this->observations = 'Portée depuis la FNE (NCC '.($fne->emetteur_ncc ?: '—').').';
+
+            // « Réglé » se comporte comme « Porter » : même formulaire, même enregistrement — le montant
+            // réglé est seulement prérempli du montant de la facture (un avoir reste à zéro). 06/11.
+            if ($aRegler && ! $fne->est_avoir) {
+                $this->montantRegle = $this->montant;
+                $this->dateReglement = now()->format('Y-m-d');
+                $this->observations = 'Réglée — portée depuis la FNE (NCC '.($fne->emetteur_ncc ?: '—').').';
+            }
 
             if ($fne->date_facture) {
                 $this->exercice = $fne->date_facture->year;
