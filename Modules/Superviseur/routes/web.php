@@ -48,6 +48,14 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|respo
  * étant celle qui supprime le nom faux. L'adresse du 28/10 y renvoie.
  */
 Route::middleware(['auth'])->group(function () {
+    /*
+     * Le module Rapport — 06/11. L'Excel « Rapport financier », dans l'application. « Par défaut, personne
+     * ne doit avoir l'habilitation ; seul le Super admin l'accorde » : aucun rôle à la route, et aucun rôle
+     * du départ non plus (`rapport.voir`, `rapport.deposer`, `defaut` vide). Le composant le vérifie à
+     * l'ouverture et à chaque action.
+     */
+    Volt::route('/rapport', 'pilotage.rapport')->name('rapport');
+
     Volt::route('/impayes/fusion-correction', 'pilotage.impayes-fusion')->name('impayes-fusion');
     Route::redirect('/impayes/fusion-des-clients', '/impayes/fusion-correction');
 });
@@ -302,13 +310,6 @@ Route::middleware(['auth', 'role:gerant|responsable_ville|responsable_site|super
  * du lecteur, jamais d'après un paramètre reçu. Le responsable de site en est écarté :
  * il n'encadre qu'un lieu, dont il connaît déjà les quelques noms.
  */
-/*
- * Le module Rapport — 06/11. L'Excel « Rapport financier », dans l'application : présentation, CA,
- * recouvrement, charges, conclusion, commerciaux, année précédente, dépôt de fichiers. Il lit ce que
- * l'entreprise dépense, doit et encaisse : fermé comme les Charges au responsable commercial, et réservé
- * ici au gérant et au responsable de ville (le dépôt de fichiers, lui, au seul gérant).
- */
 Route::middleware(['auth', 'role:gerant|responsable_ville'])->group(function () {
-    Volt::route('/rapport', 'pilotage.rapport')->name('rapport');
     Route::get('/annuaire.pdf', TelechargerAnnuaire::class)->name('annuaire');
 });

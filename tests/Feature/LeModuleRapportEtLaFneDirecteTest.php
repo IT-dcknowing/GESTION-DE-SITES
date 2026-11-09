@@ -8,6 +8,8 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
+use Modules\Noyau\Entreprises\Modeles\HabilitationAction;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
@@ -117,8 +119,17 @@ class LeModuleRapportEtLaFneDirecteTest extends TestCase
         $this->assertStringContainsString('FNE', (string) SuppressionDUnePieceFournisseur::refus($this->gerant, $piece->fresh()));
     }
 
-    public function test_le_rapport_s_ouvre_pour_le_gerant_et_lit_les_memes_charges(): void
+    public function test_par_defaut_personne_n_ouvre_le_rapport_pas_meme_le_gerant(): void
     {
+        $this->actingAs($this->gerant)->get(route('rapport'))->assertForbidden();
+        $this->assertFalse(HabilitationsDActions::accorde($this->gerant, 'rapport', 'voir'));
+        $this->assertFalse(HabilitationsDActions::accorde($this->gerant, 'rapport', 'deposer'));
+    }
+
+    public function test_le_rapport_s_ouvre_a_qui_le_super_admin_l_a_accorde_et_lit_les_memes_charges(): void
+    {
+        $this->accorder('voir');
+
         $this->actingAs($this->gerant)->get(route('rapport'))->assertOk()->assertSee('RAPPORT FINANCIER');
 
         $rapport = RapportFinancier::pour($this->gerant, 2026);
@@ -132,6 +143,7 @@ class LeModuleRapportEtLaFneDirecteTest extends TestCase
 
     public function test_un_fichier_depose_deux_fois_est_refuse_et_ses_lignes_ne_se_dupliquent_pas(): void
     {
+        $this->accorder('deposer');
         $csv = "Date;Libellé;Référence;Montant;Statut\n03/11/2026;Droits simples;AVIS-329;157 941 816;dû\n03/11/2026;Pénalités;AVIS-329;11 826 393;dû\n";
 
         $premier = DepotDeRapport::deposer(UploadedFile::fake()->createWithContent('impots.csv', $csv), $this->gerant, 'impot', 2026);
@@ -170,6 +182,13 @@ class LeModuleRapportEtLaFneDirecteTest extends TestCase
     }
 
     // ------------------------------------------------------------------------------ outils
+
+    /** Le Super admin accorde le geste à ce compte précis (Maintenance › Habilitations). */
+    private function accorder(string $action): void
+    {
+        HabilitationAction::query()->create(['domaine' => 'rapport', 'action' => $action, 'role' => null, 'user_id' => $this->gerant->id, 'accorde' => true]);
+        HabilitationsDActions::oublier();
+    }
 
     private function charges()
     {

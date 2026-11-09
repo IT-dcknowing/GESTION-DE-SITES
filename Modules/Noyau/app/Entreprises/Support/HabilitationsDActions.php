@@ -70,6 +70,22 @@ final class HabilitationsDActions
                 ],
             ],
         ],
+        // Le module Rapport — 06/11 : « par défaut, personne ne doit avoir l'habilitation ; seul le Super
+        // admin l'accorde ». `defaut` est donc vide : aucun rôle, pas même le gérant, ne l'ouvre tant que
+        // Maintenance › Habilitations ne l'a pas accordé à un rôle ou à un compte précis.
+        'rapport' => [
+            'libelle' => 'Rapport financier',
+            'actions' => [
+                'voir' => [
+                    'libelle' => 'Ouvrir le module Rapport (présentation, CA, recouvrement, charges, conclusion, commerciaux, année précédente)',
+                    'defaut' => [],
+                ],
+                'deposer' => [
+                    'libelle' => 'Déposer des fichiers et saisir des pièces dans le Rapport (impôts, CNPS, récapitulatifs)',
+                    'defaut' => [],
+                ],
+            ],
+        ],
         'pieces_fournisseurs' => [
             'libelle' => 'Pièces fournisseurs — charges fournisseurs',
             'actions' => [

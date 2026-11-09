@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Commun\Services;
 
 use App\Models\User;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Import\Support\AccesImport;
 use Modules\Noyau\Entreprises\Support\CatalogueDesPages;
 use Modules\Noyau\Entreprises\Support\RolesCommerciaux;
@@ -226,11 +227,6 @@ class MenuNavigation
             $parametres = 'parametres';
         }
 
-        // Le module Rapport (06/11) : le gérant et le responsable de ville — la route est fermée aux autres.
-        if ($utilisateur->hasRole('gerant') || $utilisateur->hasRole('responsable_ville')) {
-            $onglets[] = ['label' => 'Rapport', 'route' => 'rapport'];
-        }
-
         if ($utilisateur->hasRole('responsable_ville') || $utilisateur->hasRole('responsable_site')) {
             $onglets[] = ['label' => 'Saisie du jour', 'route' => 'saisie-du-jour'];
         }
@@ -401,6 +397,11 @@ class MenuNavigation
     private static function construire(array $onglets): array
     {
         $onglets = self::selonLesPagesModifiees($onglets);
+
+        // Le module Rapport (06/11) : un onglet de plus, pour qui a reçu l'habilitation — personne au départ.
+        if (HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir')) {
+            $onglets[] = ['label' => 'Rapport', 'route' => 'rapport', 'actifPattern' => 'rapport'];
+        }
 
         return array_map(function ($onglet) {
             if (isset($onglet['groupe'])) {

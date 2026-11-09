@@ -1,6 +1,7 @@
 <?php
 
 use Livewire\WithFileUploads;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Rapport\Modeles\DepotRapport;
 use Modules\Noyau\Rapport\Modeles\PieceRapport;
 use Modules\Noyau\Rapport\Services\AssistantDuRapport;
@@ -8,7 +9,7 @@ use Modules\Noyau\Rapport\Services\DepotDeRapport;
 use Modules\Noyau\Rapport\Services\DepotEnDoubleDeRapport;
 use Modules\Noyau\Rapport\Services\RapportFinancier;
 use Modules\Noyau\Rapport\Support\LectureDesPieces;
-use function Livewire\Volt\{state, computed, uses};
+use function Livewire\Volt\{state, computed, mount, uses};
 
 /*
  * Le module Rapport — 06/11. L'Excel « Rapport financier », dans l'application, et vivant.
@@ -20,7 +21,8 @@ use function Livewire\Volt\{state, computed, uses};
  * Tout vient des services que les autres écrans lisent déjà (`RapportFinancier`) : le rapport bouge
  * avec les données, sur l'exercice en cours — et la page « Année précédente » rappelle N-1.
  *
- * Le dépôt de fichiers (impôts, CNPS, récapitulatifs) ne crée jamais de doublon : voir `DepotDeRapport`.
+ * **Habilitation** : `rapport.voir` ouvre la page, `rapport.deposer` le dépôt — accordées par le Super admin,
+ * jamais par défaut. Le dépôt de fichiers (impôts, CNPS, récapitulatifs) ne crée jamais de doublon : voir `DepotDeRapport`.
  * L'assistant IA ne parle qu'au clic, et seulement si une clé est posée (`AssistantDuRapport`).
  */
 uses(WithFileUploads::class);
@@ -34,6 +36,11 @@ state([
     'propositions' => [], 'depotLu' => null,
 ]);
 
+// Par défaut, personne : seul le Super admin accorde `rapport.voir` (lire) et `rapport.deposer` (écrire).
+mount(function () {
+    abort_unless(HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir'), 403);
+});
+
 $onglets = [
     'presentation' => 'Présentation', 'ca' => 'Chiffre d\'affaires', 'recouvrement' => 'Recouvrement', 'charges' => 'Charges',
     'conclusion' => 'Conclusion', 'commerciaux' => 'Commerciaux', 'precedent' => 'Année précédente', 'depot' => 'Dépôt de fichiers',
@@ -44,17 +51,19 @@ $annees = computed(fn () => range((int) now()->year, (int) now()->year - 4));
 $rapport = computed(fn () => RapportFinancier::pour(auth()->user(), $this->exerciceChoisi));
 $donnees = computed(fn () => $this->rapport->tout());
 $commentaires = computed(fn () => AssistantDuRapport::commentaires($this->donnees));
-$peutDeposer = computed(fn () => auth()->user()->hasRole('gerant'));
+$peutDeposer = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'rapport', 'deposer'));
 $iaDispo = computed(fn () => AssistantDuRapport::iaDisponible());
 $depots = computed(fn () => DepotRapport::query()->with('deposant')->latest()->limit(15)->get());
 $pieces = computed(fn () => PieceRapport::query()->where('exercice', $this->exerciceChoisi)->latest('id')->limit(60)->get());
 $logo = computed(fn () => auth()->user()->entreprise?->logoUrl());
 
 $aller = function (string $vue) {
+    abort_unless(HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir'), 403);
     $this->vue = array_key_exists($vue, ['presentation' => 1, 'ca' => 1, 'recouvrement' => 1, 'charges' => 1, 'conclusion' => 1, 'commerciaux' => 1, 'precedent' => 1, 'depot' => 1]) ? $vue : 'presentation';
 };
 
 $commenterParIA = function () {
+    abort_unless(HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir'), 403);
     $this->commentaireIa = '';
     $this->erreurIa = '';
     $texte = AssistantDuRapport::commenterParIA($this->rapport->resumePourIA());
@@ -395,7 +404,7 @@ $retirerLesPropositions = function () {
                 </div>
                 @error('fichier')<div style="color:#C8102E; margin-top:6px;">{{ $message }}</div>@enderror
             @else
-                <div style="color:#D97706;">Seul le gérant dépose des fichiers.</div>
+                <div style="color:#D97706;">Le dépôt n'est pas ouvert à votre compte : il est accordé par le Super admin (Maintenance › Habilitations).</div>
             @endif
             @if ($this->messageDepot !== '')<div style="color:#0E9F6E; margin-top:8px; font-weight:700;">{{ $this->messageDepot }}</div>@endif
             @if ($this->erreurDepot !== '')<div style="color:#C8102E; margin-top:8px; font-weight:700;">{{ $this->erreurDepot }}</div>@endif

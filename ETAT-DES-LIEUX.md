@@ -3507,7 +3507,7 @@ l'ancien « Porter » ; une facture FNE ne se supprime pas. (3) Sur `/charges`, 
 | KPI « Charges comptées » (composition : caisse administrative, saisies, suivi, FNE directe) | `pilotage/charges.blade.php` |
 | « Porter au suivi » devient « Réglé » : même formulaire prérempli (`?porter=<id>&regle=1`), montant réglé prérempli | `fournisseurs-fne`, `fournisseur-fne-detail`, `fournisseurs` |
 | Une FNE ne se supprime pas : garde dans le modèle (`FactureFne::deleting`) et dans `SuppressionDUnePieceFournisseur` (pièce `source_rattachement = 'fne'`) | modèle + service |
-| Module Rapport : services `RapportFinancier`, `DepotDeRapport`, `AssistantDuRapport` ; classes pures `EmpreinteDePiece`, `LectureDesPieces` ; page `pilotage/rapport` ; route `/rapport` | `Modules/Noyau/app/Rapport/`, Superviseur |
+| Module Rapport : services `RapportFinancier`, `DepotDeRapport`, `AssistantDuRapport` ; classes pures `EmpreinteDePiece`, `LectureDesPieces` ; page `pilotage/rapport` ; route `/rapport` ouverte **par habilitation seulement** (`rapport.voir`, `rapport.deposer`, défaut vide : personne, pas même le gérant ; le Super admin accorde) | `Modules/Noyau/app/Rapport/`, Superviseur, `HabilitationsDActions` |
 | Migration additive : `depots_rapport`, `pieces_rapport` | `2026_11_06_000001_le_module_rapport_recoit_des_fichiers` |
 
 **Règles du dépôt.** Même fichier (SHA-256) = refusé ; même pièce (nature, statut, référence ou date+tiers, montant)
