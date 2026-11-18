@@ -2,8 +2,11 @@
 
 use Livewire\WithFileUploads;
 use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
+use Modules\Noyau\IA\Modeles\ProductionIA;
+use Modules\Noyau\IA\Services\IAIndisponible;
 use Modules\Noyau\Rapport\Modeles\DepotRapport;
 use Modules\Noyau\Rapport\Modeles\PieceRapport;
+use Modules\Noyau\Rapport\Services\AgentDuRapport;
 use Modules\Noyau\Rapport\Services\AssistantDuRapport;
 use Modules\Noyau\Rapport\Services\DepotDeRapport;
 use Modules\Noyau\Rapport\Services\DepotEnDoubleDeRapport;
@@ -38,6 +41,7 @@ state([
     'commentaireIa' => '', 'erreurIa' => '',
     'pieceNature' => 'impot', 'pieceStatut' => 'du', 'pieceDate' => '', 'pieceLibelle' => '', 'pieceTiers' => '', 'pieceReference' => '', 'pieceMontant' => '',
     'propositions' => [], 'depotLu' => null,
+    'messageChat' => '', 'fichierChat' => null, 'consigneAnalyse' => '', 'erreurChat' => '', 'infoIa' => '',
 ]);
 
 // Par défaut, personne : seul le Super admin accorde `rapport.voir` (lire) et `rapport.deposer` (écrire).
@@ -46,10 +50,12 @@ mount(function () {
 });
 
 // Un tableau local ne passe pas à la vue d'un composant Volt : il faut un `computed` (lu par `$this->onglets`).
-$onglets = computed(fn () => [
+$onglets = computed(fn () => array_filter([
     'presentation' => 'Présentation', 'ca' => 'Chiffre d\'affaires', 'recouvrement' => 'Recouvrement', 'charges' => 'Charges',
     'conclusion' => 'Conclusion', 'commerciaux' => 'Commerciaux', 'precedent' => 'Année précédente', 'depot' => 'Dépôt de fichiers',
-]);
+    // Le dernier « slide » : l'assistant IA — sur habilitation `rapport.ia`, personne au départ.
+    'ia' => HabilitationsDActions::accorde(auth()->user(), 'rapport', 'ia') ? 'Assistant IA' : null,
+]));
 
 $exerciceChoisi = computed(fn () => (int) ($this->exercice ?: now()->year));
 $annees = computed(fn () => range((int) now()->year, (int) now()->year - 4));
@@ -57,18 +63,19 @@ $rapport = computed(fn () => RapportFinancier::pour(auth()->user(), $this->exerc
 $donnees = computed(fn () => $this->rapport->tout());
 $commentaires = computed(fn () => AssistantDuRapport::commentaires($this->donnees));
 $peutDeposer = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'rapport', 'deposer'));
-$iaDispo = computed(fn () => AssistantDuRapport::iaDisponible());
+$peutIa = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'rapport', 'ia') && HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir'));
+$iaDispo = computed(fn () => AssistantDuRapport::iaDisponible() && $this->peutIa);
 $depots = computed(fn () => DepotRapport::query()->with('deposant')->latest()->limit(15)->get());
 $pieces = computed(fn () => PieceRapport::query()->where('exercice', $this->exerciceChoisi)->latest('id')->limit(60)->get());
 $logo = computed(fn () => auth()->user()->entreprise?->logoUrl());
 
 $aller = function (string $vue) {
     abort_unless(HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir'), 403);
-    $this->vue = array_key_exists($vue, ['presentation' => 1, 'ca' => 1, 'recouvrement' => 1, 'charges' => 1, 'conclusion' => 1, 'commerciaux' => 1, 'precedent' => 1, 'depot' => 1]) ? $vue : 'presentation';
+    $this->vue = array_key_exists($vue, $this->onglets) ? $vue : 'presentation';
 };
 
 $commenterParIA = function () {
-    abort_unless(HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir'), 403);
+    abort_unless($this->peutIa, 403);
     $this->commentaireIa = '';
     $this->erreurIa = '';
     $texte = AssistantDuRapport::commenterParIA($this->rapport->resumePourIA());
@@ -160,6 +167,66 @@ $retirerLesPropositions = function () {
     $this->depotLu = null;
 };
 
+$agent = function () {
+    return new AgentDuRapport(auth()->user(), $this->exerciceChoisi);
+};
+
+$analyserParIA = function () {
+    abort_unless($this->peutIa, 403);
+    $this->erreurChat = $this->infoIa = '';
+    set_time_limit(240);
+
+    try {
+        $this->agent()->analyserLeRapport(trim($this->consigneAnalyse));
+        $this->infoIa = 'Analyse globale rédigée par l\'assistant.';
+    } catch (IAIndisponible $e) {
+        $this->erreurChat = $e->getMessage();
+    }
+};
+
+// « Revenir à l'état » : on retire les commentaires et l'analyse de l'IA ; le rapport reprend celui du système.
+$revenirALEtat = function () {
+    abort_unless($this->peutIa, 403);
+    $retirees = AgentDuRapport::revenirALEtat($this->exerciceChoisi);
+    $this->commentaireIa = $this->erreurIa = $this->consigneAnalyse = $this->erreurChat = '';
+    $this->infoIa = $retirees > 0
+        ? 'L\'analyse et les commentaires de l\'IA sont retirés : le rapport est revenu à l\'analyse du système.'
+        : 'Rien à retirer : le rapport affiche déjà l\'analyse du système.';
+};
+
+$envoyerChat = function () {
+    abort_unless($this->peutIa, 403);
+    $this->erreurChat = $this->infoIa = '';
+    $this->validate(['messageChat' => ['required', 'string', 'max:4000'], 'fichierChat' => ['nullable', 'file', 'max:20480', 'mimes:xlsx,xls,csv,txt,pdf,jpg,jpeg,png,webp']]);
+    set_time_limit(240);
+
+    $message = trim($this->messageChat);
+
+    // Le chat est la seconde porte du dépôt : même règle, même refus des doublons.
+    if ($this->fichierChat) {
+        if (HabilitationsDActions::accorde(auth()->user(), 'rapport', 'deposer')) {
+            try {
+                $depot = DepotDeRapport::deposer($this->fichierChat, auth()->user(), null, $this->exerciceChoisi);
+                $message .= "\n\n[Fichier déposé par l'utilisateur : {$depot->nom_original} — ".($depot->message ?: 'rangé').'. Les pièces lues sont visibles avec l\'outil pieces_deposees.]';
+            } catch (DepotEnDoubleDeRapport $e) {
+                $message .= "\n\n[Fichier déjà déposé auparavant : ".$e->getMessage().']';
+            }
+        } else {
+            $message .= "\n\n[Un fichier a été joint mais ce compte n'a pas l'habilitation de dépôt : il n'a pas été déposé.]";
+        }
+    }
+
+    $this->agent()->repondre($message);
+    $this->messageChat = '';
+    $this->fichierChat = null;
+};
+
+$nouvelleConversation = function () {
+    abort_unless($this->peutIa, 403);
+    $this->agent()->nouvelleConversation();
+    $this->erreurChat = $this->infoIa = '';
+};
+
 ?>
 
 <div class="rp">
@@ -202,6 +269,19 @@ $retirerLesPropositions = function () {
 .rp .rp-champ{padding:8px 10px;border:1px solid #D4D1C7;border-radius:6px;background:#fff}
 .rp .rp-btn{padding:9px 16px;font-weight:800;font-size:13px;border:1px solid #C8102E;background:#C8102E;color:#fff;border-radius:6px;cursor:pointer}
 .rp .rp-btn.neutre{background:#fff;color:#191B20;border-color:#D4D1C7}
+.rp .rp-chat{background:#fff;border:1px solid #E2E0D8;border-radius:6px;padding:12px;max-height:520px;overflow:auto}
+.rp .rp-msg{max-width:88%;padding:9px 13px;border-radius:10px;margin:8px 0;font-size:13px;line-height:1.5}
+.rp .rp-msg.user{margin-left:auto;background:#FDECEE;border:1px solid #F3C5CB;white-space:pre-wrap}
+.rp .rp-msg.assistant{background:#F4F3EF;border:1px solid #E2E0D8}
+.rp .rp-msg table{border-collapse:collapse;margin:6px 0}.rp .rp-msg th{background:#191B20;color:#fff;padding:4px 8px}.rp .rp-msg td{border:1px solid #E2E0D8;padding:4px 8px}
+.rp .rp-prod{background:var(--fond,#F4F3EF);border-left:8px solid var(--acc,#C8102E);border-radius:6px;padding:16px 22px}
+.rp .rp-prod h1,.rp .rp-prod h2,.rp .rp-prod h3{color:var(--acc,#C8102E);margin:14px 0 6px}
+.rp .rp-prod table{border-collapse:collapse;width:100%;margin:8px 0}.rp .rp-prod th{background:var(--acc,#C8102E);color:#fff;padding:6px 10px}.rp .rp-prod td{border:1px solid #D4D1C7;padding:6px 10px;background:#fff}
+.rp .rp-prod.colonnes .rp-prod-corps{column-count:2;column-gap:32px}
+.rp .rp-prod.sobre{border-left:0;background:#fff;border:1px solid #E2E0D8}
+.rp .rp-prod.sobre h1,.rp .rp-prod.sobre h2,.rp .rp-prod.sobre h3{color:#191B20}
+.rp .rp-puce{display:inline-block;background:#191B20;color:#fff;font-size:11px;font-weight:800;padding:3px 9px;border-radius:12px;margin-bottom:8px}
+.rp .rp-puce.systeme{background:#0E9F6E}
 </style>
 
 <x-titre-ecran titre="Rapport — exercice {{ $this->exerciceChoisi }}"
@@ -238,6 +318,7 @@ $retirerLesPropositions = function () {
             @case('conclusion') Conclusion — trésorerie, engagements et recouvrement à réaliser @break
             @case('commerciaux') Commerciaux — récapitulatif du {{ $periode }} @break
             @case('precedent') Année précédente — grandes lignes de {{ $d['exercice'] - 1 }} @break
+            @case('ia') Assistant IA — analyse globale et conversation @break
         @endswitch
     </div>
     <div class="rp-source">
@@ -248,6 +329,7 @@ $retirerLesPropositions = function () {
             @case('conclusion') Montants en FCFA. Tout est calculé à partir des pages précédentes. @break
             @case('commerciaux') Source : factures rattachées à chaque commercial, objectif au prorata de la période. @break
             @case('precedent') Les grandes lignes de l'exercice précédent, comparées à l'exercice en cours. @break
+            @case('ia') L'assistant lit les données de l'application sous vos habilitations ; il n'écrit que ses analyses, ses documents et les pièces du dépôt. @break
         @endswitch
     </div>
     @if ($remarques !== [])
@@ -442,9 +524,11 @@ $retirerLesPropositions = function () {
         @foreach (['pieces' => 'Pièces de rechange', 'consommables' => 'Consommables (peinture, lubrifiants)', 'autres' => 'Autres fournisseurs (frais généraux, loyer, CIE…)'] as $k => $lib)
             <tr><td>{{ $lib }}</td><td class="d">{{ $f($fo['familles'][$k]['facture']) }}</td><td class="d">{{ $f($fo['familles'][$k]['regle']) }}</td><td class="d">{{ $f($fo['familles'][$k]['reste']) }}</td></tr>
         @endforeach
-        <tr><td>Factures FNE pas encore au suivi ({{ $fo['fne']['nombre'] }}) — comptées directement</td><td class="d">{{ $f($fo['fne']['facture']) }}</td><td class="d">—</td><td class="d">{{ $f($fo['fne']['facture']) }}</td></tr>
         <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($fo['facture']) }}</td><td class="d">{{ $f($fo['regle']) }}</td><td class="d">{{ $f($fo['reste']) }}</td></tr>
     </tbody></table></div>
+    @if ($fo['fne']['nombre'] > 0)
+        <div class="rp-aide">Ces familles comprennent {{ $fo['fne']['nombre'] }} facture(s) FNE que le suivi ne porte pas encore ({{ $f($fo['fne']['facture']) }} F), rangées d'après la nature de l'achat : pièces {{ $f($fo['fne']['parFamille']['pieces']) }}, consommables {{ $f($fo['fne']['parFamille']['consommables']) }}, autres {{ $f($fo['fne']['parFamille']['autres']) }}.</div>
+    @endif
 
     <div class="rp-section">D. Fournisseurs que l'on doit le plus</div>
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Fournisseur</th><th>Facturé (FCFA)</th><th>Réglé (FCFA)</th><th>Reste à payer (FCFA)</th></tr></thead><tbody>
@@ -625,5 +709,75 @@ $retirerLesPropositions = function () {
             </tbody></table></div>
         </div>
     </div>
+@endif
+
+{{-- ═══════════════════ Assistant IA (le dernier « slide ») ═══════════════════ --}}
+@if ($this->vue === 'ia' && $this->peutIa)
+    @php
+        $analyseIa = ProductionIA::query()->where('usage', 'rapport')->where('type', 'analyse')->where('exercice', $this->exerciceChoisi)->latest('id')->first();
+        $tours = $this->agent()->conversation()->tours();
+        $documents = ProductionIA::query()->where('usage', 'rapport')->where('type', 'document')->latest('id')->limit(15)->get();
+        $md = fn (string $t) => \Illuminate\Support\Str::markdown($t, ['html_input' => 'escape', 'allow_unsafe_links' => false]);
+    @endphp
+
+    @if (! AssistantDuRapport::iaDisponible())
+        <div class="rp-notes"><div class="rp-note alerte">L'IA du rapport n'est pas configurée : le Super admin doit renseigner une clé et affecter un fournisseur à l'usage « Rapport » (Super admin › IA). En attendant, le rapport garde l'analyse du système.</div></div>
+    @endif
+
+    <div class="rp-section">A. Analyse globale</div>
+    @if ($analyseIa)
+        @php $st = $analyseIa->styleSur(); @endphp
+        <span class="rp-puce">Rédigée par l'assistant IA le {{ $analyseIa->created_at->format('d/m/Y à H\hi') }}</span>
+        <div class="rp-prod {{ $st['mise_en_page'] }}" style="--acc:{{ $st['accent'] }}; --fond:{{ $st['fond'] }};">
+            <h2 style="margin-top:0;">{{ $analyseIa->titre }}</h2>
+            <div class="rp-prod-corps">{!! $analyseIa->html() !!}</div>
+        </div>
+    @else
+        <span class="rp-puce systeme">Analyse du système (règles de calcul)</span>
+        <div class="rp-notes">
+            @foreach (collect($cm)->flatten(1) as $r)<div class="rp-note {{ $r['niveau'] }}">{{ $r['texte'] }}</div>@endforeach
+        </div>
+    @endif
+
+    <div class="rp-notes" style="margin-top:10px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input type="text" wire:model="consigneAnalyse" class="rp-champ" style="flex:1; min-width:280px;" placeholder="Consigne de style facultative — ex. « sobre, en deux colonnes, accent bleu #2563EB »">
+            <button type="button" wire:click="analyserParIA" wire:loading.attr="disabled" class="rp-btn" @disabled(! AssistantDuRapport::iaDisponible())>
+                <span wire:loading.remove wire:target="analyserParIA">Analyser avec l'IA</span><span wire:loading wire:target="analyserParIA">L'assistant analyse…</span>
+            </button>
+            <button type="button" wire:click="revenirALEtat" wire:confirm="Retirer l'analyse et les commentaires de l'IA et revenir à l'analyse du système ?" class="rp-btn neutre">Revenir à l'état du système</button>
+        </div>
+        @if ($this->infoIa !== '')<div style="color:#0E9F6E; margin-top:8px; font-weight:700;">{{ $this->infoIa }}</div>@endif
+        @if ($this->erreurChat !== '')<div style="color:#C8102E; margin-top:8px; font-weight:700;">{{ $this->erreurChat }}</div>@endif
+    </div>
+
+    <div class="rp-section">B. Conversation avec l'assistant</div>
+    <div class="rp-chat" id="rp-chat">
+        @forelse ($tours as $t)
+            <div class="rp-msg {{ $t['role'] }}">@if ($t['role'] === 'assistant'){!! $md($t['content']) !!}@else{{ $t['content'] }}@endif</div>
+        @empty
+            <div style="color:#6B6F78;">Posez une question (« Quels clients nous doivent le plus et depuis quand ? »), demandez un état (« Fais-moi un PDF des impayés de plus de 90 jours »), une statistique, ou déposez un fichier.</div>
+        @endforelse
+        <div wire:loading wire:target="envoyerChat" class="rp-msg assistant" style="color:#6B6F78;">L'assistant réfléchit…</div>
+    </div>
+    <div class="rp-notes" style="margin-top:10px;">
+        <textarea wire:model="messageChat" rows="3" class="rp-champ" style="width:100%;" placeholder="Votre message à l'assistant…"></textarea>
+        @error('messageChat')<div style="color:#C8102E;">{{ $message }}</div>@enderror
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+            <input type="file" wire:model="fichierChat" class="rp-champ" accept=".xlsx,.xls,.csv,.txt,.pdf,.jpg,.jpeg,.png,.webp">
+            <button type="button" wire:click="envoyerChat" wire:loading.attr="disabled" class="rp-btn" @disabled(! AssistantDuRapport::iaDisponible())>Envoyer</button>
+            <button type="button" wire:click="nouvelleConversation" class="rp-btn neutre">Nouvelle conversation</button>
+        </div>
+        <div class="rp-aide">Un fichier joint est déposé comme dans « Dépôt de fichiers » (mêmes règles, sans doublon), si votre compte a l'habilitation de dépôt. Les données que l'assistant lit sont envoyées au fournisseur d'IA affecté par le Super admin.</div>
+    </div>
+
+    <div class="rp-section">C. Documents produits par l'assistant</div>
+    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Document</th><th>Créé le</th></tr></thead><tbody>
+        @forelse ($documents as $doc)
+            <tr><td><a href="{{ route('rapport.document', $doc->id) }}" target="_blank" style="font-weight:700; color:#C8102E;">{{ $doc->titre }}</a></td><td class="c">{{ $doc->created_at->format('d/m/Y H:i') }}</td></tr>
+        @empty
+            <tr><td colspan="2" style="color:#6B6F78;">Aucun document : demandez-en un à l'assistant (« fais-moi un état en PDF de… »).</td></tr>
+        @endforelse
+    </tbody></table></div>
 @endif
 </div>

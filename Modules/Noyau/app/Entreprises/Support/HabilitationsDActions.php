@@ -84,6 +84,10 @@ final class HabilitationsDActions
                     'libelle' => 'Déposer des fichiers et saisir des pièces dans le Rapport (impôts, CNPS, récapitulatifs)',
                     'defaut' => [],
                 ],
+                'ia' => [
+                    'libelle' => 'Utiliser l\'assistant IA du Rapport (analyse globale, conversation, documents, dépôt par le chat)',
+                    'defaut' => [],
+                ],
             ],
         ],
         'pieces_fournisseurs' => [

@@ -135,6 +135,53 @@ final class RapportFinancier
         });
     }
 
+    /**
+     * Le CA par client — pour l'assistant : « qui nous a le plus fait travailler ? ».
+     *
+     * @return list<array{client: string, nombre: int, montant: int|float}>
+     */
+    public function caParClient(int $limite = 15): array
+    {
+        $lignes = EtatDesImpayes::dansLePerimetre(Facture::query()->duChiffreDAffaires(), $this->idsSites, $this->idsVilles)
+            ->whereBetween('factures.date', [$this->debut(), $this->fin()])
+            ->toBase()->get(['factures.client', 'factures.montant']);
+
+        return $lignes->groupBy(fn ($l) => EmpreinteDePiece::texte($l->client) ?: 'SANSNOM')
+            ->map(fn ($g) => ['client' => trim((string) $g->first()->client) ?: 'Client non renseigné', 'nombre' => $g->count(), 'montant' => montant_de($g->sum('montant'))])
+            ->sortByDesc('montant')->take($limite)->values()->all();
+    }
+
+    /**
+     * Les factures impayées une à une, les plus grosses d'abord — pour l'assistant.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function impayesParFacture(?string $client = null, int $limite = 25): array
+    {
+        $requete = EtatDesImpayes::dansLePerimetre(EtatDesImpayes::requete($this->exercice), $this->idsSites, $this->idsVilles)
+            ->when($client !== null && trim($client) !== '', fn ($q) => $q->where('factures.client', 'like', '%'.trim($client).'%'))
+            ->withSum('encaissements', 'montant')->withMax('encaissements', 'date');
+
+        return $requete->get(['factures.id', 'factures.numero', 'factures.client', 'factures.date', 'factures.montant', 'factures.exercice_impayes'])
+            ->map(fn ($l) => [
+                'numero' => (string) $l->numero, 'client' => (string) $l->client, 'date' => $l->date?->format('Y-m-d'),
+                'montant' => montant_de($l->montant), 'regle' => montant_de($l->encaissements_sum_montant ?? 0),
+                'reste' => max(montant_de($l->montant) - montant_de($l->encaissements_sum_montant ?? 0), 0),
+                'dernier_reglement' => $l->encaissements_max_date,
+            ])->filter(fn ($l) => $l['reste'] >= Recouvrement::SEUIL_SOLDE)->sortByDesc('reste')->take($limite)->values()->all();
+    }
+
+    /** Les lignes de charges comptées (caisse, saisies, suivi, FNE), les plus grosses d'abord. @return list<array<string, mixed>> */
+    public function lignesDeCharges(?string $source = null, ?string $nature = null, int $limite = 25): array
+    {
+        return $this->charges_()->lignes()
+            ->when($source, fn ($c) => $c->where('source', $source))
+            ->when($nature, fn ($c) => $c->filter(fn ($l) => mb_stripos((string) $l->nature.' '.(string) ($l->categorie ?? ''), $nature) !== false))
+            ->sortByDesc('montant')->take($limite)
+            ->map(fn ($l) => ['date' => (string) $l->date, 'montant' => $l->montant, 'nature' => (string) $l->nature, 'categorie' => (string) ($l->categorie ?? ''), 'source' => (string) $l->source])
+            ->values()->all();
+    }
+
     // ─────────────────────────────────────────────────────── recouvrement
 
     /** @return array<string, mixed> */
@@ -253,14 +300,34 @@ final class RapportFinancier
                 }
             }
 
-            // ── les FNE pas encore au suivi : comptées, dues tant qu'on ne les a pas marquées « réglées »
+            // ── les FNE pas encore au suivi : comptées directement, et rangées par NATURE d'achat.
+            // Une facture FNE n'est pas une dépense : c'est la preuve d'une opération. On la range donc
+            // dans la famille que le suivi donne déjà à son fournisseur (pièces, consommables, autres) ;
+            // faute de mieux, d'après le nom de l'émetteur ; sinon dans « autres ».
+            $familleDuFournisseur = [];
+            foreach ($parFournisseur as $k => $ligne) {
+                $familleDuFournisseur[$k] = $ligne['famille'];
+            }
+            $nomVersFamille = fn (string $nom) => match (true) {
+                (bool) preg_match('/peinture|lubrifi|sikkens|vernis|abrasif|colle|consommable/iu', $nom) => 'consommables',
+                (bool) preg_match('/pi[èe]ce|auto|motor|toyota|cfao|tractafric|distribution|pneu|batterie|accessoire|garage|vitrage|pare[- ]?brise/iu', $nom) => 'pieces',
+                default => 'autres',
+            };
+
             $fne = $cp->fneSeules()?->get(['emetteur_nom', 'montant_ttc', 'date_facture']) ?? collect();
+            $fneParFamille = ['pieces' => 0, 'consommables' => 0, 'autres' => 0];
 
             foreach ($fne as $f) {
                 $nom = trim((string) $f->emetteur_nom) ?: 'Fournisseur FNE';
                 $k = EmpreinteDePiece::texte($nom);
                 $m = montant_de($f->montant_ttc);
-                $parFournisseur[$k] ??= ['fournisseur' => $nom, 'facture' => 0, 'regle' => 0, 'reste' => 0, 'famille' => 'fne'];
+                $fa = $familleDuFournisseur[$k] ?? $nomVersFamille($nom);
+
+                $fam[$fa][0] += $m;
+                $fam[$fa][2] += max($m, 0);
+                $fneParFamille[$fa] += $m;
+
+                $parFournisseur[$k] ??= ['fournisseur' => $nom, 'facture' => 0, 'regle' => 0, 'reste' => 0, 'famille' => $fa];
                 $parFournisseur[$k]['facture'] += $m;
                 $parFournisseur[$k]['reste'] += max($m, 0);
 
@@ -272,11 +339,12 @@ final class RapportFinancier
 
             $fneTotal = $t['fne'];
             $fourn = [
-                'facture' => montant_de($fam['pieces'][0] + $fam['consommables'][0] + $fam['autres'][0] + $fneTotal),
+                'facture' => montant_de($fam['pieces'][0] + $fam['consommables'][0] + $fam['autres'][0]),
                 'regle' => montant_de($fam['pieces'][1] + $fam['consommables'][1] + $fam['autres'][1]),
-                'reste' => montant_de($fam['pieces'][2] + $fam['consommables'][2] + $fam['autres'][2] + $fne->sum(fn ($f) => max(montant_de($f->montant_ttc), 0))),
+                'reste' => montant_de($fam['pieces'][2] + $fam['consommables'][2] + $fam['autres'][2]),
                 'familles' => collect($fam)->map(fn ($v) => ['facture' => montant_de($v[0]), 'regle' => montant_de($v[1]), 'reste' => montant_de($v[2])])->all(),
-                'fne' => ['facture' => $fneTotal, 'nombre' => $t['nFne']],
+                // Information seulement : ces montants sont DÉJÀ dans les familles ci-dessus.
+                'fne' => ['facture' => $fneTotal, 'nombre' => $t['nFne'], 'parFamille' => array_map('montant_de', $fneParFamille)],
                 'top' => collect($parFournisseur)->sortByDesc('reste')->take(10)->values()->all(),
                 'anciennete' => array_map('montant_de', $age),
             ];
@@ -303,7 +371,6 @@ final class RapportFinancier
                 'Fournisseurs — pièces de rechange' => $fam['pieces'][0],
                 'Fournisseurs — consommables (peinture, lubrifiants)' => $fam['consommables'][0],
                 'Autres fournisseurs (frais généraux, loyer, sous-traitance…)' => $fam['autres'][0],
-                'Factures FNE (comptées directement)' => $fneTotal,
                 'Salaires & personnel' => $natures['Salaires & personnel'] ?? 0,
                 'Fonctionnement' => $natures['Fonctionnement'] ?? 0,
                 'Autres décaissements' => ($natures['Autres décaissements'] ?? 0) + ($natures['Achats pièces'] ?? 0),

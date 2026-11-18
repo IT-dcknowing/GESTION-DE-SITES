@@ -34,6 +34,9 @@ class MenuNavigation
                 ['label' => 'Messages', 'route' => 'messages', 'section' => null],
                 ['label' => 'Notifications', 'route' => 'mes-notifications', 'section' => null],
                 ['label' => 'Maintenance', 'route' => 'super-admin.maintenance', 'section' => 'maintenance'],
+                // Les IA de l'application (clés, fournisseurs, affectation par usage) — à côté de la maintenance,
+                // où se trouvent les habilitations. 10/11.
+                ['label' => 'IA', 'route' => 'super-admin.ia.configuration', 'section' => 'maintenance'],
             ];
 
             return self::construire(array_filter(

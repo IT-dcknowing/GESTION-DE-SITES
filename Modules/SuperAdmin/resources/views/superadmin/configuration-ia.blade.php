@@ -1,8 +1,12 @@
 <?php
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Modules\SuperAdmin\Http\Controllers\ConfigurationIAController;
 
 $configurations = DB::table('configurations_ia')->get()->keyBy('fournisseur');
+$affectations = Schema::hasTable('affectations_ia') ? DB::table('affectations_ia')->get()->keyBy('usage') : collect();
+$usages = ConfigurationIAController::USAGES;
 $fournisseurs = [
     'openai' => ['nom' => 'OpenAI', 'modele' => 'gpt-6'],
     'anthropic' => ['nom' => 'Anthropic', 'modele' => 'claude'],
@@ -14,7 +18,7 @@ $fournisseurs = [
 
 <div>
     <x-titre-ecran titre="Intelligence artificielle"
-        sous-titre="Configurer les fournisseurs et modèles utilisés pour proposer les imputations comptables. Accès réservé au superadministrateur." />
+        sous-titre="Les clés des fournisseurs d'IA, et l'IA affectée à chaque usage : le rapport, les imputations comptables. Accès réservé au superadministrateur." />
 
     @if (session('success'))
         <div class="carte" style="border-left:3px solid #15803D;margin-bottom:14px;">
@@ -38,6 +42,48 @@ $fournisseurs = [
         </p>
     </div>
 
+    <div class="carte" style="margin-bottom:16px;">
+        <h3 style="margin-top:0;">Affectation des IA par usage</h3>
+        <p style="margin:0 0 12px;color:#6B7280;font-size:13px;">
+            Chaque usage a son IA : le <b>Rapport</b> (analyse, conversation, documents) et les <b>Imputations comptables</b>.
+            Choisissez un fournisseur déjà configuré plus bas ; le modèle et les instructions sont propres à l'usage.
+            L'accès au Rapport et à son assistant se donne dans Habilitations (domaine « Rapport financier »).
+        </p>
+        @foreach ($usages as $usage => $libelle)
+            @php($a = $affectations->get($usage))
+            <form method="POST" action="{{ route('super-admin.ia.affecter') }}" style="border-top:1px solid #E5E7EB;padding:12px 0;">
+                @csrf
+                <input type="hidden" name="usage" value="{{ $usage }}">
+                <strong>{{ $libelle }}</strong>
+                @if ($usage === 'imputations')
+                    <span style="font-size:12px;color:#B45309;"> — affectation prête ; le moteur d'imputation n'est pas encore branché.</span>
+                @endif
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                    <div>
+                        <label style="display:block;font-size:12px;">Fournisseur</label>
+                        <select name="fournisseur" class="champ" required>
+                            @foreach ($fournisseurs as $code => $f)
+                                <option value="{{ $code }}" @selected(($a->fournisseur ?? 'anthropic') === $code)>{{ $f['nom'] }}{{ $configurations->has($code) ? '' : ' (non configuré)' }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div style="flex:1;min-width:220px;">
+                        <label style="display:block;font-size:12px;">Modèle (vide = celui du fournisseur)</label>
+                        <input name="modele" class="champ" value="{{ $a->modele ?? '' }}" placeholder="Identifiant exact du modèle">
+                    </div>
+                </div>
+                <label style="display:block;font-size:12px;margin-top:8px;">Instructions propres à cet usage</label>
+                <textarea name="instructions" class="champ" rows="3" placeholder="Ex. ton, règles de présentation, consignes comptables…">{{ $a->instructions ?? '' }}</textarea>
+                <label style="display:flex;align-items:center;gap:8px;margin:8px 0;">
+                    <input type="checkbox" name="actif" value="1" @checked($a->actif ?? false)> IA activée pour cet usage
+                </label>
+                <button type="submit" class="bouton">Enregistrer</button>
+                <button type="submit" formaction="{{ route('super-admin.ia.tester') }}" class="bouton bouton-secondaire">Tester la connexion</button>
+            </form>
+        @endforeach
+    </div>
+
+    <h3 style="margin:18px 0 8px;">Fournisseurs et clés</h3>
     @foreach ($fournisseurs as $code => $fournisseur)
         @php($configuration = $configurations->get($code))
         <div class="carte" style="margin-bottom:14px;">
@@ -58,7 +104,7 @@ $fournisseurs = [
 
                 <label style="display:flex;align-items:center;gap:8px;margin:12px 0;">
                     <input type="checkbox" name="actif" value="1" @checked($configuration?->actif)>
-                    Utiliser ce fournisseur pour les imputations IA
+                    Fournisseur disponible pour les IA de l'application
                 </label>
 
                 <p style="font-size:12px;color:#6B7280;">
@@ -78,7 +124,7 @@ $fournisseurs = [
             <li>L'IA ne déclenche jamais directement un déversement comptable sans validation.</li>
         </ul>
         <p style="font-size:12px;color:#6B7280;">
-            L'écran enregistre les clés et les modèles. Le test réel des fournisseurs et le moteur d'imputation seront ajoutés dans une étape distincte.
+            Les clés et les modèles se règlent ici, l'affectation par usage au-dessus, avec un bouton de test réel. Le moteur d'imputation sera branché dans une étape distincte.
         </p>
     </div>
 </div>

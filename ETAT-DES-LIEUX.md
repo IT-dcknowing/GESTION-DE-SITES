@@ -3521,3 +3521,28 @@ requête `fneSeules()` exclut les FNE dont `facture_fournisseur_id` est renseign
 **À vérifier au déploiement.** `php artisan migrate` ; tests `LeModuleRapportEtLaFneDirecteTest`,
 `LesChargesSontLaCaisseEtLesSaisiesTest`, `LesChargesSeLisentParSourceTest` (leurs montants passent de 148 000 à 207 000 :
 la FNE de 59 000 compte).
+
+
+---
+
+## 10/11 — L'assistant IA du rapport, les IA par usage, la FNE rangée par nature
+
+**Demandes.** (1) La FNE ne figure pas comme une dépense : ses factures sont rangées par nature d'achat. (2) Un assistant IA
+« comme Claude dans l'application » : chat, analyses, documents PDF, dépôt de fichiers, sur habilitation, avec un dernier
+onglet du rapport et un bouton « Revenir à l'état du système ». (3) Côté Super admin, une section IA à côté de la maintenance,
+avec une IA par usage (rapport, imputations). (4) Vérifier ce qui existe pour les imputations.
+
+| Quoi | Où |
+|---|---|
+| La FNE pas encore au suivi est rangée dans pièces / consommables / autres (famille du fournisseur au suivi, sinon nom de l'émetteur) | `RapportFinancier::charges()` |
+| Migration additive : `affectations_ia`, `conversations_ia`, `productions_ia` | `2026_11_10_000001_…` |
+| `ClientIA` : OpenAI, Anthropic, Gemini, OpenRouter ; `texte()` et `discuter()` avec outils | `Modules/Noyau/app/IA/Services` |
+| `AgentDuRapport` : outils de lecture (rapport, CA par client, factures impayées, lignes de charges, pièces), `enregistrer_analyse`, `generer_document`, `deposer_piece` — chacun revérifie `rapport.voir` + `rapport.ia` | `Modules/Noyau/app/Rapport/Services` |
+| Onglet « Assistant IA » (dernier), analyse globale, chat avec dépôt de fichier, « Revenir à l'état du système » | `pilotage/rapport.blade.php` |
+| Document imprimable en PDF (`/rapport/document/{id}`) | `pilotage/rapport-document.blade.php` |
+| Habilitation `rapport.ia` (défaut vide) | `HabilitationsDActions` |
+| Super admin › IA : affectation par usage, modèle, instructions, test réel | `ConfigurationIAController`, `configuration-ia.blade.php`, menu |
+
+**Règles.** L'IA n'écrit dans aucune table de gestion : seulement `productions_ia` et les pièces du dépôt (sans doublon). Son style est
+une liste blanche (accent, fond, mise en page) ; son Markdown est rendu avec le HTML neutralisé. Les données lues partent chez le
+fournisseur affecté. Voir `docs/COMPTAFLOW/ETAT-DES-IMPUTATIONS-ET-DES-IA.md` pour l'audit des imputations.

@@ -55,6 +55,8 @@ Route::middleware(['auth'])->group(function () {
      * l'ouverture et à chaque action.
      */
     Volt::route('/rapport', 'pilotage.rapport')->name('rapport');
+    // Un document produit par l'assistant (imprimable en PDF) — habilitation `rapport.ia`, vérifiée à l'ouverture.
+    Volt::route('/rapport/document/{production}', 'pilotage.rapport-document')->whereNumber('production')->name('rapport.document');
 
     Volt::route('/impayes/fusion-correction', 'pilotage.impayes-fusion')->name('impayes-fusion');
     Route::redirect('/impayes/fusion-des-clients', '/impayes/fusion-correction');

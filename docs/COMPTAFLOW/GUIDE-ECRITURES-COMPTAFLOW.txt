@@ -1,0 +1,186 @@
+================================================================================
+              GUIDE DES ÉCRITURES COMPTABLES - COMPTAFLOW (v2)
+================================================================================
+
+Ce document récapitule les consignes, règles et structures requises pour passer
+ou importer des écritures comptables (écritures de journal).
+Version enrichie suite aux cas pratiques rencontrés (factures + règlement client
+DC-KNOWING CGA / L'ARTISAN AUTOMOBILE SARL, juillet 2026).
+
+--------------------------------------------------------------------------------
+1. L'ORDRE DES 9 COLONNES DE L'ÉCRITURE
+--------------------------------------------------------------------------------
+
+Format standard à 9 colonnes, délimiteur point-virgule (;), sans en-tête,
+un enregistrement par ligne (retour chariot) :
+
+Colonne 1 : Date
+   - Format : JJMMAA (ex : 15/06/2026 => 150626).
+   - Obligatoire. Doit être dans l'exercice actif non clôturé.
+
+Colonne 2 : N° Saisie
+   - Identifiant de regroupement (ex : ECR001, ECR002...).
+   - Toutes les lignes d'une même écriture partagent le même N° Saisie.
+   - Optionnel : généré automatiquement (ECR_...) si vide, mais préférer un
+     numéro explicite pour la traçabilité et la relecture humaine.
+
+Colonne 3 : Code Journal
+   - Code court (ex : ACH, VEN, BQ, OD, ou code dédié par banque : BGF, BOA...).
+   - Obligatoire. Le journal doit exister au préalable (voir section 6).
+
+Colonne 4 : N° Pièce / Référence
+   - Référence de la pièce justificative.
+   - Convention : "F" + numéro court de facture (F087, F088...) pour les ventes,
+     "CHQ" + numéro de chèque (CHQ0133209) pour les règlements par chèque.
+   - Optionnel mais fortement recommandé pour le rapprochement/lettrage.
+
+Colonne 5 : N° Compte général
+   - Numéro du plan comptable (6 chiffres, SYSCOHADA).
+   - Obligatoire. Le compte doit être créé au préalable.
+
+Colonne 6 : Libellé Opération
+   - Texte descriptif (max 255 car.). Inclure : type d'opération, n° pièce,
+     nom du tiers. Ex : "Facture vente n°...087 - Audit démarrage - L'Artisan
+     Automobile".
+
+Colonne 7 : Débit / Colonne 8 : Crédit
+   - Numérique positif ou vide, mutuellement exclusifs sur une même ligne.
+   - Pas de séparateur de milliers, 0 décimale (sauf config contraire) :
+     2200000 et non 2 200 000 ni 2200000,00.
+
+Colonne 9 : Compte Tiers
+   - Uniquement sur les lignes touchant un compte collectif (401/411).
+   - Vide sur les lignes de contrepartie (achat/vente/banque).
+
+--------------------------------------------------------------------------------
+2. RÈGLES DE SAISIE ET DE VALIDATION
+--------------------------------------------------------------------------------
+
+- Partie double : pour chaque N° Saisie, Total Débit = Total Crédit.
+  Vérifier l'équilibre ligne par ligne AVANT de livrer le fichier.
+- Exclusion mutuelle Débit/Crédit sur une même ligne.
+- Toujours vérifier la cohérence globale du fichier : somme totale des débits
+  = somme totale des crédits, tous journaux confondus.
+
+--------------------------------------------------------------------------------
+3. PLAN COMPTABLE (SYSCOHADA RÉVISÉ - CÔTE D'IVOIRE UNIQUEMENT)
+--------------------------------------------------------------------------------
+
+- 6 chiffres max, complétés par des zéros à droite : PPP000.
+  Ex : 401 => 401000 ; 706 => 706000 ; 521 => 521000.
+- Ne jamais utiliser un plan comptable français ou d'un autre pays.
+- Comptes de vente (classe 7) : utiliser un sous-compte par nature de
+  prestation si le volume le justifie (ex : 706100 Audit / conseil,
+  706200 Tenue de comptabilité, 706300 Honoraires d'assistance) plutôt
+  qu'un compte 706 générique unique — permet un meilleur suivi analytique.
+  À défaut d'indication du client, un compte générique 706100 "Services
+  vendus" reste acceptable, mais le signaler dans le fichier plan comptable
+  livré pour que l'utilisateur puisse le retravailler.
+- Comptes de trésorerie (classe 5) : créer un sous-compte par banque réelle,
+  nommé d'après la banque effectivement utilisée (ex : 521100 Banque BGFI,
+  521200 Banque BOA) — ne jamais présumer une banque par défaut si un
+  document (chèque, relevé) indique une banque différente de celle
+  mentionnée dans les consignes initiales. En cas de doute ou de
+  contradiction entre les consignes et les pièces fournies, TOUJOURS
+  demander confirmation avant de créer le journal.
+- Comptes TVA : 445200 (déductible), 445500 (collectée). Taux standard 18%.
+  Si la facture indique explicitement une exonération ("TVA exo.lég",
+  taux 0%), ne pas comptabiliser de TVA.
+
+--------------------------------------------------------------------------------
+4. GESTION DES TIERS (COMPTES AUXILIAIRES)
+--------------------------------------------------------------------------------
+
+- Convention de code : préfixe du compte collectif + nom court du tiers,
+  sans espace, casse mixte lisible (ex : 411Artisan, 401Davide).
+- Rattachement aux comptes collectifs :
+  Clients => 411100 ; Fournisseurs => 401100.
+- Toute écriture sur 401.../411... doit porter un code tiers (colonne 9)
+  pour permettre le lettrage.
+- Un fichier tiers.txt séparé liste : Code Tiers ; Nom ; Type ; Compte
+  Collectif Rattaché ; Identifiant officiel (NCC/RCCM si disponible).
+
+--------------------------------------------------------------------------------
+5. FACTURES DE VENTE vs FACTURES PROFORMA
+--------------------------------------------------------------------------------
+
+- Une facture PROFORMA (préfixe "P" dans la numérotation, ex :
+  P1864699A2600000006) n'est PAS un document comptable définitif : c'est
+  un devis. NE JAMAIS la comptabiliser tant qu'elle n'a pas été transformée
+  en facture de vente réelle.
+- Seules les factures de vente définitives (numérotation sans préfixe "P")
+  génèrent une écriture Client (411) / Produit (7...).
+
+--------------------------------------------------------------------------------
+6. RÈGLEMENTS CLIENTS (CHÈQUES) : CAS RENCONTRÉS
+--------------------------------------------------------------------------------
+
+- Règlement rattaché à une facture précise (montant identique, référence
+  claire) : lettrer directement le compte tiers sur cette facture.
+- Règlement GLOBAL non affecté à une facture précise (montant ne
+  correspondant à aucune facture individuelle, ou paiement couvrant
+  plusieurs factures/soldes) :
+  Débit 521xxx (Banque) / Crédit 411100 (Client, avec code tiers).
+  Ne pas forcer un lettrage sur une facture arbitraire seulement pour
+  faire correspondre un montant approximatif — le signaler à
+  l'utilisateur et comptabiliser comme règlement global sur le compte
+  client.
+- Un chèque REÇU mais pas encore encaissé peut transiter par un compte
+  d'attente (5112 "Chèques à l'encaissement") avant d'être viré en banque
+  (521) à l'encaissement effectif — à utiliser si l'information de date
+  d'encaissement n'est pas fournie et que la rigueur du suivi de trésorerie
+  l'exige. Sinon, un enregistrement direct en banque (521) reste acceptable
+  pour une comptabilité simplifiée.
+- Une date de chèque antérieure aux factures qu'il est censé régler n'est
+  pas un problème : cela peut correspondre à une avance ou à un règlement
+  global sur le compte courant du client, indépendant de la chronologie
+  des factures.
+
+--------------------------------------------------------------------------------
+7. JOURNAUX
+--------------------------------------------------------------------------------
+
+- Créer un journal par type de flux : VEN (ventes), ACH (achats), OD
+  (opérations diverses), et un journal de trésorerie PAR BANQUE réelle
+  (ex : BGF pour BGFIBank, BOA pour Bank of Africa) plutôt qu'un journal
+  "BQ" générique dès que plusieurs comptes bancaires existent.
+- Un fichier journaux.txt séparé liste : Code Journal ; Libellé ; Type.
+
+--------------------------------------------------------------------------------
+8. LIVRABLES ATTENDUS PAR LOT DE TRAITEMENT
+--------------------------------------------------------------------------------
+
+Pour chaque lot de factures/pièces traité, produire 4 fichiers distincts,
+tous en texte délimité par point-virgule :
+
+1. ecritures.txt      -> les écritures au format 9 colonnes (section 1)
+2. plan_comptable.txt -> N° Compte ; Intitulé ; Classe ; Nature
+3. tiers.txt          -> Code Tiers ; Nom ; Type ; Compte Collectif ; NCC/RCCM
+4. journaux.txt       -> Code Journal ; Libellé ; Type
+
+--------------------------------------------------------------------------------
+9. RÉFLEXES DE VÉRIFICATION AVANT LIVRAISON
+--------------------------------------------------------------------------------
+
+- Vérifier l'équilibre débit/crédit de chaque écriture ET du fichier entier.
+- Comparer systématiquement les pièces fournies entre elles (montants,
+  dates, banques, noms de tiers) : en cas d'incohérence (montant qui ne
+  correspond à aucune facture, banque différente de celle indiquée dans
+  les consignes, date illogique), NE PAS deviner silencieusement —
+  poser une question ciblée à l'utilisateur avant de générer le fichier
+  final, car ces fichiers sont destinés à un import réel dans un logiciel
+  de gestion (Sage 100 / ComptaFlow).
+- Ne jamais comptabiliser un document qui n'est pas une pièce comptable
+  définitive (proforma, devis, bon de commande).
+- Utiliser exclusivement le plan comptable SYSCOHADA révisé (Côte d'Ivoire).
+
+--------------------------------------------------------------------------------
+ NB (consignes permanentes) :
+ - Utiliser uniquement le plan comptable ivoirien (SYSCOHADA révisé).
+ - Toujours livrer les 4 fichiers du point 8, même pour un seul lot de
+   factures.
+ - Toujours vérifier la banque réelle avant de créer/utiliser un journal
+   de trésorerie.
+NB: format de sorti : TXT
+codification : ANSI ; comme les fichier sage 
+================================================================================

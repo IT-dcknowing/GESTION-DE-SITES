@@ -2,8 +2,10 @@
 
 namespace Modules\Noyau\Rapport\Services;
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Modules\Noyau\IA\Services\ClientIA;
+use Modules\Noyau\IA\Services\IAIndisponible;
+use Modules\Noyau\Rapport\Support\LectureDesPieces;
 
 /**
  * L'assistant du module Rapport — les commentaires du classeur Excel, dans l'application — 06/11.
@@ -12,8 +14,8 @@ use Illuminate\Support\Facades\Log;
  *
  *  - **`commentaires()`** : des règles de lecture, écrites ici, sans réseau. Elles produisent les
  *    commentaires de chaque page (ce qui domine, ce qui alerte, ce qui manque) et servent toujours.
- *  - **`commenterParIA()` / `lireUneImage()`** : l'IA, seulement si `ANTHROPIC_API_KEY` est posée et
- *    **seulement sur clic** — rien ne part vers l'extérieur sans un geste. Elle ne reçoit que les
+ *  - **`commenterParIA()` / `lireUneImage()`** : l'IA du rapport (affectée par le Super admin, voir
+ *    `ClientIA`), **seulement sur clic** — rien ne part vers l'extérieur sans un geste. Elle ne reçoit que les
  *    chiffres agrégés du rapport (jamais un nom de salarié ni un relevé), et son texte s'affiche
  *    marqué comme tel. Si elle échoue, les règles restent.
  *
@@ -23,7 +25,7 @@ final class AssistantDuRapport
 {
     public static function iaDisponible(): bool
     {
-        return (string) config('services.anthropic.cle') !== '';
+        return ClientIA::pour('rapport') !== null;
     }
 
     private static function m(int|float $v): string
@@ -135,7 +137,9 @@ final class AssistantDuRapport
      */
     public static function commenterParIA(array $resume): ?string
     {
-        if (! self::iaDisponible()) {
+        $ia = ClientIA::pour('rapport');
+
+        if ($ia === null) {
             return null;
         }
 
@@ -144,7 +148,13 @@ final class AssistantDuRapport
             .'5 à 8 phrases, concret, sans jargon, qui dit ce qui domine, ce qui inquiète, et les trois actions à mener. '
             .'N\'invente aucun chiffre ; si une donnée manque, dis-le. N\'emploie pas de liste à puces.';
 
-        return self::appeler($systeme, [['type' => 'text', 'text' => json_encode($resume, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)]], 900);
+        try {
+            return $ia->texte($systeme, [['type' => 'text', 'text' => json_encode($resume, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)]], 900) ?: null;
+        } catch (IAIndisponible $e) {
+            Log::warning('Assistant du rapport : '.$e->getMessage());
+
+            return null;
+        }
     }
 
     /**
@@ -155,7 +165,9 @@ final class AssistantDuRapport
      */
     public static function lireUneImage(string $cheminAbsolu, string $mime): ?array
     {
-        if (! self::iaDisponible() || ! is_file($cheminAbsolu)) {
+        $ia = ClientIA::pour('rapport');
+
+        if ($ia === null || ! is_file($cheminAbsolu)) {
             return null;
         }
 
@@ -165,12 +177,14 @@ final class AssistantDuRapport
             .'Une ligne par montant distinct (ex. droits simples, pénalités, frais) ; n\'ajoute pas de ligne de total. '
             .'Si un chiffre est illisible, omets la ligne plutôt que de le deviner.';
 
-        $texte = self::appeler($systeme, [
-            ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => base64_encode((string) file_get_contents($cheminAbsolu))]],
-            ['type' => 'text', 'text' => 'Extrais les lignes de ce document.'],
-        ], 1200);
+        try {
+            $texte = $ia->texte($systeme, [
+                ['type' => 'image', 'mime' => $mime, 'base64' => base64_encode((string) file_get_contents($cheminAbsolu))],
+                ['type' => 'text', 'text' => 'Extrais les lignes de ce document.'],
+            ], 1200);
+        } catch (IAIndisponible $e) {
+            Log::warning('Assistant du rapport : '.$e->getMessage());
 
-        if ($texte === null) {
             return null;
         }
 
@@ -183,7 +197,7 @@ final class AssistantDuRapport
         $pieces = [];
 
         foreach ($json as $l) {
-            $montant = \Modules\Noyau\Rapport\Support\LectureDesPieces::nombre($l['montant'] ?? null);
+            $montant = LectureDesPieces::nombre($l['montant'] ?? null);
             $nature = in_array($l['nature'] ?? '', ['impot', 'cnps', 'salaire', 'autre'], true) ? $l['nature'] : 'autre';
 
             if ($montant === null || $montant <= 0) {
@@ -193,42 +207,14 @@ final class AssistantDuRapport
             $pieces[] = [
                 'nature' => $nature,
                 'statut' => ($l['statut'] ?? 'du') === 'paye' ? 'paye' : 'du',
-                'date' => \Modules\Noyau\Rapport\Support\LectureDesPieces::date($l['date'] ?? null),
+                'date' => LectureDesPieces::date($l['date'] ?? null),
                 'libelle' => mb_substr((string) ($l['libelle'] ?? 'Pièce lue'), 0, 200),
-                'tiers' => isset($l['tiers']) && $l['tiers'] !== null ? mb_substr((string) $l['tiers'], 0, 200) : null,
-                'reference' => isset($l['reference']) && $l['reference'] !== null ? mb_substr((string) $l['reference'], 0, 80) : null,
+                'tiers' => isset($l['tiers']) ? mb_substr((string) $l['tiers'], 0, 200) : null,
+                'reference' => isset($l['reference']) ? mb_substr((string) $l['reference'], 0, 80) : null,
                 'montant' => $montant,
             ];
         }
 
         return $pieces;
-    }
-
-    /** @param  list<array<string, mixed>>  $contenu */
-    private static function appeler(string $systeme, array $contenu, int $max): ?string
-    {
-        try {
-            $reponse = Http::withHeaders([
-                'x-api-key' => (string) config('services.anthropic.cle'),
-                'anthropic-version' => '2023-06-01',
-            ])->timeout(60)->post('https://api.anthropic.com/v1/messages', [
-                'model' => (string) config('services.anthropic.modele'),
-                'max_tokens' => $max,
-                'system' => $systeme,
-                'messages' => [['role' => 'user', 'content' => $contenu]],
-            ]);
-
-            if (! $reponse->successful()) {
-                Log::warning('Assistant du rapport : réponse '.$reponse->status());
-
-                return null;
-            }
-
-            return collect($reponse->json('content', []))->where('type', 'text')->pluck('text')->implode("\n") ?: null;
-        } catch (\Throwable $e) {
-            Log::warning('Assistant du rapport : '.$e->getMessage());
-
-            return null;
-        }
     }
 }
