@@ -8,11 +8,14 @@ use Modules\Noyau\Commun\Concerns\GereLesDonneesLibres;
 use Modules\Noyau\Commun\Modeles\NotificationApp;
 use Modules\Noyau\Commun\Modeles\Referentiel;
 use Modules\Noyau\Commun\Services\Notificateur;
-use Livewire\WithPagination;
-use function Livewire\Volt\{state, computed, mount, uses, usesPagination};
+use function Livewire\Volt\{state, computed, mount, uses};
 
-uses([GereLesDonneesLibres::class, WithPagination::class]);
-usesPagination();
+uses([GereLesDonneesLibres::class]);
+
+// La pagination se pilote par `$set` (composant `<x-pagination>` de l'application), pas par le paginateur
+// d'Eloquent : ses liens appellent `gotoPage`, que la page ne trouvait pas (« Unable to call component
+// method. Public method [gotoPage] not found », 19/11). Même convention que le suivi fournisseurs.
+state(['pageProsp' => 1]);
 
 state([
     // Les informations libres ajoutées après transmission, une par ligne ouverte.
@@ -93,7 +96,16 @@ $requete = computed(function () {
     return $q->latest('date')->latest('id');
 });
 
-$lignes = computed(fn () => $this->requete->paginate(20));
+$lignes = computed(function () {
+    $page = $this->requete->paginate(20, ['*'], 'page', max(1, (int) $this->pageProsp));
+
+    // Une page qui n'existe plus (la dernière ligne vient d'être retirée) : on revient à la dernière.
+    if ($page->isEmpty() && $page->currentPage() > 1) {
+        $page = $this->requete->paginate(20, ['*'], 'page', max(1, $page->lastPage()));
+    }
+
+    return $page;
+});
 
 $compteurs = computed(function () {
     $base = Prospection::where('commercial_id', $this->commercial?->id ?? 0);
@@ -113,15 +125,15 @@ $brouillonsAffiches = computed(fn () => $this->lignes->getCollection()
 $selectionnes = computed(fn () => collect($this->selection)->filter()->keys()->map(fn ($i) => (int) $i)->all());
 
 // Tout filtre modifié ramène à la première page, sinon on peut se retrouver sur une page vide.
-$updatedFNumero = fn () => $this->resetPage();
-$updatedFDate = fn () => $this->resetPage();
-$updatedFActivite = fn () => $this->resetPage();
-$updatedFClient = fn () => $this->resetPage();
-$updatedFStatut = fn () => $this->resetPage();
+$updatedFNumero = fn () => $this->pageProsp = 1;
+$updatedFDate = fn () => $this->pageProsp = 1;
+$updatedFActivite = fn () => $this->pageProsp = 1;
+$updatedFClient = fn () => $this->pageProsp = 1;
+$updatedFStatut = fn () => $this->pageProsp = 1;
 
 $reinitialiserFiltres = function () {
     $this->reset(['fNumero', 'fDate', 'fActivite', 'fClient', 'fStatut']);
-    $this->resetPage();
+    $this->pageProsp = 1;
 };
 
 $toutSelectionner = function () {
@@ -253,7 +265,7 @@ $enregistrerProspection = function (string $statut) {
 
     $this->reset(['client', 'localisation', 'immatriculation', 'nFicheReception', 'nDevis',
         'observations', 'commentaire', 'passage', 'datePassage', 'devisApres', 'dateDevis']);
-    $this->resetPage();
+    $this->pageProsp = 1;
     $this->annoncer($statut === 'Transmise'
         ? 'Prospection transmise à votre responsable.'
         : "Prospection enregistrée en brouillon — modifiable tant qu'elle n'est pas transmise.");
@@ -1084,7 +1096,7 @@ $transmettreSelection = function () {
                 </table>
             </div>
 
-            <div style="margin-top:12px;">{{ $this->lignes->links() }}</div>
+            <x-pagination :page="$this->lignes->currentPage()" :total="$this->lignes->total()" prop="pageProsp" :par-page="20" />
         </x-carte-section>
     @endif
 </div>
