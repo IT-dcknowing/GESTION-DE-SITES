@@ -42,7 +42,7 @@ $creance = computed(function () {
      * à une facture qui est sous les yeux. La page dit à la place qu'elle n'est pas à l'état.
      */
     return EtatDesImpayes::dansLePerimetre(
-        Facture::query()->withSum('encaissements', 'montant'),
+        Facture::query()->avecEncaisseEtAvoirs(),
         $sites,
         EtatDesImpayes::villesDesSites($sites),
     )

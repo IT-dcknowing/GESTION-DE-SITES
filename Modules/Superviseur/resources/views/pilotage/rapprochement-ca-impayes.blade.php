@@ -119,7 +119,7 @@ $populations = computed(function () {
     return [
         'ca' => $base()->whereNull('exercice_impayes')->with('site')->get(),
         'impayes' => $base()->whereNotNull('exercice_impayes')
-            ->withSum('encaissements', 'montant')->with('site')->get(),
+            ->avecEncaisseEtAvoirs()->with('site')->get(),
     ];
 });
 

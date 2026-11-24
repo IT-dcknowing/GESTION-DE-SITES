@@ -37,7 +37,7 @@ $encaissement = computed(function () {
         ->with([
             'site.ville',
             'lot',
-            'facture' => fn ($q) => $q->withSum('encaissements', 'montant')->with('site.ville'),
+            'facture' => fn ($q) => $q->avecEncaisseEtAvoirs()->with('site.ville'),
         ])
         ->find((int) $this->id);
 });
@@ -57,7 +57,7 @@ $fratrie = computed(function () {
 
     return Encaissement::query()
         ->where('reglement_global', $reference)
-        ->with(['facture' => fn ($q) => $q->withSum('encaissements', 'montant')])
+        ->with(['facture' => fn ($q) => $q->avecEncaisseEtAvoirs()])
         ->orderBy('id')
         ->get();
 });

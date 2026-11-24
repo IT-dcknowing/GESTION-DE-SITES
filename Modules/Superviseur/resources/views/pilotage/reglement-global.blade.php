@@ -40,7 +40,7 @@ $ecritures = computed(function () {
          * `encaissements_sum_montant`, et sans cette somme il rendrait le montant entier —
          * toutes les factures paraîtraient « allégées » alors qu'elles sont soldées.
          */
-        ->with(['facture' => fn ($q) => $q->withSum('encaissements', 'montant')->with('site.ville')])
+        ->with(['facture' => fn ($q) => $q->avecEncaisseEtAvoirs()->with('site.ville')])
         ->orderBy('id')
         ->get()
         // Le versement se lit par ses factures : un encaissement dont la créance est hors

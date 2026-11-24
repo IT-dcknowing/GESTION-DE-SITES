@@ -462,7 +462,7 @@ $pageLignes = computed(function () {
     $page = max(1, min((int) $this->page, (int) ceil(max(1, $this->totaux['lignes']) / 15)));
 
     return $this->requeteDesLignes()
-        ->withSum('encaissements', 'montant')
+        ->avecEncaisseEtAvoirs()
         ->with(['site.ville', 'ville', 'encaissements' => fn ($q) => $q->orderByDesc('date')->orderByDesc('id')])
         ->orderByDesc('date')->orderByDesc('id')
         ->forPage($page, 15)
@@ -491,7 +491,7 @@ $apercuNumero = computed(fn () => EtatDesImpayes::apercuDuNumero(
 
 /** La ligne en cours de modification, relue dans le périmètre du compte. */
 $ligneModifiee = computed(fn () => $this->enModification === null ? null : EtatDesImpayes::dansLePerimetre(
-    Facture::query()->whereNotNull('exercice_impayes')->withSum('encaissements', 'montant'),
+    Facture::query()->whereNotNull('exercice_impayes')->avecEncaisseEtAvoirs(),
     $this->idsSitesDuCompte,
     $this->idsVillesDuCompte,
 )->find((int) $this->enModification));
@@ -1271,6 +1271,11 @@ $basculerPortage = function () {
                             <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
                                        color:{{ $reste >= Recouvrement::SEUIL_SOLDE ? '#C8102E' : '#6B6E76' }};">
                                 {{ ae($reste) }}
+                                {{-- Montant − réglé ne donne plus le reste quand un avoir porte sur la
+                                     facture (24/11) : on dit d'où vient l'écart. --}}
+                                @if ($ligne->avoirsRattaches() < 0)
+                                    <div style="font-size:11px; font-weight:400; color:#B45309;">dont avoir {{ ae($ligne->avoirsRattaches()) }}</div>
+                                @endif
                             </td>
                             <td>
                                 {{ $dernier?->moyen ?? '—' }}

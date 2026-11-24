@@ -33,7 +33,7 @@ $optionsMoyenPaiement = computed(fn () => Referentiel::options(Referentiel::MOYE
  */
 $facturesEnAttente = computed(function () {
     $q = Facture::whereIn('site_id', $this->idsSites)->saisieManuelle()->avecResteAEncaisser()
-        ->withSum('encaissements', 'montant')->with('site')->latest('date')->latest('id');
+        ->avecEncaisseEtAvoirs()->with('site')->latest('date')->latest('id');
 
     if ($this->recherche) {
         $q->where('client', 'like', '%'.$this->recherche.'%');
@@ -43,14 +43,14 @@ $facturesEnAttente = computed(function () {
 });
 
 $factureSelectionnee = computed(fn () => $this->factureId
-    ? Facture::whereIn('site_id', $this->idsSites)->withSum('encaissements', 'montant')->find($this->factureId)
+    ? Facture::whereIn('site_id', $this->idsSites)->avecEncaisseEtAvoirs()->find($this->factureId)
     : null);
 
 $mesEncaissementsDuJour = computed(fn () => Encaissement::whereIn('site_id', $this->idsSites)
     ->where('cree_par', auth()->id())->whereDate('date', now())->with('facture')->latest('id')->get());
 
 $choisirFacture = function (int $id) {
-    $facture = Facture::whereIn('site_id', $this->idsSites)->withSum('encaissements', 'montant')->findOrFail($id);
+    $facture = Facture::whereIn('site_id', $this->idsSites)->avecEncaisseEtAvoirs()->findOrFail($id);
     $this->factureId = $facture->id;
     $this->montant = $facture->resteAEncaisser();
     $this->message = null;

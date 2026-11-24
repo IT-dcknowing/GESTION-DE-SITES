@@ -102,7 +102,7 @@ $recoupe = computed(function () {
 /** Ce que les factures sans courtier représentent : le reste de l'encours, pour situer. */
 $horsCourtage = computed(fn () => $this->toutes
     ->filter(fn ($ligne) => trim((string) $ligne->courtier) === '')
-    ->sum(fn ($ligne) => Recouvrement::resteDe($ligne->montant, $ligne->encaissements_sum_montant)));
+    ->sum(fn ($ligne) => Recouvrement::resteDeLaLigne($ligne)));
 
 ?>
 
