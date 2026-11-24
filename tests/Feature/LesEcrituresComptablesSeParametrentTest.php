@@ -48,8 +48,8 @@ class LesEcrituresComptablesSeParametrentTest extends TestCase
         Banque::withoutGlobalScopes()->create(['entreprise_id' => $this->e->id, 'nom' => 'BGFI', 'nom_normalise' => Banque::clePour('BGFI')]);
 
         // Proposés tant que rien n'est enregistré ; la banque déclarée a son compte et son journal.
-        $this->assertSame('4111', PlanComptable::numero('clients'));
-        $this->assertSame('5211', PlanComptable::numero('banque:'.Banque::query()->value('id')));
+        $this->assertSame('411000', PlanComptable::numero('clients'));
+        $this->assertSame('521101', PlanComptable::numero('banque:'.Banque::query()->value('id')));
 
         $ecran = Volt::test('comptabilite.ecritures-parametrage')->assertSee('proposé');
         $rang = array_search('clients', $ecran->get('cles'), true);

@@ -80,13 +80,13 @@ $enregistrer = function () {
         // Un compte s'écrit en chiffres ; un journal, d'un code court.
         $regles["valeurs.{$rang}.numero"] = PlanComptable::type($cle) === 'journal'
             ? ['required', 'regex:/^[A-Za-z0-9]{1,6}$/']
-            : ['required', 'regex:/^[0-9]{2,12}$/'];
+            : ['required', 'regex:/^[0-9]{2,6}$/'];
         $regles["valeurs.{$rang}.libelle"] = ['nullable', 'string', 'max:160'];
     }
 
     $this->validate($regles, [
         'valeurs.*.numero.required' => 'Le numéro est obligatoire.',
-        'valeurs.*.numero.regex' => 'Un compte : de 2 à 12 chiffres. Un journal : un code de 1 à 6 lettres ou chiffres.',
+        'valeurs.*.numero.regex' => 'Un compte : de 2 à 6 chiffres, complété à 6 par des zéros (401 → 401000). Un journal : un code de 1 à 6 lettres ou chiffres.',
     ]);
 
     $n = 0;
@@ -101,7 +101,8 @@ $enregistrer = function () {
         $compte->fill([
             'entreprise_id' => auth()->user()->entreprise_id,
             'type' => PlanComptable::type($cle),
-            'numero' => PlanComptable::type($cle) === 'journal' ? mb_strtoupper($numero) : $numero,
+            // Le plan est sur 6 chiffres (24/11) : 401 s'enregistre 401000.
+            'numero' => PlanComptable::type($cle) === 'journal' ? mb_strtoupper($numero) : PlanComptable::six($numero),
             'libelle' => trim((string) ($this->valeurs[$rang]['libelle'] ?? '')) ?: null,
             'modifie_par' => auth()->id(),
         ]);

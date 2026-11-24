@@ -96,6 +96,7 @@ final class CatalogueDesPages
             'caissier.encaissements' => ['libelle' => 'Encaissements', 'routes' => ['caissier.encaissements']],
             'caissier.decaissements' => ['libelle' => 'Décaissements', 'routes' => ['caissier.decaissements']],
             'ecritures.parametrage' => ['libelle' => 'Écritures comptables — paramétrage des comptes', 'routes' => ['ecritures.parametrage']],
+            'ecritures.index' => ['libelle' => 'Écritures comptables — journal et déversement', 'routes' => ['ecritures.index']],
         ]],
         'tresorerie' => ['libelle' => 'Trésorerie', 'pages' => [
             'tresorerie' => ['libelle' => 'Trésorerie', 'routes' => ['tresorerie', 'tresorerie.*']],

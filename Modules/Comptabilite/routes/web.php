@@ -27,4 +27,6 @@ Route::middleware(['auth', 'role:caissier'])
  */
 Route::middleware(['auth', 'role:gerant|caissier'])->group(function () {
     Volt::route('/ecritures-comptables/parametrage', 'comptabilite.ecritures-parametrage')->name('ecritures.parametrage');
+    // Le journal des écritures générées, la TVA à lire et le déversement vers COMPTAFLOW — 24/11.
+    Volt::route('/ecritures-comptables', 'comptabilite.ecritures')->name('ecritures.index');
 });
