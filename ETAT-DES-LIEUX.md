@@ -3564,4 +3564,4 @@ fournisseur affecté. Voir `docs/COMPTAFLOW/ETAT-DES-IMPUTATIONS-ET-DES-IA.md` p
 - Dépôt IT-dcknowing réaligné le 24/11 sur meledjeabrahamagnimel-lgtm (poussée forcée autorisée) :
   le commit du 05/11 qui portait un dump de la base de production n'est plus sur `main` — il reste
   dans l'historique GitHub tant qu'une purge n'est pas demandée ; mots de passe à changer.
-
+- Rapport (24/11, suite) : onglets fixés, sommaire des sections, deux colonnes, montants sans arrondi.

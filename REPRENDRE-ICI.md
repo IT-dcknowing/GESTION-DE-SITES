@@ -85,6 +85,13 @@ L'**IA d'imputation** ne voit que les charges tombées en « Autres » (658000) 
 nature **du plan de l'entreprise**, le serveur rejette toute autre réponse, et seule une
 proposition **validée par une personne** change l'écriture (table `imputations_comptables`).
 
+### Fait le 24/11 (suite) — le rapport se lit sans défiler à l'aveugle
+
+Onglets fixés en haut (sur cette page, `overflow-x: clip` remplace `hidden` sur html/body, qui
+empêchait tout `position: sticky`), sommaire cliquable des sections, onglets chiffrés sur deux
+colonnes, montants sans arrondi (`montant_nombre`). Branche `rapport-lisibilite`. Reste à faire : le
+rapport « poussé » sur le modèle de l'Excel de trésorerie (proposition du 24/11, à valider).
+
 ## 3 cinquies. Le 2 novembre 2026
 
 **Le 02/11**, branche `fusion-et-correction-des-deux-cotes`. **Aucune migration.** Le travail du 29/10
