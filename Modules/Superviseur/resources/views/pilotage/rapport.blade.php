@@ -282,6 +282,34 @@ $nouvelleConversation = function () {
 .rp .rp-prod.sobre h1,.rp .rp-prod.sobre h2,.rp .rp-prod.sobre h3{color:#191B20}
 .rp .rp-puce{display:inline-block;background:#191B20;color:#fff;font-size:11px;font-weight:800;padding:3px 9px;border-radius:12px;margin-bottom:8px}
 .rp .rp-puce.systeme{background:#0E9F6E}
+/* 24/11 — « il n'est pas bien visible, on oublie de défiler » : la page se resserre. Les onglets
+   restent en haut pendant le défilement, un sommaire mène à chaque section, les cartes et les
+   bandeaux perdent leur épaisseur, et un tableau étroit ne s'étire plus sur toute la largeur. */
+.rp .rp-onglets{position:sticky;top:0;z-index:20;background:var(--th-fond,#F4F3EF);padding:8px 0;margin:6px 0 10px;box-shadow:0 6px 8px -8px rgba(0,0,0,.25)}
+.rp .rp-onglet{padding:7px 12px;font-size:12.5px}
+.rp .rp-titre{padding:10px 16px;font-size:15.5px;border-bottom-width:3px}
+.rp .rp-section{margin:14px 0 8px;padding:6px 12px;font-size:12.5px;scroll-margin-top:110px}
+.rp .rp-kpi{padding:9px 12px}.rp .rp-kpi-v{font-size:21px}.rp .rp-kpi-l{font-size:11px}
+.rp .rp-grille{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.rp .rp-table{font-size:12.5px}.rp .rp-table th{padding:6px 8px}.rp .rp-table td{padding:4px 8px}
+.rp .rp-boite{width:fit-content;max-width:100%;min-width:min(100%,560px)}
+.rp .rp-deux .rp-boite{width:auto;min-width:0}
+.rp .rp-notes{padding:4px 12px}.rp .rp-note{margin:3px 0;padding:2px 10px;font-size:12.5px}
+.rp .rp-sommaire{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 0;font-size:12px}
+.rp .rp-sommaire a{padding:3px 9px;border:1px solid #D4D1C7;border-radius:12px;background:#fff;color:#191B20;text-decoration:none;font-weight:700}
+.rp .rp-sommaire a:hover{border-color:#C8102E;color:#C8102E}
+.rp .rp-haut{position:fixed;right:18px;bottom:18px;z-index:30;padding:8px 12px;border-radius:20px;background:#191B20;color:#fff;font-weight:800;font-size:12px;border:0;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+@media print{.rp .rp-onglets,.rp .rp-sommaire,.rp .rp-haut{display:none}}
+/* `overflow-x: hidden` (app.css) fait du corps un conteneur de défilement : rien ne s'y colle.
+   `clip` garde la règle — rien ne déborde — sans casser `position: sticky`. */
+@supports (overflow-x: clip){html,body{overflow-x:clip}}
+.rp .rp-flux{columns:2 560px;column-gap:16px}
+.rp .rp-flux > *, .rp .rp-flux .rp-boite, .rp .rp-flux .rp-notes{break-inside:avoid}
+.rp .rp-flux .rp-section{break-after:avoid;margin-top:0;display:block}
+.rp .rp-flux .rp-section:not(:first-child){margin-top:4px}
+.rp .rp-flux .rp-grille, .rp .rp-flux .rp-deux, .rp .rp-flux .rp-notes{column-span:all;margin-bottom:12px}
+.rp .rp-flux .rp-boite{width:auto;min-width:0;margin-bottom:12px}
+.rp .rp-flux .rp-section:has(+ .rp-grille), .rp .rp-flux .rp-section:has(+ .rp-deux){column-span:all}
 </style>
 
 <x-titre-ecran titre="Rapport — exercice {{ $this->exerciceChoisi }}"
@@ -290,7 +318,8 @@ $nouvelleConversation = function () {
 @php
     $d = $this->donnees;
     $cm = $this->commentaires;
-    $f = fn ($v) => number_format((float) $v, 0, ',', ' ');
+    // Un montant s'écrit tel qu'il est, centimes compris quand il en a (règle du 13/10, piège 17).
+    $f = fn ($v) => montant_nombre($v);
     $mm = fn ($v) => number_format((float) $v / 1_000_000, 1, ',', ' ').' M';
     $pct = fn ($v) => $v === null ? '—' : number_format($v * 100, 1, ',', ' ').' %';
     $periode = '01/01/'.$d['exercice'].' au '.$d['fin']->format('d/m/Y');
@@ -307,7 +336,33 @@ $nouvelleConversation = function () {
     <select wire:model.live="exercice" class="rp-annee" aria-label="Exercice">
         @foreach ($this->annees as $a)<option value="{{ $a }}">{{ $a }}</option>@endforeach
     </select>
+    {{-- Rempli par le navigateur (wire:ignore : Livewire ne le vide pas, piège 7). --}}
+    <nav class="rp-sommaire" wire:ignore data-rp-sommaire aria-label="Sections de l'onglet" style="flex-basis:100%"></nav>
 </div>
+<button type="button" class="rp-haut" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Revenir en haut">↑ Haut</button>
+<script>
+    (function () {
+        function construire() {
+            var nav = document.querySelector('[data-rp-sommaire]');
+            if (!nav) { return; }
+            nav.innerHTML = '';
+            document.querySelectorAll('.rp .rp-section').forEach(function (bandeau, i) {
+                bandeau.id = 'rp-s' + i;
+                var lien = document.createElement('a');
+                lien.href = '#rp-s' + i;
+                lien.textContent = bandeau.textContent.trim().replace(/\s+/g, ' ').slice(0, 48);
+                nav.appendChild(lien);
+            });
+            nav.style.display = nav.children.length > 1 ? 'flex' : 'none';
+        }
+        document.addEventListener('DOMContentLoaded', construire);
+        document.addEventListener('livewire:navigated', construire);
+        document.addEventListener('livewire:init', function () {
+            window.Livewire.hook('commit', function (c) { c.succeed(function () { setTimeout(construire, 0); }); });
+        });
+        setTimeout(construire, 0);
+    })();
+</script>
 
 @if ($this->vue !== 'presentation' && $this->vue !== 'depot')
     <div class="rp-titre">
@@ -396,6 +451,8 @@ $nouvelleConversation = function () {
 @endif
 
 {{-- ═══════════════════ Chiffre d'affaires ═══════════════════ --}}
+{{-- Les onglets chiffrés coulent sur deux colonnes (24/11) : une section ne se coupe pas. --}}
+<div class="rp-flux">
 @if ($this->vue === 'ca')
     @php $ca = $d['ca']; @endphp
     <div class="rp-section">A. Chiffre d'affaires de l'entreprise (global)</div>
@@ -637,6 +694,7 @@ $nouvelleConversation = function () {
         </div>
     </div>
 @endif
+</div>
 
 {{-- ═══════════════════ Dépôt de fichiers ═══════════════════ --}}
 @if ($this->vue === 'depot')
