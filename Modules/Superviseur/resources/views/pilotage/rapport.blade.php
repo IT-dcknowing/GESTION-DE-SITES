@@ -310,6 +310,8 @@ $nouvelleConversation = function () {
 .rp .rp-flux .rp-grille, .rp .rp-flux .rp-deux, .rp .rp-flux .rp-notes{column-span:all;margin-bottom:12px}
 .rp .rp-flux .rp-boite{width:auto;min-width:0;margin-bottom:12px}
 .rp .rp-flux .rp-section:has(+ .rp-grille), .rp .rp-flux .rp-section:has(+ .rp-deux){column-span:all}
+/* Un tableau de treize colonnes ne tient pas dans une demi-largeur : il défilait de côté dans sa colonne. */
+.rp .rp-flux .rp-large{column-span:all}
 </style>
 
 <x-titre-ecran titre="Rapport — exercice {{ $this->exerciceChoisi }}"
@@ -382,7 +384,7 @@ $nouvelleConversation = function () {
             @case('recouvrement') Source : état des impayés et créances saisies, moins les règlements enregistrés. Montants en FCFA. @break
             @case('charges') Sources : caisse administrative, charges saisies, suivi fournisseurs, factures FNE et pièces déposées. Montants en FCFA. @break
             @case('conclusion') Montants en FCFA. Tout est calculé à partir des pages précédentes. @break
-            @case('commerciaux') Source : factures rattachées à chaque commercial, objectif au prorata de la période. @break
+            @case('commerciaux') Sources : prospections, devis et factures rattachés à chaque commercial sur l'exercice ; objectif au prorata de la période. Montants en FCFA. @break
             @case('precedent') Les grandes lignes de l'exercice précédent, comparées à l'exercice en cours. @break
             @case('ia') L'assistant lit les données de l'application sous vos habilitations ; il n'écrit que ses analyses, ses documents et les pièces du dépôt. @break
         @endswitch
@@ -444,7 +446,7 @@ $nouvelleConversation = function () {
         <tr><td><b>Recouvrement</b></td><td>Impayés : dix premiers clients, autres clients, ancienneté</td></tr>
         <tr><td><b>Charges</b></td><td>Fournisseurs, autres fournisseurs, salaires, impôts, CNPS, autres + classement des dépenses</td></tr>
         <tr><td><b>Conclusion</b></td><td>Trésorerie, engagements, délais, recouvrement à réaliser, synthèse</td></tr>
-        <tr><td><b>Commerciaux</b></td><td>Récapitulatif par commercial : réalisé, objectif, encours</td></tr>
+        <tr><td><b>Commerciaux</b></td><td>Récapitulatif par commercial : prospections, devis, factures, réalisé, objectif, encours</td></tr>
         <tr><td><b>Année précédente</b></td><td>Les grandes lignes de l'exercice précédent</td></tr>
         <tr><td><b>Dépôt de fichiers</b></td><td>Impôts, CNPS, récapitulatifs — sans doublon</td></tr>
     </tbody></table></div>
@@ -659,16 +661,46 @@ $nouvelleConversation = function () {
 
 {{-- ═══════════════════ Commerciaux ═══════════════════ --}}
 @if ($this->vue === 'commerciaux')
-    @php $lignesC = $this->rapport->commerciaux(); @endphp
-    <div class="rp-section">Récapitulatif par commercial</div>
-    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Commercial</th><th>Ville</th><th>Factures</th><th>CA réalisé</th><th>Mécanique</th><th>Sinistre</th><th>Objectif (prorata)</th><th>Taux</th><th>Encours clients</th></tr></thead><tbody>
+    @php $lignesC = $this->rapport->commerciaux(); $tc = $this->rapport->totalDesCommerciaux(); @endphp
+    {{-- 24/11 — « un récapitulatif de l'activité des commerciaux » : l'amont (prospections, devis)
+         avant le réalisé. Les règles de comptage sont celles des écrans Prospects et Devis, citées
+         sur `RapportFinancier::commerciaux()`. --}}
+    <div class="rp-section">A. Activité de l'équipe commerciale (totaux)</div>
+    <div class="rp-grille">
+        {!! $kpi('Prospections saisies', (string) $tc['prospectionsSaisies'], $tc['prospections'].' transmises ou validées', '#191B20') !!}
+        {!! $kpi('Passées en devis', (string) $tc['passeesEnDevis'], $pct($tc['tauxProspectionDevis']).' des prospections — '.$tc['attenteDuDevis'].' en attente du devis', '#2563EB') !!}
+        {!! $kpi('Devis émis', (string) $tc['devisEmis'], $tc['devisEnAttente'].' en attente', '#D97706') !!}
+        {!! $kpi('Devis transformés', (string) $tc['devisTransformes'], $pct($tc['tauxDevisFacture']).' des devis — '.$tc['devisFactures'].' suivis d\'une facture', '#0E9F6E') !!}
+        {!! $kpi('Factures', (string) $tc['factures'], $f($tc['realisation']).' F facturés') !!}
+    </div>
+
+    <div class="rp-section rp-large">B. De la prospection à la facture, par commercial</div>
+    <div class="rp-boite rp-large"><table class="rp-table"><thead><tr><th>Commercial</th><th>Prospections saisies</th><th>Transmises ou validées</th><th>Passées en devis</th><th>En attente du devis</th><th>Taux prosp. → devis</th><th>Devis émis</th><th>Devis en attente</th><th>Devis transformés</th><th>dont facturés</th><th>Taux devis → facture</th><th>Factures</th><th>CA facturé</th></tr></thead><tbody>
+        @forelse ($lignesC as $l)
+            <tr><td><b>{{ $l['commercial'] }}</b></td><td class="d">{{ $l['prospectionsSaisies'] }}</td><td class="d">{{ $l['prospections'] }}</td><td class="d">{{ $l['passeesEnDevis'] }}</td><td class="d">{{ $l['attenteDuDevis'] }}</td><td class="d">{{ $pct($l['tauxProspectionDevis']) }}</td><td class="d">{{ $l['devisEmis'] }}</td><td class="d">{{ $l['devisEnAttente'] }}</td><td class="d">{{ $l['devisTransformes'] }}</td><td class="d">{{ $l['devisFactures'] }}</td><td class="d">{{ $pct($l['tauxDevisFacture']) }}</td><td class="d">{{ $l['factures'] }}</td><td class="d"><b>{{ $f($l['realisation']) }}</b></td></tr>
+        @empty
+            <tr><td colspan="13" style="color:#6B6F78;">Aucun commercial actif dans votre périmètre.</td></tr>
+        @endforelse
+        @if ($lignesC !== [])
+            <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $tc['prospectionsSaisies'] }}</td><td class="d">{{ $tc['prospections'] }}</td><td class="d">{{ $tc['passeesEnDevis'] }}</td><td class="d">{{ $tc['attenteDuDevis'] }}</td><td class="d">{{ $pct($tc['tauxProspectionDevis']) }}</td><td class="d">{{ $tc['devisEmis'] }}</td><td class="d">{{ $tc['devisEnAttente'] }}</td><td class="d">{{ $tc['devisTransformes'] }}</td><td class="d">{{ $tc['devisFactures'] }}</td><td class="d">{{ $pct($tc['tauxDevisFacture']) }}</td><td class="d">{{ $tc['factures'] }}</td><td class="d">{{ $f($tc['realisation']) }}</td></tr>
+        @endif
+    </tbody></table></div>
+    <div class="rp-notes">
+        <div class="rp-note"><b>Prospections saisies</b> : toutes celles de l'exercice, brouillons et refusées compris. <b>Transmises ou validées</b> : celles que comptent les pages Prospects et Affichage général.</div>
+        <div class="rp-note"><b>Passées en devis</b> : prospections transmises ou validées cochées « devis après passage » ; <b>en attente du devis</b> : celles dont le devis n'est pas encore relié (import à venir ou numéro manquant).</div>
+        <div class="rp-note"><b>Devis transformés</b> : validés à l'écran ou suivis d'une facture (même devis ou même fiche de réception), comme sur la page Devis ; <b>en attente</b> : « En attente » et non transformés. Les devis sont ceux émis dans l'exercice au nom du commercial.</div>
+        <div class="rp-note"><b>Factures, CA facturé</b> : factures de l'exercice portant le commercial, comme sur la page Commerciaux. Les taux du TOTAL sont recalculés sur les totaux.</div>
+    </div>
+
+    <div class="rp-section rp-large">C. Réalisé, objectif et encours par commercial</div>
+    <div class="rp-boite rp-large"><table class="rp-table"><thead><tr><th>Commercial</th><th>Ville</th><th>Factures</th><th>CA réalisé</th><th>Mécanique</th><th>Sinistre</th><th>Objectif (prorata)</th><th>Taux</th><th>Encours clients</th></tr></thead><tbody>
         @forelse ($lignesC as $l)
             <tr><td><b>{{ $l['commercial'] }}</b></td><td>{{ $l['ville'] }}</td><td class="d">{{ $l['factures'] }}</td><td class="d"><b>{{ $f($l['realisation']) }}</b></td><td class="d">{{ $f($l['mecanique']) }}</td><td class="d">{{ $f($l['sinistre']) }}</td><td class="d">{{ $l['objectif'] > 0 ? $f($l['objectif']) : '—' }}</td><td class="d">{{ $pct($l['taux']) }}</td><td class="d">{{ $f($l['encours']) }}</td></tr>
         @empty
             <tr><td colspan="9" style="color:#6B6F78;">Aucun commercial actif dans votre périmètre.</td></tr>
         @endforelse
         @if ($lignesC !== [])
-            <tr class="rp-total"><td colspan="2">TOTAL</td><td class="d">{{ collect($lignesC)->sum('factures') }}</td><td class="d">{{ $f(collect($lignesC)->sum('realisation')) }}</td><td class="d">{{ $f(collect($lignesC)->sum('mecanique')) }}</td><td class="d">{{ $f(collect($lignesC)->sum('sinistre')) }}</td><td class="d">{{ $f(collect($lignesC)->sum('objectif')) }}</td><td></td><td class="d">{{ $f(collect($lignesC)->sum('encours')) }}</td></tr>
+            <tr class="rp-total"><td colspan="2">TOTAL</td><td class="d">{{ $tc['factures'] }}</td><td class="d">{{ $f($tc['realisation']) }}</td><td class="d">{{ $f($tc['mecanique']) }}</td><td class="d">{{ $f($tc['sinistre']) }}</td><td class="d">{{ $f($tc['objectif']) }}</td><td class="d">{{ $pct($tc['taux']) }}</td><td class="d">{{ $f($tc['encours']) }}</td></tr>
         @endif
     </tbody></table></div>
 @endif
