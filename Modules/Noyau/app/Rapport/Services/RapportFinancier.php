@@ -10,11 +10,14 @@ use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Modeles\Banque;
 use Modules\Noyau\Exploitation\Modeles\Commercial;
+use Modules\Noyau\Exploitation\Modeles\Devis;
 use Modules\Noyau\Exploitation\Modeles\Encaissement;
 use Modules\Noyau\Exploitation\Modeles\Facture;
+use Modules\Noyau\Exploitation\Modeles\Prospection;
 use Modules\Noyau\Exploitation\Services\ChargesDeLaPeriode;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
+use Modules\Noyau\Exploitation\Services\TransformationDesDevis;
 use Modules\Noyau\Exploitation\Services\TresorerieReelle;
 use Modules\Noyau\Imports\Modeles\MouvementBancaire;
 use Modules\Noyau\Rapport\Modeles\PieceRapport;
@@ -427,7 +430,34 @@ final class RapportFinancier
 
     // ───────────────────────────────────────────────────────── commerciaux
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * Le récapitulatif par commercial : son activité (prospections → devis → factures), puis son
+     * réalisé face à l'objectif — 24/11.
+     *
+     * « Un récapitulatif de l'activité des commerciaux : les prospections, celles passées en devis,
+     * toutes celles saisies ; le nombre de prospections, en devis, en attente, les factures. » L'onglet
+     * ne montrait que les factures, le réalisé, l'objectif et l'encours : rien de ce qui les précède.
+     *
+     * **Aucune définition n'est neuve** : chaque compte reprend celui de l'écran qui le montre déjà,
+     * pour que le rapport ne contredise aucune page.
+     *
+     * | Colonne | Règle | Écran qui la tient |
+     * |---|---|---|
+     * | Prospections saisies | toutes celles du commercial datées de l'exercice, brouillons et refusées compris | « Mes prospections » |
+     * | Transmises ou validées | `Prospection::visibles()` — les brouillons exclus | Prospects, Affichage général |
+     * | Passées en devis | visibles et `devis_apres_passage` | « Devis après passage » (Prospects, classement de l'Affichage général) |
+     * | En attente du devis | passées en devis sans devis relié | `ProspectionsPasseesEnDevis`, `Prospection::etatDuDevis()` |
+     * | Devis émis | `devis.commercial_id`, émis dans l'exercice | Devis (répartition par commercial) |
+     * | Devis transformés | validés **ou facturés** | `TransformationDesDevis` (08/10) |
+     * | Devis en attente | « En attente » et non transformés | carte « En attente » de la page Devis (12/10) |
+     * | Factures, CA facturé | factures portant le commercial | Commerciaux (classement) |
+     *
+     * **Le périmètre** : les commerciaux actifs des villes du lecteur, comme avant ; leurs prospections
+     * et leurs devis pris dans ses ateliers **ou sans atelier** — `whereIn` seul perdrait les lignes
+     * sans site (piège 1), et le commercial, lui, est déjà dans le périmètre.
+     *
+     * @return list<array<string, mixed>>
+     */
     public function commerciaux(): array
     {
         return $this->une('commerciaux', function () {
@@ -435,6 +465,31 @@ final class RapportFinancier
             $fin = $this->fin();
 
             $commerciaux = Commercial::actifs()->where('est_spontane', false)->whereIn('ville_id', $this->idsVilles)->with('ville')->get();
+            $ids = $commerciaux->pluck('id')->all();
+            $dansLesSites = fn ($requete, string $table) => $requete
+                ->where(fn ($q) => $q->whereIn($table.'.site_id', $this->idsSites)->orWhereNull($table.'.site_id'));
+
+            // Les prospections : une requête pour tous, regroupées ici — jamais une par commercial.
+            $prospections = $ids === [] ? collect() : $dansLesSites(Prospection::query(), 'prospections')
+                ->whereIn('commercial_id', $ids)
+                ->whereBetween('date', [$debut, $fin])
+                ->withExists('devis')
+                ->get(['id', 'commercial_id', 'statut_validation', 'devis_apres_passage'])
+                ->groupBy('commercial_id');
+
+            /*
+             * Les devis : **tous** ceux du périmètre et de l'exercice passent par la transformation, pas
+             * seulement ceux des commerciaux listés. « Une fiche ne transforme qu'un devis », le plus
+             * récent de la fiche : n'en donner qu'une partie ferait élire un autre devis que celui de la
+             * page Devis, et les deux chiffres divergeraient.
+             */
+            $devis = $dansLesSites(Devis::query(), 'devis')
+                ->whereBetween('date_emission', [$debut, $fin])
+                ->toBase()
+                ->get(['id', 'commercial_id', 'statut', 'n_fiche_reception', 'date_emission']);
+            $suites = TransformationDesDevis::facturesDesTransformes($devis);
+            $transformes = array_map(fn () => true, $suites);
+            $devisParCommercial = $devis->whereNotNull('commercial_id')->groupBy('commercial_id');
 
             // L'encours de chacun : le reste à encaisser de ses factures, par l'état des impayés.
             $encours = EtatDesImpayes::dansLePerimetre(EtatDesImpayes::requete($this->exercice), $this->idsSites, $this->idsVilles)
@@ -444,15 +499,31 @@ final class RapportFinancier
                 ->groupBy('commercial_id')
                 ->map(fn ($g) => montant_de($g->sum(fn ($l) => max(montant_de($l->montant) - montant_de($l->encaissements_sum_montant ?? 0), 0))));
 
-            return $commerciaux->map(function (Commercial $c) use ($debut, $fin, $encours) {
+            return $commerciaux->map(function (Commercial $c) use ($debut, $fin, $encours, $prospections, $devisParCommercial, $suites, $transformes) {
                 $lignes = Facture::query()->where('commercial_id', $c->id)->whereIn('site_id', $this->idsSites)
                     ->whereBetween('date', [$debut, $fin])->toBase()->get(['montant', 'activite']);
                 $realisation = montant_de($lignes->sum('montant'));
                 $objectif = (int) round(PeriodeCalculateur::objectifProrata((float) $c->objectif_mensuel, $debut, $fin));
 
+                $saisies = $prospections[$c->id] ?? collect();
+                $visibles = $saisies->whereIn('statut_validation', ['Transmise', 'Validée']);
+                $enDevis = $visibles->filter(fn ($p) => (bool) $p->devis_apres_passage);
+                $siens = $devisParCommercial[$c->id] ?? collect();
+                $estTransforme = fn ($d) => array_key_exists((int) $d->id, $suites);
+
                 return [
                     'commercial' => $c->nom,
                     'ville' => $c->ville?->nom,
+                    'prospectionsSaisies' => $saisies->count(),
+                    'prospections' => $visibles->count(),
+                    'passeesEnDevis' => $enDevis->count(),
+                    'attenteDuDevis' => $enDevis->reject(fn ($p) => (bool) $p->devis_exists)->count(),
+                    'tauxProspectionDevis' => $visibles->count() > 0 ? $enDevis->count() / $visibles->count() : null,
+                    'devisEmis' => $siens->count(),
+                    'devisEnAttente' => $siens->where('statut', 'En attente')->reject($estTransforme)->count(),
+                    'devisTransformes' => $siens->filter($estTransforme)->count(),
+                    'devisFactures' => $siens->filter(fn ($d) => ($suites[(int) $d->id] ?? null) !== null)->count(),
+                    'tauxDevisFacture' => TransformationDesDevis::taux($siens, $transformes),
                     'factures' => $lignes->count(),
                     'realisation' => $realisation,
                     'mecanique' => montant_de($lignes->where('activite', 'Mécanique')->sum('montant')),
@@ -462,6 +533,46 @@ final class RapportFinancier
                     'encours' => (float) ($encours[$c->id] ?? 0),
                 ];
             })->sortByDesc(fn ($l) => $l['realisation'])->values()->all();
+        });
+    }
+
+    /**
+     * La ligne TOTAL du récapitulatif, et les cartes du haut de l'onglet.
+     *
+     * Les taux se **recalculent sur les totaux** : additionner ou moyenner des taux ferait peser
+     * autant le commercial qui a deux prospections que celui qui en a deux cents.
+     *
+     * @return array<string, mixed>
+     */
+    public function totalDesCommerciaux(): array
+    {
+        return $this->une('totalCommerciaux', function () {
+            $lignes = collect($this->commerciaux());
+            $somme = fn (string $cle) => $lignes->sum($cle);
+            $prospections = $somme('prospections');
+            $devisEmis = $somme('devisEmis');
+            $objectif = $somme('objectif');
+            $realisation = montant_de($somme('realisation'));
+
+            return [
+                'prospectionsSaisies' => $somme('prospectionsSaisies'),
+                'prospections' => $prospections,
+                'passeesEnDevis' => $somme('passeesEnDevis'),
+                'attenteDuDevis' => $somme('attenteDuDevis'),
+                'tauxProspectionDevis' => $prospections > 0 ? $somme('passeesEnDevis') / $prospections : null,
+                'devisEmis' => $devisEmis,
+                'devisEnAttente' => $somme('devisEnAttente'),
+                'devisTransformes' => $somme('devisTransformes'),
+                'devisFactures' => $somme('devisFactures'),
+                'tauxDevisFacture' => $devisEmis > 0 ? $somme('devisTransformes') / $devisEmis : null,
+                'factures' => $somme('factures'),
+                'realisation' => $realisation,
+                'mecanique' => montant_de($somme('mecanique')),
+                'sinistre' => montant_de($somme('sinistre')),
+                'objectif' => $objectif,
+                'taux' => $objectif > 0 ? $realisation / $objectif : null,
+                'encours' => montant_de($somme('encours')),
+            ];
         });
     }
 
