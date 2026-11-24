@@ -163,13 +163,13 @@ final class RapportFinancier
     {
         $requete = EtatDesImpayes::dansLePerimetre(EtatDesImpayes::requete($this->exercice), $this->idsSites, $this->idsVilles)
             ->when($client !== null && trim($client) !== '', fn ($q) => $q->where('factures.client', 'like', '%'.trim($client).'%'))
-            ->withSum('encaissements', 'montant')->withMax('encaissements', 'date');
+            ->avecEncaisseEtAvoirs()->withMax('encaissements', 'date');
 
         return $requete->get(['factures.id', 'factures.numero', 'factures.client', 'factures.date', 'factures.montant', 'factures.exercice_impayes'])
             ->map(fn ($l) => [
                 'numero' => (string) $l->numero, 'client' => (string) $l->client, 'date' => $l->date?->format('Y-m-d'),
                 'montant' => montant_de($l->montant), 'regle' => montant_de($l->encaissements_sum_montant ?? 0),
-                'reste' => max(montant_de($l->montant) - montant_de($l->encaissements_sum_montant ?? 0), 0),
+                'reste' => Recouvrement::reste($l),
                 'dernier_reglement' => $l->encaissements_max_date,
             ])->filter(fn ($l) => $l['reste'] >= Recouvrement::SEUIL_SOLDE)->sortByDesc('reste')->take($limite)->values()->all();
     }
@@ -192,7 +192,7 @@ final class RapportFinancier
     {
         return $this->une('rec', function () {
             $lignes = EtatDesImpayes::dansLePerimetre(EtatDesImpayes::requete($this->exercice), $this->idsSites, $this->idsVilles)
-                ->withSum('encaissements', 'montant')
+                ->avecEncaisseEtAvoirs()
                 ->withMax('encaissements', 'date')
                 ->get(['factures.id', 'factures.client', 'factures.date', 'factures.montant', 'factures.exercice_impayes']);
 
@@ -204,7 +204,7 @@ final class RapportFinancier
             $reste = 0;
 
             foreach ($lignes as $l) {
-                $du = max(montant_de($l->montant) - montant_de($l->encaissements_sum_montant ?? 0), 0);
+                $du = Recouvrement::reste($l);
 
                 if ($du > 0) {
                     $reste += $du;
@@ -494,10 +494,10 @@ final class RapportFinancier
             // L'encours de chacun : le reste à encaisser de ses factures, par l'état des impayés.
             $encours = EtatDesImpayes::dansLePerimetre(EtatDesImpayes::requete($this->exercice), $this->idsSites, $this->idsVilles)
                 ->whereNotNull('factures.commercial_id')
-                ->withSum('encaissements', 'montant')
+                ->avecEncaisseEtAvoirs()
                 ->get(['factures.id', 'factures.commercial_id', 'factures.montant'])
                 ->groupBy('commercial_id')
-                ->map(fn ($g) => montant_de($g->sum(fn ($l) => max(montant_de($l->montant) - montant_de($l->encaissements_sum_montant ?? 0), 0))));
+                ->map(fn ($g) => montant_de($g->sum(fn ($l) => Recouvrement::reste($l))));
 
             return $commerciaux->map(function (Commercial $c) use ($debut, $fin, $encours, $prospections, $devisParCommercial, $suites, $transformes) {
                 $lignes = Facture::query()->where('commercial_id', $c->id)->whereIn('site_id', $this->idsSites)

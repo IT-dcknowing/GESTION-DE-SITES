@@ -372,7 +372,7 @@ $comptesParEtat = computed(function () {
  */
 $detail = computed(fn () => (clone $this->requeteDetail)
     ->with(['commercial', 'site'])
-    ->withSum('encaissements', 'montant')
+    ->avecEncaisseEtAvoirs()
     ->latest('date')->latest('id')
     ->forPage(max(1, (int) $this->pageDetail), 10)
     ->get());

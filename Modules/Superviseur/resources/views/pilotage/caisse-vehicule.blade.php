@@ -95,7 +95,7 @@ $mouvements = computed(fn () => ! $this->cherche ? collect() : MouvementCaisse::
  */
 $factures = computed(fn () => ! $this->cherche ? collect() : Facture::query()
     ->with('site')
-    ->withSum('encaissements', 'montant')
+    ->avecEncaisseEtAvoirs()
     ->whereIn('site_id', $this->idsSites)
     ->where('immatriculation', $this->plaque)
     ->orderByDesc('date')->orderByDesc('id')

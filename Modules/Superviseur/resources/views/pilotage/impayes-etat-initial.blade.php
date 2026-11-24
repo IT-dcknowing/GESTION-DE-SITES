@@ -57,7 +57,7 @@ $annees = computed(function () {
 
 $lignes = computed(function () {
     $requete = EtatDesImpayes::requeteEtatInitial()
-        ->withSum('encaissements', 'montant')
+        ->avecEncaisseEtAvoirs()
         ->with('site.ville')
         ->where(fn ($q) => $q->whereIn('site_id', $this->idsSites)->orWhereNull('site_id'))
         ->when($this->anneeFiltre !== '', fn ($q) => $q->where('exercice_impayes', (int) $this->anneeFiltre));

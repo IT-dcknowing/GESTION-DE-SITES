@@ -92,7 +92,7 @@ $tranches = computed(function () {
         $index = Recouvrement::tranchePourAge(Recouvrement::ageDeLaLigne($ligne, $jourArrete));
 
         if ($index !== null) {
-            $totaux[$index] += Recouvrement::resteDe($ligne->montant, $ligne->encaissements_sum_montant);
+            $totaux[$index] += Recouvrement::resteDeLaLigne($ligne);
         }
     }
 
