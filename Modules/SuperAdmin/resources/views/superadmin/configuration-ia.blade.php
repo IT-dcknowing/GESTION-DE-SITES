@@ -4,16 +4,24 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Modules\SuperAdmin\Http\Controllers\ConfigurationIAController;
 
-$configurations = DB::table('configurations_ia')->get()->keyBy('fournisseur');
-$affectations = Schema::hasTable('affectations_ia') ? DB::table('affectations_ia')->get()->keyBy('usage') : collect();
-$usages = ConfigurationIAController::USAGES;
-$fournisseurs = [
-    'openai' => ['nom' => 'OpenAI', 'modele' => 'gpt-6'],
-    'anthropic' => ['nom' => 'Anthropic', 'modele' => 'claude'],
-    'google' => ['nom' => 'Google Gemini', 'modele' => 'gemini'],
-    'openrouter' => ['nom' => 'OpenRouter', 'modele' => ''],
-];
+use function Livewire\Volt\with;
 
+/*
+ * Erreur en ligne du 24/11 : « Undefined variable $usages ». Dans un composant Volt, les
+ * variables écrites en tête de fichier restent locales au bloc PHP : la vue ne les voit pas.
+ * Elles passent donc par `with()`, relues à chaque rendu.
+ */
+with(fn () => [
+    'configurations' => DB::table('configurations_ia')->get()->keyBy('fournisseur'),
+    'affectations' => Schema::hasTable('affectations_ia') ? DB::table('affectations_ia')->get()->keyBy('usage') : collect(),
+    'usages' => ConfigurationIAController::USAGES,
+    'fournisseurs' => [
+        'openai' => ['nom' => 'OpenAI', 'modele' => 'gpt-6'],
+        'anthropic' => ['nom' => 'Anthropic', 'modele' => 'claude'],
+        'google' => ['nom' => 'Google Gemini', 'modele' => 'gemini'],
+        'openrouter' => ['nom' => 'OpenRouter', 'modele' => ''],
+    ],
+]);
 ?>
 
 <div>
