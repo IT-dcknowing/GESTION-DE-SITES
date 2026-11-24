@@ -3565,3 +3565,9 @@ fournisseur affecté. Voir `docs/COMPTAFLOW/ETAT-DES-IMPUTATIONS-ET-DES-IA.md` p
   le commit du 05/11 qui portait un dump de la base de production n'est plus sur `main` — il reste
   dans l'historique GitHub tant qu'une purge n'est pas demandée ; mots de passe à changer.
 - Rapport (24/11, suite) : onglets fixés, sommaire des sections, deux colonnes, montants sans arrondi.
+- 24/11 (fin) : migration des écritures rejouable (index nommés court, erreur MySQL 1059) ;
+  récapitulatif des commerciaux au rapport ; ville d'une facture par le numéro de sa fiche de réception
+  (`VilleParLeNumeroDeFiche`, `factures:situer --details/--appliquer`) ; reste dû = montant + avoirs
+  rattachés − encaissements, partagé par l'état des impayés et le recouvrement ; suppression des pièces
+  fournisseurs importées (jamais une FNE normalisée) ; une source effacée voit son écriture retirée ou
+  contre-passée. Plan de la suite du rapport dans REPRENDRE-ICI § 4.

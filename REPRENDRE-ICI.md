@@ -85,6 +85,29 @@ L'**IA d'imputation** ne voit que les charges tombées en « Autres » (658000) 
 nature **du plan de l'entreprise**, le serveur rejette toute autre réponse, et seule une
 proposition **validée par une personne** change l'écriture (table `imputations_comptables`).
 
+### Fait le 24/11 (fin) — migration réparée, commerciaux, ville par la fiche, avoirs, suppression fournisseurs
+
+- **Migration des écritures** : en ligne, MySQL a refusé un nom d'index de plus de 64 caractères
+  (erreur 1059) après avoir créé deux tables. Index nommés court, posés seulement s'ils manquent :
+  `php artisan migrate` se rejoue sur la base à moitié passée (éprouvé).
+- **Rapport, onglet Commerciaux** : récapitulatif par commercial — prospections saisies, transmises,
+  passées en devis, en attente du devis ; devis émis, transformés, facturés, en attente ; factures et
+  CA ; taux. Définitions reprises des écrans existants. À trancher : le CA de cet onglet et de la page
+  Commerciaux ne passe pas par `duChiffreDAffaires` (piège 18).
+- **Ville d'une facture par le numéro de sa fiche de réception** (`VilleParLeNumeroDeFiche`) : le
+  numéro après « N° », sans lettres ni zéros de tête, retrouve la fiche (parc ou devis) et sa ville ;
+  ambigu → rien ; contradiction avec le code → signalé, rien n'est écrit. `factures:situer --details`
+  (constat) puis `--appliquer`. Questions ouvertes au § 5.
+- **Avoirs** : le reste dû est désormais *montant + avoirs rattachés − encaissements*, une seule règle
+  pour l'état des impayés et le recouvrement (`Facture::resteSql`, `Recouvrement::resteDe`). Une
+  facture avoirée sort du recouvrement, pour le client comme pour le tiers. Les impayés sont une
+  partie du recouvrement (le recouvrement ajoute les factures saisies sans passer par l'état et range
+  par **tiers payant**).
+- **Fournisseurs** : bouton Supprimer pour une pièce **importée** seulement ; refus serveur pour une
+  FNE normalisée, une pièce saisie, une pièce réglée ou avoirée, hors périmètre ou sans habilitation.
+  Une pièce supprimée revient si sa ligne est encore dans le prochain fichier. Son écriture comptable
+  est retirée (jamais envoyée) ou contre-passée (envoyée) à la génération suivante.
+
 ### Fait le 24/11 (suite) — le rapport se lit sans défiler à l'aveugle
 
 Onglets fixés en haut (sur cette page, `overflow-x: clip` remplace `hidden` sur html/body, qui
@@ -690,6 +713,30 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 44 | **Affichage général des prospections** | ✅ 14/10 |
 | 45 | **Objectifs mensuels de l'entreprise** par tranches et période | ✅ 14/10 — migration `2026_10_14_000002` ; **à saisir par le gérant** (§ 4, point 17) |
 
+### Le rapport — la suite, décidée le 24/11 (dans l'ordre)
+
+Décision du propriétaire : **pas de saisie obligatoire**. Les champs de saisie restent, facultatifs ;
+la voie principale est **l'import de fichiers, que l'IA analyse et commente**.
+
+1. **Choix de la période** : semaine (du jeudi au mercredi, comme l'Excel), mois, dates libres ; et
+   filtres ville / atelier. Tous les onglets lisent la même période.
+2. **Situation de trésorerie hebdomadaire** sur le modèle de l'Excel « RAPPORT TRESORERIE » : caisses
+   par ville, banques (BGFI, AFG), synthèses ; solde initial, encaissements et décaissements par
+   rubrique, solde final ; chèques déposés / en circulation, provision des salaires, remboursement du
+   gérant → **écart à couvrir** ; contrôle solde calculé / solde annoncé. Ce que l'application ne
+   connaît pas arrive **par dépôt du fichier** de la semaine (onglet Dépôt), lu puis analysé par l'IA ;
+   champs de saisie facultatifs.
+3. **Synthèse mensuelle** = cumul des semaines.
+4. **Fournisseurs à régler par catégorie** (concessionnaires, peinture, pièces mécaniques, frais
+   généraux, carrosserie) : facturé, réglé, reste, ancienneté.
+5. **Engagements fiscaux et sociaux** : avis DGI et appels CNPS **déposés** (l'IA lit l'avis : droits,
+   pénalités, frais, échéance) ; alerte rouge quand le délai court.
+6. **Synthèse dirigeant** d'une page et **indicateurs** (délai client, délai fournisseur, semaines de
+   couverture, charges / CA) ; **alertes par règles**.
+7. **Exports Excel** (mise en forme du modèle) et PDF, faits par le serveur — « ça viendra ».
+8. **IA** : analyse de chaque dépôt et de la période, en tâche de fond ; ce qu'elle produit cloisonné
+   par périmètre ; journal des appels et coûts au Super admin.
+
 ### Comptabilité — après le 24/11
 
 - **Serveur** : jouer `php artisan migrate`, puis `php artisan queue:work` doit tourner (la
@@ -925,6 +972,17 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 ---
 
 ## 5. Les questions ouvertes, et ce qu'on sait déjà
+
+### 00bis. Questions du 24/11 — ville par la fiche, avoirs
+
+- Le « code à 2 chiffres » est-il bien le code à deux **lettres** (`KZ`, `YB`) ?
+- La numérotation des fiches est-elle commune aux trois villes, ou un compteur par ville ?
+- Côté fiche, toujours `FR-XXN° 0nnnnn` sur six chiffres ?
+- Si le code et le numéro se contredisent, lequel fait foi ? (aujourd'hui : aucun, la facture est listée)
+- Les 44 avoirs du classeur n'ont pas de facture désignée : les rattacher ?
+- Une facture payée puis avoirée fait un trop-perçu non signalé : le signaler ?
+- Ajouter au recouvrement une vue par **client** (l'état des impayés est par client, le recouvrement
+  par tiers payant) ?
 
 ### 00. Les portefeuilles du commercial — un choix fait le 29/10, à confirmer
 
