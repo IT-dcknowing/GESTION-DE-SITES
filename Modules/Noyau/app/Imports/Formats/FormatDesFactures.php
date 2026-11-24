@@ -5,6 +5,7 @@ namespace Modules\Noyau\Imports\Formats;
 use Illuminate\Support\Facades\DB;
 use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Services\RapprochementDevisFacture;
+use Modules\Noyau\Exploitation\Services\VilleParLeNumeroDeFiche;
 use Modules\Noyau\Imports\Modeles\DossierVehicule;
 use Modules\Noyau\Imports\Services\PontDesFactures;
 
@@ -58,6 +59,11 @@ class FormatDesFactures extends Format
     private ?array $numerosRetrouves = null;
 
     private ?PontDesFactures $pont = null;
+
+    private ?VilleParLeNumeroDeFiche $parLeNumero = null;
+
+    /** La source d'un rattachement trouvé par le numéro de la fiche (`revoirLeRattachement`). */
+    private const PAR_LE_NUMERO = 'numero_fiche';
 
     /**
      * Ce que le CATTC ajoute à une facture déjà suivie à l'état des impayés — et rien d'autre.
@@ -185,6 +191,48 @@ class FormatDesFactures extends Format
         return isset($this->sitesDesDevis[$fiche]) ? (int) $this->sitesDesDevis[$fiche] : null;
     }
 
+    /**
+     * **Le numéro de la fiche, quand le code manque — 24/11.** « Parfois les deux lettres
+     * sautaient » : `FR-N° 006165` ne dit pas sa ville, et la cascade retombait sur la ville
+     * déclarée au dépôt — une présomption, que `ecrire()` n'écrit pas. La fiche de réception
+     * qui porte 006165 la dit (`VilleParLeNumeroDeFiche`).
+     *
+     * Le numéro **ne passe jamais devant** ce que la ligne a établi (fiche à l'identique,
+     * colonne SITE, code, atelier déclaré) : il comble un vide. Quand il contredit, la ligne
+     * garde sa ville et le désaccord est compté au résumé du dépôt.
+     */
+    protected function revoirLeRattachement(array $ligne, array $ou, Resultat $resultat): array
+    {
+        $fiche = self::texte($ligne['fiche'] ?? null, 60);
+
+        if ($fiche === null) {
+            return $ou;
+        }
+
+        $this->parLeNumero ??= new VilleParLeNumeroDeFiche($this->entrepriseId);
+        $n = $this->parLeNumero->resoudre($fiche);
+
+        if (! $ou['presumee'] && $ou['ville_id'] !== null) {
+            if ($n['statut'] === VilleParLeNumeroDeFiche::TROUVEE && $n['ville_id'] !== (int) $ou['ville_id']) {
+                $resultat->contreLeNumero++;
+            }
+
+            return $ou;
+        }
+
+        if ($n['statut'] === VilleParLeNumeroDeFiche::AMBIGUE) {
+            $resultat->numerosAmbigus++;
+        }
+
+        if ($n['statut'] !== VilleParLeNumeroDeFiche::TROUVEE) {
+            return $ou;
+        }
+
+        $resultat->villesParLeNumero++;
+
+        return ['ville_id' => $n['ville_id'], 'site_id' => $n['site_id'], 'code' => $ou['code'], 'source' => self::PAR_LE_NUMERO, 'presumee' => false];
+    }
+
     protected function ecrire(array $ligne, array $rattachement, ?int $lotId): string
     {
         $numero = self::texte($ligne['numero'] ?? null, 60);
@@ -309,6 +357,11 @@ class FormatDesFactures extends Format
 
         if ($rattachement['presumee']) {
             unset($valeurs['ville_id']);
+        }
+
+        // Le numéro de fiche comble un vide, il ne déplace pas une facture déjà située.
+        if ($rattachement['source'] === self::PAR_LE_NUMERO && $existante->ville_id !== null) {
+            unset($valeurs['ville_id'], $valeurs['site_id']);
         }
 
         $existante->fill($valeurs);

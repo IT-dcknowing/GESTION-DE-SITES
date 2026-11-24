@@ -55,6 +55,17 @@ class Resultat
     public int $pourUneAutreVille = 0;
 
     /**
+     * Factures du CA situées par le **numéro** de leur fiche, faute de code — 24/11. Et celles
+     * que ce numéro ne situe pas parce que des fiches de plusieurs villes le portent, ou qu'il
+     * contredit la ville que la ligne a reçue autrement : dites, jamais tranchées.
+     */
+    public int $villesParLeNumero = 0;
+
+    public int $numerosAmbigus = 0;
+
+    public int $contreLeNumero = 0;
+
+    /**
      * Fiches posées par une feuille annexe, hors des cinq compteurs.
      *
      * Le classeur du suivi fournisseurs porte une seconde feuille qui ne décrit pas des
@@ -120,7 +131,29 @@ class Resultat
         }
 
         return $this->lues.' ligne'.($this->lues > 1 ? 's' : '').' lue'.($this->lues > 1 ? 's' : '')
-            .' : '.implode(', ', $morceaux).'.'.$this->fichesPosees().$this->factureRecuePourUneAutreVille().$this->avertissementDAtelier();
+            .' : '.implode(', ', $morceaux).'.'.$this->fichesPosees().$this->factureRecuePourUneAutreVille().$this->parLeNumeroDeFiche().$this->avertissementDAtelier();
+    }
+
+    private function parLeNumeroDeFiche(): string
+    {
+        $phrases = [];
+
+        if ($this->villesParLeNumero > 0) {
+            $phrases[] = $this->villesParLeNumero.' facture'.($this->villesParLeNumero > 1 ? 's' : '')
+                .' située'.($this->villesParLeNumero > 1 ? 's' : '').' par le numéro de leur fiche de réception, faute de code.';
+        }
+
+        if ($this->numerosAmbigus > 0) {
+            $phrases[] = $this->numerosAmbigus.' n° de fiche porté'.($this->numerosAmbigus > 1 ? 's' : '')
+                .' par des fiches de plusieurs villes : ville laissée vide.';
+        }
+
+        if ($this->contreLeNumero > 0) {
+            $phrases[] = $this->contreLeNumero.' ligne'.($this->contreLeNumero > 1 ? 's' : '')
+                .' dont le n° de fiche désigne une autre ville que celle retenue : à vérifier (php artisan factures:situer --details).';
+        }
+
+        return $phrases === [] ? '' : ' '.implode(' ', $phrases);
     }
 
     /**
