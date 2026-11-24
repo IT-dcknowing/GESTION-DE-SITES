@@ -8,6 +8,9 @@ utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour
 fichier-ci dit seulement **où l'on en est, ce qui reste, et ce qu'il ne faut pas refaire**. On y
 va quand on a besoin du détail ; on commence ici.
 
+**Vue d'ensemble des trois applications, fait / reste à faire : [docs/PLAN-GENERAL.md](docs/PLAN-GENERAL.md)**
+(ordre arrêté le 24/11 : le rapport et son IA, puis les écritures, puis le reste).
+
 ---
 
 ## 1. Le projet en six lignes
