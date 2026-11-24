@@ -35,9 +35,6 @@ return new class extends Migration
                 $t->string('ncc', 40)->nullable();
                 $t->boolean('est_divers')->default(false);
                 $t->timestamps();
-                $t->unique(['entreprise_id', 'numero']);
-                $t->unique(['entreprise_id', 'nature', 'nom_normalise']);
-                $t->index(['entreprise_id', 'ncc']);
             });
         }
 
@@ -70,10 +67,6 @@ return new class extends Migration
                 $t->unsignedSmallInteger('essais')->default(0);
                 $t->timestamp('deversee_le')->nullable();
                 $t->timestamps();
-                $t->unique(['entreprise_id', 'numero_saisie']);
-                $t->index(['entreprise_id', 'source', 'source_id']);
-                $t->index(['entreprise_id', 'statut', 'statut_deversement']);
-                $t->index(['entreprise_id', 'date_operation']);
             });
         }
 
@@ -89,7 +82,6 @@ return new class extends Migration
                 $t->decimal('debit', 18, 4)->default(0);
                 $t->decimal('credit', 18, 4)->default(0);
                 $t->timestamps();
-                $t->index(['entreprise_id', 'compte']);
             });
         }
 
@@ -109,9 +101,27 @@ return new class extends Migration
                 $t->foreignId('decide_par')->nullable();
                 $t->timestamp('decide_le')->nullable();
                 $t->timestamps();
-                $t->unique(['entreprise_id', 'source', 'source_id']);
             });
         }
+
+        // Les index, nommés court et posés à part — 24/11. Le premier passage en ligne s'est arrêté sur
+        // « Identifier name … is too long » (MySQL : 64 caractères au plus) après avoir créé
+        // `operations_comptables` et une partie de ses index. Chaque index est donc ajouté s'il
+        // manque : la migration se rejoue sur une base à moitié passée comme sur une base neuve.
+        $this->index('tiers_comptables', 'tiers_cpt_numero_unique', ['entreprise_id', 'numero'], true,
+            ['tiers_comptables_entreprise_id_numero_unique']);
+        $this->index('tiers_comptables', 'tiers_cpt_nom_unique', ['entreprise_id', 'nature', 'nom_normalise'], true,
+            ['tiers_comptables_entreprise_id_nature_nom_normalise_unique']);
+        $this->index('tiers_comptables', 'tiers_cpt_ncc_index', ['entreprise_id', 'ncc'], false,
+            ['tiers_comptables_entreprise_id_ncc_index']);
+        $this->index('operations_comptables', 'ope_cpt_saisie_unique', ['entreprise_id', 'numero_saisie'], true,
+            ['operations_comptables_entreprise_id_numero_saisie_unique']);
+        $this->index('operations_comptables', 'ope_cpt_source_index', ['entreprise_id', 'source', 'source_id'], false,
+            ['operations_comptables_entreprise_id_source_source_id_index']);
+        $this->index('operations_comptables', 'ope_cpt_statuts_index', ['entreprise_id', 'statut', 'statut_deversement']);
+        $this->index('operations_comptables', 'ope_cpt_date_index', ['entreprise_id', 'date_operation']);
+        $this->index('lignes_comptables', 'lig_cpt_compte_index', ['entreprise_id', 'compte']);
+        $this->index('imputations_comptables', 'imp_cpt_source_unique', ['entreprise_id', 'source', 'source_id'], true);
 
         foreach (['montant_ht', 'montant_tva'] as $colonne) {
             if (Schema::hasTable('factures') && ! Schema::hasColumn('factures', $colonne)) {
@@ -124,6 +134,26 @@ return new class extends Migration
                 $t->timestamp('tva_lue_le')->nullable();
             });
         }
+    }
+
+    /**
+     * Ajoute un index s'il n'existe ni sous son nom, ni sous l'un des noms longs qu'un premier
+     * passage interrompu a pu lui donner.
+     *
+     * @param  list<string>  $colonnes
+     * @param  list<string>  $anciensNoms
+     */
+    private function index(string $table, string $nom, array $colonnes, bool $unique = false, array $anciensNoms = []): void
+    {
+        if (! Schema::hasTable($table)) {
+            return;
+        }
+        foreach ([$nom, ...$anciensNoms] as $existant) {
+            if (Schema::hasIndex($table, $existant)) {
+                return;
+            }
+        }
+        Schema::table($table, fn (Blueprint $t) => $unique ? $t->unique($colonnes, $nom) : $t->index($colonnes, $nom));
     }
 
     public function down(): void
