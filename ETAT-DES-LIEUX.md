@@ -1,6 +1,6 @@
 # État des lieux du projet — le fil à reprendre
 
-*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **2 novembre 2026** (43e passe).*
+*Tenu à jour à la fin de chaque séance de travail. Dernière mise à jour : **24 novembre 2026** (44e passe).*
 
 Ce fichier existe pour une seule raison : **qu'une nouvelle séance, sur n'importe quel poste,
 reprenne le travail là où il s'est arrêté, sans rien réapprendre et sans rien défaire.** Il dit
@@ -3546,3 +3546,22 @@ avec une IA par usage (rapport, imputations). (4) Vérifier ce qui existe pour l
 **Règles.** L'IA n'écrit dans aucune table de gestion : seulement `productions_ia` et les pièces du dépôt (sans doublon). Son style est
 une liste blanche (accent, fond, mise en page) ; son Markdown est rendu avec le HTML neutralisé. Les données lues partent chez le
 fournisseur affecté. Voir `docs/COMPTAFLOW/ETAT-DES-IMPUTATIONS-ET-DES-IA.md` pour l'audit des imputations.
+
+## 24/11 — Le module Comptabilité : écritures générées, TVA lue, IA d'imputation, déversement
+
+- Plan passé à 6 chiffres (`PlanComptable::six`, proposition 411000, 706100…), caisse et journal
+  par ville, banque et journal par banque réelle ; `PlanComptable::pourLEntreprise()` lit le plan
+  d'une entreprise hors session (tâches de fond).
+- `GenerateurDEcritures` : achats (suivi + FNE certifiée, FNE seules), règlements fournisseurs,
+  journal de caisse (charge / règlement / virement 585), charges saisies, ventes du CA, encaissements.
+  Ce qui manque → « à vérifier » avec motif, jamais deviné. Contre-passation après envoi.
+- `DeversementComptable` : référentiel (comptes, journaux, tiers utilisés) puis chaque opération,
+  atomique, clés `L{ligne}` / `OP{opération}` ; statut et message par opération, 5 essais au plus.
+- `PropositionsDImputation` : IA sur l'usage « imputations », lot de 25, clé du plan uniquement,
+  validation humaine obligatoire.
+- Décisions du propriétaire (24/11) : 6 chiffres ; 411000 + numéro de tiers, tiers divers ; aucun
+  arrondi ; TVA lue sur la facture ; une caisse et un journal par ville ; charges sans doublon.
+- Dépôt IT-dcknowing réaligné le 24/11 sur meledjeabrahamagnimel-lgtm (poussée forcée autorisée) :
+  le commit du 05/11 qui portait un dump de la base de production n'est plus sur `main` — il reste
+  dans l'historique GitHub tant qu'une purge n'est pas demandée ; mots de passe à changer.
+

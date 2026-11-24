@@ -1,7 +1,7 @@
 # Reprendre ici
 
 *Écrit pour qui ouvre une séance sur ce projet — une personne ou un assistant — et doit être
-utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 2 novembre
+utile dans la minute. **Se lit en entier avant de toucher au code.** Mis à jour le 24 novembre
 2026.*
 
 `ETAT-DES-LIEUX.md` reste la mémoire longue : 2 800 lignes, l'histoire de chaque décision. Ce
@@ -50,7 +50,42 @@ Posées par le propriétaire. Détail au § 2 d'`ETAT-DES-LIEUX.md`. **Aucune n'
 
 ---
 
-## 3. Où l'on en est — 2 novembre 2026
+## 3. Où l'on en est — 24 novembre 2026
+
+### Fait le 24/11 — le module Comptabilité : écritures, TVA lue, IA d'imputation, déversement
+
+Branche `comptabilite-ecritures-et-deversement`. Les règles d'imputation sont celles de SELFLOW
+(document « Règles d'imputation comptable de SELFLOW », 19/11) et le contrat celui de COMPTAFLOW
+(guide des écritures v2, payloads 01-03). Décisions du propriétaire, le 24/11 :
+
+- **Plan sur 6 chiffres** (401 → 401000) ; un compte collectif par nature (411000, 401000), **un
+  numéro de tiers à part** (410001…, 400001…) — assureurs compris — et un tiers divers (410000,
+  400000) pour ce qui n'a ni nom ni NCC. `TiersComptables`.
+- **Une caisse et un journal par ville** (571101 / CA01…), un compte et un journal par banque réelle.
+- **On n'arrondit rien** : « on écrit tel que c'est ». Montants comptés exactement (`Montants`),
+  équilibre au dix-millième sans tolérance ; un montant à plus de 2 décimales est « à vérifier »
+  (COMPTAFLOW n'en garde que deux) au lieu d'être arrondi.
+- **La TVA d'une vente ne se devine pas** : le fichier du CA n'a que le TTC. Une vente attend que
+  quelqu'un recopie HT et TVA lus sur la facture (écran Écritures, refus si HT + TVA ≠ TTC).
+  Colonnes `factures.montant_ht`, `montant_tva`, `tva_lue_par`, `tva_lue_le`.
+- **CA** = `scopeDuChiffreDAffaires` ; **charges d'abord et sans doublon** (règle de
+  `ChargesDeLaPeriode`) : pièce du suivi = la charge (sa FNE en donne le détail certifié) ; FNE seule
+  = charge ; sortie de caisse « fournisseurs » = règlement 401/caisse ; sortie administrative =
+  charge 6x/caisse ; versement/transfert = 585 ; sortie payée par un règlement du suivi = une fois.
+- Pièce et règlement = deux opérations ; une opération déjà envoyée est **contre-passée**, jamais
+  réécrite ; un brouillon jamais envoyé se remplace.
+
+Le code : `Modules/Noyau/app/Comptabilite/` (`GenerateurDEcritures`, `DeversementComptable`,
+`PropositionsDImputation`, `TiersComptables`, `Montants`, job `GenererEtDeverser`), commande
+`php artisan comptabilite:generer {entreprise} --du= --au= [--deverser]`, écran
+`/ecritures-comptables` (gérant et comptabilité ; le déversement au gérant seul). Migration
+`2026_11_24_000001` (additive). Épreuves : `LesEcrituresComptablesSeGenerentTest` (12).
+
+L'**IA d'imputation** ne voit que les charges tombées en « Autres » (658000) : elle propose une
+nature **du plan de l'entreprise**, le serveur rejette toute autre réponse, et seule une
+proposition **validée par une personne** change l'écriture (table `imputations_comptables`).
+
+## 3 cinquies. Le 2 novembre 2026
 
 **Le 02/11**, branche `fusion-et-correction-des-deux-cotes`. **Aucune migration.** Le travail du 29/10
 est en ligne sur **les deux dépôts** (`main` = `a063898`, poussé par le propriétaire depuis son poste
@@ -647,6 +682,18 @@ Détail : § 6 d'`ETAT-DES-LIEUX.md`, « seconde partie ».
 | 43 | **Charges selon la caisse** : carte cliquable → catégories ; bouton au tableau ; carte FNE branchée | ✅ 14/10 |
 | 44 | **Affichage général des prospections** | ✅ 14/10 |
 | 45 | **Objectifs mensuels de l'entreprise** par tranches et période | ✅ 14/10 — migration `2026_10_14_000002` ; **à saisir par le gérant** (§ 4, point 17) |
+
+### Comptabilité — après le 24/11
+
+- **Serveur** : jouer `php artisan migrate`, puis `php artisan queue:work` doit tourner (la
+  génération et le déversement passent en tâche de fond), puis générer l'exercice depuis l'écran.
+- **Comptable** : valider le plan proposé (écran Paramétrage) — en particulier 706100/706200,
+  443200, la caisse de chaque ville et le code journal de chaque banque.
+- **Saisie** : lire la TVA des ventes « à vérifier » ; préciser la banque des virements sans banque.
+- **COMPTAFLOW** : `ecritures/deverser` ne vérifie ni l'équilibre ni l'exercice clos (GESTION-DE-SITES
+  le vérifie avant d'envoyer) ; passer la liaison au parcours COMPTA-APK (jeton Bearer).
+- **Non écrit** : les relevés bancaires (`mouvements_bancaires`) et les recettes de caisse autres
+  que les approvisionnements (portées par les encaissements) ; les créances douteuses (416).
 
 ### Au propriétaire, et qui bloque la suite
 
