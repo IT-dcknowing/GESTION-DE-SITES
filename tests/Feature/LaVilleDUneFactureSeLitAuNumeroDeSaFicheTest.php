@@ -118,10 +118,24 @@ class LaVilleDUneFactureSeLitAuNumeroDeSaFicheTest extends TestCase
     }
 
     /** Le code dit Bouaké, la fiche du même numéro dit Abidjan : la facture n'est pas située, et elle est nommée. */
+    /**
+     * Constat en ligne du 24/11 : chaque ville a son compteur. `FR-YBN° 010229` (San Pédro) ne doit
+     * pas prendre la ville de la fiche d'Abidjan `FR-KZN° 010229` : ce sont deux fiches.
+     */
+    public function test_une_fiche_aux_autres_lettres_est_une_autre_fiche(): void
+    {
+        $this->fiche('FR-KZN° 010229', ville: $this->abidjan->id);
+
+        $this->assertSame(VilleParLeNumeroDeFiche::INCONNUE, (new VilleParLeNumeroDeFiche($this->e->id))->resoudre('FR-YBN° 010229')['statut']);
+        $this->assertSame(VilleParLeNumeroDeFiche::TROUVEE, (new VilleParLeNumeroDeFiche($this->e->id))->resoudre('FR-KZN° 010229')['statut']);
+    }
+
     public function test_un_conflit_avec_le_code_est_signale_et_rien_n_est_ecrase(): void
     {
+        // Le vrai conflit : la même fiche (mêmes lettres, même numéro) est à Abidjan, et le code
+        // SK dit Bouaké. Une fiche aux autres lettres, elle, n'est plus un conflit (24/11).
         $this->code('SK', $this->bouake->id);
-        $this->fiche('FR-ABN° 007777', ville: $this->abidjan->id);
+        $this->fiche('FR-SK N° 7777', ville: $this->abidjan->id);   // écrite autrement : pas d'égalité exacte
         $enConflit = $this->facture('FR-SKN° 007777');
 
         // Déjà située à Bouaké, et son numéro dit Abidjan : comptée, pas déplacée.
