@@ -183,6 +183,8 @@ abstract class Format
                 $siteDuDepot,
             );
 
+            $ou = $this->revoirLeRattachement($ligne, $ou, $resultat);
+
             $resultat->desaccords = $this->rattachement->desaccords();
             $this->villeDuDepotCourante = $villeDuDepot;
             $this->apresRattachement($ou, $villeDuDepot, $resultat);
@@ -619,6 +621,19 @@ abstract class Format
      * @param  array{ville_id: int|null, site_id: int|null, code: string|null, source: string, presumee: bool}  $ou
      */
     protected function apresRattachement(array $ou, ?int $villeDuDepot, Resultat $resultat): void {}
+
+    /**
+     * Ce que le format sait de plus que la cascade commune, pour une ligne qu'elle n'a pas
+     * située — appelé même en simulation, pour que le constat compte ce que l'écriture fera.
+     * Rend le rattachement inchangé par défaut.
+     *
+     * @param  array{ville_id: int|null, site_id: int|null, code: string|null, source: string, presumee: bool}  $ou
+     * @return array{ville_id: int|null, site_id: int|null, code: string|null, source: string, presumee: bool}
+     */
+    protected function revoirLeRattachement(array $ligne, array $ou, Resultat $resultat): array
+    {
+        return $ou;
+    }
 
     /**
      * Pourquoi refuser cette ligne, ou null pour l'accepter.
