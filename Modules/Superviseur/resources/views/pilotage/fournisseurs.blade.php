@@ -3,10 +3,12 @@
 use Modules\Noyau\Commun\Services\NombreDeJours;
 use Modules\Noyau\Commun\Services\FiltreLibre;
 use Modules\Noyau\Entreprises\Modeles\Site;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\Exploitation\Services\ConditionsFournisseur;
 use Modules\Noyau\Exploitation\Services\EtatDesFournisseurs;
 use Modules\Noyau\Exploitation\Services\GenerateurNumero;
+use Modules\Noyau\Exploitation\Services\SuppressionDUnePieceFournisseur;
 use Modules\Noyau\Imports\Modeles\FactureFne;
 use Modules\Noyau\Imports\Modeles\FactureFournisseur;
 use Modules\Noyau\Imports\Services\NumeroDePiece;
@@ -85,6 +87,8 @@ state([
     'formulaireOuvert' => false,
     // Les précisions du classeur, repliées sous l'essentiel (rétablies le 22/10).
     'precisionsOuvertes' => false,
+    // La pièce importée dont on demande la suppression (24/11) : la question se pose sur la ligne.
+    'aSupprimer' => null,
 ]);
 
 /* Les champs de la saisie à la main. Vidés par affectation, jamais par `reset()`, qui
@@ -355,6 +359,57 @@ $exercices = computed(function () {
 });
 
 $peutEcrire = computed(fn () => EtatDesFournisseurs::peutEcrire(auth()->user()));
+
+/*
+ * Supprimer une pièce importée — 24/11 : « un bouton Supprimer qui concerne uniquement les factures
+ * déposées par l'importation, et non les FNE normalisées ». Le geste est celui de la Maintenance
+ * (`pieces_fournisseurs.supprimer`, le gérant par défaut) ; le bouton ne paraît que sur une ligne
+ * importée et non rapprochée, et tout se revérifie au clic (`SuppressionDUnePieceFournisseur`).
+ */
+$peutSupprimer = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'pieces_fournisseurs', 'supprimer'));
+
+$demanderLaSuppression = function (int $id) {
+    $this->aSupprimer = $id;
+};
+
+$annulerLaSuppression = function () {
+    $this->aSupprimer = null;
+};
+
+/**
+ * Efface la pièce importée demandée. L'identifiant vient du navigateur : il ne commande rien tant
+ * que la pièce n'a pas été relue dans l'entreprise et le périmètre du compte — hors de là, elle
+ * n'existe pas (404), comme sur la page de la pièce.
+ */
+$confirmerLaSuppression = function () {
+    if (! HabilitationsDActions::accorde(auth()->user(), 'pieces_fournisseurs', 'supprimer')) {
+        abort(403);
+    }
+
+    $piece = EtatDesFournisseurs::dansLePerimetre(
+        FactureFournisseur::query(),
+        PerimetreSites::idsVillesRetenus(auth()->user(), ''),
+    )->find((int) $this->aSupprimer);
+
+    $this->aSupprimer = null;
+
+    if ($piece === null) {
+        abort(404);
+    }
+
+    try {
+        $numero = SuppressionDUnePieceFournisseur::effacerUnePieceImportee(auth()->user(), $piece);
+    } catch (\RuntimeException $e) {
+        $this->dispatch('annonce', texte: $e->getMessage());
+
+        return;
+    }
+
+    unset($this->perimetre, $this->requete, $this->detail, $this->kpis, $this->principaux, $this->exercices, $this->normalises);
+
+    $this->dispatch('annonce', texte: 'Pièce '.($numero !== '' ? $numero.' ' : '').'supprimée. Le journal en garde le contenu ; '
+        .'si la ligne est encore dans le fichier de suivi, elle reviendra au prochain dépôt.', ton: 'succes');
+};
 
 $villesOuSaisir = computed(fn () => PerimetreSites::optionsVilles(auth()->user())
     ?->pluck('nom', 'id')->all() ?? []);
@@ -1454,6 +1509,24 @@ $fiches = computed(fn () => ConditionsFournisseur::pour(
                                 @endif
                                 <a href="{{ route('fournisseurs.piece', $ligne) }}" wire:navigate
                                     class="bouton bouton-secondaire" style="padding:4px 10px; font-size:12px; text-decoration:none;">Détail</a>
+                                {{-- 24/11 : les seules pièces importées, jamais une pièce normalisée (créée d'une FNE
+                                     ou rapprochée d'elle). La question se pose sur la ligne, sans dialogue du
+                                     navigateur ; le serveur repose tous les verrous au clic. --}}
+                                @if ($this->peutSupprimer && $ligne->lot_import_id !== null && ! $rapprochee && $ligne->source_rattachement !== 'fne')
+                                    @if ((int) $aSupprimer === $ligne->id)
+                                        <div style="margin-top:6px; white-space:normal; max-width:280px; margin-left:auto; text-align:left; font-size:11.5px; color:#C8102E;">
+                                            Effacer la pièce {{ $ligne->numero_piece ?: '' }} ({{ ae(montant_de($ligne->montant)) }}) ?
+                                            Si elle est encore dans le fichier de suivi, elle reviendra au prochain dépôt.
+                                        </div>
+                                        <button type="button" wire:click="confirmerLaSuppression" class="bouton"
+                                            style="padding:4px 10px; font-size:12px; background:#C8102E; border-color:#C8102E;">Oui, effacer</button>
+                                        <button type="button" wire:click="annulerLaSuppression" class="bouton bouton-secondaire"
+                                            style="padding:4px 10px; font-size:12px;">Non</button>
+                                    @else
+                                        <button type="button" wire:click="demanderLaSuppression({{ $ligne->id }})" class="bouton bouton-secondaire"
+                                            style="padding:4px 10px; font-size:12px; color:#C8102E; border-color:#C8102E;">Supprimer</button>
+                                    @endif
+                                @endif
                             </td>
                         </tr>
                     @empty

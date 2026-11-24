@@ -338,8 +338,9 @@ $annulerLaSuppression = function () {
 };
 
 /**
- * Efface la pièce — 26/10. Le service repose ses verrous (habilitation, rien de réglé, rien
- * d'importé) : la pièce relue est celle du périmètre, jamais un identifiant reçu.
+ * Efface la pièce — 26/10. Le service repose ses verrous (habilitation, rien de réglé, rien de
+ * FNE ; pour une pièce importée, depuis le 24/11, ceux de `refusDUnePieceImportee`) : la pièce
+ * relue est celle du périmètre, jamais un identifiant reçu.
  */
 $confirmerLaSuppression = function () {
     $p = $this->piece;
@@ -455,6 +456,10 @@ $enregistrerAvoir = function () {
                 @if ($this->peutSupprimer && ! $enModification)
                     @if ($suppressionDemandee)
                         <span style="align-self:center; font-size:12.5px; color:#C8102E; font-weight:700;">Effacer cette pièce ?</span>
+                        @if ($p->lot_import_id !== null)
+                            {{-- 24/11 : une pièce importée se supprime, mais le prochain dépôt ne s'en souvient pas. --}}
+                            <span style="align-self:center; font-size:12px; color:#C8102E;">Si elle est encore dans le fichier de suivi, elle reviendra au prochain dépôt.</span>
+                        @endif
                         <button type="button" wire:click="confirmerLaSuppression" class="bouton" style="background:#C8102E; border-color:#C8102E;">Oui, effacer</button>
                         <button type="button" wire:click="annulerLaSuppression" class="bouton bouton-secondaire">Non</button>
                     @elseif ($this->refusDeSuppression === null)
