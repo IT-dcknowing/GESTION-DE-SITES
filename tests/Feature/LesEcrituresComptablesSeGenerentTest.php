@@ -181,6 +181,20 @@ class LesEcrituresComptablesSeGenerentTest extends TestCase
         $this->assertSame([['618000', '16000', '0'], ['571101', '0', '16000']], $this->lignes($ops[2]));
     }
 
+    public function test_une_source_effacee_est_contre_passee_si_envoyee_et_retiree_sinon(): void
+    {
+        $envoyee = $this->sortie('CARBURANT', 15000);
+        $brouillon = $this->sortie('CARBURANT', 9000);
+        $this->generer();
+        OperationComptable::withoutGlobalScopes()->where('source_id', $envoyee)->update(['statut_deversement' => 'acceptee']);
+
+        DB::table('mouvements_caisse')->whereIn('id', [$envoyee, $brouillon])->delete();
+        $ops = $this->generer();
+
+        $this->assertSame(['ContrePassation'], $ops->pluck('nature')->all(), 'le brouillon disparaît, l\'envoyée est annulée');
+        $this->assertSame([['618000', '0', '15000'], ['571101', '15000', '0']], $this->lignes($ops[0]));
+    }
+
     public function test_le_deversement_envoie_le_referentiel_puis_l_operation_entiere(): void
     {
         config(['services.comptaflow.url' => 'https://comptaflow.test', 'services.comptaflow.secret' => 's']);

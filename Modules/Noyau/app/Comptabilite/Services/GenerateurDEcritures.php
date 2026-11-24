@@ -98,6 +98,7 @@ final class GenerateurDEcritures
         $this->chargesSaisies($debut, $fin);
         $this->ventes($debut, $fin);
         $this->encaissements($debut, $fin);
+        $this->sourcesDisparues($debut, $fin);
 
         return $this->bilan;
     }
@@ -411,6 +412,38 @@ final class GenerateurDEcritures
                         $villeId, $e->site_id, $client));
                 }
             });
+    }
+
+    /**
+     * Une source effacée (pièce fournisseur importée supprimée, sortie de caisse retirée…) ne doit
+     * pas laisser son écriture : jamais envoyée, elle disparaît ; déjà envoyée, elle est
+     * contre-passée — comme une source modifiée.
+     */
+    private function sourcesDisparues(string $debut, string $fin): void
+    {
+        $tables = ['suivi' => 'factures_fournisseurs', 'fne' => 'factures_fne', 'reglement_fournisseur' => 'reglements_fournisseur',
+            'caisse' => 'mouvements_caisse', 'charge' => 'charges', 'facture' => 'factures', 'encaissement' => 'encaissements'];
+
+        foreach ($tables as $source => $table) {
+            if (! SchemaDisponible::table($table)) {
+                continue;
+            }
+            OperationComptable::withoutGlobalScopes()->with('lignes')->where('entreprise_id', $this->entrepriseId)
+                ->where('source', $source)->whereBetween('date_operation', [$debut, $fin])
+                ->where('est_contrepassation', false)->where('statut', '!=', OperationComptable::CONTREPASSEE)
+                ->whereNotExists(fn ($q) => $q->from($table)->whereColumn($table.'.id', 'operations_comptables.source_id'))
+                ->get()
+                ->each(function (OperationComptable $operation) {
+                    DB::transaction(function () use ($operation) {
+                        if (in_array($operation->statut_deversement, ['non_envoyee', 'refusee'], true)) {
+                            $operation->delete();
+                            $this->bilan['remplacees']++;
+                        } else {
+                            $this->contrepasser($operation);
+                        }
+                    });
+                });
+        }
     }
 
     // ── Briques ──────────────────────────────────────────────────────────────────────────
