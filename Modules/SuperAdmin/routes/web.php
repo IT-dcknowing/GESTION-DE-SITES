@@ -66,6 +66,13 @@ Route::middleware(['auth', 'role:super_admin'])
             ->name('ia.affecter')->middleware('habilitation:maintenance');
         Route::post('/intelligence-artificielle/tester', [ConfigurationIAController::class, 'tester'])
             ->name('ia.tester')->middleware('habilitation:maintenance');
+        // 25/11 : une IA pour tous les usages en un geste, et l'usage de l'IA accordé par entreprise.
+        Route::post('/intelligence-artificielle/partout', [ConfigurationIAController::class, 'affecterPartout'])
+            ->name('ia.affecter-partout')->middleware('habilitation:maintenance');
+        Route::post('/intelligence-artificielle/habilitations', [ConfigurationIAController::class, 'habiliter'])
+            ->name('ia.habiliter')->middleware('habilitation:maintenance');
+        Route::post('/intelligence-artificielle/habilitations/effacer', [ConfigurationIAController::class, 'effacerHabilitation'])
+            ->name('ia.habilitations.effacer')->middleware('habilitation:maintenance');
         Route::post('/comptaflow/liaison', [\Modules\SuperAdmin\Http\Controllers\LiaisonComptaflowController::class, 'store'])
             ->name('comptaflow.liaison.store')->middleware('habilitation:maintenance');
         Route::post('/comptaflow/liaison/{liaison}/verifier', [\Modules\SuperAdmin\Http\Controllers\LiaisonComptaflowController::class, 'verifier'])

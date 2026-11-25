@@ -7,6 +7,7 @@ use Modules\Noyau\Comptabilite\Modeles\OperationComptable;
 use Modules\Noyau\Comptabilite\Services\GenerateurDEcritures;
 use Modules\Noyau\Comptabilite\Services\Montants;
 use Modules\Noyau\Comptabilite\Services\PropositionsDImputation;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 
 use function Livewire\Volt\{computed, mount, protect, state, updated};
 
@@ -105,6 +106,8 @@ $natures = computed(fn () => PropositionsDImputation::disponible() ? (new Propos
 /** L'IA propose une nature pour les charges restées « Autres » — elle n'écrit rien. */
 $proposerParIA = function () {
     $this->garder();
+    // L'usage de l'IA se donne depuis le Super admin (25/11) ; le bouton caché n'autorise personne.
+    abort_unless(HabilitationsDActions::accorde(auth()->user(), 'comptabilite', 'imputer_ia'), 403);
     try {
         $n = (new PropositionsDImputation($this->entreprise()))->proposer();
         $this->dispatch('annonce', ton: 'succes', texte: $n.' proposition(s) de l’IA, à valider ci-dessous.');
@@ -204,7 +207,9 @@ $lireLaTva = function () {
             <x-carte-section titre="Charges non classées — l'IA propose, vous décidez">
                 <p style="font-size:12.5px; color:#4B4E55; margin:0 0 8px;">Les sorties et charges que la règle range en « Autres ». L'IA choisit une nature
                     du plan ; rien ne change tant que vous n'avez pas validé, et les montants ne bougent jamais.</p>
-                <button type="button" wire:click="proposerParIA" class="bouton bouton-secondaire" style="margin-bottom:8px;">Demander des propositions à l'IA</button>
+                @if (HabilitationsDActions::accorde(auth()->user(), 'comptabilite', 'imputer_ia'))
+                    <button type="button" wire:click="proposerParIA" class="bouton bouton-secondaire" style="margin-bottom:8px;">Demander des propositions à l'IA</button>
+                @endif
                 @if ($this->propositions->isNotEmpty())
                     <table class="tableau">
                         <thead><tr><th>Date</th><th>Libellé</th><th style="text-align:right;">Montant</th><th>Nature proposée</th><th>Confiance</th><th></th></tr></thead>
