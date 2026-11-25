@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Commun\Services;
 
 use App\Models\User;
+use Modules\Noyau\Comptabilite\Services\AccesALaComptabilite;
 use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Import\Support\AccesImport;
 use Modules\Noyau\Entreprises\Support\CatalogueDesPages;
@@ -134,8 +135,7 @@ class MenuNavigation
                 ['label' => 'Tableau de bord', 'route' => 'caissier.tableau-de-bord'],
                 ['label' => 'Encaissements', 'route' => 'caissier.encaissements'],
                 ['label' => 'Décaissements', 'route' => 'caissier.decaissements'],
-                // Les écritures générées et leur déversement (24/11) ; le paramétrage s'ouvre de là.
-                ['label' => 'Écritures comptables', 'route' => 'ecritures.index', 'actifPattern' => 'ecritures.'],
+                // Les écritures comptables ne sont plus au rôle depuis le 25/11 : voir `construire()`.
                 // La comptabilité encaisse ce que le recouvrement poursuit : elle
                 // décrochait le téléphone sans pouvoir lire ce qu'un client devait.
                 // Consultation seulement — voir AccesRecouvrement.
@@ -326,8 +326,6 @@ class MenuNavigation
         // Le barème décide de ce qu'un commercial touche à la fin du mois : il n'est
         // proposé qu'au gérant, comme l'écran lui-même.
         if ($utilisateur->hasRole('gerant')) {
-            // Les écritures générées et leur déversement (24/11) ; le paramétrage s'ouvre de là.
-            $general[] = ['label' => 'Écritures comptables', 'route' => 'ecritures.index', 'actifPattern' => 'ecritures.'];
             $general[] = ['label' => 'Barème de commission', 'route' => 'bareme-commission'];
             $general[] = ['label' => "Objectifs mensuels de l'entreprise", 'route' => 'objectifs-mensuels'];
         }
@@ -400,6 +398,20 @@ class MenuNavigation
     private static function construire(array $onglets): array
     {
         $onglets = self::selonLesPagesModifiees($onglets);
+
+        /*
+         * Les écritures comptables (25/11) : un module donné par habilitation (`comptabilite.*`, le
+         * gérant au départ), plus par rôle. Il paraît chez qui l'a reçu, quel que soit son menu ; les
+         * propositions de l'IA seulement avec `imputer_ia`. Même règle que les écrans eux-mêmes.
+         */
+        if (AccesALaComptabilite::peut(auth()->user(), 'voir')) {
+            $onglets[] = ['label' => 'Écritures comptables', 'groupe' => [
+                ['label' => 'Journal des écritures', 'route' => 'ecritures.index', 'actifPattern' => 'ecritures.index'],
+                ['label' => 'Paramétrage des comptes', 'route' => 'ecritures.parametrage'],
+                ...(AccesALaComptabilite::peut(auth()->user(), 'imputer_ia')
+                    ? [['label' => "Propositions de l'IA", 'route' => 'ecritures.imputations']] : []),
+            ]];
+        }
 
         // Le module Rapport (06/11) : un onglet de plus, pour qui a reçu l'habilitation — personne au départ.
         if (HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir')) {

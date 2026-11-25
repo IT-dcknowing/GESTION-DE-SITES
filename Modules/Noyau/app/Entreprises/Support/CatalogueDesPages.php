@@ -95,8 +95,11 @@ final class CatalogueDesPages
             'caissier.tableau-de-bord' => ['libelle' => 'Tableau de bord de la comptabilité', 'routes' => ['caissier.tableau-de-bord']],
             'caissier.encaissements' => ['libelle' => 'Encaissements', 'routes' => ['caissier.encaissements']],
             'caissier.decaissements' => ['libelle' => 'Décaissements', 'routes' => ['caissier.decaissements']],
-            'ecritures.parametrage' => ['libelle' => 'Écritures comptables — paramétrage des comptes', 'routes' => ['ecritures.parametrage']],
-            'ecritures.index' => ['libelle' => 'Écritures comptables — journal et déversement', 'routes' => ['ecritures.index']],
+            // Les écritures comptables (journal, paramétrage, propositions de l'IA) ne sont plus des pages
+            // à cocher depuis le 25/11 : elles se donnent par habilitation (Maintenance › Habilitations,
+            // domaine « Comptabilité »), comme le Rapport. Une case cochée ici aurait ouvert une route
+            // que l'écran aurait refusée faute du geste. Les rôles enregistrés avec ces pages les perdent
+            // à la lecture (`pagesConnues`), sans qu'aucune ligne ne soit réécrite.
         ]],
         'tresorerie' => ['libelle' => 'Trésorerie', 'pages' => [
             'tresorerie' => ['libelle' => 'Trésorerie', 'routes' => ['tresorerie', 'tresorerie.*']],
