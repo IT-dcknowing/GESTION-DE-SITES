@@ -3571,3 +3571,8 @@ fournisseur affecté. Voir `docs/COMPTAFLOW/ETAT-DES-IMPUTATIONS-ET-DES-IA.md` p
   rattachés − encaissements, partagé par l'état des impayés et le recouvrement ; suppression des pièces
   fournisseurs importées (jamais une FNE normalisée) ; une source effacée voit son écriture retirée ou
   contre-passée. Plan de la suite du rapport dans REPRENDRE-ICI § 4.
+- 25/11 : rapport sans « gone away » (avoirs en table dérivée), filtres période/lieu/activité et détail
+  par semaine et mois ; écran IA refondu (4 colonnes, une IA pour tout, habilitations par entreprise,
+  migration 2026_11_25_000010) ; Maintenance par thèmes ; écritures en 9 colonnes, module `comptabilite`
+  par habilitation, justificatifs (migration 2026_11_25_000002), liaison COMPTAFLOW vérifiée. Détail et
+  reste à faire : docs/PLAN-GENERAL.md.

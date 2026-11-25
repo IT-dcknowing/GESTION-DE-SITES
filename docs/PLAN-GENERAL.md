@@ -44,6 +44,15 @@ par sujet, fusion dans `main`, poussée sur les **deux** dépôts de chaque proj
       impayés et le recouvrement ; une facture avoirée sort du recouvrement (client et tiers).
 - [x] Fournisseurs : bouton Supprimer pour les pièces **importées** (jamais une FNE normalisée).
 - [x] Super admin, écran Intelligence artificielle : « Undefined variable $usages » corrigé.
+- [x] 25/11 : rapport sans « MySQL server has gone away » (avoirs additionnés une fois par facture).
+- [x] 25/11 : rapport filtré par semaine (jeudi → mercredi), mois, dates libres, ville, atelier,
+      activité ; CA et charges par semaine et par mois ; sans « Source », sans tirets longs, montants
+      en entier.
+- [x] 25/11 : écran IA en 4 colonnes, « une IA pour tout », IA accordée par entreprise à un rôle ou un
+      compte ; Maintenance refondue par thèmes (et contrôle d'accès à chaque clic).
+- [x] 25/11 : écritures en 9 colonnes, module `comptabilite` par habilitation (gérant par défaut),
+      propositions IA sur leur page, justificatifs PDF déposés et envoyés à COMPTAFLOW, liaison vérifiée
+      (8 écarts relevés, ceux de GESTION-DE-SITES corrigés).
 
 ---
 
@@ -75,7 +84,7 @@ par sujet, fusion dans `main`, poussée sur les **deux** dépôts de chaque proj
 Décision du 24/11 : **pas de saisie obligatoire**. Champs de saisie présents mais facultatifs ; la voie
 principale est **le dépôt de fichiers, que l'IA lit et analyse**.
 
-1. [ ] **Période** : semaine (du jeudi au mercredi, comme l'Excel), mois, dates libres ; filtres ville
+1. [x] **Période** : semaine (du jeudi au mercredi, comme l'Excel), mois, dates libres ; filtres ville
        et atelier ; tous les onglets lisent la même période.
 2. [ ] **Situation de trésorerie hebdomadaire** (modèle « RAPPORT TRESORERIE ») : caisses Abidjan,
        San Pédro, Bouaké + synthèse ; banques BGFI, AFG + synthèse ; solde initial, encaissements
@@ -115,7 +124,16 @@ principale est **le dépôt de fichiers, que l'IA lit et analyse**.
         `duChiffreDAffaires` (piège 18) ?
 11. [ ] Réparer les 2 épreuves du rapport en échec (`L_assistant_du_rapport_Test`,
         `LeModuleRapportEtLaFneDirecteTest`).
-12. [ ] Option : **connecteur MCP** de GESTION-DE-SITES (lecture, et actions sûres confirmées) pour
+12. [ ] Retirer le dernier `wire:confirm` du rapport (« Revenir à l'état du système »).
+13. [ ] Le caissier n'ouvre plus les écritures sans habilitation (module du 25/11) : l'accorder par la
+        Maintenance si la comptabilité doit y travailler.
+14. [ ] Mail L2A du 25/11 (Danielle Marie YAO) : à décortiquer dès réception du texte et des pièces.
+15. [ ] Alimentation directe depuis WinDev (M. Fofana) : export automatique + envoi HTTPS à l'application
+        (ou SFTP) ; cahier des charges à tirer d'`INTEGRATION_WINDEV.txt`.
+16. [ ] **Connecteur MCP** : serveur MCP dans l'application (laravel/mcp, lecture seule d'abord), section
+        MCP au Super admin, page « Liaison MCP » au Superviseur (jeton personnel), puis OAuth pour
+        claude.ai.
+17. [ ] Option : **connecteur MCP** de GESTION-DE-SITES (lecture, et actions sûres confirmées) pour
         travailler depuis Claude sur l'abonnement ; l'assistant intégré reste sur clé API.
 
 ## 5. Étape 2 — Les écritures comptables, bouclées
@@ -127,7 +145,9 @@ principale est **le dépôt de fichiers, que l'IA lit et analyse**.
        encaissements ; recettes de caisse autres que les approvisionnements ; créances douteuses (416) ;
        décaissement du gérant ; virements 585 rapprochés des deux côtés.
 5. [ ] Lettrage client / fournisseur ; export TXT ANSI 9 colonnes + plan, tiers, journaux (guide § 8).
-6. [ ] **COMPTAFLOW** : `ecritures/deverser` doit refuser une opération déséquilibrée, une date hors
+6. [ ] **COMPTAFLOW** (écarts relevés le 25/11) : préfixer `operation_source` comme la clé de ligne ;
+       comparer l'exercice à celui de la **date** (pas l'exercice actif) ; la révocation COMPTA-APK doit
+       couper aussi la clé `X-Company-Key` de GESTION-DE-SITES. Et : `ecritures/deverser` doit refuser une opération déséquilibrée, une date hors
        exercice et un exercice clos ; une ligne ne porte qu'un compte.
 7. [ ] **Liaison COMPTA-APK** pour GESTION-DE-SITES (code de liaison → identifiants → jeton Bearer) ;
        corriger côté COMPTAFLOW l'origine `strtoupper($app->code)` qui ne vaut pas `GESTION_DE_SITES`.
