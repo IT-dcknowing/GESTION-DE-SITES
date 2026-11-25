@@ -18,6 +18,8 @@ use Modules\Noyau\Comptabilite\Services\Montants;
 use Modules\Noyau\Comptabilite\Services\PropositionsDImputation;
 use Modules\Noyau\Comptabilite\Services\TiersComptables;
 use Modules\Noyau\Entreprises\Modeles\Entreprise;
+use Modules\Noyau\Entreprises\Modeles\HabilitationAction;
+use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Entreprises\Modeles\Site;
 use Modules\Noyau\Entreprises\Modeles\Ville;
 use Modules\Noyau\Entreprises\Services\ProvisionneurEntreprise;
@@ -242,6 +244,12 @@ class LesEcrituresComptablesSeGenerentTest extends TestCase
         (new GenerateurDEcritures($this->e->id))->generer(now()->startOfYear()->toDateString(), now()->endOfYear()->toDateString());
         $op = OperationComptable::withoutGlobalScopes()->where('source', 'facture')->sole();
 
+        // Depuis le 25/11 le module se donne par habilitation : la comptabilité reçoit ici la lecture
+        // et la TVA, pas le déversement.
+        foreach (['voir', 'lire_tva'] as $geste) {
+            HabilitationAction::create(['domaine' => 'comptabilite', 'action' => $geste, 'role' => 'caissier', 'accorde' => true]);
+        }
+        HabilitationsDActions::oublier();
         $this->actingAs($this->compte('caissier', 'caisse'));
         $ecran = Volt::test('comptabilite.ecritures')->assertSee('TVA à lire sur la facture')->call('ouvrir', $op->id);
         $ecran->set('ht', '100000')->set('tva', '17000')->call('lireLaTva')->assertHasErrors('ht');

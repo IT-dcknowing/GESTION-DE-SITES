@@ -1,5 +1,6 @@
 <?php
 
+use Modules\Noyau\Comptabilite\Services\AccesALaComptabilite;
 use Modules\Noyau\Exploitation\Modeles\CompteComptable;
 use Modules\Noyau\Exploitation\Services\PlanComptable;
 
@@ -30,9 +31,13 @@ mount(function () {
     $this->charger();
 });
 
-$garder = protect(function () {
-    abort_unless(auth()->user()?->hasAnyRole(['gerant', 'caissier']), 403);
+// Le module se donne par habilitation depuis le 25/11 (`comptabilite.voir`) ; enregistrer change
+// ce que la génération écrira, d'où `comptabilite.generer`.
+$garder = protect(function (string $geste = 'voir') {
+    AccesALaComptabilite::exiger($geste);
 });
+
+$peutEnregistrer = computed(fn () => AccesALaComptabilite::peut(auth()->user(), 'generer'));
 
 $charger = protect(function () {
     $this->cles = [];
@@ -52,6 +57,7 @@ $lignes = computed(fn () => PlanComptable::lignes());
 $rangs = computed(fn () => array_flip($this->cles));
 
 $proposer = function (int $rang) {
+    $this->garder();
     $cle = $this->cles[$rang] ?? null;
     $definition = $cle === null ? null : (PlanComptable::definitions()[$cle] ?? null);
 
@@ -61,7 +67,7 @@ $proposer = function (int $rang) {
 };
 
 $enregistrer = function () {
-    $this->garder();
+    $this->garder('generer');
 
     if (! PlanComptable::disponible()) {
         $this->dispatch('annonce', texte: "La mise à jour du serveur n'est pas encore passée (migration du 27/10).");
@@ -124,6 +130,13 @@ $enregistrer = function () {
     <x-titre-ecran titre="Écritures comptables — paramétrage"
         sous-titre="Le numéro de compte et l'intitulé de chaque rôle, et le code de chaque journal. Les propositions suivent le SYSCOHADA : à valider par votre comptable." />
 
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+        <a href="{{ route('ecritures.index') }}" wire:navigate class="bouton bouton-secondaire">← Écritures</a>
+        @if (AccesALaComptabilite::peut(auth()->user(), 'imputer_ia'))
+            <a href="{{ route('ecritures.imputations') }}" wire:navigate class="bouton bouton-secondaire">Propositions de l'IA</a>
+        @endif
+    </div>
+
     @if (! PlanComptable::disponible())
         <div class="carte"><p style="margin:0; color:#B45309;">La mise à jour du serveur n'est pas encore passée (migration du 27/10).</p></div>
     @else
@@ -171,7 +184,11 @@ $enregistrer = function () {
             @endforeach
 
             <div style="position:sticky; bottom:0; padding:12px 0; background:var(--th-fond,#F4F3EF);">
-                <button type="submit" class="bouton">Enregistrer le paramétrage</button>
+                @if ($this->peutEnregistrer)
+                    <button type="submit" class="bouton">Enregistrer le paramétrage</button>
+                @else
+                    <span style="font-size:12.5px; color:#6B6E76;">Lecture seule : enregistrer le paramétrage demande l'habilitation « Générer les écritures ».</span>
+                @endif
             </div>
         </form>
     @endif

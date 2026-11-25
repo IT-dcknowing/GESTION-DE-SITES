@@ -6,9 +6,9 @@ Audit fait avant d'ajouter l'assistant du rapport. Ce qui existe, ce qui manque,
 
 | Brique | Où | Ce qu'elle fait |
 |---|---|---|
-| Liaison COMPTAFLOW | `LiaisonComptaflow`, `ComptaflowClient` (`provisionner`, `verifier`, `listerTiers`, `deverserReferentiel`, `deverser`), page Super admin « COMPTAFLOW liaison » | Relie une entreprise à son dossier COMPTAFLOW, vérifie l'accès, liste les tiers, déverse le référentiel |
+| Liaison COMPTAFLOW | `LiaisonComptaflow`, `ComptaflowClient` (`provisionner`, `verifier`, `listerTiers`, `deverserReferentiel`, `deverser`, `deverserJustificatif` — 25/11), page Super admin « COMPTAFLOW liaison » | Relie une entreprise à son dossier COMPTAFLOW, vérifie l'accès, liste les tiers, déverse le référentiel |
 | Suivi des déversements | `DeversementComptaflow`, `CorrespondanceTiersComptaflow` (migrations 08/11 et 09/11) | Trace ce qui est envoyé ; rattache les tiers GESTION-SITES aux tiers COMPTAFLOW |
-| Plan comptable de l'application | `PlanComptable` (rôles → numéros de comptes), `CompteComptable`, page `ecritures.parametrage` (module Comptabilité, gérant et caissier) | Paramétrage des comptes par rôle : tiers, ventes, TVA, trésorerie, banques, charges, journaux |
+| Plan comptable de l'application | `PlanComptable` (rôles → numéros de comptes), `CompteComptable`, page `ecritures.parametrage` (module Comptabilité ; depuis le 25/11 par habilitation `comptabilite.voir`, enregistrement `comptabilite.generer`, le gérant au départ) | Paramétrage des comptes par rôle : tiers, ventes, TVA, trésorerie, banques, charges, journaux |
 | Clés d'IA | `configurations_ia`, page Super admin « Intelligence artificielle » | Clés chiffrées et modèle par fournisseur (OpenAI, Anthropic, Google, OpenRouter) |
 | Plan de déversement | `PLAN-DEVERSEMENT-GESTION-SITES-RH-FLOW.md` | Le cadrage des étapes, dont l'IA d'imputation (étape 5) |
 

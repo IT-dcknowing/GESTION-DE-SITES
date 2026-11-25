@@ -90,16 +90,34 @@ final class HabilitationsDActions
                 ],
             ],
         ],
-        // Les propositions de l'IA d'imputation, sur l'écran Écritures comptables — 25/11 : « accorder
-        // l'usage de l'IA depuis le Super admin ». Le départ est ce que l'écran permettait avant (le
-        // gérant et la comptabilité) : une table vide ne retire rien à personne. La clé
-        // `comptabilite` / `imputer_ia` est celle convenue avec le chantier qui ouvre le même domaine.
+        /*
+         * L'imputation comptable — 25/11 : « un module donné par habilitation ». Le gérant l'a au départ,
+         * et lui seul ; la Maintenance l'ouvre à un rôle ou à un compte précis (la comptabilité, un
+         * cabinet). Chaque geste suppose `voir`. Les noms sont lus ailleurs tels quels (l'écran IA du
+         * Super admin cite `comptabilite.imputer_ia`) : ne pas les renommer.
+         */
         'comptabilite' => [
-            'libelle' => 'Comptabilité',
+            'libelle' => 'Comptabilité — écritures et imputation',
             'actions' => [
+                'voir' => [
+                    'libelle' => 'Ouvrir les écritures comptables (journal, paramétrage, propositions de l\'IA) et leurs pièces justificatives',
+                    'defaut' => ['gerant'],
+                ],
+                'generer' => [
+                    'libelle' => 'Générer les écritures d\'un exercice et enregistrer le paramétrage des comptes',
+                    'defaut' => ['gerant'],
+                ],
+                'lire_tva' => [
+                    'libelle' => 'Recopier la TVA lue sur une facture de vente et joindre le PDF d\'une pièce',
+                    'defaut' => ['gerant'],
+                ],
+                'deverser' => [
+                    'libelle' => 'Déverser les écritures prêtes et leurs justificatifs vers COMPTAFLOW',
+                    'defaut' => ['gerant'],
+                ],
                 'imputer_ia' => [
-                    'libelle' => 'Demander à l\'IA des propositions d\'imputation (charges restées en « Autres »)',
-                    'defaut' => ['gerant', 'caissier'],
+                    'libelle' => 'Demander à l\'IA des propositions d\'imputation, les valider ou les rejeter',
+                    'defaut' => ['gerant'],
                 ],
             ],
         ],

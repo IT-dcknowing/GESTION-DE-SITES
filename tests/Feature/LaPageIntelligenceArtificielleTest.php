@@ -195,7 +195,9 @@ class LaPageIntelligenceArtificielleTest extends TestCase
     public function test_l_ia_d_imputation_garde_ses_titulaires_du_depart(): void
     {
         $this->assertTrue($this->peut($this->compte($this->alpha, 'gerant'), 'comptabilite', 'imputer_ia'));
-        $this->assertTrue($this->peut($this->compte($this->alpha, 'caissier'), 'comptabilite', 'imputer_ia'));
+        // Depuis le module Comptabilité (25/11), le gérant seul l'a au départ : la comptabilité
+        // la reçoit par la Maintenance ou par cet écran.
+        $this->assertFalse($this->peut($this->compte($this->alpha, 'caissier'), 'comptabilite', 'imputer_ia'));
         $this->assertFalse($this->peut($this->compte($this->alpha, 'commercial'), 'comptabilite', 'imputer_ia'));
 
         // Le gérant ne perd pas un geste qu'il tient du code.
