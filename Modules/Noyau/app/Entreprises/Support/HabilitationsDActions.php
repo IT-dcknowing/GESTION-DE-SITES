@@ -90,6 +90,19 @@ final class HabilitationsDActions
                 ],
             ],
         ],
+        // Les propositions de l'IA d'imputation, sur l'écran Écritures comptables — 25/11 : « accorder
+        // l'usage de l'IA depuis le Super admin ». Le départ est ce que l'écran permettait avant (le
+        // gérant et la comptabilité) : une table vide ne retire rien à personne. La clé
+        // `comptabilite` / `imputer_ia` est celle convenue avec le chantier qui ouvre le même domaine.
+        'comptabilite' => [
+            'libelle' => 'Comptabilité',
+            'actions' => [
+                'imputer_ia' => [
+                    'libelle' => 'Demander à l\'IA des propositions d\'imputation (charges restées en « Autres »)',
+                    'defaut' => ['gerant', 'caissier'],
+                ],
+            ],
+        ],
         'pieces_fournisseurs' => [
             'libelle' => 'Pièces fournisseurs — charges fournisseurs',
             'actions' => [
@@ -134,11 +147,15 @@ final class HabilitationsDActions
 
         $roles = $compte->getRoleNames()->all();
 
-        if ($lignes->whereNull('user_id')->where('accorde', true)->whereIn('role', $roles)->isNotEmpty()) {
+        // Pour chaque rôle, la ligne de son entreprise l'emporte sur la ligne commune (25/11) : on peut
+        // retirer chez Bêta ce qui est accordé partout, ou accorder chez Alpha seulement.
+        $parRole = self::lignesDeRolePour($lignes, $compte->entreprise_id !== null ? (int) $compte->entreprise_id : null);
+
+        if ($parRole->where('accorde', true)->whereIn('role', $roles)->isNotEmpty()) {
             return true;
         }
 
-        $retires = $lignes->whereNull('user_id')->where('accorde', false)->pluck('role')
+        $retires = $parRole->where('accorde', false)->pluck('role')
             ->reject(fn ($role) => $role === self::INAMOVIBLE)->all();
 
         // Un rôle créé dans la Maintenance reçoit les gestes de base du module qu'il a choisi.
@@ -159,21 +176,44 @@ final class HabilitationsDActions
     }
 
     /**
-     * Les rôles qui ont le geste, tel que la Maintenance le lit : ceux du départ moins les retirés,
-     * plus les accordés.
+     * Les lignes de rôle qui valent pour un compte de cette entreprise, une par rôle : celle de
+     * l'entreprise si elle existe, sinon la ligne commune.
      *
-     * @return array{defaut: list<string>, retires: list<string>, accordes: list<string>, comptes: Collection<int, HabilitationAction>}
+     * @param  Collection<int, HabilitationAction>  $lignes  les lignes d'un seul geste
+     * @return Collection<string, HabilitationAction>
+     */
+    public static function lignesDeRolePour(Collection $lignes, ?int $entrepriseId): Collection
+    {
+        // `toBase()` : le `merge()` d'une collection Eloquent fusionne par identifiant de ligne, pas par
+        // rôle — les deux lignes du gérant y restaient côte à côte et l'accord commun l'emportait.
+        $deRole = $lignes->toBase()->whereNull('user_id');
+        $communes = $deRole->whereNull('entreprise_id')->keyBy('role');
+
+        if ($entrepriseId === null) {
+            return $communes;
+        }
+
+        return $communes->merge($deRole->where('entreprise_id', $entrepriseId)->keyBy('role'));
+    }
+
+    /**
+     * Les rôles qui ont le geste, tel que la Maintenance le lit : ceux du départ moins les retirés,
+     * plus les accordés — pour toutes les entreprises. Ce qui ne vaut que pour une entreprise est
+     * rendu à part (`parEntreprise`).
+     *
+     * @return array{defaut: list<string>, retires: list<string>, accordes: list<string>, comptes: Collection<int, HabilitationAction>, parEntreprise: Collection<int, HabilitationAction>}
      */
     public static function etat(string $domaine, string $action): array
     {
         $lignes = self::lignes()->where('domaine', $domaine)->where('action', $action);
-        $parRole = $lignes->whereNull('user_id');
+        $parRole = $lignes->whereNull('user_id')->whereNull('entreprise_id');
 
         return [
             'defaut' => self::DOMAINES[$domaine]['actions'][$action]['defaut'] ?? [],
             'retires' => $parRole->where('accorde', false)->pluck('role')->values()->all(),
             'accordes' => $parRole->where('accorde', true)->pluck('role')->values()->all(),
             'comptes' => $lignes->whereNotNull('user_id')->values(),
+            'parEntreprise' => $lignes->whereNull('user_id')->whereNotNull('entreprise_id')->values(),
         ];
     }
 

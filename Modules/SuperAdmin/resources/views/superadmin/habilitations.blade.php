@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\User;
+use App\Support\SchemaDisponible;
+use Modules\Noyau\Entreprises\Modeles\Entreprise;
 use Modules\Noyau\Entreprises\Modeles\HabilitationAction;
 use Modules\Noyau\Entreprises\Support\CatalogueDesPages;
 use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
@@ -54,6 +56,8 @@ $comptes = computed(fn () => User::query()->withoutGlobalScopes()
 
 $lignes = computed(fn () => HabilitationsDActions::lignes());
 
+$entreprises = computed(fn () => Entreprise::query()->pluck('nom', 'id')->all());
+
 // Les gestes cochés appartiennent au domaine : en changer les remet à vide.
 $updatedDomaine = function () {
     $this->actions = [];
@@ -100,7 +104,11 @@ $enregistrer = function () {
         $cle = ['domaine' => $this->domaine, 'action' => $action]
             + ($this->beneficiaire === 'role' ? ['role' => $this->role, 'user_id' => null] : ['role' => null, 'user_id' => (int) $this->compte]);
 
-        $existante = HabilitationAction::query()->where($cle)->first();
+        // Une ligne de rôle réservée à une entreprise (page Intelligence artificielle, 25/11) n'est pas
+        // celle qu'on règle ici, pour toute la plateforme.
+        $existante = HabilitationAction::query()->where($cle)
+            ->when($this->beneficiaire === 'role' && SchemaDisponible::colonne('habilitations_actions', 'entreprise_id'), fn ($q) => $q->whereNull('entreprise_id'))
+            ->first();
         $duDepart = $this->beneficiaire === 'role'
             && in_array($this->role, HabilitationsDActions::DOMAINES[$this->domaine]['actions'][$action]['defaut'], true);
 
@@ -174,7 +182,7 @@ $effacer = function (int $id) {
                     @foreach ($domaineDef['actions'] as $actionCle => $actionDef)
                         @php
                             $etat = HabilitationsDActions::etat($domaineCle, $actionCle);
-                            $parRole = $this->lignes->where('domaine', $domaineCle)->where('action', $actionCle)->whereNull('user_id')->keyBy('role');
+                            $parRole = $this->lignes->where('domaine', $domaineCle)->where('action', $actionCle)->whereNull('user_id')->whereNull('entreprise_id')->keyBy('role');
                         @endphp
                         <tr wire:key="geste-{{ $domaineCle }}-{{ $actionCle }}">
                             <td>
@@ -196,6 +204,14 @@ $effacer = function (int $id) {
                                     <div style="color:#0E7A54; font-weight:600;">
                                         {{ $libelleRole($r) }} · accordé
                                         <button type="button" wire:click="effacer({{ $parRole[$r]->id }})" class="bouton bouton-secondaire" style="padding:2px 8px; font-size:11px;">Retirer</button>
+                                    </div>
+                                @endforeach
+                                {{-- Réglé pour une seule entreprise, depuis la page Intelligence artificielle (25/11). --}}
+                                @foreach ($etat['parEntreprise'] as $ligne)
+                                    <div style="{{ $ligne->accorde ? 'color:#0E7A54; font-weight:600;' : 'color:#C8102E;' }}">
+                                        {{ $libelleRole($ligne->role) }} · {{ $ligne->accorde ? 'accordé' : 'retiré' }}
+                                        <span style="font-weight:400; color:#6B6E76;">chez {{ $this->entreprises[$ligne->entreprise_id] ?? 'entreprise n° '.$ligne->entreprise_id }}</span>
+                                        <button type="button" wire:click="effacer({{ $ligne->id }})" class="bouton bouton-secondaire" style="padding:2px 8px; font-size:11px;">Effacer</button>
                                     </div>
                                 @endforeach
                             </td>
