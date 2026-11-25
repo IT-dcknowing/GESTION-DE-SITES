@@ -136,7 +136,7 @@ class LeModuleRapportEtLaFneDirecteTest extends TestCase
         $this->assertSame(79_000, $rapport->charges()['totalCompte']);
 
         $ecran = Volt::actingAs($this->gerant)->test('pilotage.rapport')->set('exercice', 2026);
-        foreach (['ca', 'recouvrement', 'charges', 'conclusion', 'commerciaux', 'precedent', 'depot'] as $vue) {
+        foreach (['ca', 'recouvrement', 'charges', 'commerciaux', 'conclusion', 'precedent', 'depot'] as $vue) {
             $ecran->call('aller', $vue)->assertSet('vue', $vue)->assertOk();
         }
     }

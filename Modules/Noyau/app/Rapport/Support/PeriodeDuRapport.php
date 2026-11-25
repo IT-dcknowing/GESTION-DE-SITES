@@ -20,6 +20,13 @@ use Modules\Noyau\Commun\Services\PeriodeCalculateur;
  * **Les dates se lisent par `PeriodeCalculateur::borne()`**, comme sur les autres écrans : une date
  * forgée dans l'adresse retombe sur la valeur par défaut au lieu de faire tomber la page, et une
  * fin avant le début est ramenée sur le début, par la même règle.
+ *
+ * **Le sélecteur se simplifie (25/11, suite).** « Un champ qui liste les semaines de l'année, un
+ * champ mois, et une plage de dates qu'on choisit sur un calendrier. » D'où `semainesDeLExercice()`,
+ * `moisDeLExercice()` et les `RACCOURCIS` de la plage. Une plage est **bornée**
+ * (`premierJourPermis()` à `dernierJourPermis()`) : `semaines()` et `mois()` découpent la période
+ * tranche par tranche, et une adresse forgée « du 0001-01-01 au 9999-12-31 » leur ferait construire
+ * un demi-million de semaines.
  */
 final class PeriodeDuRapport
 {
@@ -28,8 +35,18 @@ final class PeriodeDuRapport
         'exercice' => 'Exercice entier',
         'semaine' => 'Semaine (jeudi au mercredi)',
         'mois' => 'Mois',
-        'dates' => 'Dates libres',
+        'dates' => 'Plage de dates',
     ];
+
+    /** Les raccourcis de la plage de dates, dans l'ordre des boutons. */
+    public const RACCOURCIS = [
+        'semaine' => 'Cette semaine',
+        'mois' => 'Ce mois',
+        '30jours' => '30 derniers jours',
+    ];
+
+    /** Combien d'années en arrière une plage de dates peut remonter. */
+    private const ANNEES_PERMISES = 10;
 
     private const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
@@ -89,15 +106,92 @@ final class PeriodeDuRapport
 
     public static function entre(\DateTimeInterface $debut, \DateTimeInterface $fin): self
     {
-        // `PeriodeCalculateur` rend des `Carbon\Carbon` : on les ramène au Carbon de Laravel.
-        $debut = Carbon::instance($debut)->startOfDay();
-        $fin = Carbon::instance($fin)->endOfDay();
+        // `PeriodeCalculateur` rend des `Carbon\Carbon` : on les ramène au Carbon de Laravel, et
+        // dans les bornes permises (voir l'en-tête : une plage forgée ne découpe pas des siècles).
+        $debut = Carbon::instance($debut)->startOfDay()->max(self::premierJourPermis())->min(self::dernierJourPermis()->startOfDay());
+        $fin = Carbon::instance($fin)->endOfDay()->max(self::premierJourPermis()->endOfDay())->min(self::dernierJourPermis());
 
         if ($fin->lt($debut)) {
             $fin = $debut->copy()->endOfDay();
         }
 
         return new self('dates', $debut, $fin, (int) $fin->year);
+    }
+
+    /** Le premier jour qu'une plage de dates peut lire : le 1er janvier d'il y a dix ans. */
+    public static function premierJourPermis(): Carbon
+    {
+        return Carbon::create((int) now()->year - self::ANNEES_PERMISES, 1, 1)->startOfDay();
+    }
+
+    /** Le dernier : le 31 décembre de l'année en cours (« Ce mois » va jusqu'à la fin du mois). */
+    public static function dernierJourPermis(): Carbon
+    {
+        return Carbon::create((int) now()->year, 12, 31)->endOfDay();
+    }
+
+    /**
+     * Une plage toute faite, lue sur aujourd'hui : la semaine en cours (du jeudi au mercredi), le
+     * mois en cours, ou les trente derniers jours, aujourd'hui compris. Une clé inconnue ne rend rien.
+     */
+    public static function raccourci(string $cle): ?self
+    {
+        $aujourdhui = Carbon::today();
+
+        return match ($cle) {
+            'semaine' => self::entre(self::jeudiDe($aujourdhui), self::jeudiDe($aujourdhui)->addDays(6)),
+            'mois' => self::entre($aujourdhui->copy()->startOfMonth(), $aujourdhui->copy()->endOfMonth()),
+            '30jours' => self::entre($aujourdhui->copy()->subDays(29), $aujourdhui),
+            default => null,
+        };
+    }
+
+    /**
+     * Les semaines, du jeudi au mercredi, qui couvrent l'exercice : la première est celle qui
+     * contient le 1er janvier (elle peut ouvrir en décembre), la dernière celle qui contient le
+     * 31 décembre (elle peut finir en janvier). Chacune est entière : le sélecteur choisit une
+     * semaine de l'Excel de trésorerie, pas un morceau d'année.
+     *
+     * Elles se numérotent dans l'ordre à partir de 1. Quand l'année commence un jeudi (2026), ce
+     * numéro est celui de la semaine ISO : le jeudi 19/11/2026 ouvre la semaine 47 dans les deux.
+     *
+     * La valeur de chaque option est la date du jeudi : c'est ce que porte `?jour=` dans l'adresse.
+     *
+     * @return list<array{numero: int, valeur: string, libelle: string, debut: Carbon, fin: Carbon}>
+     */
+    public static function semainesDeLExercice(int $exercice): array
+    {
+        $semaines = [];
+        $jeudi = self::jeudiDe(Carbon::create($exercice, 1, 1));
+        $dernier = Carbon::create($exercice, 12, 31)->endOfDay();
+
+        for ($numero = 1; $jeudi->lte($dernier); $numero++, $jeudi->addDays(7)) {
+            $mercredi = $jeudi->copy()->addDays(6)->endOfDay();
+            // L'année ne s'écrit au début que si la semaine en change : « du jeudi 31/12/2026 au … ».
+            $debut = $jeudi->format($jeudi->year === $mercredi->year ? 'd/m' : 'd/m/Y');
+            $semaines[] = [
+                'numero' => $numero,
+                'valeur' => $jeudi->toDateString(),
+                'libelle' => 'Semaine '.$numero.' : du jeudi '.$debut.' au mercredi '.$mercredi->format('d/m/Y'),
+                'debut' => $jeudi->copy(),
+                'fin' => $mercredi,
+            ];
+        }
+
+        return $semaines;
+    }
+
+    /**
+     * Les douze mois de l'exercice, pour le champ « Mois ». La valeur est `AAAA-MM`, comme `?mois=`.
+     *
+     * @return list<array{valeur: string, libelle: string}>
+     */
+    public static function moisDeLExercice(int $exercice): array
+    {
+        return array_map(fn (int $m) => [
+            'valeur' => sprintf('%04d-%02d', $exercice, $m),
+            'libelle' => ucfirst(self::MOIS[$m - 1]).' '.$exercice,
+        ], range(1, 12));
     }
 
     /** Le jeudi qui ouvre la semaine de ce jour (le jeudi lui-même s'il en est un). */

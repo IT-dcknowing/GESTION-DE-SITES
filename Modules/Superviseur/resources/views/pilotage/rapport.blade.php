@@ -1,6 +1,8 @@
 <?php
 
+use Illuminate\Support\Carbon;
 use Livewire\WithFileUploads;
+use Modules\Noyau\Commun\Services\PeriodeCalculateur;
 use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
 use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\IA\Modeles\ProductionIA;
@@ -39,6 +41,13 @@ use function Livewire\Volt\{state, computed, mount, protect, uses};
  * `vue`, pour qu'un rapport filtré se partage. La ville et l'atelier sont revérifiés au serveur
  * (`RapportFinancier::lieuAutorise`) : un identifiant hors du périmètre du compte est refusé, jamais
  * élargi. L'activité ne choisit qu'entre Mécanique et Sinistre.
+ *
+ * **Le sélecteur de période (25/11, suite).** « Plus simple : la liste des semaines de l'année, la
+ * liste des mois, et une plage de dates choisie sur un calendrier. » La semaine ne se désigne plus
+ * par « un jour de la semaine » à retrouver : on la prend dans la liste de l'exercice, la semaine
+ * en cours présélectionnée. Ce que le navigateur renvoie (`jour`, `mois`, `du`, `au`) est relu au
+ * serveur : la semaine ramenée à son jeudi, le mois pris dans l'exercice, la plage bornée et
+ * jamais finie avant d'avoir commencé.
  */
 uses(WithFileUploads::class);
 
@@ -64,6 +73,31 @@ state([
 mount(function () {
     abort_unless(HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir'), 403);
     $this->lieuDansLePerimetre();
+    $this->periodeDansLesListes();
+});
+
+// Une adresse partagée avant le 25/11 (`?periode=semaine&jour=2026-11-22`) désigne la semaine par
+// n'importe lequel de ses jours : on la ramène à son jeudi, qui est la valeur de la liste, et à
+// l'exercice dont la liste la contient. Sans cela le champ afficherait une autre semaine que celle lue.
+// Les `computed` de l'exercice ne sont pas lus ici : ils garderaient l'année d'avant pour le rendu.
+$periodeDansLesListes = protect(function () {
+    $exercice = (int) ($this->exercice ?: now()->year);
+    $annee = fn (Carbon $jour) => (int) $jour->year === (int) now()->year ? null : (int) $jour->year;
+
+    if ($this->periode === 'semaine' && $this->jour !== '') {
+        $lue = PeriodeDuRapport::lire('semaine', $exercice, $this->jour);
+        $this->jour = $lue->debut->toDateString();
+
+        if (! in_array($this->jour, array_column(PeriodeDuRapport::semainesDeLExercice($exercice), 'valeur'), true)) {
+            $this->exercice = $annee($lue->debut);
+        }
+    }
+
+    if ($this->periode === 'mois' && $this->mois !== '') {
+        $lu = PeriodeDuRapport::lire('mois', $exercice, null, preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $this->mois) ? $this->mois : null);
+        $this->mois = $lu->debut->format('Y-m');
+        $this->exercice = $annee($lu->debut);
+    }
 });
 
 // Le lieu vient de l'adresse ou d'un sélecteur : il se revérifie à chaque changement, jamais sur la
@@ -85,26 +119,107 @@ $updatedActivite = function () {
     $this->activite = in_array($this->activite, RapportFinancier::ACTIVITES, true) ? $this->activite : '';
 };
 
-// Changer de lecture pose une date de départ : un champ vide ne dirait pas quelle semaine on lit.
+// Passer en semaine présélectionne la semaine en cours (la dernière de l'exercice s'il est passé),
+// passer en mois le mois en cours : un champ vide ne dirait pas ce qu'on lit. La plage garde les
+// dates déjà choisies.
 $updatedPeriode = function () {
     $this->periode = array_key_exists($this->periode, PeriodeDuRapport::MODES) ? $this->periode : 'exercice';
+    $this->resetErrorBag(['du', 'au']);
     $jour = PeriodeDuRapport::jourParDefaut($this->exerciceChoisi);
-    $this->jour = $this->periode === 'semaine' && $this->jour === '' ? $jour->toDateString() : $this->jour;
-    $this->mois = $this->periode === 'mois' && $this->mois === '' ? $jour->format('Y-m') : $this->mois;
+    $this->jour = $this->periode === 'semaine' ? PeriodeDuRapport::jeudiDe($jour)->toDateString() : $this->jour;
+    $this->mois = $this->periode === 'mois' ? $jour->format('Y-m') : $this->mois;
     $this->du = $this->periode === 'dates' && $this->du === '' ? $this->exerciceChoisi.'-01-01' : $this->du;
     $this->au = $this->periode === 'dates' && $this->au === '' ? $jour->toDateString() : $this->au;
 };
 
+// Les listes de semaines et de mois sont celles de l'exercice : en changer reprend la semaine ou le
+// mois par défaut de la nouvelle année, plutôt que de garder une valeur absente de la liste.
+$updatedExercice = function () {
+    $this->exercice = in_array((int) $this->exercice, $this->annees, true) ? (int) $this->exercice : null;
+
+    if (in_array($this->periode, ['semaine', 'mois'], true)) {
+        $this->updatedPeriode();
+    }
+};
+
+// La valeur vient du navigateur : n'importe quelle date est ramenée au jeudi de sa semaine ; une
+// valeur illisible retombe sur la semaine par défaut (`PeriodeDuRapport::lire`).
+$updatedJour = function () {
+    $this->jour = PeriodeDuRapport::lire('semaine', $this->exerciceChoisi, $this->jour)->debut->toDateString();
+};
+
+// Le mois ne se prend que dans la liste de l'exercice : `Carbon` lit « 2026-13 » comme janvier 2027.
+$updatedMois = function () {
+    $this->mois = in_array($this->mois, array_column($this->moisDeLExercice, 'valeur'), true)
+        ? $this->mois
+        : PeriodeDuRapport::jourParDefaut($this->exerciceChoisi)->format('Y-m');
+};
+
+// La plage se contrôle au serveur : une date illisible ou hors des bornes est refusée avec un
+// message, et le champ reprend la date réellement lue. Une fin avant le début est refusée ; un
+// début déplacé après la fin entraîne la fin avec lui, comme on s'y attend en choisissant d'abord
+// le début.
+$plageVerifiee = protect(function (string $champ) {
+    $this->resetErrorBag($champ);
+    $premier = PeriodeDuRapport::premierJourPermis();
+    $dernier = PeriodeDuRapport::dernierJourPermis();
+    $valeur = (string) $this->{$champ};
+    $lue = preg_match('/^\d{4}-\d{2}-\d{2}$/', $valeur) ? PeriodeCalculateur::borne($valeur, false) : null;
+
+    if ($lue === null) {
+        $this->addError($champ, 'Cette date est illisible : choisissez-la sur le calendrier.');
+    } elseif ($lue->lt($premier) || $lue->gt($dernier)) {
+        $this->addError($champ, 'La date doit être comprise entre le '.$premier->format('d/m/Y').' et le '.$dernier->format('d/m/Y').'.');
+    } elseif ($champ === 'au' && $this->du !== '' && $this->au < $this->du) {
+        $this->addError('au', 'La date de fin ne peut pas précéder la date de début.');
+    }
+
+    if ($champ === 'du' && $lue !== null && $this->au !== '' && $this->au < $this->du) {
+        $this->au = $this->du;
+    }
+
+    $lu = PeriodeDuRapport::lire('dates', $this->exerciceChoisi, null, null, $this->du, $this->au);
+    $this->du = $lu->debut->toDateString();
+    $this->au = $lu->fin->toDateString();
+});
+
+$updatedDu = function () {
+    $this->plageVerifiee('du');
+};
+
+$updatedAu = function () {
+    $this->plageVerifiee('au');
+};
+
+// « Cette semaine », « Ce mois », « 30 derniers jours » : des plages toutes faites, que l'on
+// peut ensuite retoucher date par date.
+$raccourci = function (string $cle) {
+    $plage = PeriodeDuRapport::raccourci($cle);
+
+    if ($plage === null) {
+        return;
+    }
+
+    $this->resetErrorBag(['du', 'au']);
+    $this->periode = 'dates';
+    $this->du = $plage->debut->toDateString();
+    $this->au = $plage->fin->toDateString();
+};
+
 // Un tableau local ne passe pas à la vue d'un composant Volt : il faut un `computed` (lu par `$this->onglets`).
 $onglets = computed(fn () => array_filter([
+    // Les Commerciaux avant la Conclusion (demande du propriétaire, 25/11) : la conclusion referme
+    // le rapport chiffré, après l'activité de l'équipe.
     'presentation' => 'Présentation', 'ca' => 'Chiffre d\'affaires', 'recouvrement' => 'Recouvrement', 'charges' => 'Charges',
-    'conclusion' => 'Conclusion', 'commerciaux' => 'Commerciaux', 'precedent' => 'Année précédente', 'depot' => 'Dépôt de fichiers',
+    'commerciaux' => 'Commerciaux', 'conclusion' => 'Conclusion', 'precedent' => 'Année précédente', 'depot' => 'Dépôt de fichiers',
     // Le dernier « slide » : l'assistant IA — sur habilitation `rapport.ia`, personne au départ.
     'ia' => HabilitationsDActions::accorde(auth()->user(), 'rapport', 'ia') ? 'Assistant IA' : null,
 ]));
 
 $exerciceChoisi = computed(fn () => (int) ($this->exercice ?: now()->year));
 $annees = computed(fn () => range((int) now()->year, (int) now()->year - 4));
+$semainesDeLExercice = computed(fn () => PeriodeDuRapport::semainesDeLExercice($this->exerciceChoisi));
+$moisDeLExercice = computed(fn () => PeriodeDuRapport::moisDeLExercice($this->exerciceChoisi));
 $criteres = computed(fn () => [
     'periode' => $this->periode, 'jour' => $this->jour, 'mois' => $this->mois, 'du' => $this->du, 'au' => $this->au,
     'ville' => $this->ville, 'atelier' => $this->atelier, 'activite' => $this->activite,
@@ -399,7 +514,8 @@ $nouvelleConversation = function () {
     @foreach ($this->onglets as $cle => $libelle)
         <button type="button" wire:click="aller('{{ $cle }}')" class="rp-onglet {{ $this->vue === $cle ? 'actif' : '' }}">{{ $libelle }}</button>
     @endforeach
-    @if ($this->periode === 'exercice')
+    {{-- L'exercice choisit aussi l'année dont on liste les semaines et les mois. --}}
+    @if ($this->periode !== 'dates')
         <select wire:model.live="exercice" class="rp-annee" aria-label="Exercice">
             @foreach ($this->annees as $a)<option value="{{ $a }}">{{ $a }}</option>@endforeach
         </select>
@@ -411,14 +527,27 @@ $nouvelleConversation = function () {
                 @foreach (PeriodeDuRapport::MODES as $k => $v)<option value="{{ $k }}">{{ $v }}</option>@endforeach
             </select>
             @if ($this->periode === 'semaine')
-                <label>Un jour de la semaine <input type="date" wire:model.live="jour" class="rp-champ"></label>
-                <span class="rp-aide" style="margin:0;">{{ ucfirst($d['periode']->libelle()) }}</span>
+                <select wire:model.live="jour" class="rp-champ" aria-label="Semaine">
+                    @foreach ($this->semainesDeLExercice as $s)
+                        <option value="{{ $s['valeur'] }}">{{ $s['libelle'] }}{{ today()->between($s['debut'], $s['fin']) ? ' (en cours)' : '' }}</option>
+                    @endforeach
+                </select>
             @elseif ($this->periode === 'mois')
-                <input type="month" wire:model.live="mois" class="rp-champ" aria-label="Mois">
+                <select wire:model.live="mois" class="rp-champ" aria-label="Mois">
+                    @foreach ($this->moisDeLExercice as $m)<option value="{{ $m['valeur'] }}">{{ $m['libelle'] }}</option>@endforeach
+                </select>
             @elseif ($this->periode === 'dates')
-                <label>Du <input type="date" wire:model.live="du" class="rp-champ"></label>
-                <label>au <input type="date" wire:model.live="au" class="rp-champ"></label>
+                {{-- Deux calendriers côte à côte ; les bornes du navigateur ne sont qu'une aide,
+                     le serveur les recontrôle (`plageVerifiee`). --}}
+                <label>Du <input type="date" wire:model.live="du" class="rp-champ" min="{{ PeriodeDuRapport::premierJourPermis()->toDateString() }}" max="{{ $this->au ?: PeriodeDuRapport::dernierJourPermis()->toDateString() }}"></label>
+                <label>au <input type="date" wire:model.live="au" class="rp-champ" min="{{ $this->du ?: PeriodeDuRapport::premierJourPermis()->toDateString() }}" max="{{ PeriodeDuRapport::dernierJourPermis()->toDateString() }}"></label>
             @endif
+            {{-- Les raccourcis remplissent la plage ; proposés dans toutes les lectures, ils y basculent. --}}
+            @foreach (PeriodeDuRapport::RACCOURCIS as $cle => $libelle)
+                <button type="button" wire:click="raccourci('{{ $cle }}')" class="rp-btn neutre" style="padding:5px 10px;font-size:12px;">{{ $libelle }}</button>
+            @endforeach
+            @error('du')<span style="color:#C8102E;font-weight:700;flex-basis:100%;">{{ $message }}</span>@enderror
+            @error('au')<span style="color:#C8102E;font-weight:700;flex-basis:100%;">{{ $message }}</span>@enderror
             @if ($this->villes->count() > 1)
                 <select wire:model.live="ville" class="rp-champ" aria-label="Ville">
                     <option value="">Toutes les villes</option>
@@ -471,8 +600,8 @@ $nouvelleConversation = function () {
             @case('ca') Chiffre d'affaires : {{ $periode }} @break
             @case('recouvrement') Recouvrement : @if ($per->estLExercice()) état des impayés au {{ now()->format('d/m/Y') }}{{ $this->lieuChoisi !== '' ? ', '.$this->lieuChoisi : '' }} @else impayés des factures émises, {{ $periode }} @endif @break
             @case('charges') Charges : {{ $periode }} @break
-            @case('conclusion') Conclusion : trésorerie, engagements et recouvrement à réaliser, {{ $periode }} @break
             @case('commerciaux') Commerciaux : récapitulatif, {{ $periode }} @break
+            @case('conclusion') Conclusion : trésorerie, engagements et recouvrement à réaliser, {{ $periode }} @break
             @case('precedent') Année précédente : @if ($per->estLExercice()) grandes lignes de {{ $d['exercice'] - 1 }} @else la même période un an plus tôt @endif @break
             @case('ia') Assistant IA : analyse globale et conversation @break
         @endswitch
@@ -489,7 +618,7 @@ $nouvelleConversation = function () {
     <div class="rp-couv">
         @if ($this->logo)<div class="rp-logo"><img src="{{ $this->logo }}" alt="Logo de l'entreprise" style="height:76px;"></div>@endif
         <h2>RAPPORT FINANCIER</h2>
-        <div class="rp-ss">Chiffre d'affaires · Recouvrement · Charges · Conclusion</div>
+        <div class="rp-ss">Chiffre d'affaires · Recouvrement · Charges · Commerciaux · Conclusion</div>
         <div class="rp-per">{{ auth()->user()->entreprise?->nom }} &nbsp;|&nbsp; {{ ucfirst($periode) }}</div>
         {{-- 25/11 : « écrire correctement les montants ». Les cartes disaient « 1 701,2 M » ; elles
              écrivent le montant entier, exact, comme les tableaux. --}}
@@ -535,8 +664,8 @@ $nouvelleConversation = function () {
         <tr><td><b>Chiffre d'affaires</b></td><td>CA global, par ville, par activité, par ville et activité, par mois, par semaine ; factures sans code éditeur</td></tr>
         <tr><td><b>Recouvrement</b></td><td>Impayés : dix premiers clients, autres clients, ancienneté</td></tr>
         <tr><td><b>Charges</b></td><td>Fournisseurs, autres fournisseurs, salaires, impôts, CNPS, autres ; classement des dépenses ; charges par semaine et par mois</td></tr>
-        <tr><td><b>Conclusion</b></td><td>Trésorerie, engagements, délais, recouvrement à réaliser, synthèse</td></tr>
         <tr><td><b>Commerciaux</b></td><td>Récapitulatif par commercial : prospections, devis, factures, réalisé, objectif, encours</td></tr>
+        <tr><td><b>Conclusion</b></td><td>Trésorerie, engagements, délais, recouvrement à réaliser, synthèse</td></tr>
         <tr><td><b>Année précédente</b></td><td>Les grandes lignes de l'exercice précédent</td></tr>
         <tr><td><b>Dépôt de fichiers</b></td><td>Impôts, CNPS, récapitulatifs, sans doublon</td></tr>
     </tbody></table></div>
@@ -743,44 +872,6 @@ $nouvelleConversation = function () {
     </div>
 @endif
 
-{{-- ═══════════════════ Conclusion ═══════════════════ --}}
-@if ($this->vue === 'conclusion')
-    @php $co = $d['conclusion']; $tr = $d['tresorerie']; @endphp
-    <div class="rp-section">A. Trésorerie</div>
-    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Banque</th><th>Au {{ $d['debut']->format('d/m/Y') }} (FCFA)</th><th>Situation à la fin de la période (FCFA)</th></tr></thead><tbody>
-        @forelse ($tr['banques'] as $b)
-            <tr><td>{{ $b['banque'] }}</td><td class="d">{{ $b['depart'] !== null ? $f($b['depart']) : 'Aucun relevé' }}</td><td class="d">{{ $b['actuel'] !== null ? $f($b['actuel']) : 'Aucun relevé' }}{{ $b['au'] ? ' (au '.$b['au']->format('d/m').')' : '' }}</td></tr>
-        @empty
-            <tr><td colspan="3" style="color:#6B6F78;">Aucun relevé bancaire.</td></tr>
-        @endforelse
-        <tr><td>Entrées de la période (journal et relevés)</td><td></td><td class="d">{{ $f($tr['entrees']) }}</td></tr>
-        <tr><td>Sorties de la période</td><td></td><td class="d">{{ $f($tr['sorties']) }}</td></tr>
-        <tr class="rp-total"><td>Solde de fonctionnement</td><td></td><td class="d">{{ $f($tr['net']) }}</td></tr>
-    </tbody></table></div>
-
-    <div class="rp-section">B. Engagements à couvrir (ce que l'entreprise doit)</div>
-    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Poste</th><th>Montant à régler (FCFA)</th><th>Délai / échéance</th></tr></thead><tbody>
-        @foreach ($co['lignes'] as $l)<tr><td>{{ $l['poste'] }}</td><td class="d">{{ $f($l['montant']) }}</td><td>{{ $l['delai'] }}</td></tr>@endforeach
-        <tr class="rp-total"><td class="rp-rouge">TOTAL DES ENGAGEMENTS IDENTIFIÉS</td><td class="d rp-rouge">{{ $f($co['engagements']) }}</td><td></td></tr>
-    </tbody></table></div>
-
-    <div class="rp-section">C. Recouvrement à réaliser pour couvrir les engagements</div>
-    <div class="rp-grille">
-        {!! $kpi('Impayés clients à recouvrer', $f($d['recouvrement']['reste']).' F', 'Dont '.$f($d['recouvrement']['resteExercice']).' sur '.$d['exercice'], '#D97706') !!}
-        {!! $kpi('Recouvrement nécessaire', $pct($co['recouvrementNecessaire']), $pct($co['recouvrementNecessaire26']).' des créances '.$d['exercice']) !!}
-        {!! $kpi("Rythme d'encaissement", $f($co['encaissementHebdo']).' F', $co['semaines'] !== null ? 'par semaine sur les 4 dernières, soit environ '.number_format($co['semaines'], 1, ',', ' ').' semaines pour couvrir' : 'par semaine sur les 4 dernières', '#191B20') !!}
-    </div>
-
-    <div class="rp-section">D. Synthèse générale</div>
-    <div class="rp-boite"><table class="rp-table"><tbody>
-        <tr><td><b>Chiffre d'affaires</b></td><td class="d rp-rouge">{{ $f($d['ca']['total']) }}</td></tr>
-        <tr><td><b>Charges comptées</b></td><td class="d rp-rouge">{{ $f($d['charges']['totalCompte']) }}</td></tr>
-        <tr><td><b>Impayés clients</b></td><td class="d rp-rouge">{{ $f($d['recouvrement']['reste']) }}</td></tr>
-        <tr><td><b>Engagements à couvrir</b></td><td class="d rp-rouge">{{ $f($co['engagements']) }}</td></tr>
-        <tr><td><b>Solde de fonctionnement</b></td><td class="d rp-rouge">{{ $f($tr['net']) }}</td></tr>
-    </tbody></table></div>
-@endif
-
 {{-- ═══════════════════ Commerciaux ═══════════════════ --}}
 @if ($this->vue === 'commerciaux')
     @php $lignesC = $this->rapport->commerciaux(); $tc = $this->rapport->totalDesCommerciaux(); @endphp
@@ -824,6 +915,44 @@ $nouvelleConversation = function () {
         @if ($lignesC !== [])
             <tr class="rp-total"><td colspan="2">TOTAL</td><td class="d">{{ $tc['factures'] }}</td><td class="d">{{ $f($tc['realisation']) }}</td><td class="d">{{ $f($tc['mecanique']) }}</td><td class="d">{{ $f($tc['sinistre']) }}</td><td class="d">{{ $f($tc['objectif']) }}</td><td class="d">{{ $pct($tc['taux']) }}</td><td class="d">{{ $f($tc['encours']) }}</td></tr>
         @endif
+    </tbody></table></div>
+@endif
+
+{{-- ═══════════════════ Conclusion ═══════════════════ --}}
+@if ($this->vue === 'conclusion')
+    @php $co = $d['conclusion']; $tr = $d['tresorerie']; @endphp
+    <div class="rp-section">A. Trésorerie</div>
+    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Banque</th><th>Au {{ $d['debut']->format('d/m/Y') }} (FCFA)</th><th>Situation à la fin de la période (FCFA)</th></tr></thead><tbody>
+        @forelse ($tr['banques'] as $b)
+            <tr><td>{{ $b['banque'] }}</td><td class="d">{{ $b['depart'] !== null ? $f($b['depart']) : 'Aucun relevé' }}</td><td class="d">{{ $b['actuel'] !== null ? $f($b['actuel']) : 'Aucun relevé' }}{{ $b['au'] ? ' (au '.$b['au']->format('d/m').')' : '' }}</td></tr>
+        @empty
+            <tr><td colspan="3" style="color:#6B6F78;">Aucun relevé bancaire.</td></tr>
+        @endforelse
+        <tr><td>Entrées de la période (journal et relevés)</td><td></td><td class="d">{{ $f($tr['entrees']) }}</td></tr>
+        <tr><td>Sorties de la période</td><td></td><td class="d">{{ $f($tr['sorties']) }}</td></tr>
+        <tr class="rp-total"><td>Solde de fonctionnement</td><td></td><td class="d">{{ $f($tr['net']) }}</td></tr>
+    </tbody></table></div>
+
+    <div class="rp-section">B. Engagements à couvrir (ce que l'entreprise doit)</div>
+    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Poste</th><th>Montant à régler (FCFA)</th><th>Délai / échéance</th></tr></thead><tbody>
+        @foreach ($co['lignes'] as $l)<tr><td>{{ $l['poste'] }}</td><td class="d">{{ $f($l['montant']) }}</td><td>{{ $l['delai'] }}</td></tr>@endforeach
+        <tr class="rp-total"><td class="rp-rouge">TOTAL DES ENGAGEMENTS IDENTIFIÉS</td><td class="d rp-rouge">{{ $f($co['engagements']) }}</td><td></td></tr>
+    </tbody></table></div>
+
+    <div class="rp-section">C. Recouvrement à réaliser pour couvrir les engagements</div>
+    <div class="rp-grille">
+        {!! $kpi('Impayés clients à recouvrer', $f($d['recouvrement']['reste']).' F', 'Dont '.$f($d['recouvrement']['resteExercice']).' sur '.$d['exercice'], '#D97706') !!}
+        {!! $kpi('Recouvrement nécessaire', $pct($co['recouvrementNecessaire']), $pct($co['recouvrementNecessaire26']).' des créances '.$d['exercice']) !!}
+        {!! $kpi("Rythme d'encaissement", $f($co['encaissementHebdo']).' F', $co['semaines'] !== null ? 'par semaine sur les 4 dernières, soit environ '.number_format($co['semaines'], 1, ',', ' ').' semaines pour couvrir' : 'par semaine sur les 4 dernières', '#191B20') !!}
+    </div>
+
+    <div class="rp-section">D. Synthèse générale</div>
+    <div class="rp-boite"><table class="rp-table"><tbody>
+        <tr><td><b>Chiffre d'affaires</b></td><td class="d rp-rouge">{{ $f($d['ca']['total']) }}</td></tr>
+        <tr><td><b>Charges comptées</b></td><td class="d rp-rouge">{{ $f($d['charges']['totalCompte']) }}</td></tr>
+        <tr><td><b>Impayés clients</b></td><td class="d rp-rouge">{{ $f($d['recouvrement']['reste']) }}</td></tr>
+        <tr><td><b>Engagements à couvrir</b></td><td class="d rp-rouge">{{ $f($co['engagements']) }}</td></tr>
+        <tr><td><b>Solde de fonctionnement</b></td><td class="d rp-rouge">{{ $f($tr['net']) }}</td></tr>
     </tbody></table></div>
 @endif
 
@@ -962,7 +1091,10 @@ $nouvelleConversation = function () {
             <button type="button" wire:click="analyserParIA" wire:loading.attr="disabled" class="rp-btn" @disabled(! AssistantDuRapport::iaDisponible())>
                 <span wire:loading.remove wire:target="analyserParIA">Analyser avec l'IA</span><span wire:loading wire:target="analyserParIA">L'assistant analyse…</span>
             </button>
-            <button type="button" wire:click="revenirALEtat" wire:confirm="Retirer l'analyse et les commentaires de l'IA et revenir à l'analyse du système ?" class="rp-btn neutre">Revenir à l'état du système</button>
+            <button type="button" wire:click="revenirALEtat" class="rp-btn neutre"
+                    data-confirmer="Retirer l'analyse et les commentaires de l'IA et revenir à l'analyse du système ?"
+                    data-confirmer-detail="Les commentaires de calcul du système restent affichés ; l'analyse de l'IA devra être redemandée."
+                    data-confirmer-ton="alerte">Revenir à l'état du système</button>
         </div>
         @if ($this->infoIa !== '')<div style="color:#0E9F6E; margin-top:8px; font-weight:700;">{{ $this->infoIa }}</div>@endif
         @if ($this->erreurChat !== '')<div style="color:#C8102E; margin-top:8px; font-weight:700;">{{ $this->erreurChat }}</div>@endif
