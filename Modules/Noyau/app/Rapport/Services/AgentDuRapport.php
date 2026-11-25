@@ -77,7 +77,7 @@ final class AgentDuRapport
     {
         $demande = "Fais l'analyse globale du rapport financier de l'exercice {$this->exercice}. "
             .'Commence par lire les sections du rapport avec l\'outil lire_rapport (ca, recouvrement, charges, tresorerie, conclusion, commerciaux, annee_precedente), '
-            .'puis enregistre ton analyse avec l\'outil enregistrer_analyse : un titre, puis un texte en Markdown — constat, points d\'alerte chiffrés, causes probables, actions à mener classées par priorité. '
+            .'puis enregistre ton analyse avec l\'outil enregistrer_analyse : un titre, puis un texte en Markdown : constat, points d\'alerte chiffrés, causes probables, actions à mener classées par priorité. '
             .'N\'invente aucun chiffre.'.($consigne !== '' ? "\n\nConsigne de présentation et de style : {$consigne}" : '');
 
         $avant = (int) ProductionIA::query()->where('usage', 'rapport')->where('type', 'analyse')->max('id');
@@ -120,7 +120,9 @@ final class AgentDuRapport
             .'Tu peux choisir le style d\'un document ou d\'une analyse : une couleur d\'accent, une couleur de fond, une mise en page (standard, colonnes, sobre).'."\n"
             .'Tu ne modifies jamais les factures, encaissements ou charges de l\'application. Les imputations comptables relèvent d\'un autre assistant, pas encore activé : '
             .'si on t\'en demande, dis-le simplement.'."\n"
-            .'Réponds de façon claire et courte ; utilise le Markdown (titres, listes, tableaux) quand cela aide. Pour une demande de chiffres, donne les montants entiers avec séparateur d\'espace.';
+            .'Réponds de façon claire et courte ; utilise le Markdown (titres, listes, tableaux) quand cela aide. Pour une demande de chiffres, donne les montants entiers avec séparateur d\'espace.'
+            // 25/11, le propriétaire : montants écrits en entier, jamais « 170,1 M » ; pas de tiret long.
+            .' Écris chaque montant en entier et exact, au franc près (ex. 1 701 234 567 F), jamais abrégé en millions ; n\'emploie pas de tiret long.';
     }
 
     /** @return list<array<string, mixed>> */

@@ -28,14 +28,22 @@ final class AssistantDuRapport
         return ClientIA::pour('rapport') !== null;
     }
 
-    private static function m(int|float $v): string
+    /**
+     * Un montant écrit en entier et exact : « 1 701 234 567 F », centimes compris s'il en a.
+     *
+     * Le 25/11, le propriétaire : « écrire correctement les montants ». Les commentaires disaient
+     * « 1 701,2 M FCFA » : un chiffre qu'on ne retrouve dans aucun tableau de la page, et un
+     * arrondi que la règle du 13/10 interdit (piège 17).
+     */
+    private static function f(int|float $v): string
     {
-        return number_format((float) $v / 1_000_000, 1, ',', ' ').' M';
+        return montant_nombre($v).' F';
     }
 
+    /** Un pourcentage, lui, s'arrondit au dixième : c'est un rapport, pas de l'argent. */
     private static function p(int|float $a, int|float $b): string
     {
-        return $b > 0 ? number_format($a / $b * 100, 1, ',', ' ').' %' : '—';
+        return $b > 0 ? number_format($a / $b * 100, 1, ',', ' ').' %' : 'n.d.';
     }
 
     /**
@@ -52,32 +60,33 @@ final class AssistantDuRapport
 
         if ($total > 0) {
             $villes = collect($ca['parVille'])->sortByDesc('montant')->values();
-            $c['ca'][] = ['niveau' => 'info', 'texte' => sprintf('Le CA de la période est de %s FCFA sur %d factures, soit %s par mois en moyenne.', self::m($total), $ca['nombre'], self::m($ca['moyenneMensuelle']))];
+            $c['ca'][] = ['niveau' => 'info', 'texte' => sprintf('Le CA de la période est de %s sur %d factures', self::f($total), $ca['nombre'])
+                .($ca['moyenneMensuelle'] > 0 ? sprintf(', soit %s par mois en moyenne.', self::f($ca['moyenneMensuelle'])) : '.')];
 
             if ($villes->isNotEmpty()) {
                 $c['ca'][] = ['niveau' => 'info', 'texte' => sprintf('%s pèse %s du CA.', $villes[0]['ville'], self::p($villes[0]['montant'], $total))];
             }
 
             if ($ca['nonRattache']['nombre'] > 0) {
-                $c['ca'][] = ['niveau' => 'alerte', 'texte' => sprintf('%d facture(s), %s FCFA (%s du CA), n\'ont plus de code éditeur : leur ville est inconnue. Elles sont dans le total, pas dans les villes — à corriger dans le logiciel d\'atelier.', $ca['nonRattache']['nombre'], self::m($ca['nonRattache']['montant']), self::p($ca['nonRattache']['montant'], $total))];
+                $c['ca'][] = ['niveau' => 'alerte', 'texte' => sprintf('%d facture(s), %s (%s du CA), n\'ont plus de code éditeur : leur ville est inconnue. Elles sont dans le total, pas dans les villes. À corriger dans le logiciel d\'atelier.', $ca['nonRattache']['nombre'], self::f($ca['nonRattache']['montant']), self::p($ca['nonRattache']['montant'], $total))];
             }
 
             $mois = collect($ca['parMois'])->where('complet', true);
             if ($mois->count() >= 3) {
                 $meilleur = $mois->sortByDesc('montant')->first();
                 $faible = $mois->sortBy('montant')->first();
-                $c['ca'][] = ['niveau' => 'info', 'texte' => sprintf('Meilleur mois : %s (%s) ; mois le plus faible : %s (%s).', $meilleur['libelle'], self::m($meilleur['montant']), $faible['libelle'], self::m($faible['montant']))];
+                $c['ca'][] = ['niveau' => 'info', 'texte' => sprintf('Meilleur mois : %s (%s) ; mois le plus faible : %s (%s).', $meilleur['libelle'], self::f($meilleur['montant']), $faible['libelle'], self::f($faible['montant']))];
             }
         } else {
             $c['ca'][] = ['niveau' => 'alerte', 'texte' => 'Aucun chiffre d\'affaires sur la période et le périmètre choisis.'];
         }
 
         $rec = $r['recouvrement'];
-        $c['recouvrement'][] = ['niveau' => $rec['reste'] > 0 ? 'alerte' : 'bon', 'texte' => sprintf('%s FCFA restent à recouvrer sur %d factures ouvertes, chez %d clients.', self::m($rec['reste']), $rec['ouvertes'], $rec['nombreClients'])];
+        $c['recouvrement'][] = ['niveau' => $rec['reste'] > 0 ? 'alerte' : 'bon', 'texte' => sprintf('%s restent à recouvrer sur %d factures ouvertes, chez %d clients.', self::f($rec['reste']), $rec['ouvertes'], $rec['nombreClients'])];
 
         if ($rec['reste'] > 0 && $rec['top10']->isNotEmpty()) {
             $part = $rec['top10']->sum('reste');
-            $c['recouvrement'][] = ['niveau' => 'info', 'texte' => sprintf('Les dix premiers débiteurs représentent %s de l\'encours — c\'est là que se joue le recouvrement.', self::p($part, $rec['reste']))];
+            $c['recouvrement'][] = ['niveau' => 'info', 'texte' => sprintf('Les dix premiers débiteurs représentent %s de l\'encours : c\'est là que se joue le recouvrement.', self::p($part, $rec['reste']))];
             $sansReglement = $rec['top10']->filter(fn ($t) => $t['dernierReglement'] === null);
 
             if ($sansReglement->isNotEmpty()) {
@@ -91,19 +100,19 @@ final class AssistantDuRapport
         }
 
         $ch = $r['charges'];
-        $c['charges'][] = ['niveau' => 'info', 'texte' => sprintf('Les charges comptées sont de %s FCFA (caisse administrative, saisies, suivi fournisseurs et FNE).', self::m($ch['totalCompte']))];
+        $c['charges'][] = ['niveau' => 'info', 'texte' => sprintf('Les charges comptées sont de %s (caisse administrative, saisies, suivi fournisseurs et FNE).', self::f($ch['totalCompte']))];
 
         if ($ch['classement'] !== []) {
             $premier = $ch['classement'][0];
-            $c['charges'][] = ['niveau' => 'info', 'texte' => sprintf('Premier poste de dépense : %s (%s, %s des charges).', $premier['poste'], self::m($premier['montant']), self::p($premier['montant'], $ch['totalCompte'] ?: 1))];
+            $c['charges'][] = ['niveau' => 'info', 'texte' => sprintf('Premier poste de dépense : %s (%s, %s des charges).', $premier['poste'], self::f($premier['montant']), self::p($premier['montant'], $ch['totalCompte'] ?: 1))];
         }
 
         if ($ch['fournisseurs']['reste'] > 0) {
-            $c['charges'][] = ['niveau' => 'alerte', 'texte' => sprintf('Il reste %s FCFA à payer aux fournisseurs sur la période (%s déjà réglés).', self::m($ch['fournisseurs']['reste']), self::m($ch['fournisseurs']['regle']))];
+            $c['charges'][] = ['niveau' => 'alerte', 'texte' => sprintf('Il reste %s à payer aux fournisseurs sur la période (%s déjà réglés).', self::f($ch['fournisseurs']['reste']), self::f($ch['fournisseurs']['regle']))];
         }
 
         if ($ch['impots']['aRegler'] > 0) {
-            $c['charges'][] = ['niveau' => 'alerte', 'texte' => sprintf('Impôts à régler : %s FCFA d\'après les pièces déposées.', self::m($ch['impots']['aRegler']))];
+            $c['charges'][] = ['niveau' => 'alerte', 'texte' => sprintf('Impôts à régler : %s d\'après les pièces déposées.', self::f($ch['impots']['aRegler']))];
         } elseif (! $ch['impots']['depose']) {
             $c['charges'][] = ['niveau' => 'info', 'texte' => 'Aucun fichier d\'impôts ni de CNPS déposé : déposez-les dans l\'onglet « Dépôt de fichiers » pour qu\'ils entrent dans le rapport.'];
         }
@@ -113,18 +122,18 @@ final class AssistantDuRapport
         }
 
         $co = $r['conclusion'];
-        $c['conclusion'][] = ['niveau' => $co['engagements'] > 0 ? 'alerte' : 'bon', 'texte' => sprintf('Les engagements identifiés (fournisseurs, salaires, impôts, CNPS) sont de %s FCFA.', self::m($co['engagements']))];
+        $c['conclusion'][] = ['niveau' => $co['engagements'] > 0 ? 'alerte' : 'bon', 'texte' => sprintf('Les engagements identifiés (fournisseurs, salaires, impôts, CNPS) sont de %s.', self::f($co['engagements']))];
 
         if ($co['engagements'] > 0 && $rec['reste'] > 0) {
-            $c['conclusion'][] = ['niveau' => 'info', 'texte' => sprintf('Pour les couvrir, il faut recouvrer %s de l\'encours clients (%s FCFA).', self::p($co['engagements'], $rec['reste']), self::m($rec['reste']))];
+            $c['conclusion'][] = ['niveau' => 'info', 'texte' => sprintf('Pour les couvrir, il faut recouvrer %s de l\'encours clients (%s).', self::p($co['engagements'], $rec['reste']), self::f($rec['reste']))];
         }
 
         if ($co['semaines'] !== null) {
-            $c['conclusion'][] = ['niveau' => 'info', 'texte' => sprintf('Au rythme des 4 dernières semaines (%s par semaine), il faudrait environ %s semaines d\'encaissements pour les couvrir — si tout y était affecté.', self::m($co['encaissementHebdo']), number_format($co['semaines'], 1, ',', ' '))];
+            $c['conclusion'][] = ['niveau' => 'info', 'texte' => sprintf('Au rythme des 4 dernières semaines (%s par semaine), il faudrait environ %s semaines d\'encaissements pour les couvrir, si tout y était affecté.', self::f($co['encaissementHebdo']), number_format($co['semaines'], 1, ',', ' '))];
         }
 
         if ($r['tresorerie']['net'] < 0) {
-            $c['conclusion'][] = ['niveau' => 'alerte', 'texte' => sprintf('Le journal et les relevés de la période se soldent par %s FCFA de décaissements de plus que d\'encaissements.', self::m(abs($r['tresorerie']['net'])))];
+            $c['conclusion'][] = ['niveau' => 'alerte', 'texte' => sprintf('Le journal et les relevés de la période se soldent par %s de décaissements de plus que d\'encaissements.', self::f(abs($r['tresorerie']['net'])))];
         }
 
         return $c;
@@ -146,7 +155,9 @@ final class AssistantDuRapport
         $systeme = 'Tu es l\'analyste financier d\'un garage automobile en Côte d\'Ivoire (montants en FCFA). '
             .'À partir des seuls chiffres fournis, rédige en français un commentaire de gestion pour le gérant : '
             .'5 à 8 phrases, concret, sans jargon, qui dit ce qui domine, ce qui inquiète, et les trois actions à mener. '
-            .'N\'invente aucun chiffre ; si une donnée manque, dis-le. N\'emploie pas de liste à puces.';
+            .'N\'invente aucun chiffre ; si une donnée manque, dis-le. N\'emploie pas de liste à puces. '
+            // Les deux consignes du propriétaire du 25/11, que les commentaires calculés suivent aussi.
+            .'Écris chaque montant en entier et exact, au franc près (ex. 1 701 234 567 F), jamais abrégé en millions ; n\'emploie pas de tiret long.';
 
         try {
             return $ia->texte($systeme, [['type' => 'text', 'text' => json_encode($resume, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)]], 900) ?: null;

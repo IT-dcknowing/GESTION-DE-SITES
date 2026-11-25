@@ -3,6 +3,7 @@
 namespace Modules\Noyau\Rapport\Services;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Noyau\Commun\Services\PeriodeCalculateur;
@@ -16,12 +17,14 @@ use Modules\Noyau\Exploitation\Modeles\Facture;
 use Modules\Noyau\Exploitation\Modeles\Prospection;
 use Modules\Noyau\Exploitation\Services\ChargesDeLaPeriode;
 use Modules\Noyau\Exploitation\Services\EtatDesImpayes;
+use Modules\Noyau\Exploitation\Services\PerimetreDeTresorerie;
 use Modules\Noyau\Exploitation\Services\Recouvrement;
 use Modules\Noyau\Exploitation\Services\TransformationDesDevis;
 use Modules\Noyau\Exploitation\Services\TresorerieReelle;
 use Modules\Noyau\Imports\Modeles\MouvementBancaire;
 use Modules\Noyau\Rapport\Modeles\PieceRapport;
 use Modules\Noyau\Rapport\Support\EmpreinteDePiece;
+use Modules\Noyau\Rapport\Support\PeriodeDuRapport;
 
 /**
  * Le rapport financier de l'entreprise — l'Excel « Rapport financier », vivant — 06/11.
@@ -35,26 +38,83 @@ use Modules\Noyau\Rapport\Support\EmpreinteDePiece;
  * **L'exercice** est celui de l'année en cours, du 1er janvier à aujourd'hui ; un exercice passé va
  * jusqu'au 31 décembre. La page « Année précédente » rappelle les grandes lignes de N-1.
  *
+ * **La période et le lieu (25/11).** « Une semaine du jeudi au mercredi, un mois ou des dates libres ;
+ * la ville, l'atelier, l'activité. » Le rapport reçoit une `PeriodeDuRapport` et un lieu vérifiés
+ * par `pour()` : le CA, le recouvrement, les charges, les commerciaux et la conclusion les lisent
+ * tous. Sans critère, il lit l'exercice entier sur tout le périmètre du compte, comme avant.
+ *
  * Ce que le logiciel ne sait pas encore — l'avis des impôts, la CNPS, les salaires à payer — vient du
  * dépôt de fichiers (`PieceRapport`), sans doublon avec ce que l'application compte déjà.
  */
 final class RapportFinancier
 {
+    /** Les deux activités qu'un filtre peut isoler ; toute autre valeur reçue ne filtre rien. */
+    public const ACTIVITES = ['Mécanique', 'Sinistre'];
+
     private array $memo = [];
 
-    /** @param  array<int, int>  $idsSites */
+    private readonly PeriodeDuRapport $periode;
+
+    private readonly int $exercice;
+
+    /**
+     * @param  array<int, int>  $idsSites
+     * @param  string  $lieu  '' (tout le périmètre), 'ville' ou 'atelier' : ce que le lecteur a isolé
+     */
     public function __construct(
         private readonly int $entrepriseId,
         private readonly array $idsSites,
         private readonly array $idsVilles,
-        private readonly int $exercice,
-    ) {}
+        int $exercice,
+        ?PeriodeDuRapport $periode = null,
+        private readonly string $activite = '',
+        private readonly string $lieu = '',
+    ) {
+        $this->periode = $periode ?? PeriodeDuRapport::exercice($exercice);
+        $this->exercice = $this->periode->exercice;
+    }
 
-    public static function pour(User $compte, ?int $exercice = null): self
+    /**
+     * Le rapport d'un compte, sur la période et le lieu demandés.
+     *
+     * **Le lieu se vérifie ici, au serveur.** Une ville ou un atelier hors du périmètre du compte est
+     * **refusé** (403), jamais élargi : les identifiants viennent de l'adresse de la page, que
+     * n'importe qui peut réécrire. Les ateliers retenus sortent ensuite de `PerimetreSites`,
+     * c'est-à-dire de l'identité du lecteur.
+     *
+     * @param  array{periode?: ?string, jour?: ?string, mois?: ?string, du?: ?string, au?: ?string, ville?: int|string|null, atelier?: int|string|null, activite?: ?string}  $criteres
+     */
+    public static function pour(User $compte, ?int $exercice = null, array $criteres = []): self
     {
-        $ids = PerimetreSites::idsRetenus($compte, null, null);
+        $exercice = $exercice ?: (int) now()->year;
+        $ville = (int) ($criteres['ville'] ?? 0) ?: null;
+        $atelier = (int) ($criteres['atelier'] ?? 0) ?: null;
 
-        return new self((int) $compte->entreprise_id, $ids, EtatDesImpayes::villesDesSites($ids), $exercice ?: (int) now()->year);
+        abort_unless(self::lieuAutorise($compte, $ville, $atelier), 403, 'Ce lieu est hors de votre périmètre.');
+
+        $ids = PerimetreSites::idsRetenus($compte, $ville ? (string) $ville : null, $atelier ? (string) $atelier : null);
+        $periode = PeriodeDuRapport::lire((string) ($criteres['periode'] ?? 'exercice'), $exercice,
+            $criteres['jour'] ?? null, $criteres['mois'] ?? null, $criteres['du'] ?? null, $criteres['au'] ?? null);
+        $activite = in_array($criteres['activite'] ?? '', self::ACTIVITES, true) ? $criteres['activite'] : '';
+
+        return new self((int) $compte->entreprise_id, $ids, EtatDesImpayes::villesDesSites($ids), $exercice,
+            $periode, $activite, $atelier ? 'atelier' : ($ville ? 'ville' : ''));
+    }
+
+    /** Une ville et un atelier que ce compte peut lire, l'atelier dans la ville choisie s'il y en a une. */
+    public static function lieuAutorise(User $compte, ?int $ville, ?int $atelier): bool
+    {
+        if ($ville !== null && ! PerimetreSites::villesVisibles($compte)->contains('id', $ville)) {
+            return false;
+        }
+
+        if ($atelier !== null) {
+            $site = PerimetreSites::sitesConsultables($compte)->firstWhere('id', $atelier);
+
+            return $site !== null && ($ville === null || (int) $site->ville_id === $ville);
+        }
+
+        return true;
     }
 
     public function exercice(): int
@@ -62,14 +122,80 @@ final class RapportFinancier
         return $this->exercice;
     }
 
+    public function periode(): PeriodeDuRapport
+    {
+        return $this->periode;
+    }
+
     public function debut(): Carbon
     {
-        return Carbon::create($this->exercice, 1, 1)->startOfDay();
+        return $this->periode->debut->copy();
     }
 
     public function fin(): Carbon
     {
-        return $this->exercice >= (int) now()->year ? Carbon::today()->endOfDay() : Carbon::create($this->exercice, 12, 31)->endOfDay();
+        return $this->periode->fin->copy();
+    }
+
+    /**
+     * Les factures du périmètre, du lieu et de l'activité choisis.
+     *
+     * Sur tout le périmètre, `dansLePerimetre` garde les lignes sans ville : elles sont à tout le
+     * monde, les cacher serait les perdre. Mais une ville ou un atelier choisi ne montre que ce qui
+     * y a eu lieu : une facture dont on ignore la ville n'est pas une facture de Bouaké. Sous un
+     * atelier, ses seules factures ; sous une ville, ses ateliers et ses lignes sans atelier.
+     *
+     * @param  Builder<Facture>  $requete
+     * @return Builder<Facture>
+     */
+    private function dansLeLieu(Builder $requete): Builder
+    {
+        return EtatDesImpayes::dansLePerimetre($requete, $this->idsSites, $this->idsVilles)
+            ->when($this->lieu === 'atelier', fn ($q) => $q->whereIn('factures.site_id', $this->idsSites))
+            ->when($this->lieu === 'ville', fn ($q) => $q->where(fn ($l) => $l
+                ->whereIn('factures.site_id', $this->idsSites)
+                ->orWhere(fn ($s) => $s->whereNull('factures.site_id')->whereIn('factures.ville_id', $this->idsVilles))))
+            ->when($this->activite !== '', fn ($q) => $q->where('factures.activite', $this->activite));
+    }
+
+    /**
+     * Les impayés que lit le rapport : l'état de l'exercice ; sous une semaine, un mois ou des
+     * dates, ceux des factures émises dans la période. C'est la question « ce qu'on a facturé
+     * cette semaine, qu'en reste-t-il à encaisser ? ».
+     *
+     * @return Builder<Facture>
+     */
+    private function impayes(): Builder
+    {
+        return $this->dansLeLieu(EtatDesImpayes::requete($this->exercice))
+            ->when(! $this->periode->estLExercice(), fn ($q) => $q->whereBetween('factures.date', [$this->debut(), $this->fin()]));
+    }
+
+    /**
+     * Range des lignes datées dans des tranches (semaines, mois) : nombre et montant de chacune.
+     * Les dates se comparent en `Y-m-d` : une ligne datée à 14 h le mercredi reste dans sa semaine.
+     *
+     * @param  list<array{debut: Carbon, fin: Carbon}>  $tranches
+     * @return list<array<string, mixed>>
+     */
+    private static function ventiler(Collection $lignes, array $tranches, string $champDate, string $champMontant): array
+    {
+        $bornes = array_map(fn ($t) => [$t['debut']->format('Y-m-d'), $t['fin']->format('Y-m-d')], $tranches);
+        $sommes = array_fill(0, count($tranches), ['nombre' => 0, 'montant' => 0]);
+
+        foreach ($lignes as $l) {
+            $jour = substr((string) data_get($l, $champDate), 0, 10);
+
+            foreach ($bornes as $i => [$de, $a]) {
+                if ($jour >= $de && $jour <= $a) {
+                    $sommes[$i]['nombre']++;
+                    $sommes[$i]['montant'] += montant_de(data_get($l, $champMontant));
+                    break;
+                }
+            }
+        }
+
+        return array_map(fn ($t, $s) => ['nombre' => $s['nombre'], 'montant' => montant_de($s['montant'])] + $t, $tranches, $sommes);
     }
 
     /** @template T @param  callable(): T  $calcul @return T */
@@ -78,15 +204,13 @@ final class RapportFinancier
         return $this->memo[$cle] ??= $calcul();
     }
 
-    private const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-
     // ───────────────────────────────────────────────────────────── CA
 
     /** @return array<string, mixed> */
     public function chiffreDAffaires(): array
     {
         return $this->une('ca', function () {
-            $lignes = EtatDesImpayes::dansLePerimetre(Facture::query()->duChiffreDAffaires(), $this->idsSites, $this->idsVilles)
+            $lignes = $this->dansLeLieu(Facture::query()->duChiffreDAffaires())
                 ->whereBetween('factures.date', [$this->debut(), $this->fin()])
                 ->toBase()
                 ->get(['factures.date', 'factures.montant', 'factures.activite', 'factures.ville_id', 'factures.client', 'factures.numero', 'factures.reference_devis']);
@@ -103,15 +227,9 @@ final class RapportFinancier
                 'activite' => (string) $a, 'nombre' => $g->count(), 'montant' => montant_de($g->sum('montant')),
             ])->sortByDesc('montant')->values()->all();
 
-            $parMois = [];
-            $moisCourant = $this->exercice >= (int) now()->year ? (int) now()->month : 12;
-            for ($m = 1; $m <= $moisCourant; $m++) {
-                $g = $lignes->filter(fn ($l) => (int) substr((string) $l->date, 5, 2) === $m);
-                $parMois[] = [
-                    'libelle' => self::MOIS[$m - 1], 'nombre' => $g->count(), 'montant' => montant_de($g->sum('montant')),
-                    'complet' => $this->exercice < (int) now()->year || $m < $moisCourant,
-                ];
-            }
+            // Le détail par mois et par semaine (jeudi au mercredi) de la période choisie (25/11).
+            $parMois = self::ventiler($lignes, $this->periode->mois(), 'date', 'montant');
+            $parSemaine = self::ventiler($lignes, $this->periode->semaines(), 'date', 'montant');
 
             $pleins = collect($parMois)->where('complet', true);
 
@@ -126,6 +244,7 @@ final class RapportFinancier
                 'parVille' => $parVille,
                 'parActivite' => $parActivite,
                 'parMois' => $parMois,
+                'parSemaine' => $parSemaine,
                 'matrice' => $matrice,
                 // Les factures dont le code éditeur a sauté : la ville est inconnue, le total les garde.
                 'nonRattache' => ['nombre' => $nonRattache->count(), 'montant' => montant_de($nonRattache->sum('montant'))],
@@ -145,7 +264,7 @@ final class RapportFinancier
      */
     public function caParClient(int $limite = 15): array
     {
-        $lignes = EtatDesImpayes::dansLePerimetre(Facture::query()->duChiffreDAffaires(), $this->idsSites, $this->idsVilles)
+        $lignes = $this->dansLeLieu(Facture::query()->duChiffreDAffaires())
             ->whereBetween('factures.date', [$this->debut(), $this->fin()])
             ->toBase()->get(['factures.client', 'factures.montant']);
 
@@ -161,7 +280,7 @@ final class RapportFinancier
      */
     public function impayesParFacture(?string $client = null, int $limite = 25): array
     {
-        $requete = EtatDesImpayes::dansLePerimetre(EtatDesImpayes::requete($this->exercice), $this->idsSites, $this->idsVilles)
+        $requete = $this->impayes()
             ->when($client !== null && trim($client) !== '', fn ($q) => $q->where('factures.client', 'like', '%'.trim($client).'%'))
             ->avecEncaisseEtAvoirs()->withMax('encaissements', 'date');
 
@@ -191,7 +310,7 @@ final class RapportFinancier
     public function recouvrement(): array
     {
         return $this->une('rec', function () {
-            $lignes = EtatDesImpayes::dansLePerimetre(EtatDesImpayes::requete($this->exercice), $this->idsSites, $this->idsVilles)
+            $lignes = $this->impayes()
                 ->avecEncaisseEtAvoirs()
                 ->withMax('encaissements', 'date')
                 ->get(['factures.id', 'factures.client', 'factures.date', 'factures.montant', 'factures.exercice_impayes']);
@@ -253,13 +372,33 @@ final class RapportFinancier
 
     private function charges_(): ChargesDeLaPeriode
     {
-        return $this->une('cp', fn () => ChargesDeLaPeriode::pourLesSites($this->idsSites, $this->debut(), $this->fin()));
+        return $this->une('cp', fn () => ChargesDeLaPeriode::pourLesSites($this->idsSites, $this->debut(), $this->fin(), $this->activite));
     }
 
-    /** @return Collection<int, \Modules\Noyau\Rapport\Modeles\PieceRapport> */
+    /**
+     * Les pièces déposées qui comptent : celles de l'exercice ; sous une semaine, un mois ou des
+     * dates, celles **datées** dans la période. Une pièce sans date ne se place dans aucune semaine :
+     * elle reste comptée sur l'exercice, et `piecesSansDate()` dit combien la période en laisse.
+     *
+     * Les impôts et la CNPS sont ceux de l'entreprise : une pièce ne porte ni ville ni activité, et
+     * le filtre de lieu ne les partage donc pas.
+     *
+     * @return Collection<int, \Modules\Noyau\Rapport\Modeles\PieceRapport>
+     */
     private function pieces(): Collection
     {
-        return $this->une('pieces', fn () => PieceRapport::query()->where('exercice', $this->exercice)->where('compte', true)->get());
+        return $this->une('pieces', fn () => PieceRapport::query()->where('compte', true)
+            ->when($this->periode->estLExercice(),
+                fn ($q) => $q->where('exercice', $this->exercice),
+                fn ($q) => $q->whereBetween('date_piece', [$this->debut()->toDateString(), $this->fin()->toDateString()]))
+            ->get());
+    }
+
+    /** Les pièces de l'exercice sans date, que la période ne sait pas placer. */
+    public function piecesSansDate(): int
+    {
+        return $this->periode->estLExercice() ? 0
+            : PieceRapport::query()->where('compte', true)->where('exercice', $this->exercice)->whereNull('date_piece')->count();
     }
 
     /** @return array<string, mixed> */
@@ -273,7 +412,9 @@ final class RapportFinancier
             $aujourdhui = Carbon::today();
 
             // ── le suivi fournisseurs, rangé : pièces, consommables, autres
-            $suivi = $cf->suivi()->get(['fournisseur', 'imputation', 'montant', 'montant_regle', 'reste_a_payer', 'date_facture']);
+            // `$cp->suivi()` plutôt que `$cf->suivi()` : le premier écarte le suivi sous un filtre
+            // d'activité, que le suivi ne porte pas (comme la page Charges).
+            $suivi = $cp->suivi()->get(['fournisseur', 'imputation', 'montant', 'montant_regle', 'reste_a_payer', 'date_facture']);
             $famille = fn (?string $i) => match (true) {
                 (bool) preg_match('/pi[èe]ce|achat de pi/iu', (string) $i) => 'pieces',
                 (bool) preg_match('/peinture|lubrifiant|consommable/iu', (string) $i) => 'consommables',
@@ -360,7 +501,7 @@ final class RapportFinancier
 
             // ── ce que le dépôt apporte : impôts, CNPS, salaires — sans doublon avec la caisse
             $pieces = $this->pieces();
-            $somme = fn (string $nature, string $statut) => (int) $pieces->where('nature', $nature)->where('statut', $statut)->sum('montant');
+            $somme = fn (string $nature, string $statut) => montant_de($pieces->where('nature', $nature)->where('statut', $statut)->sum('montant'));
             $impots = ['aRegler' => $somme('impot', 'du'), 'paye' => $somme('impot', 'paye'), 'depose' => $pieces->whereIn('nature', ['impot', 'cnps'])->isNotEmpty(),
                 'pieces' => $pieces->where('nature', 'impot')->values()];
             $cnps = ['aRegler' => $somme('cnps', 'du'), 'paye' => $somme('cnps', 'paye'), 'pieces' => $pieces->where('nature', 'cnps')->values()];
@@ -371,8 +512,8 @@ final class RapportFinancier
 
             // ── le classement : où l'on dépense le plus
             $classement = collect([
-                'Fournisseurs — pièces de rechange' => $fam['pieces'][0],
-                'Fournisseurs — consommables (peinture, lubrifiants)' => $fam['consommables'][0],
+                'Fournisseurs : pièces de rechange' => $fam['pieces'][0],
+                'Fournisseurs : consommables (peinture, lubrifiants)' => $fam['consommables'][0],
                 'Autres fournisseurs (frais généraux, loyer, sous-traitance…)' => $fam['autres'][0],
                 'Salaires & personnel' => $natures['Salaires & personnel'] ?? 0,
                 'Fonctionnement' => $natures['Fonctionnement'] ?? 0,
@@ -391,6 +532,10 @@ final class RapportFinancier
                 'cnps' => $cnps,
                 'salaires' => $salaires,
                 'classement' => $classement,
+                // Les charges comptées par semaine (jeudi au mercredi) et par mois (25/11).
+                'parSemaine' => self::ventiler($lignes, $this->periode->semaines(), 'date', 'montant'),
+                'parMois' => self::ventiler($lignes, $this->periode->mois(), 'date', 'montant'),
+                'piecesSansDate' => $this->piecesSansDate(),
                 // Ce que le dépôt ajoute aux charges comptées (les paiements que la caisse n'a pas déjà comptés).
                 'totalRapport' => montant_de($t['total'] + $impots['paye'] + $cnps['paye'] + $somme('salaire', 'paye')),
             ];
@@ -403,7 +548,7 @@ final class RapportFinancier
     public function tresorerie(): array
     {
         return $this->une('treso', function () {
-            $t = TresorerieReelle::pourLesSites($this->idsSites, $this->debut(), $this->fin())->totaux();
+            $t = TresorerieReelle::pourLesSites($this->idsSites, $this->debut(), $this->fin(), $this->activite)->totaux();
 
             $banques = [];
             foreach (Banque::query()->orderBy('nom')->get(['id', 'nom']) as $b) {
@@ -466,8 +611,10 @@ final class RapportFinancier
 
             $commerciaux = Commercial::actifs()->where('est_spontane', false)->whereIn('ville_id', $this->idsVilles)->with('ville')->get();
             $ids = $commerciaux->pluck('id')->all();
+            // L'activité choisie (25/11) filtre la prospection, le devis et la facture : chacun la porte.
             $dansLesSites = fn ($requete, string $table) => $requete
-                ->where(fn ($q) => $q->whereIn($table.'.site_id', $this->idsSites)->orWhereNull($table.'.site_id'));
+                ->where(fn ($q) => $q->whereIn($table.'.site_id', $this->idsSites)->orWhereNull($table.'.site_id'))
+                ->when($this->activite !== '', fn ($q) => $q->where($table.'.activite', $this->activite));
 
             // Les prospections : une requête pour tous, regroupées ici — jamais une par commercial.
             $prospections = $ids === [] ? collect() : $dansLesSites(Prospection::query(), 'prospections')
@@ -492,7 +639,7 @@ final class RapportFinancier
             $devisParCommercial = $devis->whereNotNull('commercial_id')->groupBy('commercial_id');
 
             // L'encours de chacun : le reste à encaisser de ses factures, par l'état des impayés.
-            $encours = EtatDesImpayes::dansLePerimetre(EtatDesImpayes::requete($this->exercice), $this->idsSites, $this->idsVilles)
+            $encours = $this->impayes()
                 ->whereNotNull('factures.commercial_id')
                 ->avecEncaisseEtAvoirs()
                 ->get(['factures.id', 'factures.commercial_id', 'factures.montant'])
@@ -501,6 +648,7 @@ final class RapportFinancier
 
             return $commerciaux->map(function (Commercial $c) use ($debut, $fin, $encours, $prospections, $devisParCommercial, $suites, $transformes) {
                 $lignes = Facture::query()->where('commercial_id', $c->id)->whereIn('site_id', $this->idsSites)
+                    ->when($this->activite !== '', fn ($q) => $q->where('activite', $this->activite))
                     ->whereBetween('date', [$debut, $fin])->toBase()->get(['montant', 'activite']);
                 $realisation = montant_de($lignes->sum('montant'));
                 $objectif = (int) round(PeriodeCalculateur::objectifProrata((float) $c->objectif_mensuel, $debut, $fin));
@@ -586,17 +734,19 @@ final class RapportFinancier
             $rec = $this->recouvrement();
 
             $lignes = [
-                ['poste' => 'Impôts', 'montant' => $ch['impots']['aRegler'], 'delai' => $ch['impots']['aRegler'] > 0 ? 'À régler dès réception de l\'avis (pièces déposées)' : '—'],
+                ['poste' => 'Impôts', 'montant' => $ch['impots']['aRegler'], 'delai' => $ch['impots']['aRegler'] > 0 ? 'À régler dès réception de l\'avis (pièces déposées)' : 'Rien à régler'],
                 ['poste' => 'CNPS', 'montant' => $ch['cnps']['aRegler'], 'delai' => $ch['cnps']['aRegler'] > 0 ? 'Selon l\'appel de cotisation déposé' : 'Aucune pièce déposée'],
-                ['poste' => 'Salaires non réglés', 'montant' => $ch['salaires']['nonRegle'], 'delai' => $ch['salaires']['nonRegle'] > 0 ? 'Immédiat' : '—'],
-                ['poste' => 'Fournisseurs — pièces et consommables', 'montant' => montant_de($ch['fournisseurs']['familles']['pieces']['reste'] + $ch['fournisseurs']['familles']['consommables']['reste']), 'delai' => $this->delaiFournisseurs($ch['fournisseurs']['anciennete'])],
+                ['poste' => 'Salaires non réglés', 'montant' => $ch['salaires']['nonRegle'], 'delai' => $ch['salaires']['nonRegle'] > 0 ? 'Immédiat' : 'Rien à régler'],
+                ['poste' => 'Fournisseurs : pièces et consommables', 'montant' => montant_de($ch['fournisseurs']['familles']['pieces']['reste'] + $ch['fournisseurs']['familles']['consommables']['reste']), 'delai' => $this->delaiFournisseurs($ch['fournisseurs']['anciennete'])],
                 ['poste' => 'Autres fournisseurs et factures FNE', 'montant' => montant_de($ch['fournisseurs']['familles']['autres']['reste'] + max($ch['fournisseurs']['reste'] - $ch['fournisseurs']['familles']['pieces']['reste'] - $ch['fournisseurs']['familles']['consommables']['reste'] - $ch['fournisseurs']['familles']['autres']['reste'], 0)), 'delai' => 'Selon échéances'],
             ];
 
             $engagements = montant_de(collect($lignes)->sum('montant'));
 
-            // Le rythme d'encaissement : les 28 derniers jours, ramenés à la semaine.
-            $quatreSemaines = montant_de(Encaissement::query()->whereBetween('date', [Carbon::today()->subDays(28), Carbon::today()->endOfDay()])->sum('montant'));
+            // Le rythme d'encaissement : les 28 derniers jours, ramenés à la semaine. Lu sur le lieu et
+            // l'activité choisis (25/11) : il se comparait jusqu'ici à des engagements du périmètre
+            // avec les encaissements de toute l'entreprise.
+            $quatreSemaines = montant_de($this->encaissements()->whereBetween('encaissements.date', [Carbon::today()->subDays(28), Carbon::today()->endOfDay()])->sum('encaissements.montant'));
             $hebdo = $quatreSemaines / 4;
 
             return [
@@ -617,7 +767,18 @@ final class RapportFinancier
 
         return $total > 0
             ? sprintf('%s %% de la dette a plus de 90 jours', number_format(($age['> 90 j'] ?? 0) / $total * 100, 0, ',', ' '))
-            : '—';
+            : 'Aucune dette en cours';
+    }
+
+    /**
+     * Les règlements reçus sur le lieu et l'activité choisis, toutes dates : chaque appelant pose
+     * la sienne. Le périmètre est celui de la page Trésorerie (l'atelier, sinon la ville de la
+     * facture) ; l'activité, celle du règlement ou de sa facture (`Encaissement::ACTIVITE_SQL`).
+     */
+    private function encaissements(): Builder
+    {
+        return PerimetreDeTresorerie::encaissements(Encaissement::query(), $this->idsSites, $this->idsVilles)
+            ->when($this->activite !== '', fn ($q) => $q->deLActivite($this->activite));
     }
 
     // ────────────────────────────────────────────────── année précédente
@@ -632,11 +793,13 @@ final class RapportFinancier
     {
         $ca = $this->chiffreDAffaires();
         $charges = $this->charges_()->totaux();
-        $encaisse = montant_de(Encaissement::query()->whereBetween('date', [$this->debut(), $this->fin()])->sum('montant'));
+        $encaisse = montant_de($this->encaissements()->whereBetween('encaissements.date', [$this->debut(), $this->fin()])->sum('encaissements.montant'));
         $rec = $this->recouvrement();
 
         return [
             'exercice' => $this->exercice,
+            // L'en-tête de colonne : l'année pour un exercice, la période sinon (« novembre 2025 »).
+            'titre' => $this->periode->estLExercice() ? (string) $this->exercice : $this->periode->libelle(),
             'ca' => $ca['total'],
             'nombreFactures' => $ca['nombre'],
             'parVille' => $ca['parVille'],
@@ -651,7 +814,9 @@ final class RapportFinancier
     /** @return array<string, mixed> */
     public function anneePrecedente(): array
     {
-        $avant = new self($this->entrepriseId, $this->idsSites, $this->idsVilles, $this->exercice - 1);
+        // La même période un an plus tôt, sur le même lieu et la même activité : une semaine se
+        // compare à la même semaine de N-1, pas à l'année entière.
+        $avant = new self($this->entrepriseId, $this->idsSites, $this->idsVilles, $this->exercice - 1, $this->periode->unAnPlusTot(), $this->activite, $this->lieu);
         $actuel = $this->grandesLignes();
         $passe = $avant->grandesLignes();
 
@@ -671,6 +836,8 @@ final class RapportFinancier
     {
         return [
             'exercice' => $this->exercice,
+            'periode' => $this->periode,
+            'activite' => $this->activite,
             'debut' => $this->debut(),
             'fin' => $this->fin(),
             'ca' => $this->chiffreDAffaires(),
