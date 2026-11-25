@@ -142,7 +142,7 @@ class SuppressionEntrepriseTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $ecran = $this->ecran()->set('entrepriseId', $this->entreprise->id);
+        $ecran = $this->ecran()->set('geste', 'tout')->set('entrepriseId', $this->entreprise->id);
 
         // Ce que la purge va emporter doit être annoncé avant, pas découvert après.
         $ecran->assertSee('Dépôts de fichiers')->assertSee('Fiches de réception')->assertSee('Relances');
@@ -253,9 +253,18 @@ class SuppressionEntrepriseTest extends TestCase
         ]);
     }
 
+    /**
+     * L'écran, ouvert sur « Effacer des données » (25/11 : un thème à la fois).
+     *
+     * L'équipe des permissions est remise à celle de la plateforme, comme le fait
+     * `DefinirEquipePermissions` à chaque requête : `compte()` la laisse sur l'entreprise, et
+     * l'écran vérifie désormais l'habilitation à chaque requête, plus seulement à la route.
+     */
     private function ecran()
     {
-        return Volt::test('superadmin.maintenance');
+        app(PermissionRegistrar::class)->setPermissionsTeamId(SuperAdminSeeder::EQUIPE_PLATEFORME);
+
+        return Volt::test('superadmin.maintenance')->set('theme', 'donnees');
     }
 
     private function compte(string $email, string $role): User
