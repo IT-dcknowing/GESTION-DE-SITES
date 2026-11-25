@@ -26,9 +26,13 @@ use Tests\TestCase;
  * Le rapport se lit par période et par lieu, et s'écrit sans abréviation ni tiret long — 25/11.
  *
  * Les demandes du propriétaire : retirer les lignes « Source : » ; plus de tiret long dans le texte
- * affiché ; « écrire correctement les montants » (en entier, exacts) ; la Conclusion avant les
- * Commerciaux ; une semaine du jeudi au mercredi, un mois ou des dates libres ; la ville, l'atelier
- * et l'activité, vérifiés au serveur ; le détail par semaine et par mois.
+ * affiché ; « écrire correctement les montants » (en entier, exacts) ; une semaine du jeudi au
+ * mercredi, un mois ou des dates libres ; la ville, l'atelier et l'activité, vérifiés au serveur ;
+ * le détail par semaine et par mois.
+ *
+ * Puis, le même jour : les Commerciaux **avant** la Conclusion (l'ordre inverse, posé le matin, est
+ * retourné) ; un sélecteur plus simple, la liste des semaines de l'exercice, la liste des mois et
+ * une plage de dates avec ses raccourcis ; plus aucune boîte du navigateur dans le rapport.
  *
  * Le décor, en novembre 2026 (le 25/11 est un mercredi) :
  *
@@ -190,14 +194,107 @@ class LeRapportSeLitParPeriodeEtParLieuTest extends TestCase
         Volt::actingAs($this->gerant)->test('pilotage.rapport')->set('ville', (string) $this->bouake->id)->assertOk()->assertSee('Bouaké');
     }
 
-    public function test_la_conclusion_vient_avant_les_commerciaux(): void
+    public function test_les_commerciaux_viennent_avant_la_conclusion(): void
     {
         $page = Volt::actingAs($this->gerant)->test('pilotage.rapport');
         $cles = array_keys($page->instance()->onglets);
 
-        $this->assertLessThan(array_search('commerciaux', $cles, true), array_search('conclusion', $cles, true));
-        $page->assertSeeHtmlInOrder(["aller('charges')", "aller('conclusion')", "aller('commerciaux')"]);
-        $page->assertSeeInOrder(['Conclusion', 'Trésorerie, engagements', 'Commerciaux', 'Récapitulatif par commercial']);
+        $this->assertLessThan(array_search('conclusion', $cles, true), array_search('commerciaux', $cles, true));
+        $this->assertSame(array_search('charges', $cles, true) + 1, array_search('commerciaux', $cles, true), 'Juste après les Charges.');
+        // La barre d'onglets, puis le tableau « Contenu du rapport » de la présentation.
+        $page->assertSeeHtmlInOrder(["aller('charges')", "aller('commerciaux')", "aller('conclusion')", "aller('precedent')"]);
+        $page->assertSeeInOrder(['Contenu du rapport', 'Commerciaux', 'Récapitulatif par commercial', 'Conclusion', 'Trésorerie, engagements']);
+        $page->assertSeeInOrder(['Charges', 'Commerciaux', 'Conclusion']);
+    }
+
+    public function test_la_liste_des_semaines_couvre_l_exercice_du_jeudi_au_mercredi(): void
+    {
+        foreach ([2024, 2025, 2026, 2027] as $annee) {
+            $semaines = PeriodeDuRapport::semainesDeLExercice($annee);
+
+            $this->assertLessThanOrEqual("{$annee}-01-01", $semaines[0]['debut']->toDateString(), "La première semaine de {$annee} contient le 1er janvier.");
+            $this->assertGreaterThanOrEqual("{$annee}-01-01", $semaines[0]['fin']->toDateString());
+            $this->assertGreaterThanOrEqual("{$annee}-12-31", end($semaines)['fin']->toDateString(), 'La dernière contient le 31 décembre.');
+
+            foreach ($semaines as $i => $s) {
+                $this->assertSame(4, $s['debut']->dayOfWeekIso, "Semaine {$s['numero']} de {$annee} : elle ouvre un jeudi.");
+                $this->assertSame(3, $s['fin']->dayOfWeekIso, 'Elle finit un mercredi.');
+                $this->assertSame(6, (int) $s['debut']->diffInDays($s['fin']), 'Sept jours.');
+                $this->assertSame($i + 1, $s['numero']);
+                $this->assertSame($s['debut']->toDateString(), $s['valeur'], 'La valeur est le jeudi, celle de ?jour=.');
+                if ($i > 0) {
+                    $this->assertSame($semaines[$i - 1]['fin']->copy()->addDay()->toDateString(), $s['debut']->toDateString(), 'Sans trou ni chevauchement.');
+                }
+            }
+        }
+
+        $s2026 = PeriodeDuRapport::semainesDeLExercice(2026);
+        $this->assertCount(53, $s2026, '2026 commence un jeudi et finit un jeudi.');
+        $this->assertSame('Semaine 47 : du jeudi 19/11 au mercredi 25/11/2026', $s2026[46]['libelle']);
+        $this->assertSame('Semaine 53 : du jeudi 31/12/2026 au mercredi 06/01/2027', $s2026[52]['libelle']);
+
+        // Le champ liste ces semaines, la semaine en cours présélectionnée en passant en mode semaine.
+        $page = Volt::actingAs($this->gerant)->test('pilotage.rapport')->set('periode', 'semaine')
+            ->assertSet('jour', '2026-11-19')
+            ->assertSeeHtml('<option value="2026-11-19">Semaine 47 : du jeudi 19/11 au mercredi 25/11/2026 (en cours)</option>')
+            ->assertSeeHtml('<option value="2026-01-01">Semaine 1 : du jeudi 01/01 au mercredi 07/01/2026</option>')
+            ->assertSee('Semaine du jeudi 19/11/2026 au mercredi 25/11/2026');
+
+        // Le navigateur renvoie un autre jour que le jeudi : ramené au jeudi de sa semaine.
+        $page->set('jour', '2026-11-03')->assertSet('jour', '2026-10-29');
+        // Un autre exercice : sa liste, sa dernière semaine présélectionnée.
+        $page->set('exercice', 2025)->assertSet('jour', '2025-12-25')
+            ->assertSeeHtml('<option value="2024-12-26">Semaine 1 : du jeudi 26/12/2024 au mercredi 01/01/2025</option>');
+
+        // Une adresse d'avant (un jour quelconque de la semaine) retrouve la semaine de la liste.
+        $this->get('/rapport?periode=semaine&jour=2026-11-22')->assertOk()->assertSee('Semaine 47 : du jeudi 19/11 au mercredi 25/11/2026');
+
+        // Le champ mois liste les douze mois de l'exercice.
+        Volt::actingAs($this->gerant)->test('pilotage.rapport')->set('periode', 'mois')
+            ->assertSet('mois', '2026-11')
+            ->assertSeeHtml('<option value="2026-01">Janvier 2026</option>')
+            ->assertSeeHtml('<option value="2026-12">Décembre 2026</option>')
+            ->set('mois', '2026-13')->assertSet('mois', '2026-11');
+    }
+
+    public function test_la_plage_de_dates_libre_est_controlee_au_serveur(): void
+    {
+        $page = Volt::actingAs($this->gerant)->test('pilotage.rapport')->set('periode', 'dates')
+            ->assertSee('Cette semaine')->assertSee('Ce mois')->assertSee('30 derniers jours')
+            ->set('du', '2026-11-19')->set('au', '2026-11-20')
+            ->assertHasNoErrors()
+            ->assertSee('1 701 238 567,25');
+
+        // Une fin avant le début est refusée, et ramenée sur le début.
+        $page->set('au', '2026-11-10')->assertHasErrors('au')->assertSet('au', '2026-11-19')
+            ->assertSee('La date de fin ne peut pas précéder la date de début.');
+
+        // Un début porté après la fin entraîne la fin.
+        $page->set('du', '2026-11-25')->assertHasNoErrors('du')->assertSet('au', '2026-11-25');
+
+        // Des dates forgées : illisibles ou hors des bornes, refusées et ramenées dans les bornes.
+        $page->set('du', '1900-01-01')->assertHasErrors('du')->assertSet('du', PeriodeDuRapport::premierJourPermis()->toDateString());
+        $page->set('au', '9999-12-31')->assertHasErrors('au')->assertSet('au', '2026-12-31');
+        $page->set('du', 'n\'importe quoi')->assertHasErrors('du');
+
+        $p = PeriodeDuRapport::lire('dates', 2026, null, null, '0001-01-01', '9999-12-31');
+        $this->assertSame(['2016-01-01', '2026-12-31'], [$p->debut->toDateString(), $p->fin->toDateString()]);
+
+        // Les raccourcis basculent en plage, depuis n'importe quelle lecture.
+        $raccourci = Volt::actingAs($this->gerant)->test('pilotage.rapport');
+        $raccourci->call('raccourci', 'semaine')->assertSet('periode', 'dates')->assertSet('du', '2026-11-19')->assertSet('au', '2026-11-25');
+        $raccourci->call('raccourci', 'mois')->assertSet('du', '2026-11-01')->assertSet('au', '2026-11-30');
+        $raccourci->call('raccourci', '30jours')->assertSet('du', '2026-10-27')->assertSet('au', '2026-11-25');
+        $raccourci->call('raccourci', 'inconnu')->assertSet('du', '2026-10-27');
+    }
+
+    public function test_plus_de_boite_du_navigateur_dans_le_rapport(): void
+    {
+        $source = file_get_contents(base_path('Modules/Superviseur/resources/views/pilotage/rapport.blade.php'));
+
+        $this->assertStringNotContainsString('wire:confirm', $source);
+        $this->assertDoesNotMatchRegularExpression('/\b(confirm|alert|prompt)\s*\(/', $source);
+        $this->assertMatchesRegularExpression('/wire:click="revenirALEtat"[^>]*data-confirmer="/s', $source, 'La boîte de l\'application demande la confirmation.');
     }
 
     public function test_ni_tiret_long_ni_ligne_source_dans_aucun_onglet(): void
