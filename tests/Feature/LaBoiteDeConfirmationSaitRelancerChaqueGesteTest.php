@@ -100,7 +100,9 @@ class LaBoiteDeConfirmationSaitRelancerChaqueGesteTest extends TestCase
             'Modules/Gerant/resources/views/gerant/bareme-commission.blade.php' => 4,
             'Modules/Import/resources/views/components/progression.blade.php' => 1,
             'Modules/Import/resources/views/import/lot.blade.php' => 1,
-            'Modules/SuperAdmin/resources/views/superadmin/maintenance.blade.php' => 1,
+            // Vider une partie, vider toute une entreprise, la supprimer — les deux derniers
+            // passaient par la boîte du navigateur (`wire:confirm`) jusqu'au 25/11.
+            'Modules/SuperAdmin/resources/views/superadmin/maintenance.blade.php' => 3,
             'Modules/Superviseur/resources/views/pilotage/acces-creer.blade.php' => 3,
             // Annuler une correspondance retire une facture au chiffre d'un commercial.
             'Modules/Superviseur/resources/views/pilotage/correspondances-suivi.blade.php' => 1,

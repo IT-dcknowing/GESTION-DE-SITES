@@ -32,7 +32,8 @@ $reglement = computed(fn () => $this->incident === null ? null : JournalDesIncid
 
 $declarerRegle = function () {
     JournalDesIncidents::declarerRegle($this->reference, auth()->id());
-    $this->redirect(route('super-admin.maintenance').'#incidents', navigate: true);
+    // Le thème des pannes s'ouvre par l'adresse depuis le 25/11 : l'ancre `#incidents` n'existe plus.
+    $this->redirect(route('super-admin.maintenance', ['theme' => 'pannes']), navigate: true);
 };
 
 $compte = computed(fn () => isset($this->incident['user_id']) && $this->incident['user_id']
@@ -49,7 +50,7 @@ $assistant = computed(fn () => isset($this->incident['assistant_id']) && $this->
     <x-titre-ecran titre="Incident {{ $reference }}"
         sous-titre="Ce que le serveur a enregistré au moment de la panne.">
         <div style="margin-top:10px;">
-            <a href="{{ route('super-admin.maintenance') }}#incidents" wire:navigate class="bouton bouton-secondaire"
+            <a href="{{ route('super-admin.maintenance', ['theme' => 'pannes']) }}" wire:navigate class="bouton bouton-secondaire"
                 style="padding:8px 14px; text-decoration:none;">← Retour aux incidents</a>
         </div>
     </x-titre-ecran>
