@@ -2,6 +2,7 @@
 
 use Livewire\WithFileUploads;
 use Modules\Noyau\Entreprises\Support\HabilitationsDActions;
+use Modules\Noyau\Entreprises\Support\PerimetreSites;
 use Modules\Noyau\IA\Modeles\ProductionIA;
 use Modules\Noyau\IA\Services\IAIndisponible;
 use Modules\Noyau\Rapport\Modeles\DepotRapport;
@@ -12,7 +13,8 @@ use Modules\Noyau\Rapport\Services\DepotDeRapport;
 use Modules\Noyau\Rapport\Services\DepotEnDoubleDeRapport;
 use Modules\Noyau\Rapport\Services\RapportFinancier;
 use Modules\Noyau\Rapport\Support\LectureDesPieces;
-use function Livewire\Volt\{state, computed, mount, uses};
+use Modules\Noyau\Rapport\Support\PeriodeDuRapport;
+use function Livewire\Volt\{state, computed, mount, protect, uses};
 
 /*
  * Le module Rapport — 06/11. L'Excel « Rapport financier », dans l'application, et vivant.
@@ -31,11 +33,25 @@ use function Livewire\Volt\{state, computed, mount, uses};
  * **Habilitation** : `rapport.voir` ouvre la page, `rapport.deposer` le dépôt — accordées par le Super admin,
  * jamais par défaut. Le dépôt de fichiers (impôts, CNPS, récapitulatifs) ne crée jamais de doublon : voir `DepotDeRapport`.
  * L'assistant IA ne parle qu'au clic, et seulement si une clé est posée (`AssistantDuRapport`).
+ *
+ * **La période et le lieu (25/11).** « Une semaine du jeudi au mercredi, comme l'Excel de trésorerie,
+ * un mois, ou des dates libres ; la ville, l'atelier, l'activité. » Tout est dans l'adresse, comme
+ * `vue`, pour qu'un rapport filtré se partage. La ville et l'atelier sont revérifiés au serveur
+ * (`RapportFinancier::lieuAutorise`) : un identifiant hors du périmètre du compte est refusé, jamais
+ * élargi. L'activité ne choisit qu'entre Mécanique et Sinistre.
  */
 uses(WithFileUploads::class);
 
 state(['vue' => 'presentation'])->url(except: 'presentation');
 state(['exercice' => null])->url(except: null);
+state(['periode' => 'exercice'])->url(except: 'exercice');
+state(['jour' => ''])->url(except: '');
+state(['mois' => ''])->url(except: '');
+state(['du' => ''])->url(except: '');
+state(['au' => ''])->url(except: '');
+state(['ville' => ''])->url(except: '');
+state(['atelier' => ''])->url(except: '');
+state(['activite' => ''])->url(except: '');
 state([
     'fichier' => null, 'natureDepot' => '', 'messageDepot' => '', 'erreurDepot' => '',
     'commentaireIa' => '', 'erreurIa' => '',
@@ -47,7 +63,37 @@ state([
 // Par défaut, personne : seul le Super admin accorde `rapport.voir` (lire) et `rapport.deposer` (écrire).
 mount(function () {
     abort_unless(HabilitationsDActions::accorde(auth()->user(), 'rapport', 'voir'), 403);
+    $this->lieuDansLePerimetre();
 });
+
+// Le lieu vient de l'adresse ou d'un sélecteur : il se revérifie à chaque changement, jamais sur la
+// seule foi des options que la page a proposées.
+$lieuDansLePerimetre = protect(function () {
+    abort_unless(RapportFinancier::lieuAutorise(auth()->user(), (int) $this->ville ?: null, (int) $this->atelier ?: null), 403, 'Ce lieu est hors de votre périmètre.');
+});
+
+$updatedVille = function () {
+    $this->atelier = '';
+    $this->lieuDansLePerimetre();
+};
+
+$updatedAtelier = function () {
+    $this->lieuDansLePerimetre();
+};
+
+$updatedActivite = function () {
+    $this->activite = in_array($this->activite, RapportFinancier::ACTIVITES, true) ? $this->activite : '';
+};
+
+// Changer de lecture pose une date de départ : un champ vide ne dirait pas quelle semaine on lit.
+$updatedPeriode = function () {
+    $this->periode = array_key_exists($this->periode, PeriodeDuRapport::MODES) ? $this->periode : 'exercice';
+    $jour = PeriodeDuRapport::jourParDefaut($this->exerciceChoisi);
+    $this->jour = $this->periode === 'semaine' && $this->jour === '' ? $jour->toDateString() : $this->jour;
+    $this->mois = $this->periode === 'mois' && $this->mois === '' ? $jour->format('Y-m') : $this->mois;
+    $this->du = $this->periode === 'dates' && $this->du === '' ? $this->exerciceChoisi.'-01-01' : $this->du;
+    $this->au = $this->periode === 'dates' && $this->au === '' ? $jour->toDateString() : $this->au;
+};
 
 // Un tableau local ne passe pas à la vue d'un composant Volt : il faut un `computed` (lu par `$this->onglets`).
 $onglets = computed(fn () => array_filter([
@@ -59,7 +105,20 @@ $onglets = computed(fn () => array_filter([
 
 $exerciceChoisi = computed(fn () => (int) ($this->exercice ?: now()->year));
 $annees = computed(fn () => range((int) now()->year, (int) now()->year - 4));
-$rapport = computed(fn () => RapportFinancier::pour(auth()->user(), $this->exerciceChoisi));
+$criteres = computed(fn () => [
+    'periode' => $this->periode, 'jour' => $this->jour, 'mois' => $this->mois, 'du' => $this->du, 'au' => $this->au,
+    'ville' => $this->ville, 'atelier' => $this->atelier, 'activite' => $this->activite,
+]);
+$rapport = computed(fn () => RapportFinancier::pour(auth()->user(), $this->exerciceChoisi, $this->criteres));
+$villes = computed(fn () => PerimetreSites::villesVisibles(auth()->user()));
+$ateliers = computed(fn () => PerimetreSites::sitesConsultables(auth()->user())
+    ->when($this->ville !== '', fn ($s) => $s->where('ville_id', (int) $this->ville))->values());
+// Ce qui est isolé, en clair, pour le titre de chaque onglet : « Abidjan, Mécanique ».
+$lieuChoisi = computed(fn () => collect([
+    $this->ville !== '' ? $this->villes->firstWhere('id', (int) $this->ville)?->nom : null,
+    $this->atelier !== '' ? $this->ateliers->firstWhere('id', (int) $this->atelier)?->nom : null,
+    $this->activite ?: null,
+])->filter()->implode(', '));
 $donnees = computed(fn () => $this->rapport->tout());
 $commentaires = computed(fn () => AssistantDuRapport::commentaires($this->donnees));
 $peutDeposer = computed(fn () => HabilitationsDActions::accorde(auth()->user(), 'rapport', 'deposer'));
@@ -96,7 +155,7 @@ $deposer = function () {
 
     try {
         $depot = DepotDeRapport::deposer($this->fichier, auth()->user(), $this->natureDepot ?: null, $this->exerciceChoisi);
-        $this->messageDepot = $depot->nom_original.' — '.($depot->message ?: 'lu.');
+        $this->messageDepot = $depot->nom_original.' : '.($depot->message ?: 'lu.');
     } catch (DepotEnDoubleDeRapport $e) {
         $this->erreurDepot = $e->getMessage();
     }
@@ -125,7 +184,7 @@ $saisir = function () {
         return;
     }
 
-    $this->messageDepot = 'Pièce enregistrée'.($bilan['dejaDansLApplication'] > 0 ? ' — déjà comptée par la caisse ou la banque : gardée, non recomptée.' : '.');
+    $this->messageDepot = 'Pièce enregistrée'.($bilan['dejaDansLApplication'] > 0 ? ', déjà comptée par la caisse ou la banque : gardée, non recomptée.' : '.');
     $this->reset('pieceLibelle', 'pieceTiers', 'pieceReference', 'pieceMontant');
 };
 
@@ -207,7 +266,7 @@ $envoyerChat = function () {
         if (HabilitationsDActions::accorde(auth()->user(), 'rapport', 'deposer')) {
             try {
                 $depot = DepotDeRapport::deposer($this->fichierChat, auth()->user(), null, $this->exerciceChoisi);
-                $message .= "\n\n[Fichier déposé par l'utilisateur : {$depot->nom_original} — ".($depot->message ?: 'rangé').'. Les pièces lues sont visibles avec l\'outil pieces_deposees.]';
+                $message .= "\n\n[Fichier déposé par l'utilisateur : {$depot->nom_original}, ".($depot->message ?: 'rangé').'. Les pièces lues sont visibles avec l\'outil pieces_deposees.]';
             } catch (DepotEnDoubleDeRapport $e) {
                 $message .= "\n\n[Fichier déjà déposé auparavant : ".$e->getMessage().']';
             }
@@ -237,7 +296,6 @@ $nouvelleConversation = function () {
 .rp .rp-onglet.actif{background:#C8102E;border-color:#C8102E;color:#fff}
 .rp .rp-annee{margin-left:auto;padding:8px 12px;border:1px solid #D4D1C7;border-radius:6px;background:#fff;font-weight:700}
 .rp .rp-titre{background:#191B20;color:#fff;padding:15px 20px;border-radius:8px 8px 0 0;border-bottom:4px solid #C8102E;font-weight:800;font-size:19px;text-transform:uppercase;letter-spacing:.5px}
-.rp .rp-source{color:#555;font-style:italic;font-size:12px;margin:7px 2px 2px}
 .rp .rp-section{background:#C8102E;color:#fff;font-weight:800;padding:8px 14px;margin:20px 0 10px;border-radius:4px;font-size:13px;letter-spacing:.3px}
 .rp .rp-grille{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .rp .rp-deux{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));align-items:start}
@@ -282,7 +340,7 @@ $nouvelleConversation = function () {
 .rp .rp-prod.sobre h1,.rp .rp-prod.sobre h2,.rp .rp-prod.sobre h3{color:#191B20}
 .rp .rp-puce{display:inline-block;background:#191B20;color:#fff;font-size:11px;font-weight:800;padding:3px 9px;border-radius:12px;margin-bottom:8px}
 .rp .rp-puce.systeme{background:#0E9F6E}
-/* 24/11 — « il n'est pas bien visible, on oublie de défiler » : la page se resserre. Les onglets
+/* 24/11 : « il n'est pas bien visible, on oublie de défiler » : la page se resserre. Les onglets
    restent en haut pendant le défilement, un sommaire mène à chaque section, les cartes et les
    bandeaux perdent leur épaisseur, et un tableau étroit ne s'étire plus sur toute la largeur. */
 .rp .rp-onglets{position:sticky;top:0;z-index:20;background:var(--th-fond,#F4F3EF);padding:8px 0;margin:6px 0 10px;box-shadow:0 6px 8px -8px rgba(0,0,0,.25)}
@@ -301,7 +359,7 @@ $nouvelleConversation = function () {
 .rp .rp-haut{position:fixed;right:18px;bottom:18px;z-index:30;padding:8px 12px;border-radius:20px;background:#191B20;color:#fff;font-weight:800;font-size:12px;border:0;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25)}
 @media print{.rp .rp-onglets,.rp .rp-sommaire,.rp .rp-haut{display:none}}
 /* `overflow-x: hidden` (app.css) fait du corps un conteneur de défilement : rien ne s'y colle.
-   `clip` garde la règle — rien ne déborde — sans casser `position: sticky`. */
+   `clip` garde la règle (rien ne déborde) sans casser `position: sticky`. */
 @supports (overflow-x: clip){html,body{overflow-x:clip}}
 .rp .rp-flux{columns:2 560px;column-gap:16px}
 .rp .rp-flux > *, .rp .rp-flux .rp-boite, .rp .rp-flux .rp-notes{break-inside:avoid}
@@ -312,19 +370,25 @@ $nouvelleConversation = function () {
 .rp .rp-flux .rp-section:has(+ .rp-grille), .rp .rp-flux .rp-section:has(+ .rp-deux){column-span:all}
 /* Un tableau de treize colonnes ne tient pas dans une demi-largeur : il défilait de côté dans sa colonne. */
 .rp .rp-flux .rp-large{column-span:all}
+/* 25/11 : la période et le lieu, sous les onglets, sur toute la largeur de la barre. */
+.rp .rp-filtres{display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex-basis:100%;font-size:12.5px}
+.rp .rp-filtres .rp-champ{padding:6px 8px;width:auto}
 </style>
 
-<x-titre-ecran titre="Rapport — exercice {{ $this->exerciceChoisi }}"
-    sous-titre="Du 1er janvier au {{ $this->donnees['fin']->format('d/m/Y') }} — le rapport se met à jour avec les données de l'application." />
+<x-titre-ecran titre="Rapport financier"
+    sous-titre="{{ ucfirst($this->donnees['periode']->libelle()) }}{{ $this->lieuChoisi !== '' ? ', '.$this->lieuChoisi : '' }}. Le rapport se met à jour avec les données de l'application." />
 
 @php
     $d = $this->donnees;
     $cm = $this->commentaires;
     // Un montant s'écrit tel qu'il est, centimes compris quand il en a (règle du 13/10, piège 17).
     $f = fn ($v) => montant_nombre($v);
-    $mm = fn ($v) => number_format((float) $v / 1_000_000, 1, ',', ' ').' M';
-    $pct = fn ($v) => $v === null ? '—' : number_format($v * 100, 1, ',', ' ').' %';
-    $periode = '01/01/'.$d['exercice'].' au '.$d['fin']->format('d/m/Y');
+    // Un pourcentage s'arrondit au dixième (ce n'est pas de l'argent) ; sans base, il n'est pas disponible.
+    $pct = fn ($v) => $v === null ? 'n.d.' : number_format($v * 100, 1, ',', ' ').' %';
+    $per = $d['periode'];
+    $periode = $per->libelle().($this->lieuChoisi !== '' ? ', '.$this->lieuChoisi : '');
+    // Une tranche (mois, semaine) dit si elle est en cours ou coupée par les bornes de la période.
+    $etatTranche = fn (array $t) => $t['fin']->gte(today()) ? ' (en cours)' : ((($t['complet'] ?? true) && ! ($t['partielle'] ?? false)) ? '' : ' (partielle)');
     $kpi = fn (string $libelle, string $valeur, ?string $sous = null, string $couleur = '#C8102E') =>
         '<div class="rp-kpi" style="border-left-color:'.$couleur.'"><div class="rp-kpi-v" style="color:'.$couleur.'">'.e($valeur).'</div><div class="rp-kpi-l">'.e($libelle).'</div>'.($sous ? '<div class="rp-kpi-s">'.e($sous).'</div>' : '').'</div>';
     $remarques = $cm[$this->vue] ?? [];
@@ -335,9 +399,44 @@ $nouvelleConversation = function () {
     @foreach ($this->onglets as $cle => $libelle)
         <button type="button" wire:click="aller('{{ $cle }}')" class="rp-onglet {{ $this->vue === $cle ? 'actif' : '' }}">{{ $libelle }}</button>
     @endforeach
-    <select wire:model.live="exercice" class="rp-annee" aria-label="Exercice">
-        @foreach ($this->annees as $a)<option value="{{ $a }}">{{ $a }}</option>@endforeach
-    </select>
+    @if ($this->periode === 'exercice')
+        <select wire:model.live="exercice" class="rp-annee" aria-label="Exercice">
+            @foreach ($this->annees as $a)<option value="{{ $a }}">{{ $a }}</option>@endforeach
+        </select>
+    @endif
+    {{-- 25/11 : la période et le lieu que lisent tous les onglets chiffrés. --}}
+    @if (! in_array($this->vue, ['depot', 'ia'], true))
+        <div class="rp-filtres">
+            <select wire:model.live="periode" class="rp-champ" aria-label="Période">
+                @foreach (PeriodeDuRapport::MODES as $k => $v)<option value="{{ $k }}">{{ $v }}</option>@endforeach
+            </select>
+            @if ($this->periode === 'semaine')
+                <label>Un jour de la semaine <input type="date" wire:model.live="jour" class="rp-champ"></label>
+                <span class="rp-aide" style="margin:0;">{{ ucfirst($d['periode']->libelle()) }}</span>
+            @elseif ($this->periode === 'mois')
+                <input type="month" wire:model.live="mois" class="rp-champ" aria-label="Mois">
+            @elseif ($this->periode === 'dates')
+                <label>Du <input type="date" wire:model.live="du" class="rp-champ"></label>
+                <label>au <input type="date" wire:model.live="au" class="rp-champ"></label>
+            @endif
+            @if ($this->villes->count() > 1)
+                <select wire:model.live="ville" class="rp-champ" aria-label="Ville">
+                    <option value="">Toutes les villes</option>
+                    @foreach ($this->villes as $v)<option value="{{ $v->id }}">{{ $v->nom }}</option>@endforeach
+                </select>
+            @endif
+            @if ($this->ateliers->count() > 1)
+                <select wire:model.live="atelier" class="rp-champ" aria-label="Atelier">
+                    <option value="">Tous les ateliers</option>
+                    @foreach ($this->ateliers as $s)<option value="{{ $s->id }}">{{ $s->nom }}</option>@endforeach
+                </select>
+            @endif
+            <select wire:model.live="activite" class="rp-champ" aria-label="Activité">
+                <option value="">Toutes activités</option>
+                @foreach (\Modules\Noyau\Rapport\Services\RapportFinancier::ACTIVITES as $a)<option value="{{ $a }}">{{ $a }}</option>@endforeach
+            </select>
+        </div>
+    @endif
     {{-- Rempli par le navigateur (wire:ignore : Livewire ne le vide pas, piège 7). --}}
     <nav class="rp-sommaire" wire:ignore data-rp-sommaire aria-label="Sections de l'onglet" style="flex-basis:100%"></nav>
 </div>
@@ -369,24 +468,13 @@ $nouvelleConversation = function () {
 @if ($this->vue !== 'presentation' && $this->vue !== 'depot')
     <div class="rp-titre">
         @switch($this->vue)
-            @case('ca') Chiffre d'affaires — du {{ $periode }} @break
-            @case('recouvrement') Recouvrement — état des impayés au {{ $d['fin']->format('d/m/Y') }} @break
-            @case('charges') Charges — du {{ $periode }} @break
-            @case('conclusion') Conclusion — trésorerie, engagements et recouvrement à réaliser @break
-            @case('commerciaux') Commerciaux — récapitulatif du {{ $periode }} @break
-            @case('precedent') Année précédente — grandes lignes de {{ $d['exercice'] - 1 }} @break
-            @case('ia') Assistant IA — analyse globale et conversation @break
-        @endswitch
-    </div>
-    <div class="rp-source">
-        @switch($this->vue)
-            @case('ca') Source : le chiffre d'affaires de l'application (facture-vente2). Montants en FCFA. @break
-            @case('recouvrement') Source : état des impayés et créances saisies, moins les règlements enregistrés. Montants en FCFA. @break
-            @case('charges') Sources : caisse administrative, charges saisies, suivi fournisseurs, factures FNE et pièces déposées. Montants en FCFA. @break
-            @case('conclusion') Montants en FCFA. Tout est calculé à partir des pages précédentes. @break
-            @case('commerciaux') Sources : prospections, devis et factures rattachés à chaque commercial sur l'exercice ; objectif au prorata de la période. Montants en FCFA. @break
-            @case('precedent') Les grandes lignes de l'exercice précédent, comparées à l'exercice en cours. @break
-            @case('ia') L'assistant lit les données de l'application sous vos habilitations ; il n'écrit que ses analyses, ses documents et les pièces du dépôt. @break
+            @case('ca') Chiffre d'affaires : {{ $periode }} @break
+            @case('recouvrement') Recouvrement : @if ($per->estLExercice()) état des impayés au {{ now()->format('d/m/Y') }}{{ $this->lieuChoisi !== '' ? ', '.$this->lieuChoisi : '' }} @else impayés des factures émises, {{ $periode }} @endif @break
+            @case('charges') Charges : {{ $periode }} @break
+            @case('conclusion') Conclusion : trésorerie, engagements et recouvrement à réaliser, {{ $periode }} @break
+            @case('commerciaux') Commerciaux : récapitulatif, {{ $periode }} @break
+            @case('precedent') Année précédente : @if ($per->estLExercice()) grandes lignes de {{ $d['exercice'] - 1 }} @else la même période un an plus tôt @endif @break
+            @case('ia') Assistant IA : analyse globale et conversation @break
         @endswitch
     </div>
     @if ($remarques !== [])
@@ -402,12 +490,14 @@ $nouvelleConversation = function () {
         @if ($this->logo)<div class="rp-logo"><img src="{{ $this->logo }}" alt="Logo de l'entreprise" style="height:76px;"></div>@endif
         <h2>RAPPORT FINANCIER</h2>
         <div class="rp-ss">Chiffre d'affaires · Recouvrement · Charges · Conclusion</div>
-        <div class="rp-per">{{ auth()->user()->entreprise?->nom }} &nbsp;|&nbsp; Du 1er janvier au {{ $d['fin']->format('d/m/Y') }}</div>
+        <div class="rp-per">{{ auth()->user()->entreprise?->nom }} &nbsp;|&nbsp; {{ ucfirst($periode) }}</div>
+        {{-- 25/11 : « écrire correctement les montants ». Les cartes disaient « 1 701,2 M » ; elles
+             écrivent le montant entier, exact, comme les tableaux. --}}
         <div class="rp-grille" style="margin-top:26px;">
-            <div class="rp-couv-kpi" style="border-left-color:#C8102E"><b>{{ $mm($d['ca']['total']) }}</b><span>Chiffre d'affaires (FCFA)</span></div>
-            <div class="rp-couv-kpi" style="border-left-color:#D97706"><b>{{ $mm($d['recouvrement']['reste']) }}</b><span>Impayés à recouvrer (FCFA)</span></div>
-            <div class="rp-couv-kpi" style="border-left-color:#2563EB"><b>{{ $mm($d['charges']['totalCompte']) }}</b><span>Charges comptées (FCFA)</span></div>
-            <div class="rp-couv-kpi" style="border-left-color:#0E9F6E"><b>{{ $mm($d['conclusion']['engagements']) }}</b><span>Engagements à couvrir (FCFA)</span></div>
+            <div class="rp-couv-kpi" style="border-left-color:#C8102E"><b>{{ $f($d['ca']['total']) }} F</b><span>Chiffre d'affaires</span></div>
+            <div class="rp-couv-kpi" style="border-left-color:#D97706"><b>{{ $f($d['recouvrement']['reste']) }} F</b><span>Impayés à recouvrer</span></div>
+            <div class="rp-couv-kpi" style="border-left-color:#2563EB"><b>{{ $f($d['charges']['totalCompte']) }} F</b><span>Charges comptées</span></div>
+            <div class="rp-couv-kpi" style="border-left-color:#0E9F6E"><b>{{ $f($d['conclusion']['engagements']) }} F</b><span>Engagements à couvrir</span></div>
         </div>
     </div>
 
@@ -442,13 +532,13 @@ $nouvelleConversation = function () {
 
     <div class="rp-section">Contenu du rapport</div>
     <div class="rp-boite"><table class="rp-table"><tbody>
-        <tr><td><b>Chiffre d'affaires</b></td><td>CA global, par ville, par activité, par mois ; factures sans code éditeur</td></tr>
+        <tr><td><b>Chiffre d'affaires</b></td><td>CA global, par ville, par activité, par ville et activité, par mois, par semaine ; factures sans code éditeur</td></tr>
         <tr><td><b>Recouvrement</b></td><td>Impayés : dix premiers clients, autres clients, ancienneté</td></tr>
-        <tr><td><b>Charges</b></td><td>Fournisseurs, autres fournisseurs, salaires, impôts, CNPS, autres + classement des dépenses</td></tr>
+        <tr><td><b>Charges</b></td><td>Fournisseurs, autres fournisseurs, salaires, impôts, CNPS, autres ; classement des dépenses ; charges par semaine et par mois</td></tr>
         <tr><td><b>Conclusion</b></td><td>Trésorerie, engagements, délais, recouvrement à réaliser, synthèse</td></tr>
         <tr><td><b>Commerciaux</b></td><td>Récapitulatif par commercial : prospections, devis, factures, réalisé, objectif, encours</td></tr>
         <tr><td><b>Année précédente</b></td><td>Les grandes lignes de l'exercice précédent</td></tr>
-        <tr><td><b>Dépôt de fichiers</b></td><td>Impôts, CNPS, récapitulatifs — sans doublon</td></tr>
+        <tr><td><b>Dépôt de fichiers</b></td><td>Impôts, CNPS, récapitulatifs, sans doublon</td></tr>
     </tbody></table></div>
 @endif
 
@@ -467,23 +557,23 @@ $nouvelleConversation = function () {
     <div class="rp-section">B. CA par ville</div>
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Ville</th><th>Nb factures</th><th>CA (FCFA)</th><th>% du CA</th></tr></thead><tbody>
         @foreach ($ca['parVille'] as $l)
-            <tr><td>{{ $l['ville'] }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($l['montant'] / $ca['total']) : '—' }}</td></tr>
+            <tr><td>{{ $l['ville'] }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($l['montant'] / $ca['total']) : 'n.d.' }}</td></tr>
         @endforeach
         @if ($ca['nonRattache']['nombre'] > 0)
-            <tr class="rp-alerte"><td>Non rattaché (sans code éditeur)</td><td class="d">{{ $f($ca['nonRattache']['nombre']) }}</td><td class="d">{{ $f($ca['nonRattache']['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($ca['nonRattache']['montant'] / $ca['total']) : '—' }}</td></tr>
+            <tr class="rp-alerte"><td>Non rattaché (sans code éditeur)</td><td class="d">{{ $f($ca['nonRattache']['nombre']) }}</td><td class="d">{{ $f($ca['nonRattache']['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($ca['nonRattache']['montant'] / $ca['total']) : 'n.d.' }}</td></tr>
         @endif
-        <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($ca['nombre']) }}</td><td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : '—' }}</td></tr>
+        <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($ca['nombre']) }}</td><td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : 'n.d.' }}</td></tr>
     </tbody></table></div>
     @if ($ca['nonRattache']['nombre'] > 0)
-        <div class="rp-aide">Les factures « Non rattaché » n'ont plus de code éditeur dans leur fiche de réception : le code employé, qui donne la ville, a sauté. Elles sont listées en section F.</div>
+        <div class="rp-aide">Les factures « Non rattaché » n'ont plus de code éditeur dans leur fiche de réception : le code employé, qui donne la ville, a sauté. Elles sont listées en section G.</div>
     @endif
 
     <div class="rp-section">C. CA par activité</div>
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Activité</th><th>Nb factures</th><th>CA (FCFA)</th><th>% du CA</th></tr></thead><tbody>
         @foreach ($ca['parActivite'] as $l)
-            <tr><td>{{ $l['activite'] }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($l['montant'] / $ca['total']) : '—' }}</td></tr>
+            <tr><td>{{ $l['activite'] }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($l['montant'] / $ca['total']) : 'n.d.' }}</td></tr>
         @endforeach
-        <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($ca['nombre']) }}</td><td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : '—' }}</td></tr>
+        <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($ca['nombre']) }}</td><td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : 'n.d.' }}</td></tr>
     </tbody></table></div>
 
     <div class="rp-section">D. CA par ville et par activité (FCFA)</div>
@@ -491,9 +581,9 @@ $nouvelleConversation = function () {
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Ville</th>@foreach ($acts as $a)<th>{{ $a }}</th>@endforeach<th>Total ville</th><th>% du CA</th></tr></thead><tbody>
         @foreach ($ca['matrice'] as $ville => $parAct)
             @php $totalVille = array_sum($parAct); @endphp
-            <tr><td>{{ $ville }}</td>@foreach ($acts as $a)<td class="d">{{ $f($parAct[$a] ?? 0) }}</td>@endforeach<td class="d"><b>{{ $f($totalVille) }}</b></td><td class="d">{{ $ca['total'] > 0 ? $pct($totalVille / $ca['total']) : '—' }}</td></tr>
+            <tr><td>{{ $ville }}</td>@foreach ($acts as $a)<td class="d">{{ $f($parAct[$a] ?? 0) }}</td>@endforeach<td class="d"><b>{{ $f($totalVille) }}</b></td><td class="d">{{ $ca['total'] > 0 ? $pct($totalVille / $ca['total']) : 'n.d.' }}</td></tr>
         @endforeach
-        <tr class="rp-total"><td>TOTAL</td>@foreach ($acts as $a)<td class="d">{{ $f(collect($ca['matrice'])->sum(fn ($x) => $x[$a] ?? 0)) }}</td>@endforeach<td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : '—' }}</td></tr>
+        <tr class="rp-total"><td>TOTAL</td>@foreach ($acts as $a)<td class="d">{{ $f(collect($ca['matrice'])->sum(fn ($x) => $x[$a] ?? 0)) }}</td>@endforeach<td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : 'n.d.' }}</td></tr>
     </tbody></table></div>
 
     <div class="rp-section">E. CA par mois</div>
@@ -501,16 +591,27 @@ $nouvelleConversation = function () {
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Mois</th><th>Nb factures</th><th>CA (FCFA)</th><th>% du CA</th><th>CA cumulé (FCFA)</th></tr></thead><tbody>
         @foreach ($ca['parMois'] as $l)
             @php $cumul += $l['montant']; @endphp
-            <tr><td>{{ $l['libelle'] }}{{ $l['complet'] ? '' : ' (en cours)' }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($l['montant'] / $ca['total']) : '—' }}</td><td class="d">{{ $f($cumul) }}</td></tr>
+            <tr><td>{{ $l['libelle'] }}{{ $etatTranche($l) }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($l['montant'] / $ca['total']) : 'n.d.' }}</td><td class="d">{{ $f($cumul) }}</td></tr>
         @endforeach
-        <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($ca['nombre']) }}</td><td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : '—' }}</td><td></td></tr>
+        <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($ca['nombre']) }}</td><td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : 'n.d.' }}</td><td></td></tr>
+    </tbody></table></div>
+
+    {{-- 25/11 : « le CA par semaine », du jeudi au mercredi comme l'Excel de trésorerie. --}}
+    <div class="rp-section">F. CA par semaine (du jeudi au mercredi)</div>
+    @php $cumul = 0; @endphp
+    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Semaine</th><th>Nb factures</th><th>CA (FCFA)</th><th>% du CA</th><th>CA cumulé (FCFA)</th></tr></thead><tbody>
+        @foreach ($ca['parSemaine'] as $l)
+            @php $cumul += $l['montant']; @endphp
+            <tr><td>{{ ucfirst($l['libelle']) }}{{ $etatTranche($l) }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ca['total'] > 0 ? $pct($l['montant'] / $ca['total']) : 'n.d.' }}</td><td class="d">{{ $f($cumul) }}</td></tr>
+        @endforeach
+        <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($ca['nombre']) }}</td><td class="d">{{ $f($ca['total']) }}</td><td class="d">{{ $ca['total'] > 0 ? '100,0 %' : 'n.d.' }}</td><td></td></tr>
     </tbody></table></div>
 
     @if ($ca['nonRattacheLignes'] !== [])
-        <div class="rp-section">F. Factures sans code éditeur (ville impossible à déterminer)</div>
+        <div class="rp-section">G. Factures sans code éditeur (ville impossible à déterminer)</div>
         <div class="rp-boite"><table class="rp-table"><thead><tr><th>N° facture</th><th>Date</th><th>Client</th><th>Activité</th><th>Montant (FCFA)</th><th>Fiche de réception</th></tr></thead><tbody>
             @foreach ($ca['nonRattacheLignes'] as $l)
-                <tr><td>{{ $l['numero'] }}</td><td class="c">{{ $l['date'] ? \Illuminate\Support\Carbon::parse($l['date'])->format('d/m/Y') : '—' }}</td><td>{{ $l['client'] }}</td><td>{{ $l['activite'] }}</td><td class="d">{{ $f($l['montant']) }}</td><td>{{ $l['fiche'] }}</td></tr>
+                <tr><td>{{ $l['numero'] }}</td><td class="c">{{ $l['date'] ? \Illuminate\Support\Carbon::parse($l['date'])->format('d/m/Y') : '' }}</td><td>{{ $l['client'] }}</td><td>{{ $l['activite'] }}</td><td class="d">{{ $f($l['montant']) }}</td><td>{{ $l['fiche'] }}</td></tr>
             @endforeach
             <tr class="rp-total"><td colspan="4">TOTAL</td><td class="d">{{ $f($ca['nonRattache']['montant']) }}</td><td></td></tr>
         </tbody></table></div>
@@ -524,20 +625,20 @@ $nouvelleConversation = function () {
     <div class="rp-grille">
         {!! $kpi('Total des impayés', $f($rec['reste']).' F', $rec['ouvertes'].' factures ouvertes · '.$rec['nombreClients'].' clients') !!}
         {!! $kpi('Dont exercice '.$d['exercice'], $f($rec['resteExercice']).' F', 'Le reste vient des exercices antérieurs', '#D97706') !!}
-        {!! $kpi('Dix premiers débiteurs', $rec['reste'] > 0 ? $pct($rec['top10']->sum('reste') / $rec['reste']) : '—', 'de l\'encours total', '#191B20') !!}
+        {!! $kpi('Dix premiers débiteurs', $rec['reste'] > 0 ? $pct($rec['top10']->sum('reste') / $rec['reste']) : 'n.d.', 'de l\'encours total', '#191B20') !!}
     </div>
 
     <div class="rp-section">B. Les 10 premiers clients débiteurs (du plus grand montant au plus petit)</div>
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Rang</th><th>Client</th><th>Nb factures</th><th>Reste dû (FCFA)</th><th>Dont {{ $d['exercice'] }} (FCFA)</th><th>Facture la plus ancienne</th><th>Dernier règlement</th><th>% du total</th></tr></thead><tbody>
         @foreach ($rec['top10'] as $i => $t)
             <tr><td class="c">{{ $i + 1 }}</td><td><b>{{ $t['client'] }}</b></td><td class="d">{{ $t['nb'] }}</td><td class="d"><b>{{ $f($t['reste']) }}</b></td><td class="d">{{ $f($t['resteExercice']) }}</td>
-                <td class="c">{{ $t['plusAncienne']?->format('d/m/Y') ?? '—' }}</td>
+                <td class="c">{{ $t['plusAncienne']?->format('d/m/Y') ?? '' }}</td>
                 <td class="c">@if ($t['dernierReglement']){{ $t['dernierReglement']->format('d/m/Y') }}@else<span class="rp-rouge">Aucun règlement</span>@endif</td>
-                <td class="d">{{ $rec['reste'] > 0 ? $pct($t['reste'] / $rec['reste']) : '—' }}</td></tr>
+                <td class="d">{{ $rec['reste'] > 0 ? $pct($t['reste'] / $rec['reste']) : 'n.d.' }}</td></tr>
         @endforeach
-        <tr class="rp-total"><td></td><td>Sous-total des 10 premiers</td><td class="d">{{ $rec['top10']->sum('nb') }}</td><td class="d">{{ $f($rec['top10']->sum('reste')) }}</td><td class="d">{{ $f($rec['top10']->sum('resteExercice')) }}</td><td></td><td></td><td class="d">{{ $rec['reste'] > 0 ? $pct($rec['top10']->sum('reste') / $rec['reste']) : '—' }}</td></tr>
-        <tr><td></td><td><b>AUTRES CLIENTS ({{ $rec['autres']['nombreClients'] }} clients)</b></td><td></td><td class="d"><b>{{ $f($rec['autres']['reste']) }}</b></td><td class="d">{{ $f($rec['autres']['resteExercice']) }}</td><td></td><td></td><td class="d">{{ $rec['reste'] > 0 ? $pct($rec['autres']['reste'] / $rec['reste']) : '—' }}</td></tr>
-        <tr class="rp-total"><td></td><td class="rp-rouge">TOTAL IMPAYÉS</td><td></td><td class="d rp-rouge">{{ $f($rec['reste']) }}</td><td class="d">{{ $f($rec['resteExercice']) }}</td><td></td><td></td><td class="d">{{ $rec['reste'] > 0 ? '100,0 %' : '—' }}</td></tr>
+        <tr class="rp-total"><td></td><td>Sous-total des 10 premiers</td><td class="d">{{ $rec['top10']->sum('nb') }}</td><td class="d">{{ $f($rec['top10']->sum('reste')) }}</td><td class="d">{{ $f($rec['top10']->sum('resteExercice')) }}</td><td></td><td></td><td class="d">{{ $rec['reste'] > 0 ? $pct($rec['top10']->sum('reste') / $rec['reste']) : 'n.d.' }}</td></tr>
+        <tr><td></td><td><b>AUTRES CLIENTS ({{ $rec['autres']['nombreClients'] }} clients)</b></td><td></td><td class="d"><b>{{ $f($rec['autres']['reste']) }}</b></td><td class="d">{{ $f($rec['autres']['resteExercice']) }}</td><td></td><td></td><td class="d">{{ $rec['reste'] > 0 ? $pct($rec['autres']['reste'] / $rec['reste']) : 'n.d.' }}</td></tr>
+        <tr class="rp-total"><td></td><td class="rp-rouge">TOTAL IMPAYÉS</td><td></td><td class="d rp-rouge">{{ $f($rec['reste']) }}</td><td class="d">{{ $f($rec['resteExercice']) }}</td><td></td><td></td><td class="d">{{ $rec['reste'] > 0 ? '100,0 %' : 'n.d.' }}</td></tr>
     </tbody></table></div>
     <div class="rp-aide">Dernier règlement = dernier encaissement enregistré pour le client. « Aucun règlement » : aucun encaissement enregistré pour ce client.</div>
 
@@ -545,15 +646,15 @@ $nouvelleConversation = function () {
         <div>
             <div class="rp-section">C. Ancienneté des impayés (depuis la date de facture)</div>
             <div class="rp-boite"><table class="rp-table"><thead><tr><th>Tranche</th><th>Reste dû (FCFA)</th><th>% du total</th></tr></thead><tbody>
-                @foreach ($rec['anciennete'] as $tr => $m)<tr><td>{{ $tr }}</td><td class="d">{{ $f($m) }}</td><td class="d">{{ $rec['reste'] > 0 ? $pct($m / $rec['reste']) : '—' }}</td></tr>@endforeach
-                <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($rec['reste']) }}</td><td class="d">{{ $rec['reste'] > 0 ? '100,0 %' : '—' }}</td></tr>
+                @foreach ($rec['anciennete'] as $tr => $m)<tr><td>{{ $tr }}</td><td class="d">{{ $f($m) }}</td><td class="d">{{ $rec['reste'] > 0 ? $pct($m / $rec['reste']) : 'n.d.' }}</td></tr>@endforeach
+                <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($rec['reste']) }}</td><td class="d">{{ $rec['reste'] > 0 ? '100,0 %' : 'n.d.' }}</td></tr>
             </tbody></table></div>
         </div>
         <div>
             <div class="rp-section">D. Impayés par exercice de facture</div>
             <div class="rp-boite"><table class="rp-table"><thead><tr><th>Exercice</th><th>Reste dû (FCFA)</th><th>% du total</th></tr></thead><tbody>
-                @foreach ($rec['parExercice'] as $an => $m)<tr><td class="c">{{ $an }}</td><td class="d">{{ $f($m) }}</td><td class="d">{{ $rec['reste'] > 0 ? $pct($m / $rec['reste']) : '—' }}</td></tr>@endforeach
-                <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($rec['reste']) }}</td><td class="d">{{ $rec['reste'] > 0 ? '100,0 %' : '—' }}</td></tr>
+                @foreach ($rec['parExercice'] as $an => $m)<tr><td class="c">{{ $an }}</td><td class="d">{{ $f($m) }}</td><td class="d">{{ $rec['reste'] > 0 ? $pct($m / $rec['reste']) : 'n.d.' }}</td></tr>@endforeach
+                <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($rec['reste']) }}</td><td class="d">{{ $rec['reste'] > 0 ? '100,0 %' : 'n.d.' }}</td></tr>
             </tbody></table></div>
         </div>
     </div>
@@ -573,9 +674,9 @@ $nouvelleConversation = function () {
     <div class="rp-section">B. Classement : où dépense-t-on le plus ?</div>
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Rang</th><th>Poste</th><th>Dû / dépensé (FCFA)</th><th>% du total</th></tr></thead><tbody>
         @foreach ($ch['classement'] as $i => $l)
-            <tr><td class="c">{{ $i + 1 }}</td><td>{{ $l['poste'] }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ch['totalRapport'] > 0 ? $pct($l['montant'] / $ch['totalRapport']) : '—' }}</td></tr>
+            <tr><td class="c">{{ $i + 1 }}</td><td>{{ $l['poste'] }}</td><td class="d">{{ $f($l['montant']) }}</td><td class="d">{{ $ch['totalRapport'] > 0 ? $pct($l['montant'] / $ch['totalRapport']) : 'n.d.' }}</td></tr>
         @endforeach
-        <tr class="rp-total"><td></td><td>TOTAL DES CHARGES DE LA PÉRIODE</td><td class="d">{{ $f($ch['totalRapport']) }}</td><td class="d">{{ $ch['totalRapport'] > 0 ? '100,0 %' : '—' }}</td></tr>
+        <tr class="rp-total"><td></td><td>TOTAL DES CHARGES DE LA PÉRIODE</td><td class="d">{{ $f($ch['totalRapport']) }}</td><td class="d">{{ $ch['totalRapport'] > 0 ? '100,0 %' : 'n.d.' }}</td></tr>
     </tbody></table></div>
 
     <div class="rp-section">C. Fournisseurs : facturé / réglé / reste à payer</div>
@@ -599,8 +700,8 @@ $nouvelleConversation = function () {
             <div class="rp-section">E. Ancienneté des dettes fournisseurs</div>
             <div class="rp-boite"><table class="rp-table"><thead><tr><th>Tranche</th><th>Reste (FCFA)</th><th>%</th></tr></thead><tbody>
                 @php $totAge = array_sum($fo['anciennete']); @endphp
-                @foreach ($fo['anciennete'] as $tr => $m)<tr><td>{{ $tr }}</td><td class="d">{{ $f($m) }}</td><td class="d">{{ $totAge > 0 ? $pct($m / $totAge) : '—' }}</td></tr>@endforeach
-                <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($totAge) }}</td><td class="d">{{ $totAge > 0 ? '100,0 %' : '—' }}</td></tr>
+                @foreach ($fo['anciennete'] as $tr => $m)<tr><td>{{ $tr }}</td><td class="d">{{ $f($m) }}</td><td class="d">{{ $totAge > 0 ? $pct($m / $totAge) : 'n.d.' }}</td></tr>@endforeach
+                <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f($totAge) }}</td><td class="d">{{ $totAge > 0 ? '100,0 %' : 'n.d.' }}</td></tr>
             </tbody></table></div>
         </div>
         <div>
@@ -611,23 +712,44 @@ $nouvelleConversation = function () {
         </div>
     </div>
 
-    <div class="rp-section">G. Impôts et CNPS (pièces déposées)</div>
+    <div class="rp-section">G. Impôts et CNPS à payer (pièces déposées), {{ $per->libelle() }}</div>
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Pièce</th><th>Date</th><th>Statut</th><th>Montant (FCFA)</th></tr></thead><tbody>
         @forelse ($ch['impots']['pieces']->concat($ch['cnps']['pieces']) as $p)
-            <tr><td>{{ $p->libelle }}{{ $p->reference ? ' · '.$p->reference : '' }}</td><td class="c">{{ $p->date_piece?->format('d/m/Y') ?? '—' }}</td><td class="c {{ $p->statut === 'paye' ? '' : 'rp-rouge' }}">{{ $p->statut === 'paye' ? 'Payé' : 'À régler' }}</td><td class="d">{{ $f($p->montant) }}</td></tr>
+            <tr><td>{{ $p->libelle }}{{ $p->reference ? ' · '.$p->reference : '' }}</td><td class="c">{{ $p->date_piece?->format('d/m/Y') ?? 'Sans date' }}</td><td class="c {{ $p->statut === 'paye' ? '' : 'rp-rouge' }}">{{ $p->statut === 'paye' ? 'Payé' : 'À régler' }}</td><td class="d">{{ $f($p->montant) }}</td></tr>
         @empty
-            <tr><td colspan="4" style="color:#6B6F78;">Aucune pièce — déposez l'avis des impôts ou l'appel CNPS dans « Dépôt de fichiers ».</td></tr>
+            <tr><td colspan="4" style="color:#6B6F78;">Aucune pièce sur la période : déposez l'avis des impôts ou l'appel CNPS dans « Dépôt de fichiers ».</td></tr>
         @endforelse
+        <tr class="rp-total"><td colspan="3">À PAYER (impôts {{ $f($ch['impots']['aRegler']) }} F, CNPS {{ $f($ch['cnps']['aRegler']) }} F)</td><td class="d rp-rouge">{{ $f($ch['impots']['aRegler'] + $ch['cnps']['aRegler']) }}</td></tr>
     </tbody></table></div>
+    <div class="rp-aide">Les impôts et la CNPS sont ceux de l'entreprise : une pièce ne porte ni ville ni activité.@if ($ch['piecesSansDate'] > 0) {{ $ch['piecesSansDate'] }} pièce(s) de l'exercice sans date ne se placent dans aucune période : elles restent sur l'exercice entier.@endif</div>
+
+    {{-- 25/11 : « les charges par semaine et par mois ». Les charges comptées (celles de la carte A),
+         rangées à leur date : la somme des lignes redonne le total. --}}
+    <div class="rp-deux">
+        <div>
+            <div class="rp-section">H. Charges comptées par semaine (du jeudi au mercredi)</div>
+            <div class="rp-boite"><table class="rp-table"><thead><tr><th>Semaine</th><th>Nb</th><th>Montant (FCFA)</th></tr></thead><tbody>
+                @foreach ($ch['parSemaine'] as $l)<tr><td>{{ ucfirst($l['libelle']) }}{{ $etatTranche($l) }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td></tr>@endforeach
+                <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f(collect($ch['parSemaine'])->sum('nombre')) }}</td><td class="d">{{ $f($ch['totalCompte']) }}</td></tr>
+            </tbody></table></div>
+        </div>
+        <div>
+            <div class="rp-section">I. Charges comptées par mois</div>
+            <div class="rp-boite"><table class="rp-table"><thead><tr><th>Mois</th><th>Nb</th><th>Montant (FCFA)</th></tr></thead><tbody>
+                @foreach ($ch['parMois'] as $l)<tr><td>{{ $l['libelle'] }}{{ $etatTranche($l) }}</td><td class="d">{{ $f($l['nombre']) }}</td><td class="d">{{ $f($l['montant']) }}</td></tr>@endforeach
+                <tr class="rp-total"><td>TOTAL</td><td class="d">{{ $f(collect($ch['parMois'])->sum('nombre')) }}</td><td class="d">{{ $f($ch['totalCompte']) }}</td></tr>
+            </tbody></table></div>
+        </div>
+    </div>
 @endif
 
 {{-- ═══════════════════ Conclusion ═══════════════════ --}}
 @if ($this->vue === 'conclusion')
     @php $co = $d['conclusion']; $tr = $d['tresorerie']; @endphp
     <div class="rp-section">A. Trésorerie</div>
-    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Banque</th><th>Au 1er janvier (FCFA)</th><th>Situation actuelle (FCFA)</th></tr></thead><tbody>
+    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Banque</th><th>Au {{ $d['debut']->format('d/m/Y') }} (FCFA)</th><th>Situation à la fin de la période (FCFA)</th></tr></thead><tbody>
         @forelse ($tr['banques'] as $b)
-            <tr><td>{{ $b['banque'] }}</td><td class="d">{{ $b['depart'] !== null ? $f($b['depart']) : '—' }}</td><td class="d">{{ $b['actuel'] !== null ? $f($b['actuel']) : '—' }}{{ $b['au'] ? ' (au '.$b['au']->format('d/m').')' : '' }}</td></tr>
+            <tr><td>{{ $b['banque'] }}</td><td class="d">{{ $b['depart'] !== null ? $f($b['depart']) : 'Aucun relevé' }}</td><td class="d">{{ $b['actuel'] !== null ? $f($b['actuel']) : 'Aucun relevé' }}{{ $b['au'] ? ' (au '.$b['au']->format('d/m').')' : '' }}</td></tr>
         @empty
             <tr><td colspan="3" style="color:#6B6F78;">Aucun relevé bancaire.</td></tr>
         @endforelse
@@ -638,7 +760,7 @@ $nouvelleConversation = function () {
 
     <div class="rp-section">B. Engagements à couvrir (ce que l'entreprise doit)</div>
     <div class="rp-boite"><table class="rp-table"><thead><tr><th>Poste</th><th>Montant à régler (FCFA)</th><th>Délai / échéance</th></tr></thead><tbody>
-        @foreach ($co['lignes'] as $l)<tr><td>{{ $l['poste'] }}</td><td class="d">{{ $l['montant'] > 0 ? $f($l['montant']) : '—' }}</td><td>{{ $l['delai'] }}</td></tr>@endforeach
+        @foreach ($co['lignes'] as $l)<tr><td>{{ $l['poste'] }}</td><td class="d">{{ $f($l['montant']) }}</td><td>{{ $l['delai'] }}</td></tr>@endforeach
         <tr class="rp-total"><td class="rp-rouge">TOTAL DES ENGAGEMENTS IDENTIFIÉS</td><td class="d rp-rouge">{{ $f($co['engagements']) }}</td><td></td></tr>
     </tbody></table></div>
 
@@ -646,7 +768,7 @@ $nouvelleConversation = function () {
     <div class="rp-grille">
         {!! $kpi('Impayés clients à recouvrer', $f($d['recouvrement']['reste']).' F', 'Dont '.$f($d['recouvrement']['resteExercice']).' sur '.$d['exercice'], '#D97706') !!}
         {!! $kpi('Recouvrement nécessaire', $pct($co['recouvrementNecessaire']), $pct($co['recouvrementNecessaire26']).' des créances '.$d['exercice']) !!}
-        {!! $kpi("Rythme d'encaissement", $f($co['encaissementHebdo']).' F', $co['semaines'] !== null ? 'par semaine — environ '.number_format($co['semaines'], 1, ',', ' ').' semaines pour couvrir' : 'par semaine', '#191B20') !!}
+        {!! $kpi("Rythme d'encaissement", $f($co['encaissementHebdo']).' F', $co['semaines'] !== null ? 'par semaine sur les 4 dernières, soit environ '.number_format($co['semaines'], 1, ',', ' ').' semaines pour couvrir' : 'par semaine sur les 4 dernières', '#191B20') !!}
     </div>
 
     <div class="rp-section">D. Synthèse générale</div>
@@ -668,9 +790,9 @@ $nouvelleConversation = function () {
     <div class="rp-section">A. Activité de l'équipe commerciale (totaux)</div>
     <div class="rp-grille">
         {!! $kpi('Prospections saisies', (string) $tc['prospectionsSaisies'], $tc['prospections'].' transmises ou validées', '#191B20') !!}
-        {!! $kpi('Passées en devis', (string) $tc['passeesEnDevis'], $pct($tc['tauxProspectionDevis']).' des prospections — '.$tc['attenteDuDevis'].' en attente du devis', '#2563EB') !!}
+        {!! $kpi('Passées en devis', (string) $tc['passeesEnDevis'], $pct($tc['tauxProspectionDevis']).' des prospections ; '.$tc['attenteDuDevis'].' en attente du devis', '#2563EB') !!}
         {!! $kpi('Devis émis', (string) $tc['devisEmis'], $tc['devisEnAttente'].' en attente', '#D97706') !!}
-        {!! $kpi('Devis transformés', (string) $tc['devisTransformes'], $pct($tc['tauxDevisFacture']).' des devis — '.$tc['devisFactures'].' suivis d\'une facture', '#0E9F6E') !!}
+        {!! $kpi('Devis transformés', (string) $tc['devisTransformes'], $pct($tc['tauxDevisFacture']).' des devis ; '.$tc['devisFactures'].' suivis d\'une facture', '#0E9F6E') !!}
         {!! $kpi('Factures', (string) $tc['factures'], $f($tc['realisation']).' F facturés') !!}
     </div>
 
@@ -686,16 +808,16 @@ $nouvelleConversation = function () {
         @endif
     </tbody></table></div>
     <div class="rp-notes">
-        <div class="rp-note"><b>Prospections saisies</b> : toutes celles de l'exercice, brouillons et refusées compris. <b>Transmises ou validées</b> : celles que comptent les pages Prospects et Affichage général.</div>
+        <div class="rp-note"><b>Prospections saisies</b> : toutes celles de la période, brouillons et refusées compris. <b>Transmises ou validées</b> : celles que comptent les pages Prospects et Affichage général.</div>
         <div class="rp-note"><b>Passées en devis</b> : prospections transmises ou validées cochées « devis après passage » ; <b>en attente du devis</b> : celles dont le devis n'est pas encore relié (import à venir ou numéro manquant).</div>
-        <div class="rp-note"><b>Devis transformés</b> : validés à l'écran ou suivis d'une facture (même devis ou même fiche de réception), comme sur la page Devis ; <b>en attente</b> : « En attente » et non transformés. Les devis sont ceux émis dans l'exercice au nom du commercial.</div>
-        <div class="rp-note"><b>Factures, CA facturé</b> : factures de l'exercice portant le commercial, comme sur la page Commerciaux. Les taux du TOTAL sont recalculés sur les totaux.</div>
+        <div class="rp-note"><b>Devis transformés</b> : validés à l'écran ou suivis d'une facture (même devis ou même fiche de réception), comme sur la page Devis ; <b>en attente</b> : « En attente » et non transformés. Les devis sont ceux émis dans la période au nom du commercial.</div>
+        <div class="rp-note"><b>Factures, CA facturé</b> : factures de la période portant le commercial, comme sur la page Commerciaux. Les taux du TOTAL sont recalculés sur les totaux. L'objectif est pris au prorata de la période.</div>
     </div>
 
     <div class="rp-section rp-large">C. Réalisé, objectif et encours par commercial</div>
     <div class="rp-boite rp-large"><table class="rp-table"><thead><tr><th>Commercial</th><th>Ville</th><th>Factures</th><th>CA réalisé</th><th>Mécanique</th><th>Sinistre</th><th>Objectif (prorata)</th><th>Taux</th><th>Encours clients</th></tr></thead><tbody>
         @forelse ($lignesC as $l)
-            <tr><td><b>{{ $l['commercial'] }}</b></td><td>{{ $l['ville'] }}</td><td class="d">{{ $l['factures'] }}</td><td class="d"><b>{{ $f($l['realisation']) }}</b></td><td class="d">{{ $f($l['mecanique']) }}</td><td class="d">{{ $f($l['sinistre']) }}</td><td class="d">{{ $l['objectif'] > 0 ? $f($l['objectif']) : '—' }}</td><td class="d">{{ $pct($l['taux']) }}</td><td class="d">{{ $f($l['encours']) }}</td></tr>
+            <tr><td><b>{{ $l['commercial'] }}</b></td><td>{{ $l['ville'] }}</td><td class="d">{{ $l['factures'] }}</td><td class="d"><b>{{ $f($l['realisation']) }}</b></td><td class="d">{{ $f($l['mecanique']) }}</td><td class="d">{{ $f($l['sinistre']) }}</td><td class="d">{{ $f($l['objectif']) }}</td><td class="d">{{ $pct($l['taux']) }}</td><td class="d">{{ $f($l['encours']) }}</td></tr>
         @empty
             <tr><td colspan="9" style="color:#6B6F78;">Aucun commercial actif dans votre périmètre.</td></tr>
         @endforelse
@@ -709,19 +831,23 @@ $nouvelleConversation = function () {
 @if ($this->vue === 'precedent')
     @php $ap = $this->rapport->anneePrecedente(); @endphp
     <div class="rp-section">A. Grandes lignes</div>
-    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Grandes lignes</th><th>{{ $ap['passe']['exercice'] }} (FCFA)</th><th>{{ $ap['actuel']['exercice'] }} en cours (FCFA)</th><th>Variation</th></tr></thead><tbody>
+    <div class="rp-boite"><table class="rp-table"><thead><tr><th>Grandes lignes</th><th>{{ ucfirst($ap['passe']['titre']) }} (FCFA)</th><th>{{ ucfirst($ap['actuel']['titre']) }}{{ $per->estLExercice() ? ' en cours' : '' }} (FCFA)</th><th>Variation</th></tr></thead><tbody>
         @foreach (['ca' => "Chiffre d'affaires", 'charges' => 'Charges comptées', 'resultat' => 'Résultat (CA − charges)', 'encaisse' => 'Encaissements clients', 'encours' => 'Encours clients (impayés)'] as $k => $lib)
-            <tr><td>{{ $lib }}</td><td class="d">{{ $f($ap['passe'][$k]) }}</td><td class="d">{{ $f($ap['actuel'][$k]) }}</td><td class="d">{{ isset($ap['variations'][$k]) ? $pct($ap['variations'][$k]) : '—' }}</td></tr>
+            <tr><td>{{ $lib }}</td><td class="d">{{ $f($ap['passe'][$k]) }}</td><td class="d">{{ $f($ap['actuel'][$k]) }}</td><td class="d">{{ isset($ap['variations'][$k]) ? $pct($ap['variations'][$k]) : 'n.d.' }}</td></tr>
         @endforeach
     </tbody></table></div>
-    <div class="rp-aide">Les chiffres de {{ $ap['actuel']['exercice'] }} vont jusqu'à aujourd'hui : la variation compare une année entière à une année en cours. L'encours est l'état actuel des créances de l'exercice.</div>
+    @if ($per->estLExercice())
+        <div class="rp-aide">Les chiffres de {{ $ap['actuel']['exercice'] }} vont jusqu'à aujourd'hui : la variation compare une année entière à une année en cours. L'encours est l'état actuel des créances de l'exercice.</div>
+    @else
+        <div class="rp-aide">La même période, un an plus tôt, sur le même lieu et la même activité. L'encours est celui des factures émises dans chaque période.</div>
+    @endif
     <div class="rp-deux">
         <div>
-            <div class="rp-section">B. CA {{ $ap['passe']['exercice'] }} par ville</div>
+            <div class="rp-section">B. CA par ville, {{ $ap['passe']['titre'] }}</div>
             <div class="rp-boite"><table class="rp-table"><thead><tr><th>Ville</th><th>CA (FCFA)</th></tr></thead><tbody>@foreach ($ap['passe']['parVille'] as $l)<tr><td>{{ $l['ville'] }}</td><td class="d">{{ $f($l['montant']) }}</td></tr>@endforeach</tbody></table></div>
         </div>
         <div>
-            <div class="rp-section">C. CA {{ $ap['passe']['exercice'] }} par activité</div>
+            <div class="rp-section">C. CA par activité, {{ $ap['passe']['titre'] }}</div>
             <div class="rp-boite"><table class="rp-table"><thead><tr><th>Activité</th><th>CA (FCFA)</th></tr></thead><tbody>@foreach ($ap['passe']['parActivite'] as $l)<tr><td>{{ $l['activite'] }}</td><td class="d">{{ $f($l['montant']) }}</td></tr>@endforeach</tbody></table></div>
         </div>
     </div>
@@ -730,8 +856,8 @@ $nouvelleConversation = function () {
 
 {{-- ═══════════════════ Dépôt de fichiers ═══════════════════ --}}
 @if ($this->vue === 'depot')
-    <div class="rp-titre">Dépôt de fichiers — impôts, CNPS, salaires, récapitulatifs</div>
-    <div class="rp-source">Un fichier déjà déposé est refusé ; une ligne déjà connue n'est pas recréée ; un paiement déjà compté par la caisse n'est pas recompté ; un récapitulatif ne sert qu'au contrôle.</div>
+    <div class="rp-titre">Dépôt de fichiers : impôts, CNPS, salaires, récapitulatifs</div>
+    <div class="rp-aide">Un fichier déjà déposé est refusé ; une ligne déjà connue n'est pas recréée ; un paiement déjà compté par la caisse n'est pas recompté ; un récapitulatif ne sert qu'au contrôle.</div>
 
     <div class="rp-section">A. Déposer un fichier</div>
     <div class="rp-notes">
@@ -766,7 +892,7 @@ $nouvelleConversation = function () {
     @endif
 
     @if ($this->propositions !== [])
-        <div class="rp-section" style="background:#D97706;">Lecture de l'assistant — à confirmer (rien n'est encore enregistré)</div>
+        <div class="rp-section" style="background:#D97706;">Lecture de l'assistant, à confirmer (rien n'est encore enregistré)</div>
         <div class="rp-boite"><table class="rp-table"><thead><tr><th>Nature</th><th>Statut</th><th>Libellé</th><th>Référence</th><th>Montant (FCFA)</th></tr></thead><tbody>
             @foreach ($this->propositions as $p)<tr><td>{{ $p['nature'] }}</td><td>{{ $p['statut'] === 'paye' ? 'Payé' : 'À régler' }}</td><td>{{ $p['libelle'] }}</td><td>{{ $p['reference'] }}</td><td class="d">{{ $f($p['montant']) }}</td></tr>@endforeach
         </tbody></table></div>
@@ -810,6 +936,7 @@ $nouvelleConversation = function () {
         $md = fn (string $t) => \Illuminate\Support\Str::markdown($t, ['html_input' => 'escape', 'allow_unsafe_links' => false]);
     @endphp
 
+    <div class="rp-aide">L'assistant lit les données de l'application sous vos habilitations ; il n'écrit que ses analyses, ses documents et les pièces du dépôt.</div>
     @if (! AssistantDuRapport::iaDisponible())
         <div class="rp-notes"><div class="rp-note alerte">L'IA du rapport n'est pas configurée : le Super admin doit renseigner une clé et affecter un fournisseur à l'usage « Rapport » (Super admin › IA). En attendant, le rapport garde l'analyse du système.</div></div>
     @endif
@@ -831,7 +958,7 @@ $nouvelleConversation = function () {
 
     <div class="rp-notes" style="margin-top:10px;">
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            <input type="text" wire:model="consigneAnalyse" class="rp-champ" style="flex:1; min-width:280px;" placeholder="Consigne de style facultative — ex. « sobre, en deux colonnes, accent bleu #2563EB »">
+            <input type="text" wire:model="consigneAnalyse" class="rp-champ" style="flex:1; min-width:280px;" placeholder="Consigne de style facultative, par exemple « sobre, en deux colonnes, accent bleu #2563EB »">
             <button type="button" wire:click="analyserParIA" wire:loading.attr="disabled" class="rp-btn" @disabled(! AssistantDuRapport::iaDisponible())>
                 <span wire:loading.remove wire:target="analyserParIA">Analyser avec l'IA</span><span wire:loading wire:target="analyserParIA">L'assistant analyse…</span>
             </button>
